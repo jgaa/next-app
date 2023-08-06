@@ -8,7 +8,7 @@ ide for even longer. I wrote an app for Android in 2013 [VikingGTD](https://gith
 that I a still use to organize my life. However, I want something that runs on multiple 
 devices - so I can use it on my laptops *and* my phone. I also want it to use location 
 and my energy level to suggest the most relevant next action - as well as reminding me abot people to 
-ping and tings I need to get from nearby shops when I mode around. 
+ping and tings I need to get from nearby shops when I move around. 
 Not to mention delegation and cooperation with other people.
 
 This is a pretty large project for a lone hacker. It involves a server part, a desktop app, an Android app
