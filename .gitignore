@@ -30,3 +30,8 @@
 *.exe
 *.out
 *.app
+
+# Other
+*.user
+tmp
+build
