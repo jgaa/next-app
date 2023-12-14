@@ -10,6 +10,9 @@ project(next-app
     VERSION ${NEXTAPP_VERSION}
     LANGUAGES CXX)
 
+set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
 option(NEXTAPP_WITH_TESTS "Enable Tests" ON)
 
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
@@ -21,6 +24,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 message(STATUS "Using ${CMAKE_CXX_COMPILER}")
+
+find_package(Threads REQUIRED)
+find_package(ZLIB REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(Doxygen)
+
+if(NOT DEFINED USE_BOOST_VERSION)
+    set(USE_BOOST_VERSION 1.83)
+endif()
 
 include(cmake/3rdparty.cmake)
 

@@ -1,11 +1,15 @@
 project(backend)
 
 find_package(Threads REQUIRED)
+find_package(Doxygen)
+
+set(NEXTAPP_BACKEND ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(NOT DEFINED USE_BOOST_VERSION)
-    set(USE_BOOST_VERSION 1.82)
+    set(USE_BOOST_VERSION 1.83)
 endif()
 
+option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" ON)
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     system
     program_options
@@ -14,6 +18,8 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     context
     chrono
     )
+
+set(NEXTAPP_LIBS = ${Boost_LIBRARIES} stdc++fs ZLIB Threads::Threads)
 
 add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY

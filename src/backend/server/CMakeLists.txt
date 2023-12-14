@@ -12,15 +12,14 @@ add_executable(${PROJECT_NAME}
 add_dependencies(${PROJECT_NAME} logfault)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    ${Boost_LIBRARIES}
-    stdc++fs
-    # TODO: Add macros and check for these libraries
-    ${CMAKE_THREAD_LIBS_INIT}
+    ${NEXTAPP_DEPENDS}
+    nalib
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${NEXTAPP_ROOT}/include>
+    $<BUILD_INTERFACE:${NEXTAPP_BACKEND}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     PRIVATE ${CMAKE_BINARY_DIR}/generated-include/
