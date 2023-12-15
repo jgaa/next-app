@@ -12,10 +12,10 @@
 
 # Backend
 - [x] Add DB driver to project
-    [ ] Implement a convenient way to co_await simultaneous requests to the database, using a pool of connections.
+    [x] Implement a convenient way to co_await simultaneous requests to the database, using a pool of connections.
 - [ ] Add grpc to the project
 - [ ] Bootstrapping
-    - [ ] Create and initialize the database
+    - [x] Create and initialize the database
     - [ ] Create system tenant and admin user
     - [ ] Optinally, create example data
     - [ ] Re-creation of the system tenant and admin user from the command line
