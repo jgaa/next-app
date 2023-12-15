@@ -1,4 +1,5 @@
 
+#include <memory>
 #include "nextapp/db.h"
 #include "nextapp/logging.h"
 
@@ -9,11 +10,17 @@ namespace mysql = boost::mysql;
 
 namespace nextapp::db {
 
-asio::awaitable<Db::Handle> Db::get_connection() {
+asio::awaitable<Db::Handle> Db::get_connection(bool throwOnEmpty) {
     while(true) {
         optional<Handle> handle;
         {
             std::scoped_lock lock{mutex_};
+            if (connections_.empty()) {
+                if (throwOnEmpty) {
+                    throw runtime_error{"No database connections are open. Is the server shutting down?"};
+                }
+                co_return Handle{};
+            }
             if (auto it = std::ranges::find_if(connections_, [](const auto& c) {
                     return c.available_;
                 } ); it != connections_.end()) {
@@ -32,6 +39,35 @@ asio::awaitable<Db::Handle> Db::get_connection() {
     }
 
     co_return Handle{};
+}
+
+boost::asio::awaitable<mysql::results> Db::close()
+{
+    LOG_DEBUG_N << "Closing database connections...";
+    while(true) {
+        // Use this to get the connections while they are available
+        auto conn = co_await get_connection(false);
+        if (conn.empty()) {
+            LOG_DEBUG_N << "Done closing database connections.";
+            break; // done
+        }
+
+        try {
+            LOG_TRACE_N << "Closing db connection.";
+            co_await conn.connection().async_close(asio::use_awaitable);
+            conn.reset();
+
+            // Delete the Connection object
+            std::scoped_lock lock{mutex_};
+            if (auto it = find_if(connections_.begin(), connections_.end(), [&](const auto& v) {
+                    return addressof(v) == conn.connection_;
+                    }); it != connections_.end()) {
+                connections_.erase(it);
+            } else {
+                LOG_ERROR << "Failed to lookup a connection I just closed!";
+            }
+        } catch(const exception&) {}
+    }
 }
 
 void Db::init() {
@@ -97,6 +133,11 @@ void Db::init() {
 
     static constexpr auto one_hundred_years = 8766 * 100;
     semaphore_.expires_from_now(boost::posix_time::hours(one_hundred_years));
+}
+
+void Db::log_query(std::string_view type, std::string_view query)
+{
+    LOG_TRACE << "Exceuting " << type << " SQL query: " << query;
 }
 
 void Db::release(Handle &h) noexcept {

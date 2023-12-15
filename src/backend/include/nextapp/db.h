@@ -11,6 +11,15 @@
 
 namespace nextapp::db {
 
+constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitable);
+
+// template <typename T>
+// concept Statement =
+//     std::is_same_v<T, std::string>
+//     || std::is_same_v<T, std::string_view>
+//     || std::is_same_v<T, boost::mysql::statement>
+//     ;
+
 /*! Database interface
  *
  * Normally a singleton
@@ -73,15 +82,51 @@ public:
             return connection_->connection_;
         }
 
+        bool empty() const noexcept {
+            return connection_ != nullptr;
+        }
+
+        void reset() {
+            parent_ = {};
+            connection_ = {};
+        }
+
         Db *parent_{};
         Connection *connection_{};
     };
 
-    boost::asio::awaitable<Handle> get_connection();;
+    boost::asio::awaitable<Handle> get_connection(bool throwOnEmpty = true);
+
+    // Execute a query or prepared, bound statement
+    template <BOOST_MYSQL_EXECUTION_REQUEST T>
+    boost::asio::awaitable<boost::mysql::results> exec(T query) {
+        auto conn = co_await get_connection();
+        boost::mysql::results result;
+        log_query("static", query);
+        co_await conn.connection().async_execute(query,
+                                                 result,
+                                                 boost::asio::use_awaitable);
+        co_return std::move(result);
+    }
+
+    // Execute a statement. Arguments are bound before the query is executed.
+    template<typename ...argsT>
+    boost::asio::awaitable<boost::mysql::results> execs(std::string_view query, argsT ...args) {
+        auto conn = co_await get_connection();
+        boost::mysql::results result;
+        log_query("statement", query);
+        auto stmt = co_await conn.connection().async_prepare_statement(query, boost::asio::use_awaitable);
+        co_await conn.connection().async_execute(stmt.bind("nextapp"),
+                                                 result,
+                                                 boost::asio::use_awaitable);
+        co_return std::move(result);
+    }
+
+    boost::asio::awaitable<boost::mysql::results> close();
 
 private:
     void init();
-
+    void log_query(std::string_view type, std::string_view query);
     void release(Handle& h) noexcept;
 
     boost::asio::io_context& ctx_;

@@ -87,6 +87,8 @@ int main(int argc, char* argv[]) {
     }
 
     Config config;
+    Server::BootstrapOptions bootstrap_opts;
+
     const auto appname = filesystem::path(argv[0]).stem().string();
 
     {
@@ -101,9 +103,21 @@ int main(int argc, char* argv[]) {
             ("log-to-console,C",
              po::value(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
+            ;
+
+        po::options_description bs("Bootstrap");
+        bs.add_options()
             ("bootstrap", po::bool_switch(&bootstrap),
              "Bootstrap the system. Creates the database and system tenant. Exits when done. "
-             "The databse credentials must be for the system (root) user of the database."                                                                                                                                                                                             )
+             "The databse credentials must be for the system (root) user of the database.")
+            ("drop-database", po::bool_switch(&bootstrap_opts.drop_old_db),
+             "Tells the server to delete the existing database.")
+            ("root-db-user",
+              po::value(&bootstrap_opts.db_root_user)->default_value(bootstrap_opts.db_root_user),
+             "Mysql user to use when logging into the mysql server")
+            ("root-db-passwd",
+             po::value(&bootstrap_opts.db_root_passwd),
+             "Mysql password to use when logging into the mysql server")
             ;
 
         po::options_description svr("Server");
@@ -122,8 +136,8 @@ int main(int argc, char* argv[]) {
              "Mysql password to use when logging into the mysql server")
             ("db-name",
               po::value(&config.db.database)->default_value(config.db.database),
-             "Mysql password to use when logging into the mysql server")
-            ("db-name",
+             "Database to use")
+            ("db-host",
              po::value(&config.db.host)->default_value(config.db.host),
              "Hostname or IP address for the database server")
             ("db-port",
@@ -135,7 +149,7 @@ int main(int argc, char* argv[]) {
             ;
 
         po::options_description cmdline_options;
-        cmdline_options.add(general).add(svr).add(db);
+        cmdline_options.add(general).add(bs).add(svr).add(db);
         po::variables_map vm;
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
@@ -172,7 +186,7 @@ int main(int argc, char* argv[]) {
         if (bootstrap) {
             try {
                 Server server{config};
-                server.bootstrap();
+                server.bootstrap(bootstrap_opts);
                 return 0; // Done
             } catch (const exception& ex) {
                 LOG_ERROR << "Caught exception during bootstrap: " << ex.what();

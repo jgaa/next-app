@@ -11,7 +11,8 @@
 # Shared code
 
 # Backend
-- [ ] Add DB driver to project
+- [x] Add DB driver to project
+    [ ] Implement a convenient way to co_await simultaneous requests to the database, using a pool of connections.
 - [ ] Add grpc to the project
 - [ ] Bootstrapping
     - [ ] Create and initialize the database
