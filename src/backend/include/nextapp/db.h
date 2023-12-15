@@ -13,13 +13,6 @@ namespace nextapp::db {
 
 constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitable);
 
-// template <typename T>
-// concept Statement =
-//     std::is_same_v<T, std::string>
-//     || std::is_same_v<T, std::string_view>
-//     || std::is_same_v<T, boost::mysql::statement>
-//     ;
-
 /*! Database interface
  *
  * Normally a singleton
