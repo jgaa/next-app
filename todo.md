@@ -13,9 +13,15 @@
 # Backend
 - [x] Add DB driver to project
     [x] Implement a convenient way to co_await simultaneous requests to the database, using a pool of connections.
-- [ ] Add grpc to the project
+- [ ] gRPC
+    - [x] Add grpc to the project
+    - [ ] Implement a simple handshake method so we can connect the client
+    - [ ] Fething tree data
+    - [ ] Open stream to send events to the client
+    - [ ] Open stream to receive events from the client
 - [ ] Bootstrapping
     - [x] Create and initialize the database
+    - [ ] Create the core tables for basic functionality
     - [ ] Create system tenant and admin user
     - [ ] Optinally, create example data
     - [ ] Re-creation of the system tenant and admin user from the command line
