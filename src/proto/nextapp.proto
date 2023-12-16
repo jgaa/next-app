@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package nextapp.pb;
+
+message KeyValue {
+    string key = 1;
+    optional string value = 2;
+}
+
+message Empyty {}
+
+message ServerInfo {
+    repeated KeyValue properties = 1;
+}
+
+service Nextapp {
+    rpc GetServerInfo(Empyty) returns (ServerInfo) {}
+}
+

@@ -41,7 +41,7 @@ asio::awaitable<Db::Handle> Db::get_connection(bool throwOnEmpty) {
     co_return Handle{};
 }
 
-boost::asio::awaitable<mysql::results> Db::close()
+boost::asio::awaitable<void> Db::close()
 {
     LOG_DEBUG_N << "Closing database connections...";
     while(true) {

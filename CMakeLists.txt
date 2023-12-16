@@ -36,4 +36,5 @@ endif()
 
 include(cmake/3rdparty.cmake)
 
+add_subdirectory(src/proto)
 add_subdirectory(src/backend)

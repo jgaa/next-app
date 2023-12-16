@@ -11,6 +11,8 @@
 
 namespace nextapp::db {
 
+using results = boost::mysql::results;
+
 constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitable);
 
 /*! Database interface
@@ -88,34 +90,33 @@ public:
         Connection *connection_{};
     };
 
-    boost::asio::awaitable<Handle> get_connection(bool throwOnEmpty = true);
+    [[nodiscard]] boost::asio::awaitable<Handle> get_connection(bool throwOnEmpty = true);
 
     // Execute a query or prepared, bound statement
     template <BOOST_MYSQL_EXECUTION_REQUEST T>
-    boost::asio::awaitable<boost::mysql::results> exec(T query) {
+    boost::asio::awaitable<results> exec(T query) {
         auto conn = co_await get_connection();
-        boost::mysql::results result;
         log_query("static", query);
+        results res;
         co_await conn.connection().async_execute(query,
-                                                 result,
+                                                 res,
                                                  boost::asio::use_awaitable);
-        co_return std::move(result);
+        co_return std::move(res);
     }
 
-    // Execute a statement. Arguments are bound before the query is executed.
     template<typename ...argsT>
-    boost::asio::awaitable<boost::mysql::results> execs(std::string_view query, argsT ...args) {
+    boost::asio::awaitable<results> execs(std::string_view query, argsT ...args) {
         auto conn = co_await get_connection();
-        boost::mysql::results result;
         log_query("statement", query);
+        results res;
         auto stmt = co_await conn.connection().async_prepare_statement(query, boost::asio::use_awaitable);
-        co_await conn.connection().async_execute(stmt.bind("nextapp"),
-                                                 result,
+        co_await conn.connection().async_execute(stmt.bind(args...),
+                                                 res,
                                                  boost::asio::use_awaitable);
-        co_return std::move(result);
+        co_return std::move(res);
     }
 
-    boost::asio::awaitable<boost::mysql::results> close();
+    boost::asio::awaitable<void> close();
 
 private:
     void init();

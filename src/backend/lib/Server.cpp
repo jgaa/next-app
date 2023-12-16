@@ -127,6 +127,7 @@ void Server::run_io_thread(const size_t id)
 
 boost::asio::awaitable<bool> Server::check_db()
 {
+    LOG_TRACE_N << "Checking the database version...";
     auto res = co_await db_->exec("SELECT version FROM nextapp");
     if (res.has_value()) {
         const auto version = res.rows().front().front().as_int64();
@@ -196,13 +197,13 @@ boost::asio::awaitable<void> Server::create_db(const BootstrapOptions& opts)
 
 boost::asio::awaitable<void> Server::upgrade_db_tables(uint version)
 {
-    static constexpr auto v1_upgrades = to_array<string_view>({
-        "CREATE TABLE nextapp (version INTEGER NOT NULL)",
-        "INSERT INTO nextapp SET version=1"
+    static constexpr auto v1_bootstrap = to_array<string_view>({
+        "CREATE TABLE nextapp (id INTEGER NOT NULL, version INTEGER NOT NULL, serverid VARCHAR(37) NOT NULL DEFAULT UUID()) ",
+        "INSERT INTO nextapp (id, version) values(1, 0)"
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({
-        v1_upgrades,
+        v1_bootstrap,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
@@ -217,13 +218,13 @@ boost::asio::awaitable<void> Server::upgrade_db_tables(uint version)
 
         LOG_TRACE << "in coro...";
 
+        // Here we will run all SQL queries for upgrading from the specified version to the current version.
         auto relevant = ranges::drop_view(versions, version);
         for(string_view query : relevant | std::views::join) {
             co_await db.exec(query);
         }
 
-        //co_await db.exec("UPSERT INTO nextapp ");
-
+        co_await db.execs("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
         co_await db.close();
 
     }, asio::use_awaitable);
