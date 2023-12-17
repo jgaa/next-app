@@ -51,12 +51,12 @@ public:
     }
 
 private:
-    void handle_signals();
-    void init_ctx(size_t numThreads);
-    void run_io_thread(size_t id);
-    boost::asio::awaitable<bool> check_db();
-    boost::asio::awaitable<void> create_db(const BootstrapOptions& opts);
-    boost::asio::awaitable<void> upgrade_db_tables(uint version);
+    void handleSignals();
+    void initCtx(size_t numThreads);
+    void runIoThread(size_t id);
+    boost::asio::awaitable<bool> checkDb();
+    boost::asio::awaitable<void> createDb(const BootstrapOptions& opts);
+    boost::asio::awaitable<void> upgradeDbTables(uint version);
 
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;

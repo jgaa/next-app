@@ -90,13 +90,13 @@ public:
         Connection *connection_{};
     };
 
-    [[nodiscard]] boost::asio::awaitable<Handle> get_connection(bool throwOnEmpty = true);
+    [[nodiscard]] boost::asio::awaitable<Handle> getConnection(bool throwOnEmpty = true);
 
     // Execute a query or prepared, bound statement
     template <BOOST_MYSQL_EXECUTION_REQUEST T>
     boost::asio::awaitable<results> exec(T query) {
-        auto conn = co_await get_connection();
-        log_query("static", query);
+        auto conn = co_await getConnection();
+        logQuery("static", query);
         results res;
         co_await conn.connection().async_execute(query,
                                                  res,
@@ -106,8 +106,8 @@ public:
 
     template<typename ...argsT>
     boost::asio::awaitable<results> execs(std::string_view query, argsT ...args) {
-        auto conn = co_await get_connection();
-        log_query("statement", query);
+        auto conn = co_await getConnection();
+        logQuery("statement", query);
         results res;
         auto stmt = co_await conn.connection().async_prepare_statement(query, boost::asio::use_awaitable);
         co_await conn.connection().async_execute(stmt.bind(args...),
@@ -120,7 +120,7 @@ public:
 
 private:
     void init();
-    void log_query(std::string_view type, std::string_view query);
+    void logQuery(std::string_view type, std::string_view query);
     void release(Handle& h) noexcept;
 
     boost::asio::io_context& ctx_;

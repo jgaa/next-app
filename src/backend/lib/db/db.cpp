@@ -10,7 +10,7 @@ namespace mysql = boost::mysql;
 
 namespace nextapp::db {
 
-asio::awaitable<Db::Handle> Db::get_connection(bool throwOnEmpty) {
+asio::awaitable<Db::Handle> Db::getConnection(bool throwOnEmpty) {
     while(true) {
         optional<Handle> handle;
         {
@@ -46,7 +46,7 @@ boost::asio::awaitable<void> Db::close()
     LOG_DEBUG_N << "Closing database connections...";
     while(true) {
         // Use this to get the connections while they are available
-        auto conn = co_await get_connection(false);
+        auto conn = co_await getConnection(false);
         if (conn.empty()) {
             LOG_DEBUG_N << "Done closing database connections.";
             break; // done
@@ -135,7 +135,7 @@ void Db::init() {
     semaphore_.expires_from_now(boost::posix_time::hours(one_hundred_years));
 }
 
-void Db::log_query(std::string_view type, std::string_view query)
+void Db::logQuery(std::string_view type, std::string_view query)
 {
     LOG_TRACE << "Exceuting " << type << " SQL query: " << query;
 }

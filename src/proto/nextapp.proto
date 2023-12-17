@@ -7,13 +7,60 @@ message KeyValue {
     optional string value = 2;
 }
 
-message Empyty {}
+message Empty {}
+
+message Status {
+    int32 error = 1; // 0 == OK
+    string message = 2;
+}
 
 message ServerInfo {
     repeated KeyValue properties = 1;
 }
 
-service Nextapp {
-    rpc GetServerInfo(Empyty) returns (ServerInfo) {}
+message Node {
+    enum Kind {
+        FOLDER = 0;
+        ORGANIZATION = 1;
+        PERSON = 2;
+        PROJECT = 3;
+        TASK = 4;
+    }
+
+    string id = 1;
+    string parent = 2;
+    string user = 3;
+    bool active = 4;
+    string name = 5;
+    Kind kind = 6;
+    string descr = 7;
 }
+
+message UpdateRequest {
+    enum Kind {
+        REFRESH = 0;
+    }
+
+    Kind kind = 1;
+}
+
+message NodeUpdate {
+    enum Operation {
+        ADDED = 0; // When a refresh is requested, all the existing nodes are 'ADDED'
+        DELETED = 1; // For deleted nodes, only the id is set in the Node's body
+        UPDATED = 2; // Some data was changed, but the node is at the same position on the tree
+        MOVED = 4; // The node moved in the three. The data has not changed
+    }
+
+    // The operation applies to all the nodes in the list
+    Operation op = 1;
+    repeated Node nodes = 2;
+}
+
+service Nextapp {
+    rpc GetServerInfo(Empty) returns (ServerInfo) {}
+    rpc GetNodes(UpdateRequest) returns (stream NodeUpdate) {}
+    rpc NodeChanged(NodeUpdate) returns (Status)
+}
+
 

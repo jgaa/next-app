@@ -36,8 +36,8 @@ Server::~Server()
 
 void Server::init()
 {
-    handle_signals();
-    init_ctx(config().svr.io_threads);
+    handleSignals();
+    initCtx(config().svr.io_threads);
 
     db_.emplace(ctx_, config().db);
 }
@@ -45,7 +45,7 @@ void Server::init()
 void Server::run()
 {
     asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-            if (!co_await check_db()) {
+            if (!co_await checkDb()) {
                 LOG_ERROR << "The database version is wrong. Please upgrade before starting the server.";
                 stop();
             }
@@ -58,7 +58,7 @@ void Server::run()
 
     // TODO: Set up signal handler
     LOG_DEBUG_N << "Main thread joins the IO thread pool...";
-    run_io_thread(0);
+    runIoThread(0);
     LOG_DEBUG_N << "Main thread left the IO thread pool...";
 }
 
@@ -72,8 +72,8 @@ void Server::bootstrap(const BootstrapOptions& opts)
     LOG_INFO << "Bootstrapping the system...";
 
     asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-        co_await create_db(opts);
-        co_await upgrade_db_tables(0);
+        co_await createDb(opts);
+        co_await upgradeDbTables(0);
     },
     [](std::exception_ptr ptr) {
         if (ptr) {
@@ -86,17 +86,17 @@ void Server::bootstrap(const BootstrapOptions& opts)
     LOG_INFO << "Bootstrapping is complete";
 }
 
-void Server::init_ctx(size_t numThreads)
+void Server::initCtx(size_t numThreads)
 {
     io_threads_.reserve(numThreads);
     for(size_t i = 1; i < numThreads; ++i) {
         io_threads_.emplace_back([this, i]{
-            run_io_thread(i);
+            runIoThread(i);
         });
     }
 }
 
-void Server::run_io_thread(const size_t id)
+void Server::runIoThread(const size_t id)
 {
     LOG_DEBUG_N << "starting io-thread " << id;
     try {
@@ -125,7 +125,7 @@ void Server::run_io_thread(const size_t id)
     LOG_DEBUG_N << "Io-thread " << id << " is done.";
 }
 
-boost::asio::awaitable<bool> Server::check_db()
+boost::asio::awaitable<bool> Server::checkDb()
 {
     LOG_TRACE_N << "Checking the database version...";
     auto res = co_await db_->exec("SELECT version FROM nextapp");
@@ -135,7 +135,7 @@ boost::asio::awaitable<bool> Server::check_db()
                   << ". I need the database to be at version " << latest_version << '.';
 
         if (latest_version > version) {
-            co_await upgrade_db_tables(version);
+            co_await upgradeDbTables(version);
             co_return true;
         }
         co_return version == latest_version;
@@ -144,7 +144,7 @@ boost::asio::awaitable<bool> Server::check_db()
     co_return false;
 }
 
-boost::asio::awaitable<void> Server::create_db(const BootstrapOptions& opts)
+boost::asio::awaitable<void> Server::createDb(const BootstrapOptions& opts)
 {
     LOG_INFO << "Creating the database " << config_.db.database;
 
@@ -179,7 +179,7 @@ boost::asio::awaitable<void> Server::create_db(const BootstrapOptions& opts)
         }
 
         LOG_TRACE_N << "Creating database...";
-        co_await db.exec(format("CREATE DATABASE {}", config_.db.database));
+        co_await db.exec(format("CREATE DATABASE {} CHARACTER SET = 'utf8'", config_.db.database));
 
         LOG_TRACE_N << "Creating database user " << config_.db.username;
         co_await db.exec(format("CREATE USER '{}'@'%' IDENTIFIED BY '{}'",
@@ -195,11 +195,75 @@ boost::asio::awaitable<void> Server::create_db(const BootstrapOptions& opts)
         }, asio::use_awaitable);
 }
 
-boost::asio::awaitable<void> Server::upgrade_db_tables(uint version)
+boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 {
     static constexpr auto v1_bootstrap = to_array<string_view>({
         "CREATE TABLE nextapp (id INTEGER NOT NULL, version INTEGER NOT NULL, serverid VARCHAR(37) NOT NULL DEFAULT UUID()) ",
-        "INSERT INTO nextapp (id, version) values(1, 0)"
+
+        "INSERT INTO nextapp (id, version) values(1, 0)",
+
+        R"(CREATE TABLE tenant (
+              id UUID not NULL default UUID() PRIMARY KEY,
+              name VARCHAR(128) NOT NULL,
+              kind ENUM('super', 'regular') NOT NULL DEFAULT 'regular',
+              descr TEXT,
+              active TINYINT(1) NOT NULL DEFAULT 1))",
+
+        "INSERT INTO tenant (id, name, kind) VALUES ('a5e7bafc-9cba-11ee-a971-978657e51f0c', 'nextapp', 'super')",
+
+        R"(CREATE TABLE user (
+              id UUID not NULL default UUID() PRIMARY KEY,
+              tenant UUID NOT NULL,
+              name VARCHAR(128) NOT NULL,
+              kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'regular',
+              descr TEXT,
+              active TINYINT(1) NOT NULL DEFAULT 1,
+        FOREIGN KEY(tenant) REFERENCES tenant(id)))",
+
+        "INSERT INTO user (id, tenant, name, kind) VALUES ('dd2068f6-9cbb-11ee-bfc9-f78040cadf6b', 'a5e7bafc-9cba-11ee-a971-978657e51f0c', 'admin', 'super')",
+
+        R"(CREATE TABLE node (
+              id UUID not NULL default UUID() PRIMARY KEY,
+              user UUID NOT NULL,
+              name VARCHAR(128) NOT NULL,
+              kind INTEGER NOT NULL DEFAULT 0,
+              status INTEGER NOT NULL DEFAULT 0,
+              descr TEXT,
+              active INTEGER NOT NULL DEFAULT 1,
+              parent UUID,
+        FOREIGN KEY(parent) REFERENCES node(id),
+        FOREIGN KEY(user) REFERENCES user(id)))",
+
+        R"(CREATE TABLE action (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            node UUID NOT NULL,
+            list_id INTEGER NOT NULL,
+            priority INTEGER NOT NULL DEFAULT (5),
+            name VARCHAR(128) NOT NULL,
+            descr TEXT,
+            created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            due_type INTEGER NOT NULL DEFAULT (0),
+            due_by_time DATETIME,
+            completed_time TIMESTAMP NOT NULL DEFAULT(0),
+            completed TINYINT(1) NOT NULL DEFAULT 1,
+            time_estimate INTEGER,
+            focus_needed INTEGER NOT NULL DEFAULT (3),
+            repeat_type INTEGER NOT NULL DEFAULT(0),
+            repeat_unit INTEGER NOT NULL DEFAULT(0),
+            repeat_after INTEGER NOT NULL DEFAULT(0),
+        FOREIGN KEY(node) REFERENCES node(id)))",
+
+        R"(CREATE TABLE work(
+              id UUID not NULL default UUID() PRIMARY KEY,
+              node UUID NOT NULL,
+              status INTEGER NOT NULL DEFAULT 0,
+              start DATETIME NOT NULL,
+              end DATETIME NOT NULL,
+              used INTEGER NOT NULL,
+              paused INTEGER NOT NULL DEFAULT 0,
+              name TEXT NOT NULL,
+              note TEXT,
+          FOREIGN KEY(node) REFERENCES node(id)))",
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({
@@ -231,7 +295,7 @@ boost::asio::awaitable<void> Server::upgrade_db_tables(uint version)
 
 }
 
-void Server::handle_signals()
+void Server::handleSignals()
 {
     if (is_done()) {
         return;
@@ -267,7 +331,7 @@ void Server::handle_signals()
             LOG_WARN_N << " Ignoring signal #" << signalNumber;
         }
 
-        handle_signals();
+        handleSignals();
     });
 }
 
