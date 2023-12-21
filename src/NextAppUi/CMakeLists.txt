@@ -6,9 +6,19 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Quick)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Quick Protobuf Grpc)
 
 qt_standard_project_setup()
+
+set (protofile "${CMAKE_CURRENT_SOURCE_DIR}/../proto/nextapp.proto")
+
+qt_add_protobuf(MyProtoMessageLib
+    PROTO_FILES ${protofile}
+)
+
+qt_add_grpc(MyGrpcClient CLIENT
+    PROTO_FILES ${protofile}
+)
 
 qt_add_executable(appNextAppUi
     main.cpp
@@ -18,6 +28,7 @@ qt_add_qml_module(appNextAppUi
     URI NextAppUi
     VERSION 1.0
     QML_FILES Main.qml
+    SOURCES ServerComm.h ServerComm.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -32,7 +43,7 @@ set_target_properties(appNextAppUi PROPERTIES
 )
 
 target_link_libraries(appNextAppUi
-    PRIVATE Qt6::Quick
+    PRIVATE Qt6::Quick MyGrpcClient MyProtoMessageLib Qt6::Protobuf Qt6::Grpc
 )
 
 include(GNUInstallDirs)
