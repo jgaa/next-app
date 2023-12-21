@@ -14,6 +14,7 @@
 #include <boost/mysql.hpp>
 
 #include "nextapp/Server.h"
+#include "nextapp/GrpcServer.h"
 #include "nextapp/logging.h"
 
 using namespace std;
@@ -49,6 +50,8 @@ void Server::run()
                 LOG_ERROR << "The database version is wrong. Please upgrade before starting the server.";
                 stop();
             }
+
+            co_await startGrpcService();
         },
         [](std::exception_ptr ptr) {
             if (ptr) {
@@ -293,6 +296,14 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
     }, asio::use_awaitable);
 
+}
+
+boost::asio::awaitable<void> Server::startGrpcService()
+{
+    assert(!grpc_service_);
+    grpc_service_ = make_shared<grpc::GrpcServer>(*this);
+    grpc_service_->start();
+    co_return;
 }
 
 void Server::handleSignals()

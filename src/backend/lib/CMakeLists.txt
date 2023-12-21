@@ -9,11 +9,11 @@ add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/errors.h
     ${NEXTAPP_BACKEND}/include/nextapp/config.h
     ${NEXTAPP_BACKEND}/include/nextapp/Server.h
-    ${NEXTAPP_BACKEND}/include/nextapp/GrpcService.h
+    ${NEXTAPP_BACKEND}/include/nextapp/GrpcServer.h
     util.cpp
     db/db.cpp
     Server.cpp
-    grpc/GrpcService.cpp
+    grpc/GrpcServer.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

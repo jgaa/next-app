@@ -60,7 +60,6 @@ message NodeUpdate {
 service Nextapp {
     rpc GetServerInfo(Empty) returns (ServerInfo) {}
     rpc GetNodes(UpdateRequest) returns (stream NodeUpdate) {}
-    rpc NodeChanged(NodeUpdate) returns (Status)
+    rpc NodeChanged(NodeUpdate) returns (Status) {}
 }
-
 

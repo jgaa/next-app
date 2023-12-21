@@ -12,6 +12,10 @@
 
 namespace nextapp {
 
+namespace grpc {
+class GrpcServer;
+}
+
 class Server {
 public:
     static constexpr uint latest_version = 1;
@@ -50,6 +54,11 @@ public:
         return done_;
     }
 
+    auto& grpc() noexcept {
+        assert(grpc_service_);
+        return *grpc_service_;
+    }
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
@@ -57,6 +66,7 @@ private:
     boost::asio::awaitable<bool> checkDb();
     boost::asio::awaitable<void> createDb(const BootstrapOptions& opts);
     boost::asio::awaitable<void> upgradeDbTables(uint version);
+    boost::asio::awaitable<void> startGrpcService();
 
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;
@@ -65,6 +75,7 @@ private:
     Config config_;
     std::atomic_size_t running_io_threads_{0};
     std::atomic_bool done_{false};
+    std::shared_ptr<grpc::GrpcServer> grpc_service_;
 };
 
 } // ns

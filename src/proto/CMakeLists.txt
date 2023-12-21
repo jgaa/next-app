@@ -22,9 +22,6 @@ target_include_directories(proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 #
 get_target_property(grpc_cpp_plugin_location gRPC::grpc_cpp_plugin LOCATION)
 protobuf_generate(TARGET proto LANGUAGE cpp)
-
-if (NSBLAST_CLUSTER)
-    protobuf_generate(TARGET proto LANGUAGE grpc GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}")
-endif()
+protobuf_generate(TARGET proto LANGUAGE grpc GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}")
 
 set(PROTO_GENERATED_INCLUDE_PATH "${CMAKE_CURRENT_BINARY_DIR}" PARENT_SCOPE)
