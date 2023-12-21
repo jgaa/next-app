@@ -15,14 +15,14 @@
     [x] Implement a convenient way to co_await simultaneous requests to the database, using a pool of connections.
 - [ ] gRPC
     - [x] Add grpc to the project
-    - [ ] Implement a simple handshake method so we can connect the client
+    - [x] Implement a simple handshake method so we can connect the client
     - [ ] Fething tree data
     - [ ] Open stream to send events to the client
     - [ ] Open stream to receive events from the client
 - [ ] Bootstrapping
     - [x] Create and initialize the database
-    - [ ] Create the core tables for basic functionality
-    - [ ] Create system tenant and admin user
+    - [x] Create the core tables for basic functionality
+    - [x] Create system tenant and admin user
     - [ ] Optinally, create example data
     - [ ] Re-creation of the system tenant and admin user from the command line
 - [ ] Create RBAC framework
@@ -43,7 +43,7 @@
 
 # App / UI
 - [ ] Add grpc to the project
-    - [ ] Try QT's grpc classes and see if I can use them.
+    - [x] Try QT's grpc classes and see if I can use them.
     - [ ] Add a blog-post to my grpc series about the experience.
 
 - [ ] Primary dashboard.
