@@ -27,7 +27,7 @@ message Node {
         TASK = 4;
     }
 
-    string id = 1;
+    string uuid = 1;
     string parent = 2;
     string user = 3;
     bool active = 4;
@@ -44,17 +44,29 @@ message UpdateRequest {
     Kind kind = 1;
 }
 
+message NodeTreeItem {
+    Node node = 1;
+    repeated NodeTreeItem children = 2;
+}
+
+message NodeTree {
+    repeated NodeTreeItem nodes = 1;
+}
+
 message NodeUpdate {
     enum Operation {
-        ADDED = 0; // When a refresh is requested, all the existing nodes are 'ADDED'
-        DELETED = 1; // For deleted nodes, only the id is set in the Node's body
-        UPDATED = 2; // Some data was changed, but the node is at the same position on the tree
-        MOVED = 4; // The node moved in the three. The data has not changed
+        ADDED = 0;      // When a refresh is requested, all the existing nodes are 'ADDED'
+        DELETED = 1;    // For deleted nodes, only the id is set in the Node's body
+        UPDATED = 2;    // Some data was changed, but the node is at the same position on the tree
+        MOVED = 4;      // The node moved in the three. The data has not changed
+        ALL = 5;        // A full transfer. Sends a tree.
     }
 
     // The operation applies to all the nodes in the list
     Operation op = 1;
+    // We send either nodes or a tree, but pb 3 'oneof' does not support 'repeated'
     repeated Node nodes = 2;
+    NodeTree tree = 3;
 }
 
 service Nextapp {

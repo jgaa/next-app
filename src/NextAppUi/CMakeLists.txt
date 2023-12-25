@@ -2,11 +2,13 @@ cmake_minimum_required(VERSION 3.16)
 
 project(NextAppUi VERSION 0.1 LANGUAGES CXX)
 
+option(WITH_TESTS "Enable Tests" ON)
+
 set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Quick Protobuf Grpc)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Quick Test Protobuf Grpc)
 
 qt_standard_project_setup()
 
@@ -29,6 +31,8 @@ qt_add_qml_module(appNextAppUi
     VERSION 1.0
     QML_FILES Main.qml
     SOURCES ServerComm.h ServerComm.cpp
+    QML_FILES MainTree.qml
+    SOURCES MainTreeModel.h MainTreeModel.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -52,3 +56,28 @@ install(TARGETS appNextAppUi
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+if (WITH_TESTS)
+    find_package(GTest REQUIRED)
+
+    enable_testing()
+
+    qt_add_executable(tst_data_models
+        tst_data_models.cpp
+        MainTreeModel.h MainTreeModel.cpp
+    )
+
+    # add_dependencies(tst_data_models
+    #     ${DEPENDS_GTEST}
+    # )
+
+    set_property(TARGET tst_data_models PROPERTY CXX_STANDARD 20)
+
+    target_link_libraries(tst_data_models
+        PRIVATE MyGrpcClient MyProtoMessageLib Qt6::Protobuf Qt6::Grpc Qt6::Core ${GTEST_LIBRARIES}
+    )
+
+    add_test(NAME data_models COMMAND tst_data_models)
+
+endif() # tests
+
