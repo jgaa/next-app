@@ -18,7 +18,7 @@ public:
         using node_list_t = QList<std::shared_ptr<TreeNode>>;
 
         TreeNode(::nextapp::pb::Node node, TreeNode *parent = {})
-            : node_{std::move(node)}, parent_{parent} {}
+            : uuid_{node.uuid()}, node_{std::move(node)}, parent_{parent} {}
 
         auto& children() noexcept {
             return children_;
@@ -38,8 +38,8 @@ public:
 
         QVariant data(int role);
 
-        [[nodiscard]] QUuid uuid() const noexcept {
-            return QUuid{node_.uuid()};
+        [[nodiscard]] const QUuid& uuid() const noexcept {
+            return uuid_;
         }
 
         static constexpr int columnCount() noexcept {
@@ -47,6 +47,7 @@ public:
         }
 
     private:
+        QUuid uuid_;
         ::nextapp::pb::Node node_;
         node_list_t children_;
         TreeNode *parent_{};
@@ -66,10 +67,11 @@ public:
 
 public slots:    
     // Replaces the node if it exists, adds it if it don't exist
-    // If parent is set, the node is added/moved as last child.
     // If sibling is set, the node is added/moved before the sibling.
-    // If neither sibling or parent is set, the node is added/moved as the firstnode at the root level.
-    void addNode(::nextapp::pb::Node node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
+    // If parent is set, the node is added/moved as last child.
+    // If both parent ans sibling is set, the node is added/moved before the sibling. In other words, a sibling value of {} is similar to an end() iterator
+    // If neither sibling or parent is set, the node is added/moved as the last node at the root level.
+    void addNode(const ::nextapp::pb::Node& node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
 
     // As addNode, but only for move.
     void moveNode(const QUuid& node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
@@ -77,22 +79,13 @@ public slots:
     void deleteNode(const QUuid& uuid);
 
     // Deletes any existing nodes and copys the tree from 'tree'
-    void setAllNodes(nextapp::pb::NodeTree tree);
+    void setAllNodes(const nextapp::pb::NodeTree& tree);
 
     void clear();
 
 private:
     TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child) const;
 
-    void addNode_(::nextapp::pb::Node node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
-
-    // As addNode, but only for move.
-    void moveNode_(const QUuid& node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
-
-    void deleteNode_(const QUuid& uuid);
-
-    // Deletes any existing nodes and copys the tree from 'tree'
-    void setAllNodes_(nextapp::pb::NodeTree tree);
 
     TreeNode::node_list_t root_;
     QMap<QUuid, TreeNode*> uuid_index_;
