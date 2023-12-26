@@ -41,7 +41,6 @@ Item {
                 }
 
                 onClicked: {
-                    //selectModel.clearSelection()
                     //selectModel.select(treeView.index(treeDelegate.row, 0),  ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
                     //treeDelegate.selected = true
                     var mi = treeDelegate.treeView.index(row, column)
