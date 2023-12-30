@@ -31,5 +31,5 @@ private:
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     nextapp::pb::ServerInfo server_info_;
-    QString server_version_;
+    QString server_version_{"Unknown"};
 };

@@ -1,12 +1,36 @@
 
 #include <algorithm>
+#include <ranges>
 #include "MainTreeModel.h"
-#include<QDebug>
-
+#include "logging.h"
 #include <stack>
 
 using namespace std;
 using namespace nextapp;
+
+ostream& operator << (ostream& o, const QModelIndex& v) {
+
+    if (v.isValid()) {
+        if (const auto *ptr = static_cast<MainTreeModel::TreeNode *>(v.internalPointer())) {
+
+            o << "QModelIndex{" << v.row() << ", " << v.column() << ", ";
+            std::vector<const MainTreeModel::TreeNode *> path;
+            for (const auto * p = ptr; p; p = p->parent()) {
+                path.push_back(p);
+            }
+
+            for(const auto *p : std::ranges::reverse_view(path)) {
+                o << '/' << p->node().name();
+            }
+
+            o << '}';
+        }
+    } else {
+        o << "QModelIndex{}";
+    }
+
+    return o;
+}
 
 namespace {
 
@@ -22,10 +46,13 @@ optional<unsigned> getRow(MainTreeModel::TreeNode::node_list_t& list, const QUui
     return {};
 }
 
-auto getTreeNode(const QModelIndex& node) noexcept {
-    auto ptr = static_cast<MainTreeModel::TreeNode *>(node.internalPointer());
-    assert(ptr);
-    return ptr;
+MainTreeModel::TreeNode * getTreeNode(const QModelIndex& node) noexcept {
+    if (node.isValid()) {
+        auto ptr = static_cast<MainTreeModel::TreeNode *>(node.internalPointer());
+        assert(ptr);
+        return ptr;
+    }
+    return {};
 }
 
 template <typename T, typename ixT>
@@ -51,6 +78,9 @@ MainTreeModel::MainTreeModel(QObject *parent)
 
 QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent) const
 {
+    if (column) {
+        return {};
+    }
     if (parent.isValid()) {
         if (auto *parent_ptr = static_cast<TreeNode *>(parent.internalPointer())) {
             if (parent_ptr->children().size() > row) {
@@ -85,11 +115,14 @@ QModelIndex MainTreeModel::parent(const QModelIndex &child) const
 
 int MainTreeModel::rowCount(const QModelIndex &parent) const
 {
+    auto count = root_.size();
     if (parent.isValid()) {
-        return getTreeNode(parent)->children().size();
+        count = getTreeNode(parent)->children().size();
     }
 
-    return root_.size();
+    LOG_TRACE_N << parent << " count=" << count;
+
+    return count;
 }
 
 int MainTreeModel::columnCount(const QModelIndex &parent) const
@@ -99,11 +132,10 @@ int MainTreeModel::columnCount(const QModelIndex &parent) const
 
 QVariant MainTreeModel::data(const QModelIndex &index, int role) const
 {
+    LOG_TRACE_N << index << " role=" << role;
     if (index.isValid()) {
         if (auto current = getTreeNode(index)) {
-            if (role == Qt::DisplayRole) {
-                return current->data(role);
-            }
+            return current->data(role);
         }
     }
 
@@ -112,11 +144,13 @@ QVariant MainTreeModel::data(const QModelIndex &index, int role) const
 
 bool MainTreeModel::hasChildren(const QModelIndex &parent) const
 {
+    bool children = !root_.empty();
     if (parent.isValid()) {
-        return !getTreeNode(parent)->children().empty();
+        children = !getTreeNode(parent)->children().empty();
     }
 
-    return !root_.empty();
+    LOG_TRACE_N << parent << " children=" << (children ? "true" : "false");
+    return children;
 }
 
 void MainTreeModel::clear()
@@ -137,6 +171,8 @@ MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &
 
 void MainTreeModel::addNode(const nextapp::pb::Node& node, const std::optional<QUuid> &parentUuid, const std::optional<QUuid> &beforeSibling)
 {
+    LOG_TRACE_N << "name=" << node.name();
+
     auto uuid_str = node.uuid();
     assert(!uuid_str.isEmpty());
     const QUuid node_uuid{uuid_str};
@@ -203,12 +239,53 @@ void MainTreeModel::setAllNodes(const nextapp::pb::NodeTree& tree)
     copyTreeBranch(root_, tree.nodes(), uuid_index_);
 }
 
+MainTreeModel::TreeNode::TreeNode(nextapp::pb::Node node, TreeNode *parent)
+    : uuid_{node.uuid()}, node_{std::move(node)}, parent_{parent} {}
+
 QVariant MainTreeModel::TreeNode::data(int role)
 {
     switch(role) {
     case Qt::DisplayRole:
+    case NameRole:
         return node().name();
+    case UuidRole:
+        return uuid();
     }
 
     return {};
+}
+
+QHash<int, QByteArray> MainTreeModel::TreeNode::roleNames() {
+    QHash<int, QByteArray> roles;
+    roles[NameRole] = "name";
+    roles[UuidRole] = "uuid";
+    return roles;
+}
+
+QString MainTreeModel::nodeName(const QModelIndex &ix) const
+{
+    if (auto current = getTreeNode(ix)) {
+        return current->node().name();
+    }
+
+    return {};
+}
+
+pb::Node MainTreeModel::node(const QModelIndex &ix)
+{
+    if (auto current = getTreeNode(ix)) {
+        return current->node();
+    }
+
+    return {};
+}
+
+MainTreeModel::ResetScope::ResetScope(MainTreeModel &model)
+    : model_{model} {
+
+    model_.beginResetModel();
+}
+
+MainTreeModel::ResetScope::~ResetScope() {
+    model_.endResetModel();
 }

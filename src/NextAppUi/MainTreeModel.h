@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QMap>
+#include <QHash>
 #include <QUuid>
 #include <QAbstractItemModel>
 
@@ -10,15 +11,32 @@
 class MainTreeModel : public QAbstractItemModel
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
+    //Q_PROPERTY(string name READ name NOTIFY nameChanged)
 
 public:
+    struct ResetScope {
+    public:
+        ResetScope(MainTreeModel& model);
+
+        ~ResetScope();
+
+    private:
+        MainTreeModel& model_;
+    };
+
     class TreeNode {
     public:
+        enum Roles {
+            NameRole = Qt::UserRole + 1,
+            UuidRole
+        };
+
         // In QT 6.6, QList<> does not work with std::unique_ptr
         using node_list_t = QList<std::shared_ptr<TreeNode>>;
 
-        TreeNode(::nextapp::pb::Node node, TreeNode *parent = {})
-            : uuid_{node.uuid()}, node_{std::move(node)}, parent_{parent} {}
+        TreeNode(::nextapp::pb::Node node, TreeNode *parent = {});
 
         auto& children() noexcept {
             return children_;
@@ -28,11 +46,19 @@ public:
             return node_;
         }
 
+        const auto& node() const noexcept {
+            return node_;
+        }
+
         bool hasParent() const noexcept {
             return parent_ != nullptr;
         }
 
         auto parent() noexcept {
+            return parent_;
+        }
+
+        const auto parent() const noexcept {
             return parent_;
         }
 
@@ -46,6 +72,8 @@ public:
             return 1;
         }
 
+        static QHash<int, QByteArray> roleNames();
+
     private:
         QUuid uuid_;
         ::nextapp::pb::Node node_;
@@ -58,12 +86,18 @@ public:
 signals:
 
 public:
+    QString nodeName(const QModelIndex& index) const;
+    Q_INVOKABLE nextapp::pb::Node node(const QModelIndex& ix);
+
     QModelIndex index(int row, int column, const QModelIndex &parent) const;
     QModelIndex parent(const QModelIndex &child) const;
     int rowCount(const QModelIndex &parent) const;
     int columnCount(const QModelIndex &parent) const;
     QVariant data(const QModelIndex &index, int role) const;
     [[nodiscard]] bool hasChildren(const QModelIndex &parent) const;
+    [[nodiscard]] QHash<int, QByteArray> roleNames() const {
+        return TreeNode::roleNames();
+    }
 
 public slots:    
     // Replaces the node if it exists, adds it if it don't exist
@@ -82,6 +116,10 @@ public slots:
     void setAllNodes(const nextapp::pb::NodeTree& tree);
 
     void clear();
+
+    std::unique_ptr<ResetScope> resetScope() {
+        return std::make_unique<ResetScope>(*this);
+    }
 
 private:
     TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child) const;

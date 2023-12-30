@@ -31,14 +31,14 @@ void ServerComm::start()
 QString ServerComm::version()
 {
     emit errorRecieved({});
-    return {"wait..."};
+    return server_version_;
 }
 
 void ServerComm::errorOccurred()
 {
     qWarning() << "Connection error occurred.";
 
-    emit errorRecieved("No connection\nto\nserver");
+    emit errorRecieved("No connection to server");
 }
 
 void ServerComm::errorRecieved(const QString &value)
