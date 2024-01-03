@@ -31,6 +31,16 @@ std::string toAnsiDate(const nextapp::pb::Date& date) {
     return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month(), date.mday());
 }
 
+::nextapp::pb::Date toDate(const boost::mysql::date& from) {
+    assert(from.valid());
+    ::nextapp::pb::Date date;
+    date.set_year(from.year());
+    date.set_month(from.month());
+    date.set_mday(from.day());
+
+    return date;
+}
+
 } // anon ns
 
 ::grpc::ServerUnaryReactor *
@@ -97,10 +107,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             const auto date_val = row.at(DATE).as_date();
 
             auto day = reply->mutable_day();
-            auto date = day->mutable_date();
-            date->set_year(date_val.year());
-            date->set_month(date->month());
-            date->set_mday(date_val.day());
+            *day->mutable_date() = toDate(date_val);
             if (row.at(USER).is_string()) {
                 day->set_user(row.at(USER).as_string());
             }
@@ -140,10 +147,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             const auto date_val = row.at(DATE).as_date();
             if (date_val.valid()) {
                 auto current_day = reply->add_days();
-                auto date = current_day->mutable_date();
-                date->set_year(date_val.year());
-                date->set_month(date->month());
-                date->set_mday(date_val.day());
+                *current_day->mutable_date() = toDate(date_val);
                 if (row.at(USER).is_string()) {
                     current_day->set_user(row.at(USER).as_string());
                 }
