@@ -267,6 +267,35 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               name TEXT NOT NULL,
               note TEXT,
           FOREIGN KEY(node) REFERENCES node(id)))",
+
+        // If tenant is NULL, the row is a system-defined color
+        R"(CREATE TABLE day_colors(
+              id UUID not NULL default UUID() PRIMARY KEY,
+              tenant UUID,
+              score INTEGER NOT NULL DEFAULT 0,
+              color varchar(32) NOT NULL,
+              name varchar(255) NOT NULL,
+          FOREIGN KEY(tenant) REFERENCES tenant(id)))",
+
+        // color: see QML colors at https://doc.qt.io/qt-6/qml-color.html
+        R"(INSERT INTO day_colors (id, color, name, score) VALUES
+            ('965864e2-a95d-11ee-960b-87185e67f3da', 'Slow day', 'khaki', 2),
+            ('a2547e0c-a95d-11ee-ad7b-f75675544037', 'Green Day', 'limegreen', 3),
+            ('b6abb366-a95d-11ee-b079-ef6165b96e9b', 'Awsome Day!', 'greenyellow', 5),
+            ('bb8aee74-a95d-11ee-b235-7f42126afd6d', 'Hollyday / Vacation / Day off', 'skyblue', 0),
+            ('c0f7cb16-a95d-11ee-9da5-b3f4aed7f930', 'Failed Day', 'orange', 0),
+            ('c5dfe53c-a95d-11ee-9465-73e10d6c4ad9', 'Disastorous Day!', 'violet', 0),
+            ('ca8a5edc-a95d-11ee-bae3-7b924c4b0414', 'Sick', 'lightseagreen', 0))",
+
+        R"(CREATE TABLE day (
+              date DATE NOT NULL DEFAULT CURDATE(),
+              user UUID NOT NULL,
+              color UUID,
+              notes TEXT,
+              report TEXT,
+        PRIMARY KEY (user, date),
+        FOREIGN KEY(color) REFERENCES day_colors(id),
+        FOREIGN KEY(user) REFERENCES user(id)))",
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({

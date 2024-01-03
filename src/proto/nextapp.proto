@@ -69,9 +69,63 @@ message NodeUpdate {
     NodeTree tree = 3;
 }
 
+message DayColor {
+    bool systemColor = 1; // Should not be deleted or modified
+    int32 score = 2;
+    string color = 3;
+    string name = 4;
+}
+
+message DayColorDefinitions {
+    repeated DayColor dayColors = 1;
+}
+
+// Do it this way to avoid all kinds of problems with time zones.
+message Date {
+    int32 year = 1;
+    int32 month = 2; // 0 - 11, starting with January
+    int32 mday = 3;
+}
+
+message Day {
+    Date date = 1;
+    string user = 2; // uuid
+    string color = 3; // uuid
+    bool hasNotes = 4;
+    bool hasReport = 5;
+}
+
+message CompleteDay {
+    Day day = 1;
+    optional string notes = 2;
+    optional string report = 3;
+}
+
+message MonthReq {
+    int32 year = 1;
+    int32 month = 2; // 0 - 11, starting with January
+}
+
+message Month {
+    int32 year = 1;
+    int32 month = 2; // 0 - 11, starting with January
+    repeated Day days = 3;
+}
+
+message SetColorReq {
+    Date date = 1;
+    string color = 2;
+}
+
 service Nextapp {
     rpc GetServerInfo(Empty) returns (ServerInfo) {}
     rpc GetNodes(UpdateRequest) returns (stream NodeUpdate) {}
     rpc NodeChanged(NodeUpdate) returns (Status) {}
+    rpc GetDayColorDefinitions(Empty) returns (DayColorDefinitions) {}
+
+    rpc GetDay(Date) returns (CompleteDay) {}
+    rpc GetMonth(MonthReq) returns (Month) {}
+    rpc SetColorOnDay(SetColorReq) returns (Empty) {}
 }
+
 

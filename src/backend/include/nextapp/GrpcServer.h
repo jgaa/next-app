@@ -67,13 +67,38 @@ public:
         NextappImpl(GrpcServer& owner)
             : owner_{owner} {}
 
-        ::grpc::ServerUnaryReactor *GetServerInfo(::grpc::CallbackServerContext *, const pb::Empty *, pb::ServerInfo *);
+        ::grpc::ServerUnaryReactor *GetServerInfo(::grpc::CallbackServerContext *, const pb::Empty *, pb::ServerInfo *) override;
+        ::grpc::ServerUnaryReactor *GetDayColorDefinitions(::grpc::CallbackServerContext *, const pb::Empty *, pb::DayColorDefinitions *) override;
+        ::grpc::ServerUnaryReactor *GetDay(::grpc::CallbackServerContext *ctx, const pb::Date *req, pb::CompleteDay *reply) override;
+        ::grpc::ServerUnaryReactor *GetMonth(::grpc::CallbackServerContext *ctx, const pb::MonthReq *req, pb::Month *reply) override;
 
     private:
+        // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
+        auto unaryHandler(::grpc::CallbackServerContext *ctx, const auto * req, auto *reply, auto && fn) noexcept {
+            assert(ctx);
+            assert(reply);
+
+            auto* reactor = ctx->DefaultReactor();
+
+            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn = std::move(fn)]() -> boost::asio::awaitable<void> {
+
+                    try {
+                        co_await fn(reply);
+                        reactor->Finish(::grpc::Status::OK);
+                    } catch (const std::exception& ex) {
+                        LOG_WARN_N << "Caught exception while handling grpc request coro: " << ex.what();
+                        reactor->Finish(::grpc::Status::CANCELLED);
+                    }
+
+                    LOG_TRACE_N << "Exiting day colors lookup.";
+
+                }, boost::asio::detached);
+
+            return reactor;
+        }
+
         GrpcServer& owner_;
-
     };
-
 
     GrpcServer(Server& server);
 
@@ -90,6 +115,17 @@ public:
     }
 
 private:
+
+    // TODO: Implement auth
+    std::string currentUser(::grpc::CallbackServerContext */*ctx*/) const {
+        return "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
+    }
+
+    // TODO: Implement auth
+    std::string currentTenant(::grpc::CallbackServerContext */*ctx*/) const {
+        return "a5e7bafc-9cba-11ee-a971-978657e51f0c";
+    }
+
     // The Server instance where we get objects in the application, like config and database
     Server& server_;
 

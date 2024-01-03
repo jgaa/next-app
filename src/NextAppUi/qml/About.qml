@@ -22,15 +22,12 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 0
+        spacing: 20
 
         Image {
             id: logo
-
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 20
+            Layout.alignment: Qt.AlignTop
+            Layout.fillWidth: true
 
             source: "../icons/nextapp.svg"
             sourceSize.width: 80
@@ -43,9 +40,9 @@ ApplicationWindow {
         }
 
         ScrollView {
-          anchors.margins: 20
-          anchors.left: parent.left
-          anchors.right: parent.right
+            Layout.alignment: Qt.AlignTop
+            Layout.fillWidth: true
+            Layout.fillHeight: true
 
           TextArea {
               selectedTextColor: Colors.textFile

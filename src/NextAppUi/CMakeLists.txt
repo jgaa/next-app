@@ -8,11 +8,17 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(WITH_TESTS "Enable Tests" ON)
 
+# Fallback if we run into problems with server-comm
+option(ASYNC_GRPC "Async gRPC (do not disable. Sync comm is not properly implemented!)" ON)
+if (ASYNC_GRPC)
+    add_definitions(-DASYNC_GRPC=1)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent)
 
 qt_policy(
     SET QTP0001 NEW
@@ -106,6 +112,7 @@ target_link_libraries(appNextAppUi
         Qt6::Svg
         Qt6::Protobuf
         Qt6::Grpc
+        Qt6::Concurrent
         MyGrpcClient
         MyProtoMessageLib
 )
