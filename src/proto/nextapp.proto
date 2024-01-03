@@ -70,10 +70,11 @@ message NodeUpdate {
 }
 
 message DayColor {
-    bool systemColor = 1; // Should not be deleted or modified
-    int32 score = 2;
-    string color = 3;
-    string name = 4;
+    string id = 1;
+    bool systemColor = 2; // Should not be deleted or modified
+    int32 score = 3;
+    string color = 4;
+    string name = 5;
 }
 
 message DayColorDefinitions {

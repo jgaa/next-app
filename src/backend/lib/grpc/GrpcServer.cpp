@@ -72,13 +72,18 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
     return unaryHandler(ctx, req, reply,
                         [this] (auto *reply) -> boost::asio::awaitable<void> {
         auto res = co_await owner_.server().db().exec(
-            "SELECT name, color, score FROM day_colors WHERE tenant IS NULL ORDER BY score DESC");
+            "SELECT id, name, color, score FROM day_colors WHERE tenant IS NULL ORDER BY score DESC");
+
+        enum Cols {
+            ID, NAME, COLOR, SCORE
+        };
 
         for(const auto row : res.rows()) {
             auto *dc = reply->add_daycolors();
-            dc->set_color(row.at(0).as_string());
-            dc->set_name(row.at(1).as_string());
-            dc->set_score(static_cast<int32_t>(row.at(2).as_int64()));
+            dc->set_id(row.at(COLOR).as_string());
+            dc->set_color(row.at(COLOR).as_string());
+            dc->set_name(row.at(NAME).as_string());
+            dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
         }
 
         LOG_TRACE_N << "Finish day colors lookup.";

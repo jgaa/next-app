@@ -88,6 +88,8 @@ qt_add_qml_module(appNextAppUi
         MainTreeModel.cpp
         NextAppCore.h
         NextAppCore.cpp
+        MonthModel.h
+        MonthModel.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
