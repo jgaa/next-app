@@ -278,7 +278,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
           FOREIGN KEY(tenant) REFERENCES tenant(id)))",
 
         // color: see QML colors at https://doc.qt.io/qt-6/qml-color.html
-        R"(INSERT INTO day_colors (id, color, name, score) VALUES
+        R"(INSERT INTO day_colors (id, name, color, score) VALUES
             ('965864e2-a95d-11ee-960b-87185e67f3da', 'Slow day', 'khaki', 2),
             ('a2547e0c-a95d-11ee-ad7b-f75675544037', 'Green Day', 'limegreen', 3),
             ('b6abb366-a95d-11ee-b079-ef6165b96e9b', 'Awsome Day!', 'greenyellow', 5),

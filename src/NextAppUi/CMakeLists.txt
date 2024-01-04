@@ -70,6 +70,7 @@ qt_add_qml_module(appNextAppUi
         qml/About.qml
         qml/ResizeButton.qml # x
         qml/DaysInYear.qml
+        qml/DayDialog.qml
     RESOURCES
         icons/folder_closed.svg
         icons/folder_open.svg
@@ -90,6 +91,8 @@ qt_add_qml_module(appNextAppUi
         NextAppCore.cpp
         MonthModel.h
         MonthModel.cpp
+        DayColorModel.h
+        DayColorModel.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

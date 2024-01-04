@@ -28,7 +28,7 @@ std::string toJson(const T& obj) {
 }
 
 std::string toAnsiDate(const nextapp::pb::Date& date) {
-    return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month(), date.mday());
+    return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month() + 1, date.mday());
 }
 
 ::nextapp::pb::Date toDate(const boost::mysql::date& from) {
@@ -69,7 +69,7 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
                                                 const pb::Empty *req,
                                                 pb::DayColorDefinitions *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    auto rval = unaryHandler(ctx, req, reply,
                         [this] (auto *reply) -> boost::asio::awaitable<void> {
         auto res = co_await owner_.server().db().exec(
             "SELECT id, name, color, score FROM day_colors WHERE tenant IS NULL ORDER BY score DESC");
@@ -80,16 +80,23 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
 
         for(const auto row : res.rows()) {
             auto *dc = reply->add_daycolors();
-            dc->set_id(row.at(COLOR).as_string());
+            dc->set_id(row.at(ID).as_string());
             dc->set_color(row.at(COLOR).as_string());
             dc->set_name(row.at(NAME).as_string());
             dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
         }
 
+        boost::asio::deadline_timer timer{owner_.server().ctx()};
+        timer.expires_from_now(boost::posix_time::seconds{2});
+        //co_await timer.async_wait(asio::use_awaitable);
+
         LOG_TRACE_N << "Finish day colors lookup.";
-        //LOG_TRACE_N << "Reply is: " << toJson(*reply);
+        LOG_TRACE << "Reply is: " << toJson(*reply);
         co_return;
     });
+
+    LOG_TRACE_N << "Leaving the coro do do it's magic...";
+    return rval;
 }
 
 ::grpc::ServerUnaryReactor *
@@ -130,7 +137,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         }
 
         LOG_TRACE << "Finish day lookup.";
-        LOG_TRACE << "Reply is: " << toJson(*reply);
+        LOG_TRACE_N << "Reply is: " << toJson(*reply);
         co_return;
     });
 }
@@ -142,27 +149,53 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         auto res = co_await owner_.server().db().execs(
             "SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? ORDER BY date",
-            owner_.currentUser(ctx), req->year(), req->month());
+            owner_.currentUser(ctx), req->year(), req->month() + 1);
 
         enum Cols {
             DATE, USER, COLOR, NOTES, REPORT
         };
+
+        reply->set_year(req->year());
+        reply->set_month(req->month());
 
         for(const auto& row : res.rows()) {
             const auto date_val = row.at(DATE).as_date();
             if (date_val.valid()) {
                 auto current_day = reply->add_days();
                 *current_day->mutable_date() = toDate(date_val);
-                if (row.at(USER).is_string()) {
-                    current_day->set_user(row.at(USER).as_string());
+                current_day->set_user(row.at(USER).as_string());
+                if (row.at(COLOR).is_string()) {
+                    current_day->set_color(row.at(COLOR).as_string());
                 }
                 current_day->set_hasnotes(row.at(NOTES).as_int64() != 1);
                 current_day->set_hasreport(row.at(REPORT).as_int64() != 1);
             }
         }
 
-        LOG_TRACE << "Finish month lookup.";
+        LOG_TRACE_N << "Finish month lookup.";
         LOG_TRACE << "Reply is: " << toJson(*reply);
+        co_return;
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetColorOnDay(::grpc::CallbackServerContext *ctx, const pb::SetColorReq *req, pb::Empty *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
+
+        const auto color = req->color();
+        if (color.empty()) {
+            co_await owner_.server().db().execs("UPDATE day SET color=NULL WHERE date=? AND user=?",
+                                                toAnsiDate(req->date()), owner_.currentUser(ctx));
+        } else {
+            co_await owner_.server().db().execs(
+                R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE color=?)",
+                toAnsiDate(req->date()), owner_.currentUser(ctx), color, color);
+        }
+
+        LOG_TRACE_N << "Finish updating color for " << toAnsiDate(req->date());
+
+        // TODO: Notify clients
         co_return;
     });
 }

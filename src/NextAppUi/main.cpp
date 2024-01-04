@@ -122,5 +122,7 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
     QGuiApplication::exec();
 
-    return app.exec();
+    auto ret = app.exec();
+
+    return ret;
 }

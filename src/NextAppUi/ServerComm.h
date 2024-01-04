@@ -1,5 +1,6 @@
 #pragma once
 
+#include <queue>
 #include <qqmlregistration.h>
 
 #include <memory>
@@ -21,7 +22,7 @@ class ServerComm : public QObject
                    READ getDayColorsDefinitions
                    NOTIFY dayColorDefinitionsChanged)
 public:
-    using colors_in_months_t = std::shared_ptr<QList<QString>>;
+    using colors_in_months_t = std::shared_ptr<QList<QUuid>>;
 
     explicit ServerComm();
     ~ServerComm();
@@ -30,7 +31,7 @@ public:
 
     [[nodiscard]] QString version();
     [[nodiscard]] nextapp::pb::DayColorRepeated getDayColorsDefinitions();
-    [[nodiscard]] MonthModel *getMonthModel(int year, int month);
+    Q_INVOKABLE MonthModel *getMonthModel(int year, int month);
 
     static ServerComm& instance() noexcept {
         assert(instance_);
@@ -45,7 +46,11 @@ public:
         return instance().server_info_;
     }
 
-    colors_in_months_t getColorsInMonth(unsigned year, unsigned month);
+    colors_in_months_t getColorsInMonth(unsigned year, unsigned month, bool force = false);
+
+    QString toDayColorName(const QUuid& uuid) const;
+
+    void setDayColor(int year, int month, int day, QUuid colorUuid);
 
 signals:
     void versionChanged();
@@ -56,6 +61,7 @@ signals:
 private:
     void errorOccurred(const QGrpcStatus &status);
     void onServerInfo(nextapp::pb::ServerInfo info);
+    void onGrpcReady();
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     nextapp::pb::ServerInfo server_info_;
@@ -63,5 +69,7 @@ private:
     QString server_version_{"Unknown"};
     std::map<std::pair<unsigned, unsigned>, colors_in_months_t> colors_in_months_;
     std::map<QUuid, QString> colors_;
+    std::queue<std::function<void()>> grpc_queue_;
+    bool grpc_is_ready_ = false;
     static ServerComm *instance_;
 };

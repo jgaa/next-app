@@ -95,6 +95,9 @@ int main(int argc, char* argv[]) {
         namespace po = boost::program_options;
         po::options_description general("Options");
         std::string log_level_console = "info";
+        std::string log_level = "info";
+        std::string log_file;
+        bool trunc_log = false;
         bool bootstrap = false;
 
         general.add_options()
@@ -103,6 +106,15 @@ int main(int argc, char* argv[]) {
             ("log-to-console,C",
              po::value(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
+            ("log-level,l",
+             po::value<string>(&log_level)->default_value(log_level),
+             "Log-level; one of 'info', 'debug', 'trace'.")
+            ("log-file,L",
+             po::value<string>(&log_file),
+             "Log-file to write a log to. Default is to use only the console.")
+            ("truncate-log-file,T",
+              po::bool_switch(&trunc_log),
+             "Truncate the log-file if it already exists.")
             ;
 
         po::options_description bs("Bootstrap");
@@ -181,6 +193,13 @@ int main(int argc, char* argv[]) {
                 make_unique<logfault::StreamHandler>(clog, *level));
         }
 
+        if (!log_file.empty()) {
+            if (auto level = toLogLevel(log_level)) {
+                logfault::LogManager::Instance().AddHandler(
+                    make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+            }
+        }
+
         LOG_TRACE_N << LogEvent::LE_TEST << "Getting ready...";
 
         if (bootstrap) {
@@ -193,7 +212,6 @@ int main(int argc, char* argv[]) {
                 return -4;
             }
         }
-
     }
 
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";

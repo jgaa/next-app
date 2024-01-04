@@ -53,6 +53,7 @@ void ServerComm::start()
             }
 
             emit dayColorDefinitionsChanged();
+            onGrpcReady();
         }, [this](QGrpcStatus status) {
             LOG_ERROR_N << "Comm error: " << status.message();
         });
@@ -100,10 +101,19 @@ MonthModel *ServerComm::getMonthModel(int year, int month)
 }
 
 ServerComm::colors_in_months_t
-ServerComm::getColorsInMonth(unsigned int year, unsigned int month)
+ServerComm::getColorsInMonth(unsigned int year, unsigned int month, bool force)
 {
-    if (auto it = colors_in_months_.find({year, month}); it != colors_in_months_.end()) {
-        return it->second;
+    LOG_TRACE_N << "Requesting year=" << year << ", month=" << month;
+    if (!grpc_is_ready_) {
+        grpc_queue_.push([this, year, month] {
+            getColorsInMonth(year, month);
+        });
+    }
+
+    if (!force) {
+        if (auto it = colors_in_months_.find({year, month}); it != colors_in_months_.end()) {
+            return it->second;
+        }
     }
 
     nextapp::pb::MonthReq req;
@@ -113,20 +123,16 @@ ServerComm::getColorsInMonth(unsigned int year, unsigned int month)
     call->subscribe(this, [call, this, y=year, m=month]() {
             auto month = call->read<nextapp::pb::Month>();
             LOG_DEBUG_N << "Received colors for " << month.days().size()
-                        << " days for month: " << y << "-" << m;
+                        << " days for month: " << y << "-" << (m + 1);
 
             assert(month.year() == y);
             assert(month.month() == m);
-            auto current = make_shared<QList<QString>>();
+            auto current = make_shared<QList<QUuid>>();
             current->resize(31);
             for(const auto& day : month.days()) {
                 assert(day.date().mday() > 0);
                 assert(day.date().mday() <= 31);
-                if (auto it = colors_.find(QUuid{day.color()}); it != colors_.end()) {
-                    current->assign(day.date().mday() - 1, day.color());
-                } else {
-                    LOG_WARN << "Color " << day.color() << " not found in colors_";
-                }
+                current->replace(day.date().mday() - 1, QUuid{day.color()});
             }
             colors_in_months_[{y, m}] = current;
             emit monthColorsChanged(y, m, current);
@@ -137,9 +143,61 @@ ServerComm::getColorsInMonth(unsigned int year, unsigned int month)
     return {};
 }
 
+QString ServerComm::toDayColorName(const QUuid &uuid) const
+{
+    if (auto it = colors_.find(uuid); it != colors_.end()) {
+        return it->second;
+    }
+
+
+    LOG_WARN << "Color " << uuid.toString() << " not found in colors_";
+    return "lightpink";
+}
+
+void ServerComm::setDayColor(int year, int month, int day, QUuid colorUuid)
+{
+    if (!grpc_is_ready_) {
+        grpc_queue_.push([&] {
+            setDayColor(year, month, day, colorUuid);
+        });
+    }
+
+    nextapp::pb::SetColorReq req;
+    nextapp::pb::Date date;
+    date.setYear(year);
+    date.setMonth(month);
+    date.setMday(day);
+    req.setDate(date);
+    if (!colorUuid.isNull()) {
+        req.setColor(colorUuid.toString(QUuid::WithoutBraces));
+    }
+
+    auto call = client_->SetColorOnDay(req);
+    call->subscribe(this, [call, this, year, month]() {
+            call->read<nextapp::pb::Empty>();
+
+            // TODO: Listen for changes from the server in stead...
+            QTimer::singleShot(100, [this, year, month] {
+                LOG_DEBUG << "Calling getColorsInMonth() from timer.";
+                getColorsInMonth(year, month, true);
+            });
+
+        }, [this](QGrpcStatus status) {
+            LOG_ERROR_N << "Comm error: " << status.message();
+        });
+}
+
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Call to gRPC server failed: " << status.message();
 
     emit errorRecieved(tr("Call to gRPC server failed: %1").arg(status.message()));
+}
+
+void ServerComm::onGrpcReady()
+{
+    grpc_is_ready_ = true;
+    for(; !grpc_queue_.empty(); grpc_queue_.pop()) {
+        grpc_queue_.front()();
+    }
 }

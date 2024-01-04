@@ -1,5 +1,6 @@
 #include "MonthModel.h"
 #include "ServerComm.h"
+#include <QUuid>
 
 #include "logging.h"
 
@@ -14,6 +15,11 @@ MonthModel::MonthModel(unsigned int year, unsigned int month, QObject *parent)
             [this](unsigned year, unsigned month, const ServerComm::colors_in_months_t& colors) {
                 if (year == year_ && month == month_) {
                     LOG_TRACE_N << "Setting day-in-month colors for " << year_ << '-' << month_;
+
+                    // Somehow we need to toggle the valid variable for the UI to update...
+                    valid_ = false;
+                    emit colorsChanged();
+
                     setColors(*colors);
                 }
             });
@@ -21,13 +27,30 @@ MonthModel::MonthModel(unsigned int year, unsigned int month, QObject *parent)
     ServerComm::instance().getColorsInMonth(year_, month_);
 }
 
-QList<QString> MonthModel::getColors()
+void MonthModel::setColors(QList<QUuid> uuids)
 {
-    return colors_;
+    uuids_ = std::move(uuids);
+    valid_ = true;
+    emit colorsChanged();
 }
 
-void MonthModel::setColors(QList<QString> colors)
+QString MonthModel::getColorForDayInMonth(int day)
 {
-    colors_ = std::move(colors);
-    emit colorsChanged();
+    assert(day >= 1);
+    assert(day <= 31);
+
+    if (const auto& uuid = uuids_.at(day -1); !uuid.isNull()) {
+        return ServerComm::instance().toDayColorName(uuid);
+    }
+
+    return "white";
+}
+
+QString MonthModel::getUuidForDayInMonth(int day)
+{
+    if (const auto& uuid = uuids_.at(day -1); !uuid.isNull()) {
+        return uuid.toString(QUuid::WithoutBraces);
+    }
+
+    return {};
 }

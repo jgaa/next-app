@@ -1,5 +1,8 @@
 #!/bin/sh
 
+## Access after bootstrapping:
+##  mysql -h 127.0.0.1 -u nextapp -p nextapp
+
 echo "Starting a disposable mariadb container for testing..."
 
 if [ -z "${NA_DBPASSWD}" ] ; then

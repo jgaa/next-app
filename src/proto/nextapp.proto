@@ -85,7 +85,7 @@ message DayColorDefinitions {
 message Date {
     int32 year = 1;
     int32 month = 2; // 0 - 11, starting with January
-    int32 mday = 3;
+    int32 mday = 3; // 1 - 31
 }
 
 message Day {
@@ -115,7 +115,7 @@ message Month {
 
 message SetColorReq {
     Date date = 1;
-    string color = 2;
+    string color = 2; // empty string: unset the color
 }
 
 service Nextapp {

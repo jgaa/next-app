@@ -30,12 +30,16 @@ asio::awaitable<Db::Handle> Db::getConnection(bool throwOnEmpty) {
         }
 
         if (handle) {
+            LOG_TRACE_N << "Returning a DB connection.";
             co_return std::move(*handle);
         }
 
-        assert(false);
-        boost::system::error_code ec;
-        co_await semaphore_.async_wait(asio::use_awaitable);
+        LOG_TRACE_N << "Waiting for a DB connection to become available...";
+        const auto [ec] = co_await semaphore_.async_wait(as_tuple(asio::use_awaitable));
+        if (ec != boost::asio::error::operation_aborted) {
+            LOG_DEBUG_N << "async_wait on semaphore failed: " << ec.message();
+        }
+        LOG_TRACE_N << "Done waiting";
     }
 
     co_return Handle{};
