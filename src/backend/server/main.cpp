@@ -136,6 +136,8 @@ int main(int argc, char* argv[]) {
         svr.add_options()
             ("io-threads", po::value(&config.svr.io_threads)->default_value(config.svr.io_threads),
              "Number of worker-threads to start for IO")
+            ("grpc-address,g", po::value(&config.grpc.address)->default_value(config.grpc.address),
+             "Address and port to use for gRPC")
             ;
 
         po::options_description db("Database");
