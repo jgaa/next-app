@@ -58,6 +58,27 @@ void ServerComm::start()
             LOG_ERROR_N << "Comm error: " << status.message();
         });
 
+    updates_ = client_->streamSubscribeToUpdates({});
+
+    connect(updates_.get(), &QGrpcStream::messageReceived, [this]() {
+
+        //auto data = updates_->arg();
+        LOG_DEBUG << "Received an update...";
+        try {
+            auto msg = updates_->read<nextapp::pb::Update>();
+            LOG_DEBUG << "Got update: " << msg.when().seconds();
+            if (msg.hasDayColor()) {
+                LOG_DEBUG << "Day color is " << msg.dayColor().color();
+            }
+        } catch (const exception& ex) {
+            LOG_WARN << "Failed to read proto message: " << ex.what();
+        }
+
+        //nextapp::pb::Update msg;
+    });
+
+    //updates_call
+
 #else
     {
         nextapp::pb::ServerInfo se;

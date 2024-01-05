@@ -96,6 +96,12 @@ message Day {
     bool hasReport = 5;
 }
 
+message ColorAtDay {
+    Date date = 1;
+    string user = 2; // uuid
+    string color = 3; // uui
+}
+
 message CompleteDay {
     Day day = 1;
     optional string notes = 2;
@@ -118,15 +124,32 @@ message SetColorReq {
     string color = 2; // empty string: unset the color
 }
 
+message Ping {}
+
+message Timestamp {
+    uint64 seconds = 1; // C++ time_t UNIX timestamp.
+}
+
+message Update {
+    Timestamp when = 1;
+    oneof what {
+        Ping ping = 2;
+        Day day = 3;
+        ColorAtDay DayColor = 4;
+    }
+}
+
+message UpdatesReq{}
+
 service Nextapp {
     rpc GetServerInfo(Empty) returns (ServerInfo) {}
-    rpc GetNodes(UpdateRequest) returns (stream NodeUpdate) {}
+    //rpc GetNodes(UpdateRequest) returns (stream NodeUpdate) {}
     rpc NodeChanged(NodeUpdate) returns (Status) {}
     rpc GetDayColorDefinitions(Empty) returns (DayColorDefinitions) {}
-
     rpc GetDay(Date) returns (CompleteDay) {}
     rpc GetMonth(MonthReq) returns (Month) {}
-    rpc SetColorOnDay(SetColorReq) returns (Empty) {}
+    rpc SetColorOnDay(SetColorReq) returns (Status) {}
+    rpc SubscribeToUpdates(UpdatesReq) returns (stream Update) {}
 }
 
 

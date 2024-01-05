@@ -1,4 +1,7 @@
 
+#include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
+
 #include "nextapp/GrpcServer.h"
 #include "nextapp/Server.h"
 
@@ -8,6 +11,12 @@ using namespace std;
 namespace asio = boost::asio;
 
 namespace nextapp::grpc {
+
+boost::uuids::uuid newUuid()
+{
+    static boost::uuids::random_generator uuid_gen_;
+    return uuid_gen_();
+}
 
 namespace {
 
@@ -178,7 +187,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     });
 }
 
-::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetColorOnDay(::grpc::CallbackServerContext *ctx, const pb::SetColorReq *req, pb::Empty *reply)
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetColorOnDay(::grpc::CallbackServerContext *ctx, const pb::SetColorReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
@@ -195,9 +204,116 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         LOG_TRACE_N << "Finish updating color for " << toAnsiDate(req->date());
 
-        // TODO: Notify clients
+        auto update = make_shared<pb::Update>();
+        auto dc = update->mutable_daycolor();
+        *dc->mutable_date() = req->date();
+        dc->set_user(owner_.currentUser(ctx));
+        dc->set_color(req->color());
+
+        owner_.publish(update);
         co_return;
     });
+}
+
+::grpc::ServerWriteReactor<pb::Update> *GrpcServer::NextappImpl::SubscribeToUpdates(::grpc::CallbackServerContext *context, const pb::UpdatesReq *request)
+{
+    class ServerWriteReactorImpl
+        : public std::enable_shared_from_this<ServerWriteReactorImpl>
+        , public Publisher
+        , public ::grpc::ServerWriteReactor<pb::Update> {
+    public:
+        enum class State {
+            READY,
+            WAITING_ON_WRITE,
+            DONE
+        };
+
+        ServerWriteReactorImpl(GrpcServer& owner, ::grpc::CallbackServerContext *context)
+            : owner_{owner}, context_{context} {
+        }
+
+        ~ServerWriteReactorImpl() {
+            LOG_DEBUG_N << "Remote client " << uuid() << " is going...";
+        }
+
+        void start() {
+            // Tell owner about us
+            LOG_DEBUG << "Remote client " << context_->peer() << " is subscribing to updates as subscriber " << uuid();
+            self_ = shared_from_this();
+            owner_.addPublisher(self_);
+            reply();
+        }
+
+        /*! Callback event when the RPC is completed */
+        void OnDone() override {
+            {
+                scoped_lock lock{mutex_};
+                state_ = State::DONE;
+            }
+
+            owner_.removePublisher(uuid());
+            self_.reset();
+        }
+
+        /*! Callback event when a write operation is complete */
+        void OnWriteDone(bool ok) override {
+            if (!ok) [[unlikely]] {
+                LOG_WARN << "The write-operation failed.";
+
+                // We still need to call Finish or the request will remain stuck!
+                Finish({::grpc::StatusCode::UNKNOWN, "stream write failed"});
+                scoped_lock lock{mutex_};
+                state_ = State::DONE;
+                return;
+            }
+
+            {
+                scoped_lock lock{mutex_};
+                updates_.pop();
+            }
+
+            reply();
+        }
+
+        void publish(const std::shared_ptr<pb::Update>& message) override {
+            {
+                scoped_lock lock{mutex_};
+                updates_.emplace(message);
+            }
+
+            reply();
+        }
+
+    private:
+        void reply() {
+            scoped_lock lock{mutex_};
+            if (state_ != State::READY || updates_.empty()) {
+                return;
+            }
+
+            StartWrite(updates_.front().get());
+
+            // TODO: Implement finish if the server shuts down.
+            //Finish(::grpc::Status::OK);
+        }
+
+        GrpcServer& owner_;
+        State state_{State::READY};
+        std::queue<std::shared_ptr<pb::Update>> updates_;
+        std::mutex mutex_;
+        std::shared_ptr<ServerWriteReactorImpl> self_;
+        ::grpc::CallbackServerContext *context_;
+    };
+
+    try {
+        auto handler = make_shared<ServerWriteReactorImpl>(owner_, context);
+        handler->start();
+        return handler.get(); // The object maintains ownership over itself
+    } catch (const exception& ex) {
+        LOG_ERROR_N << "Caught exception while adding subscriber to update: " << ex.what();
+    }
+
+    return {};
 }
 
 GrpcServer::GrpcServer(Server &server)
@@ -233,6 +349,36 @@ void GrpcServer::stop() {
              << boost::typeindex::type_id_runtime(*this).pretty_name();
     grpc_server_->Shutdown();
     grpc_server_->Wait();
+}
+
+void GrpcServer::addPublisher(const std::shared_ptr<Publisher> &publisher)
+{
+    LOG_TRACE_N << "Adding publisher " << publisher->uuid();
+    scoped_lock lock{mutex_};
+    publishers_[publisher->uuid()] = publisher;
+}
+
+void GrpcServer::removePublisher(const boost::uuids::uuid &uuid)
+{
+    LOG_TRACE_N << "Removing publisher " << uuid;
+    scoped_lock lock{mutex_};
+    publishers_.erase(uuid);
+}
+
+void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
+{
+    scoped_lock lock{mutex_};
+
+    LOG_DEBUG_N << "Publishing update to " << publishers_.size() << " subscribers, Json: "
+                << toJson(*update);
+
+    for(auto& [uuid, weak_pub]: publishers_) {
+        if (auto pub = weak_pub.lock()) {
+            pub->publish(update);
+        } else {
+            LOG_WARN_N << "Failed to get a pointer to publisher " << uuid;
+        }
+    }
 }
 
 

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <queue>
+#include <map>
+#include <boost/uuid/uuid.hpp>
 
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/server.h>
@@ -15,6 +17,8 @@
 #include "nextapp/logging.h"
 
 namespace nextapp::grpc {
+
+boost::uuids::uuid newUuid();
 
 class GrpcServer {
 public:
@@ -57,6 +61,20 @@ public:
         abort();
     }
 
+    class Publisher {
+    public:
+        virtual ~Publisher() = default;
+
+        virtual void publish(const std::shared_ptr<pb::Update>& message) = 0;
+
+        auto& uuid() const noexcept {
+            return uuid_;
+        }
+
+    private:
+        const boost::uuids::uuid uuid_ = newUuid();
+    };
+
     /*! RPC implementation
      *
      *  This class overrides our RPC methods from the code
@@ -71,17 +89,18 @@ public:
         ::grpc::ServerUnaryReactor *GetDayColorDefinitions(::grpc::CallbackServerContext *, const pb::Empty *, pb::DayColorDefinitions *) override;
         ::grpc::ServerUnaryReactor *GetDay(::grpc::CallbackServerContext *ctx, const pb::Date *req, pb::CompleteDay *reply) override;
         ::grpc::ServerUnaryReactor *GetMonth(::grpc::CallbackServerContext *ctx, const pb::MonthReq *req, pb::Month *reply) override;
-        ::grpc::ServerUnaryReactor *SetColorOnDay(::grpc::CallbackServerContext *ctx, const pb::SetColorReq *req, pb::Empty *reply) override;
+        ::grpc::ServerUnaryReactor *SetColorOnDay(::grpc::CallbackServerContext *ctx, const pb::SetColorReq *req, pb::Status *reply) override;
+        ::grpc::ServerWriteReactor<::nextapp::pb::Update>* SubscribeToUpdates(::grpc::CallbackServerContext* context, const ::nextapp::pb::UpdatesReq* request) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
-        auto unaryHandler(::grpc::CallbackServerContext *ctx, const auto * req, auto *reply, auto && fn) noexcept {
+        auto unaryHandler(::grpc::CallbackServerContext *ctx, const auto * req, auto *reply, auto fn) noexcept {
             assert(ctx);
             assert(reply);
 
             auto* reactor = ctx->DefaultReactor();
 
-            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn = std::move(fn)]() -> boost::asio::awaitable<void> {
+            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn]() -> boost::asio::awaitable<void> {
 
                     try {
                         co_await fn(reply);
@@ -115,6 +134,10 @@ public:
         return server_.config().grpc;
     }
 
+    void addPublisher(const std::shared_ptr<Publisher>& publisher);
+    void removePublisher(const boost::uuids::uuid& uuid);
+    void publish(const std::shared_ptr<pb::Update>& update);
+
 private:
 
     // TODO: Implement auth
@@ -141,6 +164,9 @@ private:
 
     // A gRPC server object
     std::unique_ptr<::grpc::Server> grpc_server_;
+
+    std::map<boost::uuids::uuid, std::weak_ptr<Publisher>> publishers_;
+    std::mutex mutex_;
 };
 
 } // ns
