@@ -56,12 +56,18 @@ signals:
     void versionChanged();
     void dayColorDefinitionsChanged();
     void errorRecieved(const QString &value);
+
+    // When the server has replied to our request fo the colors for this month
     void monthColorsChanged(unsigned year, unsigned month, colors_in_months_t colors);
+
+    // When an update-message is received from the server regarding a change for a color on a day
+    void dayColorChanged(unsigned year, unsigned month, unsigned day, QUuid uuid);
 
 private:
     void errorOccurred(const QGrpcStatus &status);
     void onServerInfo(nextapp::pb::ServerInfo info);
     void onGrpcReady();
+    void onUpdateMessage();
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     nextapp::pb::ServerInfo server_info_;

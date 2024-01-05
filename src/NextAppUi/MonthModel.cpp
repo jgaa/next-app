@@ -14,7 +14,7 @@ MonthModel::MonthModel(unsigned int year, unsigned int month, QObject *parent)
             &ServerComm::monthColorsChanged,
             [this](unsigned year, unsigned month, const ServerComm::colors_in_months_t& colors) {
                 if (year == year_ && month == month_) {
-                    LOG_TRACE_N << "Setting day-in-month colors for " << year_ << '-' << month_;
+                    LOG_TRACE_N << "Setting day-in-month colors for " << year_ << '-' << (month_ + 1);
 
                     // Somehow we need to toggle the valid variable for the UI to update...
                     valid_ = false;
@@ -23,6 +23,24 @@ MonthModel::MonthModel(unsigned int year, unsigned int month, QObject *parent)
                     setColors(*colors);
                 }
             });
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::dayColorChanged,
+            [this](unsigned year, unsigned month, unsigned mday, QUuid color) {
+                if (year == year_ && month == month_) {
+                    LOG_TRACE_N << "Setting day-in-month color for one day: "
+                                << year_ << '-' << (month_ + 1) << '-' << mday;
+
+                    // Somehow we need to toggle the valid variable for the UI to update...
+                    valid_ = false;
+                    emit colorsChanged();
+
+                    uuids_.replace(mday - 1, color);
+                    valid_ = true;
+                    emit colorsChanged();
+                }
+            });
+
 
     ServerComm::instance().getColorsInMonth(year_, month_);
 }

@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QQmlEngine>
 
+// MVC via server
 class MonthModel : public QObject
 {
     Q_OBJECT

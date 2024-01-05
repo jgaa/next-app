@@ -59,25 +59,7 @@ void ServerComm::start()
         });
 
     updates_ = client_->streamSubscribeToUpdates({});
-
-    connect(updates_.get(), &QGrpcStream::messageReceived, [this]() {
-
-        //auto data = updates_->arg();
-        LOG_DEBUG << "Received an update...";
-        try {
-            auto msg = updates_->read<nextapp::pb::Update>();
-            LOG_DEBUG << "Got update: " << msg.when().seconds();
-            if (msg.hasDayColor()) {
-                LOG_DEBUG << "Day color is " << msg.dayColor().color();
-            }
-        } catch (const exception& ex) {
-            LOG_WARN << "Failed to read proto message: " << ex.what();
-        }
-
-        //nextapp::pb::Update msg;
-    });
-
-    //updates_call
+    connect(updates_.get(), &QGrpcStream::messageReceived, this, &ServerComm::onUpdateMessage);
 
 #else
     {
@@ -196,13 +178,6 @@ void ServerComm::setDayColor(int year, int month, int day, QUuid colorUuid)
     auto call = client_->SetColorOnDay(req);
     call->subscribe(this, [call, this, year, month]() {
             call->read<nextapp::pb::Empty>();
-
-            // TODO: Listen for changes from the server in stead...
-            QTimer::singleShot(100, [this, year, month] {
-                LOG_DEBUG << "Calling getColorsInMonth() from timer.";
-                getColorsInMonth(year, month, true);
-            });
-
         }, [this](QGrpcStatus status) {
             LOG_ERROR_N << "Comm error: " << status.message();
         });
@@ -220,5 +195,25 @@ void ServerComm::onGrpcReady()
     grpc_is_ready_ = true;
     for(; !grpc_queue_.empty(); grpc_queue_.pop()) {
         grpc_queue_.front()();
+    }
+}
+
+void ServerComm::onUpdateMessage()
+{
+    LOG_TRACE_N << "Received an update...";
+    try {
+        auto msg = updates_->read<nextapp::pb::Update>();
+        LOG_TRACE << "Got update: " << msg.when().seconds();
+        if (msg.hasDayColor()) {
+            LOG_DEBUG << "Day color is " << msg.dayColor().color();
+            QUuid color;
+            if (!msg.dayColor().color().isEmpty()) {
+                color = QUuid{msg.dayColor().color()};
+            }
+            const auto& date = msg.dayColor().date();
+            emit dayColorChanged(date.year(), date.month(), date.mday(), color);
+        }
+    } catch (const exception& ex) {
+        LOG_WARN << "Failed to read proto message: " << ex.what();
     }
 }
