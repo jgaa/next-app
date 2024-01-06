@@ -41,8 +41,12 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
 
-    QGuiApplication::setOrganizationName("The Last Viking LTD");
+    QGuiApplication::setOrganizationName("TheLastViking");
+#ifdef DEVEL_SETTINGS
+    QGuiApplication::setApplicationName("nextapp-devel");
+#else
     QGuiApplication::setApplicationName("nextapp");
+#endif
     QGuiApplication::setApplicationVersion(NEXTAPP_VERSION);
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/NextAppUi/icons/nextapp.svg"));
     //QGuiApplication::setWindowIcon(QIcon("/home/jgaa/src/next-app/src/NextAppUi/icons/nextapp-logo.svg"));

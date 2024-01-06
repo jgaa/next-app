@@ -169,7 +169,7 @@ MenuBar {
     }
 
     background: Rectangle {
-        color: Colors.surface2
+        color: NextAppCore.develBuild ? "darkred" : Colors.surface2
         // Make the empty space drag the specified root window.
         WindowDragHandler {
             dragWindow: root.dragWindow

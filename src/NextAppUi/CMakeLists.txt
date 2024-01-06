@@ -6,7 +6,14 @@ add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
+set(SERVER_ADDRESS "http://127.0.0.1:10321" CACHE STRING "Default address to server")
+add_definitions("-DSERVER_ADDRESS=\"${SERVER_ADDRESS}\"")
+
 option(WITH_TESTS "Enable Tests" ON)
+option(DEVEL_SETTINGS "Use '-devel' postfix for the settings location." ON)
+if (DEVEL_SETTINGS)
+    add_definitions(-DDEVEL_SETTINGS=1)
+endif()
 
 # Fallback if we run into problems with server-comm
 option(ASYNC_GRPC "Async gRPC (do not disable. Sync comm is not properly implemented!)" ON)
@@ -71,6 +78,8 @@ qt_add_qml_module(appNextAppUi
         qml/ResizeButton.qml # x
         qml/DaysInYear.qml
         qml/DayDialog.qml
+        qml/SettingsDlg.qml
+        qml/ServerSettings.qml
     RESOURCES
         icons/folder_closed.svg
         icons/folder_open.svg
@@ -104,6 +113,10 @@ set_target_properties(appNextAppUi PROPERTIES
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
+    RUNTIME_OUTPUT_NAME nextapp
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
 add_dependencies(appNextAppUi logfault)

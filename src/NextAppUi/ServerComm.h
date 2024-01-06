@@ -21,6 +21,8 @@ class ServerComm : public QObject
     Q_PROPERTY(nextapp::pb::DayColorRepeated dayColorDefinitions
                    READ getDayColorsDefinitions
                    NOTIFY dayColorDefinitionsChanged)
+
+    Q_PROPERTY(QString defaultServerAddress READ getDefaultServerAddress CONSTANT)
 public:
     using colors_in_months_t = std::shared_ptr<QList<QUuid>>;
 
@@ -28,10 +30,14 @@ public:
     ~ServerComm();
 
     void start();
+    void stop();
 
     [[nodiscard]] QString version();
     [[nodiscard]] nextapp::pb::DayColorRepeated getDayColorsDefinitions();
     Q_INVOKABLE MonthModel *getMonthModel(int year, int month);
+
+    // Called when the servers app settings may have changed
+    Q_INVOKABLE void reloadSettings();
 
     static ServerComm& instance() noexcept {
         assert(instance_);
@@ -51,6 +57,10 @@ public:
     QString toDayColorName(const QUuid& uuid) const;
 
     void setDayColor(int year, int month, int day, QUuid colorUuid);
+
+    static QString getDefaultServerAddress() {
+        return SERVER_ADDRESS;
+    }
 
 signals:
     void versionChanged();
@@ -79,4 +89,5 @@ private:
     bool grpc_is_ready_ = false;
     static ServerComm *instance_;
     std::shared_ptr<QGrpcStream> updates_;
+    QString current_server_address_;
 };

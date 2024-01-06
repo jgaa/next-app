@@ -10,10 +10,21 @@ class NextAppCore : public QObject
     QML_SINGLETON
 
     Q_PROPERTY(QString qtVersion READ qtVersion CONSTANT)
+
+    // True if the app was build with the CMAKE option DEVEL_SETTINGS enabled
+    Q_PROPERTY(bool develBuild READ isDevelBuild CONSTANT)
 public:
     NextAppCore();
 
-    QString qtVersion() const {
+    static QString qtVersion() {
         return QT_VERSION_STR;
+    }
+
+    static constexpr bool isDevelBuild() {
+#if defined(DEVEL_SETTINGS) && DEVEL_SETTINGS
+        return true;
+#else
+        return false;
+#endif
     }
 };

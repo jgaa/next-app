@@ -2,7 +2,7 @@
 #include "ServerComm.h"
 #include "logging.h"
 
-#include <QDebug>
+#include <QSettings>
 #include <QGrpcHttp2Channel>
 #include <QtConcurrent/QtConcurrent>
 
@@ -26,16 +26,18 @@ ServerComm::~ServerComm()
 }
 
 void ServerComm::start()
-{
-    QGrpcChannelOptions channelOptions(QUrl("http://127.0.0.1:10321", QUrl::StrictMode));
+{   
+    current_server_address_ = QSettings{}.value("serverAddress", getDefaultServerAddress()).toString();
+    QGrpcChannelOptions channelOptions(QUrl(current_server_address_ , QUrl::StrictMode));
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
+    LOG_INFO << "Using server at " << current_server_address_;
 #ifdef ASYNC_GRPC
     auto info_call = client_->GetServerInfo({});
     info_call->subscribe(this, [info_call, this]() {
             nextapp::pb::ServerInfo se = info_call->read<nextapp::pb::ServerInfo>();
             assert(se.properties().front().key() == "version");
             server_version_ = se.properties().front().value();
-            LOG_INFO << "Connected to server version " << server_version_;
+            LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
             emit versionChanged();
         }, [this](QGrpcStatus status) {
             LOG_ERROR_N << "Comm error: " << status.message();
@@ -87,6 +89,11 @@ void ServerComm::start()
 #endif
 }
 
+void ServerComm::stop()
+{
+
+}
+
 QString ServerComm::version()
 {
     emit errorRecieved({});
@@ -101,6 +108,19 @@ nextapp::pb::DayColorRepeated ServerComm::getDayColorsDefinitions()
 MonthModel *ServerComm::getMonthModel(int year, int month)
 {
     return new MonthModel{static_cast<unsigned>(year), static_cast<unsigned>(month)};
+}
+
+void ServerComm::reloadSettings()
+{
+    QTimer::singleShot(200, [this] {
+        auto server_address = QSettings{}.value("serverAddress", getDefaultServerAddress()).toString();
+        if (server_address != current_server_address_) {
+            LOG_INFO_N << "Server address change from " << current_server_address_
+                       << " to " << server_address
+                       << ". I will re-connect.";
+            start();
+        }
+    });
 }
 
 ServerComm::colors_in_months_t

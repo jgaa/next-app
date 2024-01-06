@@ -8,7 +8,7 @@ ApplicationWindow {
     width: 1700
     height: 900
     visible: true
-    title: qsTr("nextapp - Your Personal Organizer")
+    title: NextAppCore.develBuild ? "nextapp --Developer Edition--" : qsTr("nextapp - Your Personal Organizer")
     color: Colors.background
     flags: Qt.Window //| Qt.FramelessWindowHint
 
@@ -16,35 +16,44 @@ ApplicationWindow {
         dragWindow: root
         //infoText: root.getInfoText()
         MyMenu {
-            title: qsTr("File")
+            title: qsTr("App")
 
             Action {
-                text: qsTr("Increase Font")
+                text: qsTr("Settings")
                 shortcut: StandardKey.ZoomIn
-                onTriggered: editor.text.font.pixelSize += 1
+                onTriggered: {
+                    var component = Qt.createComponent("qml/SettingsDlg.qml");
+                    if (component.status !== Component.Ready) {
+                        if(component.status === Component.Error )
+                            console.debug("Error:"+ component.errorString() );
+                        return;
+                    }
+                    var dlg = component.createObject(root, {});
+                    dlg.open()
+                }
             }
-            Action {
-                text: qsTr("Decrease Font")
-                shortcut: StandardKey.ZoomOut
-                onTriggered: editor.text.font.pixelSize -= 1
-            }
-            Action {
-                text: root.showLineNumbers ? qsTr("Toggle Line Numbers OFF")
-                                           : qsTr("Toggle Line Numbers ON")
-                shortcut: "Ctrl+L"
-                onTriggered: root.showLineNumbers = !root.showLineNumbers
-            }
-            Action {
-                text: root.expandPath ? qsTr("Toggle Short Path")
-                                      : qsTr("Toggle Expand Path")
-                enabled: root.currentFilePath
-                onTriggered: root.expandPath = !root.expandPath
-            }
-            Action {
-                text: qsTr("Reset Filesystem")
-                enabled: sidebar.currentTabIndex === 1
-                onTriggered: fileSystemView.rootIndex = undefined
-            }
+            // Action {
+            //     text: qsTr("Decrease Font")
+            //     shortcut: StandardKey.ZoomOut
+            //     onTriggered: editor.text.font.pixelSize -= 1
+            // }
+            // Action {
+            //     text: root.showLineNumbers ? qsTr("Toggle Line Numbers OFF")
+            //                                : qsTr("Toggle Line Numbers ON")
+            //     shortcut: "Ctrl+L"
+            //     onTriggered: root.showLineNumbers = !root.showLineNumbers
+            // }
+            // Action {
+            //     text: root.expandPath ? qsTr("Toggle Short Path")
+            //                           : qsTr("Toggle Expand Path")
+            //     enabled: root.currentFilePath
+            //     onTriggered: root.expandPath = !root.expandPath
+            // }
+            // Action {
+            //     text: qsTr("Reset Filesystem")
+            //     enabled: sidebar.currentTabIndex === 1
+            //     onTriggered: fileSystemView.rootIndex = undefined
+            // }
             Action {
                 text: qsTr("Exit")
                 onTriggered: Qt.exit(0)
@@ -105,9 +114,8 @@ ApplicationWindow {
             //anchors.fill: parent
             currentIndex: sidebar.currentMainItem
 
-            DaysInYear {
-
-            }
+            DaysInYear {}
+            //SettingsDlg { id: settingDlg}
 
             ColumnLayout {
                 // Orange
