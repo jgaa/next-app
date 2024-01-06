@@ -14,6 +14,9 @@ struct DbConfig {
     std::string username;
     std::string password;
     std::string database = "nextapp";
+
+    unsigned retry_connect = 20;
+    unsigned retry_connect_delay_ms = 2000;
 };
 
 struct ServerConfig {

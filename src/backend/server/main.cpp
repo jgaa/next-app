@@ -22,6 +22,7 @@
 #include "nextapp/config.h"
 #include "nextapp/logging.h"
 #include "nextapp/Server.h"
+#include "nextapp/errors.h"
 
 using namespace std;
 using namespace nextapp;
@@ -160,6 +161,12 @@ int main(int argc, char* argv[]) {
             ("db-max-connections",
              po::value(&config.db.max_connections)->default_value(config.db.max_connections),
              "Max concurrent connections to the database server")
+            ("db-retry-connect",
+             po::value(&config.db.retry_connect)->default_value(config.db.retry_connect),
+             "Retry connect to the database-server # times on startup. Useful when using containers, where nextappd may be running before the database is ready.")
+            ("db-retry-delay",
+             po::value(&config.db.retry_connect_delay_ms)->default_value(config.db.retry_connect_delay_ms),
+             "Milliseconds to wait between connection retries")
             ;
 
         po::options_description cmdline_options;
@@ -222,6 +229,9 @@ int main(int argc, char* argv[]) {
         Server server{config};
         server.init();
         server.run();
+    } catch (const nextapp::aborted& ex) {
+        LOG_INFO << "Server was aborted: " << ex.what();
+        return -5;
     } catch (const exception& ex) {
         LOG_ERROR << "Caught exception: " << ex.what() << endl;
         return -5;

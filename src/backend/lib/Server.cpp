@@ -67,6 +67,7 @@ void Server::run()
 
 void Server::stop()
 {
+    done_ = true;
     ctx_.stop();
 }
 
@@ -341,6 +342,8 @@ void Server::handleSignals()
         return;
     }
 
+    static unsigned count = 0;
+
     if (!signals_) {
         signals_.emplace(ctx(), SIGINT, SIGQUIT);
         signals_->add(SIGUSR1);
@@ -366,7 +369,6 @@ void Server::handleSignals()
                 LOG_INFO_N << "Stopping the services.";
                 stop();
             }
-            return;
         } else {
             LOG_WARN_N << " Ignoring signal #" << signalNumber;
         }

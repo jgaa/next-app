@@ -2,6 +2,7 @@
 #include <memory>
 #include "nextapp/db.h"
 #include "nextapp/logging.h"
+#include "nextapp/errors.h"
 
 using namespace std;
 using ::nextapp::logging::LogEvent;
@@ -75,6 +76,7 @@ boost::asio::awaitable<void> Db::close()
 }
 
 void Db::init() {
+
     asio::ip::tcp::resolver resolver(ctx_.get_executor());
     auto endpoints = resolver.resolve(config_.host,
                                       std::to_string(config_.port));
@@ -97,15 +99,46 @@ void Db::init() {
                 << " as user " << config_.username << " with database "
                 << config_.database;
 
-    auto && connect = [&] {
+    auto && connect = [&](auto iteration) {
         mysql::tcp_connection conn{ctx_.get_executor()};
         std::string why;
+        unsigned retries = 0;
 
         for(auto ep : endpoints) {
             LOG_TRACE_N << "New db connection to " << ep.endpoint();
+again:
+            if (ctx_.stopped()) {
+                LOG_INFO << "Server is shutting down. Aborting connect to the database.";
+                throw aborted{"Server is shutting down"};
+            }
             try {
                 conn.connect(ep.endpoint(), params);
                 return std::move(conn);
+            } catch (const boost::mysql::error_with_diagnostics& ex) {
+                if (ex.code() == boost::system::errc::connection_refused
+                    || ex.code() == boost::asio::error::eof) {
+                    if (iteration == 0 && ++retries <= config_.retry_connect) {
+                        LOG_INFO << "Failed to connect to the database server. Will retry "
+                                 << retries << "/" << config_.retry_connect;
+                        //std::this_thread::sleep_for(std::chrono::milliseconds{config_.retry_connect_delay_ms});
+                        boost::asio::steady_timer timer(ctx_);
+                        boost::system::error_code ec;
+                        timer.expires_after(std::chrono::milliseconds{config_.retry_connect_delay_ms});
+                        timer.wait(ec);
+                        goto again;
+                    }
+                }
+
+                retries = 0;
+                LOG_DEBUG_N << LogEvent::LE_DATABASE_FAILED_TO_CONNECT
+                            << "Failed to connect to to mysql compatible database at "
+                            << ep.endpoint()
+                            << " as user " << config_.username << " with database "
+                            << config_.database
+                            << ": " << ex.what();
+                if (why.empty()) {
+                    why = ex.what();
+                }
             } catch (const std::exception& ex) {
                 LOG_DEBUG_N << LogEvent::LE_DATABASE_FAILED_TO_CONNECT
                           << "Failed to connect to to mysql compatible database at "
@@ -131,8 +164,9 @@ void Db::init() {
     };
 
     connections_.reserve(config_.max_connections);
+
     for(size_t i = 0; i < config_.max_connections; ++i) {
-        connections_.emplace_back(connect());
+        connections_.emplace_back(connect(i));
     }
 
     static constexpr auto one_hundred_years = 8766 * 100;
@@ -153,7 +187,5 @@ void Db::release(Handle &h) noexcept {
     boost::system::error_code ec;
     semaphore_.cancel_one(ec);
 }
-
-
 
 } // ns
