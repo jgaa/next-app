@@ -17,6 +17,7 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     coroutine
     context
     chrono
+    json
     )
 
 set(NEXTAPP_LIBS = ${Boost_LIBRARIES} stdc++fs ZLIB Threads::Threads)

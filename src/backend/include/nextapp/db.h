@@ -8,6 +8,7 @@
 #include <boost/mysql.hpp>
 
 #include "nextapp/config.h"
+#include "nextapp/logging.h"
 
 namespace nextapp::db {
 
@@ -24,6 +25,16 @@ constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitabl
 
 class Db {
 public:
+    // enum class DbPrecence {
+    //     OK,
+    //     LOWER_VERSION,
+    //     NO_SERVER,
+    //     NO_DATABASE,
+    //     UNKNOWN_DB_VERSION // Database is for a newer version of nextappd
+    // };
+
+    // static DbPrecence checkDbPrecence(const DbConfig& config);
+
     Db(boost::asio::io_context& ctx, const DbConfig& config)
         : ctx_{ctx}, semaphore_{ctx}, config_{config}
     {
@@ -107,12 +118,26 @@ public:
     template<typename ...argsT>
     boost::asio::awaitable<results> execs(std::string_view query, argsT ...args) {
         auto conn = co_await getConnection();
-        logQuery("statement", query);
+        logQuery("statement", query, args...);
         results res;
         auto stmt = co_await conn.connection().async_prepare_statement(query, boost::asio::use_awaitable);
+
+        try {
         co_await conn.connection().async_execute(stmt.bind(args...),
                                                  res,
                                                  boost::asio::use_awaitable);
+        } catch (const boost::mysql::error_with_diagnostics& ex) {
+            LOG_DEBUG << "Query failed with error: " << ex.what()
+                      << ". Client message: " << ex.get_diagnostics().client_message()
+                      << ". Server message: " << ex.get_diagnostics().server_message();
+            throw;
+        } catch (const boost::system::system_error& ex) {
+            LOG_DEBUG << "Query failed with error: " << ex.what()
+                      << ". Location: " << ex.code().location()
+                      << ". " << ex.code().to_string();
+            throw;
+        }
+
         co_return std::move(res);
     }
 
@@ -120,8 +145,27 @@ public:
 
 private:
     void init();
-    void logQuery(std::string_view type, std::string_view query);
+
+    template <typename... T>
+    std::string logArgs(const T... args) {
+        if constexpr (sizeof...(T)) {
+            std::stringstream out;
+            out << " args: ";
+            auto col = 0;
+            ((out << (++col == 1 ? "" : ", ")  << args), ...);
+            return out.str();
+        }
+        return {};
+    }
+
+    template <typename... T>
+    void logQuery(std::string_view type, std::string_view query, T... bound) {
+        LOG_TRACE << "Exceuting " << type << " SQL query: " << query << logArgs(bound...);
+    }
+
     void release(Handle& h) noexcept;
+    std::string dbUser() const;
+    std::string dbPasswd() const;
 
     boost::asio::io_context& ctx_;
     mutable std::mutex mutex_;

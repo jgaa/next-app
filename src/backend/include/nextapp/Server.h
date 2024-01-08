@@ -9,6 +9,7 @@
 #include "nextapp/nextapp.h"
 #include "nextapp/config.h"
 #include "nextapp/db.h"
+#include "nextapp/util.h"
 
 namespace nextapp {
 
@@ -18,12 +19,12 @@ class GrpcServer;
 
 class Server {
 public:
-    static constexpr uint latest_version = 1;
+    static constexpr uint latest_version = 2;
 
     struct BootstrapOptions {
         bool drop_old_db = false;
-        std::string db_root_user = "root";
-        std::string db_root_passwd;
+        std::string db_root_user = getEnv("NA_ROOT_DBUSER", "root");
+        std::string db_root_passwd = getEnv("NA_ROOT_DBPASSWD");
     };
 
     Server(const Config& config);

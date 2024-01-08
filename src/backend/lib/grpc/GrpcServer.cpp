@@ -1,6 +1,7 @@
 
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <boost/json.hpp>
 
 #include "nextapp/GrpcServer.h"
 #include "nextapp/Server.h"
@@ -8,6 +9,7 @@
 using namespace std;
 using namespace std::literals;
 using namespace std;
+namespace json = boost::json;
 namespace asio = boost::asio;
 
 namespace nextapp::grpc {
@@ -17,6 +19,12 @@ boost::uuids::uuid newUuid()
     static boost::uuids::random_generator uuid_gen_;
     return uuid_gen_();
 }
+
+string newUuidStr()
+{
+    return boost::uuids::to_string(newUuid());
+}
+
 
 namespace {
 
@@ -36,6 +44,21 @@ std::string toJson(const T& obj) {
     return str;
 }
 
+template <typename T>
+concept ProtoStringStringMap = std::is_same_v<std::remove_cv<T>, std::remove_cv<::google::protobuf::Map<std::string, std::string>>>;
+
+
+template <ProtoStringStringMap T>
+string toJson(const T& map) {
+    json::object o;
+
+    for(const auto [key, value] : map) {
+        o[key] = value;
+    }
+
+    return json::serialize(o);
+}
+
 std::string toAnsiDate(const nextapp::pb::Date& date) {
     return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month() + 1, date.mday());
 }
@@ -48,6 +71,19 @@ std::string toAnsiDate(const nextapp::pb::Date& date) {
     date.set_mday(from.day());
 
     return date;
+}
+
+void setError(pb::Status& status, pb::Error err, const std::string& message = {}) {
+
+
+    status.set_error(err);
+    if (message.empty()) {
+        status.set_message(pb::Error_Name(err));
+    } else {
+        status.set_message(message);
+    }
+
+    LOG_DEBUG << "Setting error " << status.message() << " on request.";
 }
 
 } // anon ns
@@ -314,6 +350,102 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     }
 
     return {};
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateTenant(::grpc::CallbackServerContext *ctx, const pb::CreateTenantReq *req, pb::Status *reply)
+{
+    // Do some basic checks before we attempt to create anything...
+    if (!req->has_tenant() || req->tenant().name().empty()) {
+        setError(*reply, pb::Error::MISSING_TENANT_NAME);
+    } else {
+
+        for(const auto& user : req->users()) {
+            if (user.email().empty()) {
+                setError(*reply, pb::Error::MISSING_USER_EMAIL);
+            } else if (user.name().empty()) {
+                setError(*reply, pb::Error::MISSING_USER_NAME);
+            }
+        }
+    }
+
+    if (reply->error() != pb::Error::OK) {
+        auto* reactor = ctx->DefaultReactor();
+        reactor->Finish(::grpc::Status::OK);
+        return reactor;
+    }
+
+    LOG_DEBUG_N << "Request to create tenant " << req->tenant().name();
+
+    return unaryHandler(ctx, req, reply,
+                        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+
+        pb::Tenant tenant{req->tenant()};
+        if (tenant.uuid().empty()) {
+            tenant.set_uuid(newUuidStr());
+        }
+        if (tenant.properties().empty()) {
+            tenant.mutable_properties();
+        }
+
+        const auto properties = toJson(*tenant.mutable_properties());
+        if (!tenant.has_kind()) {
+            tenant.set_kind(pb::Tenant::Tenant::Kind::Tenant_Kind_guest);
+        }
+
+        co_await owner_.server().db().execs(
+            "INSERT INTO tenant (id, name, kind, descr, active, properties) VALUES (?, ?, ?, ?, ?, ?)",
+                tenant.uuid(),
+                tenant.name(),
+                pb::Tenant::Kind_Name(tenant.kind()),
+                tenant.descr(),
+                tenant.active(),
+                properties);
+
+        LOG_INFO << "User " << owner_.currentUser(ctx)
+                 << " has created tenant name=" << tenant.name() << ", id=" << tenant.uuid()
+                 << ", kind=" << pb::Tenant::Kind_Name(tenant.kind());
+
+        // create users
+        for(const auto& user_template : req->users()) {
+            pb::User user{user_template};
+
+            if (user.uuid().empty()) {
+                user.set_uuid(newUuidStr());
+            }
+
+            user.set_tenant(tenant.uuid());
+            if (!user.has_kind()) {
+                user.set_kind(pb::User::Kind::User_Kind_regular);
+            }
+
+            if (!user.has_active()) {
+                user.set_active(true);
+            }
+
+            auto user_props = toJson(*user.mutable_properties());
+            co_await owner_.server().db().execs(
+                "INSERT INTO user (id, tenant, name, email, kind, active, descr, properties) VALUES (?,?,?,?,?,?,?,?)",
+                    user.uuid(),
+                    user.tenant(),
+                    user.name(),
+                    user.email(),
+                    user.kind(),
+                    user.active(),
+                    user.descr(),
+                    user_props);
+
+            LOG_INFO << "User " << owner_.currentUser(ctx)
+                     << " has created user name=" << user.name() << ", id=" << user.uuid()
+                     << ", kind=" << pb::User::Kind_Name(user.kind())
+                     << ", tenant=" << user.tenant();
+        }
+
+        // TODO: Publish the new tenant and users
+
+        *reply->mutable_tenant() = tenant;
+
+        co_return;
+    });
 }
 
 GrpcServer::GrpcServer(Server &server)

@@ -10,6 +10,7 @@ add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/config.h
     ${NEXTAPP_BACKEND}/include/nextapp/Server.h
     ${NEXTAPP_BACKEND}/include/nextapp/GrpcServer.h
+    ${NEXTAPP_BACKEND}/include/nextapp/util.h
     util.cpp
     db/db.cpp
     Server.cpp

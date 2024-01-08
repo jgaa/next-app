@@ -11,6 +11,7 @@ namespace mysql = boost::mysql;
 
 namespace nextapp::db {
 
+
 asio::awaitable<Db::Handle> Db::getConnection(bool throwOnEmpty) {
     while(true) {
         optional<Handle> handle;
@@ -88,15 +89,18 @@ void Db::init() {
         throw runtime_error{"Failed to resolve database hostname"};
     }
 
+    auto user = dbUser();
+    auto passwd = dbPasswd();
+
     mysql::handshake_params params(
-        config_.username,
-        config_.password,
+        user,
+        passwd,
         config_.database
         );
 
     LOG_DEBUG_N << "Connecting to mysql compatible database at "
                 << config_.host << ':' << config_.port
-                << " as user " << config_.username << " with database "
+                << " as user " << dbUser() << " with database "
                 << config_.database;
 
     auto && connect = [&](auto iteration) {
@@ -133,7 +137,7 @@ again:
                 LOG_DEBUG_N << LogEvent::LE_DATABASE_FAILED_TO_CONNECT
                             << "Failed to connect to to mysql compatible database at "
                             << ep.endpoint()
-                            << " as user " << config_.username << " with database "
+                            << " as user " << dbUser() << " with database "
                             << config_.database
                             << ": " << ex.what();
                 if (why.empty()) {
@@ -143,7 +147,7 @@ again:
                 LOG_DEBUG_N << LogEvent::LE_DATABASE_FAILED_TO_CONNECT
                           << "Failed to connect to to mysql compatible database at "
                           << ep.endpoint()
-                          << " as user " << config_.username << " with database "
+                          << " as user " << dbUser() << " with database "
                           << config_.database
                           << ": " << ex.what();
 
@@ -156,7 +160,7 @@ again:
         LOG_ERROR << LogEvent::LE_DATABASE_FAILED_TO_CONNECT
                   << "Failed to connect to to mysql compatible database at "
                   << config_.host << ':' << config_.port
-                  << " as user " << config_.username << " with database "
+                  << " as user " << dbUser() << " with database "
                   << config_.database
                   << ": " << why;
 
@@ -173,11 +177,6 @@ again:
     semaphore_.expires_from_now(boost::posix_time::hours(one_hundred_years));
 }
 
-void Db::logQuery(std::string_view type, std::string_view query)
-{
-    LOG_TRACE << "Exceuting " << type << " SQL query: " << query;
-}
-
 void Db::release(Handle &h) noexcept {
     if (h.connection_) {
         std::scoped_lock lock{mutex_};
@@ -186,6 +185,21 @@ void Db::release(Handle &h) noexcept {
     }
     boost::system::error_code ec;
     semaphore_.cancel_one(ec);
+}
+
+string Db::dbUser() const
+{
+    return config_.username;
+}
+
+string Db::dbPasswd() const
+{
+    if (config_.password.empty()) {
+
+        LOG_WARN << "Database password for " << dbUser() << " is not set.";
+    }
+
+    return config_.password;
 }
 
 } // ns

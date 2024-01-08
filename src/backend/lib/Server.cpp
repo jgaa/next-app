@@ -281,8 +281,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         // color: see QML colors at https://doc.qt.io/qt-6/qml-color.html
         R"(INSERT INTO day_colors (id, name, color, score) VALUES
             ('965864e2-a95d-11ee-960b-87185e67f3da', 'Slow day', 'khaki', 2),
-            ('a2547e0c-a95d-11ee-ad7b-f75675544037', 'Green Day', 'limegreen', 3),
-            ('b6abb366-a95d-11ee-b079-ef6165b96e9b', 'Awsome Day!', 'greenyellow', 5),
+            ('a2547e0c-a95d-11ee-ad7b-f75675544037', 'Green Day', 'greenyellow', 3),
+            ('b6abb366-a95d-11ee-b079-ef6165b96e9b', 'Awsome Day!', 'limegreen', 5),
             ('bb8aee74-a95d-11ee-b235-7f42126afd6d', 'Hollyday / Vacation / Day off', 'skyblue', 0),
             ('c0f7cb16-a95d-11ee-9da5-b3f4aed7f930', 'Failed Day', 'orange', 0),
             ('c5dfe53c-a95d-11ee-9465-73e10d6c4ad9', 'Disastorous Day!', 'violet', 0),
@@ -299,8 +299,18 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         FOREIGN KEY(user) REFERENCES user(id)))",
     });
 
+    static constexpr auto v2_upgrade = to_array<string_view>({
+        "ALTER TABLE tenant ADD COLUMN properties JSON",
+        "ALTER TABLE user ADD COLUMN email varchar(255) NOT NULL default 'jgaa@jgaa.com'",
+        "ALTER TABLE user ADD COLUMN properties JSON",
+        "CREATE UNIQUE INDEX ix_tenant_name ON tenant(name)",
+        "CREATE UNIQUE INDEX ix_user_email ON user(email)",
+        "ALTER TABLE tenant CHANGE kind kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'guest'",
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
+        v2_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

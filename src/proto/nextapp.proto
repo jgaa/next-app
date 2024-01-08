@@ -2,6 +2,13 @@ syntax = "proto3";
 
 package nextapp.pb;
 
+enum Error {
+    OK = 0;
+    MISSING_TENANT_NAME = 1;
+    MISSING_USER_NAME = 2;
+    MISSING_USER_EMAIL = 3;
+}
+
 message KeyValue {
     string key = 1;
     optional string value = 2;
@@ -9,13 +16,39 @@ message KeyValue {
 
 message Empty {}
 
-message Status {
-    int32 error = 1; // 0 == OK
-    string message = 2;
-}
-
 message ServerInfo {
     repeated KeyValue properties = 1;
+}
+
+message Tenant {
+    enum Kind {
+        super = 0;
+        regular = 1;
+        guest = 2;
+    }
+
+    string uuid = 1;
+    string name = 2;
+    optional Kind kind = 3;
+    bool active = 4;
+    string descr = 5;
+    map<string, string> properties = 6;
+}
+
+message User {
+    enum Kind {
+        super = 0;
+        regular = 1;
+    }
+
+    string uuid = 1;
+    string name = 2;
+    string email = 3;
+    string tenant = 4; // uuid
+    optional Kind kind = 5;
+    optional bool active = 6;
+    string descr = 7;
+    map<string, string> properties = 8;
 }
 
 message Node {
@@ -136,10 +169,28 @@ message Update {
         Ping ping = 2;
         Day day = 3;
         ColorAtDay DayColor = 4;
+        Tenant tenant = 5;
+        User user = 6;
     }
 }
 
 message UpdatesReq{}
+
+message CreateTenantReq {
+    Tenant tenant = 1; // Template
+    repeated User users = 2; // User templates. Emails must be unique
+}
+
+message Status {
+    Error error = 1;
+    string message = 2;
+
+    // Set for some objects when they are created
+    oneof what {
+        Tenant tenant = 10;
+        User user = 11;
+    }
+}
 
 service Nextapp {
     rpc GetServerInfo(Empty) returns (ServerInfo) {}
@@ -150,6 +201,11 @@ service Nextapp {
     rpc GetMonth(MonthReq) returns (Month) {}
     rpc SetColorOnDay(SetColorReq) returns (Status) {}
     rpc SubscribeToUpdates(UpdatesReq) returns (stream Update) {}
+
+    rpc CreateTenant(CreateTenantReq) returns (Status) {}
+
+    // If called by a super-user, user.uuid can point to any tenant. If unset, the logged-in tenant is used.
+    rpc CreateUser(User) returns (Status) {}
 }
 
 
