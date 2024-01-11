@@ -151,7 +151,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 {
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::CompleteDay *reply) -> boost::asio::awaitable<void> {
-        auto res = co_await owner_.server().db().execs(
+        auto res = co_await owner_.server().db().exec(
             "SELECT date, user, color, notes, report FROM day WHERE user=? AND date=? ORDER BY date",
             owner_.currentUser(ctx), toAnsiDate(*req));
 
@@ -192,7 +192,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Month *reply) -> boost::asio::awaitable<void> {
 
-        auto res = co_await owner_.server().db().execs(
+        auto res = co_await owner_.server().db().exec(
             "SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? ORDER BY date",
             owner_.currentUser(ctx), req->year(), req->month() + 1);
 
@@ -230,10 +230,10 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         const auto color = req->color();
         if (color.empty()) {
-            co_await owner_.server().db().execs("UPDATE day SET color=NULL WHERE date=? AND user=?",
+            co_await owner_.server().db().exec("UPDATE day SET color=NULL WHERE date=? AND user=?",
                                                 toAnsiDate(req->date()), owner_.currentUser(ctx));
         } else {
-            co_await owner_.server().db().execs(
+            co_await owner_.server().db().exec(
                 R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE color=?)",
                 toAnsiDate(req->date()), owner_.currentUser(ctx), color, color);
         }
@@ -392,7 +392,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             tenant.set_kind(pb::Tenant::Tenant::Kind::Tenant_Kind_guest);
         }
 
-        co_await owner_.server().db().execs(
+        co_await owner_.server().db().exec(
             "INSERT INTO tenant (id, name, kind, descr, active, properties) VALUES (?, ?, ?, ?, ?, ?)",
                 tenant.uuid(),
                 tenant.name(),
@@ -414,6 +414,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             }
 
             user.set_tenant(tenant.uuid());
+            auto kind = user.kind();
             if (!user.has_kind()) {
                 user.set_kind(pb::User::Kind::User_Kind_regular);
             }
@@ -423,13 +424,13 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             }
 
             auto user_props = toJson(*user.mutable_properties());
-            co_await owner_.server().db().execs(
+            co_await owner_.server().db().exec(
                 "INSERT INTO user (id, tenant, name, email, kind, active, descr, properties) VALUES (?,?,?,?,?,?,?,?)",
                     user.uuid(),
                     user.tenant(),
                     user.name(),
                     user.email(),
-                    user.kind(),
+                    pb::User::Kind_Name(user.kind()),
                     user.active(),
                     user.descr(),
                     user_props);

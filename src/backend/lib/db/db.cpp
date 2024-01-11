@@ -124,7 +124,6 @@ again:
                     if (iteration == 0 && ++retries <= config_.retry_connect) {
                         LOG_INFO << "Failed to connect to the database server. Will retry "
                                  << retries << "/" << config_.retry_connect;
-                        //std::this_thread::sleep_for(std::chrono::milliseconds{config_.retry_connect_delay_ms});
                         boost::asio::steady_timer timer(ctx_);
                         boost::system::error_code ec;
                         timer.expires_after(std::chrono::milliseconds{config_.retry_connect_delay_ms});
@@ -175,6 +174,21 @@ again:
 
     static constexpr auto one_hundred_years = 8766 * 100;
     semaphore_.expires_from_now(boost::posix_time::hours(one_hundred_years));
+}
+
+void Db::handleError(const boost::system::error_code &ec, boost::mysql::diagnostics &diag)
+{
+    if (ec) {
+        LOG_DEBUG << "Statement failed with error:  " << ec.message()
+                  << " (" << ec.value()
+                  << "). Client: " << diag.client_message()
+                  << ". Server: " << diag.server_message();
+
+        switch(ec.value()) {
+            case static_cast<int>(mysql::common_server_errc::er_dup_entry):
+            throw db_err{pb::Error::ALREADY_EXIST, ec.message()};
+        }
+    }
 }
 
 void Db::release(Handle &h) noexcept {

@@ -116,26 +116,20 @@ public:
     }
 
     template<typename ...argsT>
-    boost::asio::awaitable<results> execs(std::string_view query, argsT ...args) {
+    boost::asio::awaitable<results> exec(std::string_view query, argsT ...args) {
         auto conn = co_await getConnection();
         logQuery("statement", query, args...);
         results res;
-        auto stmt = co_await conn.connection().async_prepare_statement(query, boost::asio::use_awaitable);
+        boost::mysql::diagnostics diag;
 
-        try {
-        co_await conn.connection().async_execute(stmt.bind(args...),
-                                                 res,
-                                                 boost::asio::use_awaitable);
-        } catch (const boost::mysql::error_with_diagnostics& ex) {
-            LOG_DEBUG << "Query failed with error: " << ex.what()
-                      << ". Client message: " << ex.get_diagnostics().client_message()
-                      << ". Server message: " << ex.get_diagnostics().server_message();
-            throw;
-        } catch (const boost::system::system_error& ex) {
-            LOG_DEBUG << "Query failed with error: " << ex.what()
-                      << ". Location: " << ex.code().location()
-                      << ". " << ex.code().to_string();
-            throw;
+        if constexpr (sizeof...(argsT) == 0) {
+            auto [ec] = co_await conn.connection().async_execute(query, res, diag, tuple_awaitable);
+            handleError(ec, diag);
+        } else {
+            auto [ec, stmt] = co_await conn.connection().async_prepare_statement(query, diag, tuple_awaitable);
+            handleError(ec, diag);
+            std::tie(ec) = co_await conn.connection().async_execute(stmt.bind(args...), res, diag, tuple_awaitable);\
+            handleError(ec, diag);
         }
 
         co_return std::move(res);
@@ -145,7 +139,7 @@ public:
 
 private:
     void init();
-
+    void handleError(const boost::system::error_code& ec, boost::mysql::diagnostics& diag);
     template <typename... T>
     std::string logArgs(const T... args) {
         if constexpr (sizeof...(T)) {

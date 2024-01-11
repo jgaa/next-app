@@ -15,6 +15,7 @@
 #include "nextapp.pb.h"
 #include "nextapp.grpc.pb.h"
 #include "nextapp/logging.h"
+#include "nextapp/errors.h"
 
 namespace nextapp::grpc {
 
@@ -106,6 +107,16 @@ public:
                     try {
                         co_await fn(reply);
                         reactor->Finish(::grpc::Status::OK);
+                    } catch (const db_err& ex) {
+                        if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
+                            reply->Clear();
+                            reply->set_error(ex.error());
+                            reply->set_message(ex.what());
+                            reactor->Finish(::grpc::Status::OK);
+                        } else {
+                            LOG_WARN_N << "Caught db_err exception while handling grpc request coro: " << ex.what();
+                            reactor->Finish(::grpc::Status::CANCELLED);
+                        }
                     } catch (const std::exception& ex) {
                         LOG_WARN_N << "Caught exception while handling grpc request coro: " << ex.what();
                         reactor->Finish(::grpc::Status::CANCELLED);

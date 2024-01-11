@@ -7,6 +7,7 @@ enum Error {
     MISSING_TENANT_NAME = 1;
     MISSING_USER_NAME = 2;
     MISSING_USER_EMAIL = 3;
+    ALREADY_EXIST = 4;
 }
 
 message KeyValue {

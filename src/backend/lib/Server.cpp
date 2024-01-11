@@ -331,7 +331,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             co_await db.exec(query);
         }
 
-        co_await db.execs("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
+        co_await db.exec("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
         co_await db.close();
 
     }, asio::use_awaitable);
