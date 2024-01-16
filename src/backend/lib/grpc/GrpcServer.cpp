@@ -389,7 +389,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         const auto properties = toJson(*tenant.mutable_properties());
         if (!tenant.has_kind()) {
-            tenant.set_kind(pb::Tenant::Tenant::Kind::Tenant_Kind_guest);
+            tenant.set_kind(pb::Tenant::Tenant::Kind::Tenant_Kind_Guest);
         }
 
         co_await owner_.server().db().exec(
@@ -416,7 +416,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             user.set_tenant(tenant.uuid());
             auto kind = user.kind();
             if (!user.has_kind()) {
-                user.set_kind(pb::User::Kind::User_Kind_regular);
+                user.set_kind(pb::User::Kind::User_Kind_Regular);
             }
 
             if (!user.has_active()) {

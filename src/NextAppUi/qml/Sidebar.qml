@@ -91,7 +91,7 @@ Rectangle {
 
                 onCheckedChanged: {
                     if (checked) {
-                        root.currentTabIndex = 0
+                        root.currentMainItem = 0
                         root.currentTabIndex = -1
                     }
                 }
@@ -99,10 +99,17 @@ Rectangle {
 
             // Shows the file system when clicked.
             SidebarEntry {
-                id: filesystemTab
+                id: lists
 
                 icon.source: "../icons/read.svg"
                 checkable: true
+
+                onCheckedChanged: {
+                    if (checked) {
+                        root.currentMainItem = 1
+                        root.currentTabIndex = 0
+                    }
+                }
             }
         }
 

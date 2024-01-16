@@ -4,6 +4,7 @@
 #include <QQmlContext>
 #include <QCommandLineParser>
 #include <QIcon>
+#include <QAbstractItemModelTester>
 
 #include "ServerComm.h"
 #include "MainTreeModel.h"
@@ -69,6 +70,7 @@ int main(int argc, char *argv[])
 
     qRegisterProtobufTypes();
 
+
     QQmlApplicationEngine engine;
     engine.loadFromModule("NextAppUi", "Main");
     if (engine.rootObjects().isEmpty()) {
@@ -87,22 +89,24 @@ int main(int argc, char *argv[])
         auto tree = engine.singletonInstance<MainTreeModel*>("NextAppUi","MainTreeModel");
         assert(tree);
 
+        new QAbstractItemModelTester{tree, QAbstractItemModelTester::FailureReportingMode::Fatal, &engine};
+
         auto rscope = tree->resetScope();
 
-        ::nextapp::pb::Node root, root2, child1, child2, child3;
-        root.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        root.setName("root");
+        ::nextapp::pb::Node first, second, child1, child2, child3;
+        first.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
+        first.setName("first");
 
-        tree->addNode(root, {}, {});
+        tree->addNode(first, {}, {});
 
-        root2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        root2.setName("root2");
-        tree->addNode(root2, {}, {});
+        second.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
+        second.setName("second");
+        tree->addNode(second, {}, {});
 
 
         child1.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
         child1.setName("child2");
-        tree->addNode(child1, QUuid{root.uuid()}, {});
+        tree->addNode(child1, QUuid{first.uuid()}, {});
 
         child2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
         child2.setName("child1");
@@ -112,21 +116,26 @@ int main(int argc, char *argv[])
         child2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
         child2.setName("child3");
         tree->addNode(child2, QUuid{child1.uuid()}, {});
+
+        tree->dump();
     }
 
-
-    // engine.rootContext()->setContextProperty("sc", &sc);
-    // engine.rootContext()->setContextProperty("treeModel", &tree_model);
-    //const QUrl url(u"qrc:/NextAppUi/Main.qml"_qs);
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,
         &app,
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
-    QGuiApplication::exec();
 
     auto ret = app.exec();
 
+
+    if (auto server_comm =  engine.singletonInstance<ServerComm*>(
+            "NextAppUi","ServerComm")) {
+        LOG_DEBUG_N << "Shutting down gRPC";
+        server_comm->stop();
+    }
+
+    LOG_DEBUG_N << "Exiting the app";
     return ret;
 }

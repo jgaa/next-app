@@ -61,40 +61,40 @@ ApplicationWindow {
             }
         }
 
-        MyMenu {
-            title: qsTr("Edit")
+        // MyMenu {
+        //     title: qsTr("Edit")
 
-            // Action {
-            //     text: qsTr("Cut")
-            //     shortcut: StandardKey.Cut
-            //     enabled: editor.text.selectedText.length > 0
-            //     onTriggered: editor.text.cut()
-            // }
-            // Action {
-            //     text: qsTr("Copy")
-            //     shortcut: StandardKey.Copy
-            //     enabled: editor.text.selectedText.length > 0
-            //     onTriggered: editor.text.copy()
-            // }
-            // Action {
-            //     text: qsTr("Paste")
-            //     shortcut: StandardKey.Paste
-            //     enabled: editor.text.canPaste
-            //     onTriggered: editor.text.paste()
-            // }
-            // Action {
-            //     text: qsTr("Select All")
-            //     shortcut: StandardKey.SelectAll
-            //     enabled: editor.text.length > 0
-            //     onTriggered: editor.text.selectAll()
-            // }
-            // Action {
-            //     text: qsTr("Undo")
-            //     shortcut: StandardKey.Undo
-            //     enabled: editor.text.canUndo
-            //     onTriggered: editor.text.undo()
-            // }
-        }
+        //     // Action {
+        //     //     text: qsTr("Cut")
+        //     //     shortcut: StandardKey.Cut
+        //     //     enabled: editor.text.selectedText.length > 0
+        //     //     onTriggered: editor.text.cut()
+        //     // }
+        //     // Action {
+        //     //     text: qsTr("Copy")
+        //     //     shortcut: StandardKey.Copy
+        //     //     enabled: editor.text.selectedText.length > 0
+        //     //     onTriggered: editor.text.copy()
+        //     // }
+        //     // Action {
+        //     //     text: qsTr("Paste")
+        //     //     shortcut: StandardKey.Paste
+        //     //     enabled: editor.text.canPaste
+        //     //     onTriggered: editor.text.paste()
+        //     // }
+        //     // Action {
+        //     //     text: qsTr("Select All")
+        //     //     shortcut: StandardKey.SelectAll
+        //     //     enabled: editor.text.length > 0
+        //     //     onTriggered: editor.text.selectAll()
+        //     // }
+        //     // Action {
+        //     //     text: qsTr("Undo")
+        //     //     shortcut: StandardKey.Undo
+        //     //     enabled: editor.text.canUndo
+        //     //     onTriggered: editor.text.undo()
+        //     // }
+        // }
     }
 
 
@@ -115,7 +115,6 @@ ApplicationWindow {
             currentIndex: sidebar.currentMainItem
 
             DaysInYear {}
-            //SettingsDlg { id: settingDlg}
 
             ColumnLayout {
                 // Orange
@@ -149,15 +148,15 @@ ApplicationWindow {
                             anchors.fill: parent
                             currentIndex: sidebar.currentTabIndex
 
-                            // Shows the help text.
-                            Text {
-                                text: qsTr("This example shows how to use and visualize the file system.\n\n"
-                                         + "Customized Qt Quick Components have been used to achieve this look.\n\n"
-                                         + "You can edit the files but they won't be changed on the file system.\n\n"
-                                         + "Click on the folder icon to the left to get started.")
-                                wrapMode: TextArea.Wrap
-                                color: Colors.text
-                            }
+                            // // Shows the help text.
+                            // Text {
+                            //     text: qsTr("This example shows how to use and visualize the file system.\n\n"
+                            //              + "Customized Qt Quick Components have been used to achieve this look.\n\n"
+                            //              + "You can edit the files but they won't be changed on the file system.\n\n"
+                            //              + "Click on the folder icon to the left to get started.")
+                            //     wrapMode: TextArea.Wrap
+                            //     color: Colors.text
+                            // }
 
                             // Shows the files on the file system.
                             MainTree {

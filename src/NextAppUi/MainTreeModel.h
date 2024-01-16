@@ -36,9 +36,14 @@ public:
         // In QT 6.6, QList<> does not work with std::unique_ptr
         using node_list_t = QList<std::shared_ptr<TreeNode>>;
 
+        TreeNode() = default;
         TreeNode(::nextapp::pb::Node node, TreeNode *parent = {});
 
         auto& children() noexcept {
+            return children_;
+        }
+
+        const auto& children() const noexcept {
             return children_;
         }
 
@@ -99,12 +104,15 @@ public:
         return TreeNode::roleNames();
     }
 
+    // Print the tree to the log
+    void dump();
+
 public slots:    
     // Replaces the node if it exists, adds it if it don't exist
     // If sibling is set, the node is added/moved before the sibling.
     // If parent is set, the node is added/moved as last child.
     // If both parent ans sibling is set, the node is added/moved before the sibling. In other words, a sibling value of {} is similar to an end() iterator
-    // If neither sibling or parent is set, the node is added/moved as the last node at the root level.
+    // If neither sibling or parent is set, the node is added/moved as the last child of the root-node.
     void addNode(const ::nextapp::pb::Node& node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
 
     // As addNode, but only for move.
@@ -122,9 +130,9 @@ public slots:
     }
 
 private:
-    TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child) const;
+    TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child);
 
 
-    TreeNode::node_list_t root_;
+    TreeNode root_;
     QMap<QUuid, TreeNode*> uuid_index_;
 };

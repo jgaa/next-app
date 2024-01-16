@@ -25,7 +25,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
 
 qt_policy(
     SET QTP0001 NEW
@@ -131,6 +131,7 @@ target_link_libraries(appNextAppUi
         Qt6::Protobuf
         Qt6::Grpc
         Qt6::Concurrent
+        Qt6::Test
         MyGrpcClient
         MyProtoMessageLib
 )

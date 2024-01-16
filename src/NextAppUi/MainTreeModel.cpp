@@ -34,6 +34,20 @@ ostream& operator << (ostream& o, const QModelIndex& v) {
 
 namespace {
 
+void dumpLevel(unsigned level, MainTreeModel::TreeNode::node_list_t list) {
+    for(auto &node : list) {
+        QString name;
+        for(auto i = 0; i < level; ++i) {
+            name += "   ";
+        }
+        name += " --> ";
+        name += node->node().name();
+
+        LOG_DEBUG << name;
+        dumpLevel(level + 1, node->children());
+    }
+}
+
 optional<unsigned> getRow(MainTreeModel::TreeNode::node_list_t& list, const QUuid& uuid) {
     if (auto it = std::find_if(list.cbegin(), list.cend(), [&](const auto& v) {
             const auto node_uuid = v->uuid();
@@ -56,7 +70,8 @@ MainTreeModel::TreeNode * getTreeNode(const QModelIndex& node) noexcept {
 }
 
 template <typename T, typename ixT>
-void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, ixT& index, MainTreeModel::TreeNode *parent = {}) {
+void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, ixT& index, MainTreeModel::TreeNode *parent) {
+    assert(parent);
     for(auto& node: from) {
         const auto name = node.node().name();
         auto new_node = make_shared<MainTreeModel::TreeNode>(node.node(), parent);
@@ -79,8 +94,13 @@ MainTreeModel::MainTreeModel(QObject *parent)
 QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent) const
 {
     if (column) {
+        LOG_TRACE_N << "Queried for row=" << row << ", column=" << column
+                    << ". We don't use culumns in this tree.";
         return {};
     }
+
+    LOG_TRACE << "index: row=" << row << ", column=" << column << ", parent=" << parent;
+
     if (parent.isValid()) {
         if (auto *parent_ptr = static_cast<TreeNode *>(parent.internalPointer())) {
             if (parent_ptr->children().size() > row) {
@@ -89,33 +109,44 @@ QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent)
             }
         }
     } else {
-        if (root_.size() > row) {
-            auto current = root_.at(row).get();
-            return createIndex(row, column, current);
+        if (row == 0 && column == 0) {
+            return createIndex(row, column, &root_);
         }
     }
 
+    LOG_TRACE << "index: ** returning empty...";
     return {};
 }
 
 QModelIndex MainTreeModel::parent(const QModelIndex &child) const
 {
+    LOG_TRACE << "parent for : " << child;
+
     if (auto *current = getTreeNode(child)) {
-        auto& list = getListFromChild(*current);
-        if (auto row = getRow(list, current->uuid())) {
-            if (current->hasParent()) {
-                auto parent = current->parent();
+        if (auto *parent = current->parent()) {
+            if (parent == &root_) {
+                return createIndex(0, 0, &root_);
+            }
+
+            auto& list = const_cast<MainTreeModel *>(this)->getListFromChild(*parent);
+            if (auto row = getRow(list, parent->uuid())) {
                 return createIndex(*row, 0, parent);
+            }
+
+            auto name = current->node().name();
+            if (!name.isEmpty()) {
+                LOG_WARN << "Could not find child " << child << " in childlist from parent '" << parent->node().name() << '\'';
             }
         }
     }
 
+    LOG_TRACE << "parent *** Returning empty...";
     return {};
 }
 
 int MainTreeModel::rowCount(const QModelIndex &parent) const
 {
-    auto count = root_.size();
+    auto count = 1;
     if (parent.isValid()) {
         count = getTreeNode(parent)->children().size();
     }
@@ -144,7 +175,7 @@ QVariant MainTreeModel::data(const QModelIndex &index, int role) const
 
 bool MainTreeModel::hasChildren(const QModelIndex &parent) const
 {
-    bool children = !root_.empty();
+    bool children = true; // The empty QModelIndex always have one child, the root node.
     if (parent.isValid()) {
         children = !getTreeNode(parent)->children().empty();
     }
@@ -153,20 +184,27 @@ bool MainTreeModel::hasChildren(const QModelIndex &parent) const
     return children;
 }
 
+void MainTreeModel::dump()
+{
+    LOG_DEBUG << "Dumping the tree.";
+    LOG_DEBUG << "Root";
+    dumpLevel(1, root_.children());
+}
+
 void MainTreeModel::clear()
 {
-    root_.clear();
+    root_.children().clear();
     uuid_index_.clear();
 }
 
-MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &child) const
+MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &child)
 {
 
     if (child.hasParent()) {
         return child.parent()->children();
     }
 
-    return const_cast<decltype(root_)&>(root_);
+    return root_.children();
 }
 
 void MainTreeModel::addNode(const nextapp::pb::Node& node, const std::optional<QUuid> &parentUuid, const std::optional<QUuid> &beforeSibling)
@@ -186,8 +224,9 @@ void MainTreeModel::addNode(const nextapp::pb::Node& node, const std::optional<Q
         auto sibling = uuid_index_.value(*beforeSibling);
         assert(sibling);
         if (sibling) {
-            auto& list = sibling->hasParent() ? sibling->parent()->children() : root_;
-            auto new_node = make_shared<MainTreeModel::TreeNode>(std::move(node), sibling->parent());
+            assert(sibling->hasParent());
+            auto& list = sibling->parent()->children();
+            auto new_node = make_shared<MainTreeModel::TreeNode>(node, sibling->parent());
             uuid_index_[new_node->uuid()] = new_node.get();
             auto siblings_row = getRow(list, *beforeSibling);
             assert(siblings_row);
@@ -209,9 +248,9 @@ void MainTreeModel::addNode(const nextapp::pb::Node& node, const std::optional<Q
         return;
     }
 
-    auto new_node = make_shared<MainTreeModel::TreeNode>(std::move(node));
+    auto new_node = make_shared<MainTreeModel::TreeNode>(std::move(node), &root_);
     uuid_index_[new_node->uuid()] = new_node.get();
-    root_.emplaceBack(std::move(new_node));
+    root_.children().emplaceBack(std::move(new_node));
 }
 
 void MainTreeModel::moveNode(const QUuid &node,
@@ -236,11 +275,17 @@ void MainTreeModel::deleteNode(const QUuid &uuid)
 void MainTreeModel::setAllNodes(const nextapp::pb::NodeTree& tree)
 {
     clear();
-    copyTreeBranch(root_, tree.nodes(), uuid_index_);
+    copyTreeBranch(root_.children(), tree.nodes(), uuid_index_, &root_);
 }
 
 MainTreeModel::TreeNode::TreeNode(nextapp::pb::Node node, TreeNode *parent)
-    : uuid_{node.uuid()}, node_{std::move(node)}, parent_{parent} {}
+    : uuid_{node.uuid()}, node_{std::move(node)}, parent_{parent} {
+
+    auto name = node_.name();
+    if (!name.isEmpty() && !parent) {
+        LOG_WARN << "Impossible!";
+    }
+}
 
 QVariant MainTreeModel::TreeNode::data(int role)
 {

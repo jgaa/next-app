@@ -23,9 +23,9 @@ message ServerInfo {
 
 message Tenant {
     enum Kind {
-        super = 0;
-        regular = 1;
-        guest = 2;
+        Super = 0;
+        Regular = 1;
+        Guest = 2;
     }
 
     string uuid = 1;
@@ -38,8 +38,8 @@ message Tenant {
 
 message User {
     enum Kind {
-        super = 0;
-        regular = 1;
+        Super = 0;
+        Regular = 1;
     }
 
     string uuid = 1;
