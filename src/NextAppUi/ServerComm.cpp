@@ -31,7 +31,6 @@ void ServerComm::start()
     QGrpcChannelOptions channelOptions(QUrl(current_server_address_ , QUrl::StrictMode));
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
     LOG_INFO << "Using server at " << current_server_address_;
-#ifdef ASYNC_GRPC
     auto info_call = client_->GetServerInfo({});
     info_call->subscribe(this, [info_call, this]() {
             nextapp::pb::ServerInfo se = info_call->read<nextapp::pb::ServerInfo>();
@@ -62,31 +61,6 @@ void ServerComm::start()
 
     updates_ = client_->streamSubscribeToUpdates({});
     connect(updates_.get(), &QGrpcStream::messageReceived, this, &ServerComm::onUpdateMessage);
-
-#else
-    {
-        nextapp::pb::ServerInfo se;
-        auto res = client_->GetServerInfo({}, &se);
-        if (res == QGrpcStatus::Ok) {
-            assert(se.properties().front().key() == "version");
-            server_version_ = se.properties().front().value();
-            LOG_INFO << "Connected to server version " << server_version_;
-            emit versionChanged();
-        }
-    }
-
-    {
-        nextapp::pb::DayColorDefinitions dcd;
-        auto res = client_->GetDayColorDefinitions({}, &dcd);
-        if (res == QGrpcStatus::Ok) {
-            day_color_definitions_ = dcd;
-            LOG_DEBUG_N << "Received " << day_color_definitions_.dayColors().size()
-                        << " day color definitions.";
-            emit dayColorDefinitionsChanged();
-        }
-    }
-
-#endif
 }
 
 void ServerComm::stop()
@@ -203,6 +177,25 @@ void ServerComm::setDayColor(int year, int month, int day, QUuid colorUuid)
         });
 }
 
+void ServerComm::addNode(const nextapp::pb::Node &node)
+{
+    if (!grpc_is_ready_) {
+        grpc_queue_.push([this, node] {
+            addNode(node);
+        });
+    }
+
+    nextapp::pb::CreateNodeReq req;
+    req.setNode(node);
+
+    auto call = client_->CreateNode(req);
+    call->subscribe(this, [call, this]() {
+            call->read<nextapp::pb::Status>();
+        }, [this](QGrpcStatus status) {
+            LOG_ERROR_N << "Comm error: " << status.message();
+        });
+}
+
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Call to gRPC server failed: " << status.message();
@@ -232,6 +225,9 @@ void ServerComm::onUpdateMessage()
             }
             const auto& date = msg.dayColor().date();
             emit dayColorChanged(date.year(), date.month(), date.mday(), color);
+        }
+        if (msg.hasNode()) {
+            LOG_DEBUG << "Received notification about node " << msg.node().name();
         }
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();

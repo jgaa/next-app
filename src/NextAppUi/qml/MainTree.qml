@@ -34,7 +34,6 @@ Rectangle {
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: MainTreeModel
-            rootIndex: MainTreeModel.index(0,0,0)
 
             Component.onCompleted: treeView.toggleExpanded(0)
 

@@ -92,7 +92,20 @@ signals:
 
 public:
     QString nodeName(const QModelIndex& index) const;
-    Q_INVOKABLE nextapp::pb::Node node(const QModelIndex& ix);
+    Q_INVOKABLE nextapp::pb::Node *node(const QModelIndex& ix);
+    Q_INVOKABLE nextapp::pb::Node *emptyNode() {
+        return node({});
+    }
+
+    Q_INVOKABLE QModelIndex *emptyQModelIndex() {
+        return new QModelIndex{};
+    }
+
+    // Don't work. Node * is always empty
+    //Q_INVOKABLE void addNode(const nextapp::pb::Node *, QString parentUuid, QString currentUuid);
+
+    // The UI's interface to add a new node in the tree
+    Q_INVOKABLE void addNode(const QVariantMap args);
 
     QModelIndex index(int row, int column, const QModelIndex &parent) const;
     QModelIndex parent(const QModelIndex &child) const;

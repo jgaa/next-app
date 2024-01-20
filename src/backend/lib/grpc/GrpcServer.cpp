@@ -449,10 +449,88 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     });
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateNode(::grpc::CallbackServerContext *ctx, const pb::CreateNodeReq *req, pb::Status *reply)
+{
+    LOG_DEBUG << "Request to create node " << req->node().name() << " for tenant " << owner_.currentTenant(ctx);
+
+    return unaryHandler(ctx, req, reply,
+                        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+
+
+        const auto cuser = owner_.currentUser(ctx);
+        optional<string> parent = req->node().parent();
+        if (parent->empty()) {
+            parent.reset();
+        } else {
+            // Check that parent exists and is owned by the same user
+            auto res = co_await owner_.server().db().exec("SELECT id FROM node where id=? and user=?",
+                                                          *parent, cuser);
+            if (!res.has_value()) {
+                throw db_err{pb::Error::INVALID_PARENT, "Parent id must exist and be owned by the user"};
+            }
+        }
+
+        auto id = req->node().uuid();
+        if (id.empty()) {
+            id = newUuidStr();
+        }
+
+        bool active = true;
+        if (!req->node().has_active()) {
+            active = req->node().active();
+        }
+
+        enum Cols {
+            ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT
+        };
+
+        const auto res = co_await owner_.server().db().exec(
+            "INSERT INTO node (id, user, name, kind, descr, active, parent) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "RETURNING id, user, name, kind, descr, active, parent",
+               id,
+               cuser,
+               req->node().name(),
+               static_cast<int>(req->node().kind()),
+               req->node().descr(),
+               active,
+               parent);
+
+        if (!res.empty()) {
+            const auto& row = res.rows().front();
+            auto node = reply->mutable_node();
+            node->set_uuid(row.at(ID).as_string());
+            node->set_user(row.at(USER).as_string());
+            node->set_name(row.at(NAME).as_string());
+            const auto kind = row.at(KIND).as_int64();
+            if (pb::Node::Kind_IsValid(kind)) {
+                node->set_kind(static_cast<pb::Node::Kind>(kind));
+            }
+            if (!row.at(DESCR).is_null()) {
+                node->set_descr(row.at(DESCR).as_string());
+            }
+            node->set_active(row.at(ACTIVE).as_int64() != 0);
+            if (!row.at(PARENT).is_null()) {
+                node->set_parent(row.at(PARENT).as_string());
+            }
+            reply->set_error(pb::Error::OK);
+        } else {
+            assert(false); // Should get exception on error
+        }
+
+        // Notify clients
+        auto update = make_shared<pb::Update>();
+        auto node = update->mutable_node();
+        *node = reply->node();
+        update->set_op(pb::Update::Operation::Update_Operation_ADDED);
+        owner_.publish(update);
+
+        co_return;
+    });
+}
+
 GrpcServer::GrpcServer(Server &server)
     : server_{server}
 {
-
 }
 
 void GrpcServer::start() {

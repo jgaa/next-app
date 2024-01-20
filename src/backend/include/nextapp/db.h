@@ -1,5 +1,6 @@
 #pragma     once
 
+#include <iostream>
 #include <algorithm>
 #include <queue>
 #include <utility>
@@ -9,6 +10,20 @@
 
 #include "nextapp/config.h"
 #include "nextapp/logging.h"
+
+template <typename T>
+concept OptionalPrintable = requires {
+    std::is_same_v<std::remove_cv<T>, std::optional<typename T::value_type>>;
+    std::cout << *std::declval<T>();
+};
+
+template <OptionalPrintable T>
+std::ostream& operator << (std::ostream& out, const T& val) {
+    if (val) {
+        return out << *val;
+    }
+    return out << "(null)";
+}
 
 namespace nextapp::db {
 

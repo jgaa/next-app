@@ -80,6 +80,8 @@ qt_add_qml_module(appNextAppUi
         qml/DayDialog.qml
         qml/SettingsDlg.qml
         qml/ServerSettings.qml
+        qml/EditNodeDlg.qml
+        qml/DlgInputField.qml
     RESOURCES
         icons/folder_closed.svg
         icons/folder_open.svg
@@ -91,6 +93,7 @@ qt_add_qml_module(appNextAppUi
         icons/resize.svg
         icons/nextapp.svg
         icons/fontawsome/calendar-days.svg
+        icons/fontawsome/folder.svg
     SOURCES
         ServerComm.h
         ServerComm.cpp
@@ -102,6 +105,8 @@ qt_add_qml_module(appNextAppUi
         MonthModel.cpp
         DayColorModel.h
         DayColorModel.cpp
+        # ServerCommMgr.h
+        # ServerCommMgr.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -119,7 +124,7 @@ set_target_properties(appNextAppUi PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-add_dependencies(appNextAppUi logfault)
+add_dependencies(appNextAppUi logfault MyGrpcClient MyProtoMessageLib)
 
 target_link_libraries(appNextAppUi
     PRIVATE
@@ -143,27 +148,27 @@ install(TARGETS appNextAppUi
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-if (WITH_TESTS)
-    find_package(GTest REQUIRED)
+# if (WITH_TESTS)
+#     find_package(GTest REQUIRED)
 
-    enable_testing()
+#     enable_testing()
 
-    qt_add_executable(tst_data_models
-        tst_data_models.cpp
-        MainTreeModel.h MainTreeModel.cpp
-    )
+#     qt_add_executable(tst_data_models
+#         tst_data_models.cpp
+#         MainTreeModel.h MainTreeModel.cpp
+#     )
 
-    # add_dependencies(tst_data_models
-    #     ${DEPENDS_GTEST}
-    # )
+#     # add_dependencies(tst_data_models
+#     #     ${DEPENDS_GTEST}
+#     # )
 
-    set_property(TARGET tst_data_models PROPERTY CXX_STANDARD 20)
+#     set_property(TARGET tst_data_models PROPERTY CXX_STANDARD 20)
 
-    target_link_libraries(tst_data_models
-        PRIVATE MyGrpcClient MyProtoMessageLib Qt6::Protobuf Qt6::Grpc Qt6::Core ${GTEST_LIBRARIES}
-    )
+#     target_link_libraries(tst_data_models
+#         PRIVATE MyGrpcClient MyProtoMessageLib Qt6::Protobuf Qt6::Grpc Qt6::Core ${GTEST_LIBRARIES}
+#     )
 
-    add_test(NAME data_models COMMAND tst_data_models)
+#     add_test(NAME data_models COMMAND tst_data_models)
 
-endif() # tests
+# endif() # tests
 

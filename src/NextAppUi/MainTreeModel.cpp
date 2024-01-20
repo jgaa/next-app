@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <ranges>
 #include "MainTreeModel.h"
+#include "ServerComm.h"
 #include "logging.h"
 #include <stack>
 
@@ -316,14 +317,61 @@ QString MainTreeModel::nodeName(const QModelIndex &ix) const
     return {};
 }
 
-pb::Node MainTreeModel::node(const QModelIndex &ix)
+pb::Node *MainTreeModel::node(const QModelIndex &ix)
 {
     if (auto current = getTreeNode(ix)) {
-        return current->node();
+        return new pb::Node{current->node()};
     }
 
-    return {};
+    return new pb::Node{};
 }
+
+void MainTreeModel::addNode(QVariantMap args)
+{
+    nextapp::pb::Node node;
+
+    static const auto toKind = [](const QString& name) {
+        if (name == "folder") return nextapp::pb::Node::Kind::FOLDER;
+        if (name == "organization") return nextapp::pb::Node::Kind::ORGANIZATION;
+        if (name == "person") return nextapp::pb::Node::Kind::PERSON;
+        if (name == "project") return nextapp::pb::Node::Kind::PROJECT;
+        if (name == "task") return nextapp::pb::Node::Kind::TASK;
+        assert(false);
+        return nextapp::pb::Node::Kind::FOLDER;
+    };
+
+    for(const auto& [k, v] : args.asKeyValueRange()) {
+        if (k == "name") {
+            node.setName(v.toString());
+        }
+        if (k == "kind") {
+            node.setKind(toKind(v.toString()));
+        }
+        if (k == "parent") {
+            node.setParent(v.toString());
+        }
+    }
+
+    assert(!node.name().isEmpty());
+
+    // We will update the UI when we get the update notification
+    ServerComm::instance().addNode(node);
+}
+
+// void MainTreeModel::addNode(const nextapp::pb::Node *node, QString parentUuid, QString currentUuid)
+// {
+//     std::optional<QUuid> parent;
+//     std::optional<QUuid> beforeSibling;
+
+//     if (!parentUuid.isEmpty()) {
+//         parent = QUuid{parentUuid};
+//     }
+
+//     auto name = node->name();
+//     auto uuid = node->uuid();
+
+//     addNode(*node, parent, beforeSibling);
+// }
 
 MainTreeModel::ResetScope::ResetScope(MainTreeModel &model)
     : model_{model} {

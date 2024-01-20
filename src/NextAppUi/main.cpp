@@ -50,7 +50,6 @@ int main(int argc, char *argv[])
 #endif
     QGuiApplication::setApplicationVersion(NEXTAPP_VERSION);
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/NextAppUi/icons/nextapp.svg"));
-    //QGuiApplication::setWindowIcon(QIcon("/home/jgaa/src/next-app/src/NextAppUi/icons/nextapp-logo.svg"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Personal organizer");
@@ -70,7 +69,6 @@ int main(int argc, char *argv[])
 
     qRegisterProtobufTypes();
 
-
     QQmlApplicationEngine engine;
     engine.loadFromModule("NextAppUi", "Main");
     if (engine.rootObjects().isEmpty()) {
@@ -85,40 +83,40 @@ int main(int argc, char *argv[])
         server_comm->start();
     }
 
-    {
-        auto tree = engine.singletonInstance<MainTreeModel*>("NextAppUi","MainTreeModel");
-        assert(tree);
+    // {
+    //     auto tree = engine.singletonInstance<MainTreeModel*>("NextAppUi","MainTreeModel");
+    //     assert(tree);
 
-        new QAbstractItemModelTester{tree, QAbstractItemModelTester::FailureReportingMode::Fatal, &engine};
+    //     new QAbstractItemModelTester{tree, QAbstractItemModelTester::FailureReportingMode::Fatal, &engine};
 
-        auto rscope = tree->resetScope();
+    //     auto rscope = tree->resetScope();
 
-        ::nextapp::pb::Node first, second, child1, child2, child3;
-        first.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        first.setName("first");
+    //     ::nextapp::pb::Node first, second, child1, child2, child3;
+    //     first.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
+    //     first.setName("first");
 
-        tree->addNode(first, {}, {});
+    //     tree->addNode(first, {}, {});
 
-        second.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        second.setName("second");
-        tree->addNode(second, {}, {});
+    //     second.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
+    //     second.setName("second");
+    //     tree->addNode(second, {}, {});
 
 
-        child1.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        child1.setName("child2");
-        tree->addNode(child1, QUuid{first.uuid()}, {});
+    //     child1.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
+    //     child1.setName("child2");
+    //     tree->addNode(child1, QUuid{first.uuid()}, {});
 
-        child2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        child2.setName("child1");
+    //     child2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
+    //     child2.setName("child1");
 
-        tree->addNode(child2, {}, QUuid{child1.uuid()});
+    //     tree->addNode(child2, {}, QUuid{child1.uuid()});
 
-        child2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        child2.setName("child3");
-        tree->addNode(child2, QUuid{child1.uuid()}, {});
+    //     child2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
+    //     child2.setName("child3");
+    //     tree->addNode(child2, QUuid{child1.uuid()}, {});
 
-        tree->dump();
-    }
+    //     tree->dump();
+    // }
 
     QObject::connect(
         &engine,

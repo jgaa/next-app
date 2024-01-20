@@ -57,6 +57,7 @@ public:
     QString toDayColorName(const QUuid& uuid) const;
 
     void setDayColor(int year, int month, int day, QUuid colorUuid);
+    void addNode(const nextapp::pb::Node& node);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

@@ -14,18 +14,42 @@ def gd():
     stub = nextapp_pb2_grpc.NextappStub(channel)
     return {'stub': stub}
 
+def test_add_root_node(gd):
+    node = nextapp_pb2.Node(kind=nextapp_pb2.Node.Kind.FOLDER, name='first')
+    req = nextapp_pb2.CreateNodeReq(node=node)
+    status = gd['stub'].CreateNode(req)
+    assert status.error == nextapp_pb2.Error.OK
+    assert status.node.name == 'first'
+
+def test_add_child_node(gd):
+    node = nextapp_pb2.Node(kind=nextapp_pb2.Node.Kind.FOLDER, name='second')
+    req = nextapp_pb2.CreateNodeReq(node=node)
+    status = gd['stub'].CreateNode(req)
+    assert status.error == nextapp_pb2.Error.OK
+    assert status.node.name == 'second'
+
+    parent = status.node.uuid
+    assert parent != ""
+    print ("parent is {}".format(parent))
+    node = nextapp_pb2.Node(kind=nextapp_pb2.Node.Kind.FOLDER, name='child-of-second', parent=parent)
+    req = nextapp_pb2.CreateNodeReq(node=node)
+    status = gd['stub'].CreateNode(req)
+    assert status.error == nextapp_pb2.Error.OK
+    assert status.node.name == 'child-of-second'
+    assert status.node.parent == parent
+
 
 def test_add_tenant(gd):
-    template = nextapp_pb2.Tenant(kind=nextapp_pb2.Tenant.Kind.regular, name='dogs')
+    template = nextapp_pb2.Tenant(kind=nextapp_pb2.Tenant.Kind.Regular, name='dogs')
     req = nextapp_pb2.CreateTenantReq(tenant=template)
     status = gd['stub'].CreateTenant(req)
     assert status.error == nextapp_pb2.Error.OK
 
 
 def test_add_tenant_with_user(gd):
-    template = nextapp_pb2.Tenant(kind=nextapp_pb2.Tenant.Kind.regular, name='cats')
+    template = nextapp_pb2.Tenant(kind=nextapp_pb2.Tenant.Kind.Regular, name='cats')
     req = nextapp_pb2.CreateTenantReq(tenant=template)
-    req.users.extend([nextapp_pb2.User(kind=nextapp_pb2.User.Kind.regular, name='kitty', email='kitty@example.com')])
+    req.users.extend([nextapp_pb2.User(kind=nextapp_pb2.User.Kind.Regular, name='kitty', email='kitty@example.com')])
 
     status = gd['stub'].CreateTenant(req)
     assert status.error == nextapp_pb2.Error.OK

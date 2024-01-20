@@ -21,16 +21,16 @@ ApplicationWindow {
             Action {
                 text: qsTr("Settings")
                 shortcut: StandardKey.ZoomIn
-                onTriggered: {
-                    var component = Qt.createComponent("qml/SettingsDlg.qml");
-                    if (component.status !== Component.Ready) {
-                        if(component.status === Component.Error )
-                            console.debug("Error:"+ component.errorString() );
-                        return;
-                    }
-                    var dlg = component.createObject(root, {});
-                    dlg.open()
-                }
+                onTriggered: { openDialog("SettingsDlg.qml") }
+                //     var component = Qt.createComponent("qml/SettingsDlg.qml");
+                //     if (component.status !== Component.Ready) {
+                //         if(component.status === Component.Error )
+                //             console.debug("Error:"+ component.errorString() );
+                //         return;
+                //     }
+                //     var dlg = component.createObject(root, {});
+                //     dlg.open()
+                // }
             }
             // Action {
             //     text: qsTr("Decrease Font")
@@ -58,6 +58,28 @@ ApplicationWindow {
                 text: qsTr("Exit")
                 onTriggered: Qt.exit(0)
                 shortcut: StandardKey.Quit
+            }
+        }
+
+        MyMenu {
+            title: qsTr("Lists")
+
+            Action {
+                text: qsTr("New Folder")
+                onTriggered: { openDialog("EditNodeDlg.qml",
+                    {isNew: true, type: "folder", title: qsTr("New Folder")})}
+            }
+            Action {
+                text: qsTr("New Customer")
+                //onTriggered: editor.text.copy()
+            }
+            Action {
+                text: qsTr("New Project")
+                //onTriggered: editor.text.paste()
+            }
+            Action {
+                text: qsTr("New List")
+                //onTriggered: editor.text.selectAll()
             }
         }
 
@@ -194,5 +216,16 @@ ApplicationWindow {
     ResizeButton {
         visible: false
         resizeWindow: root
+    }
+
+    function openDialog(name, args) {
+        var component = Qt.createComponent("qml/" + name);
+        if (component.status !== Component.Ready) {
+            if(component.status === Component.Error )
+                console.debug("Error:"+ component.errorString() );
+            return;
+        }
+        var dlg = component.createObject(root, args);
+        dlg.open()
     }
 }
