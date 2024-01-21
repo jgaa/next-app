@@ -303,6 +303,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "ALTER TABLE tenant ADD COLUMN properties JSON",
         "ALTER TABLE user ADD COLUMN email varchar(255) NOT NULL default 'jgaa@jgaa.com'",
         "ALTER TABLE user ADD COLUMN properties JSON",
+        "ALTER TABLE node ADD COLUMN version INT NOT NULL DEFAULT 1",
         "CREATE UNIQUE INDEX ix_tenant_name ON tenant(name)",
         "CREATE UNIQUE INDEX ix_user_email ON user(email)",
         "ALTER TABLE tenant CHANGE kind kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'guest'",

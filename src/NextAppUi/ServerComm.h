@@ -58,6 +58,7 @@ public:
 
     void setDayColor(int year, int month, int day, QUuid colorUuid);
     void addNode(const nextapp::pb::Node& node);
+    void getNodeTree();
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
@@ -73,6 +74,9 @@ signals:
 
     // When an update-message is received from the server regarding a change for a color on a day
     void dayColorChanged(unsigned year, unsigned month, unsigned day, QUuid uuid);
+
+    // When we get the full node-list
+    void receivedNodeTree(const nextapp::pb::NodeTree& tree);
 
 private:
     void errorOccurred(const QGrpcStatus &status);

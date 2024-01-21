@@ -90,7 +90,19 @@ void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, i
 
 MainTreeModel::MainTreeModel(QObject *parent)
     : QAbstractItemModel{parent}
-{}
+{
+}
+
+void MainTreeModel::start()
+{
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::receivedNodeTree,
+            [this](const nextapp::pb::NodeTree& tree) {
+                setAllNodes(tree);
+            });
+
+    ServerComm::instance().getNodeTree();
+}
 
 QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent) const
 {
@@ -275,8 +287,9 @@ void MainTreeModel::deleteNode(const QUuid &uuid)
 
 void MainTreeModel::setAllNodes(const nextapp::pb::NodeTree& tree)
 {
+    ResetScope scope{*this};
     clear();
-    copyTreeBranch(root_.children(), tree.nodes(), uuid_index_, &root_);
+    copyTreeBranch(root_.children(), tree.root().children(), uuid_index_, &root_);
 }
 
 MainTreeModel::TreeNode::TreeNode(nextapp::pb::Node node, TreeNode *parent)

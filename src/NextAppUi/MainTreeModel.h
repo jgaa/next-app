@@ -88,6 +88,8 @@ public:
 
     explicit MainTreeModel(QObject *parent = nullptr);
 
+    void start();
+
 signals:
 
 public:

@@ -196,6 +196,25 @@ void ServerComm::addNode(const nextapp::pb::Node &node)
         });
 }
 
+void ServerComm::getNodeTree()
+{
+    if (!grpc_is_ready_) {
+        grpc_queue_.push([this] {
+            getNodeTree();
+        });
+    }
+
+    nextapp::pb::GetNodesReq req;
+
+    auto call = client_->GetNodes(req);
+    call->subscribe(this, [call, this]() {
+            auto tree = call->read<nextapp::pb::NodeTree>();
+            emit receivedNodeTree(tree);
+        }, [this](QGrpcStatus status) {
+            LOG_ERROR_N << "Comm error: " << status.message();
+        });
+}
+
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Call to gRPC server failed: " << status.message();

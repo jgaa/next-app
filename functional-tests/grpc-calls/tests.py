@@ -38,6 +38,35 @@ def test_add_child_node(gd):
     assert status.node.name == 'child-of-second'
     assert status.node.parent == parent
 
+def test_add_child_tree(gd):
+    name = "third"
+    node = nextapp_pb2.Node(kind=nextapp_pb2.Node.Kind.FOLDER, name=name)
+    req = nextapp_pb2.CreateNodeReq(node=node)
+    status = gd['stub'].CreateNode(req)
+    assert status.error == nextapp_pb2.Error.OK
+    assert status.node.name == name
+    parent = status.node.uuid
+    assert parent != ""
+
+    for i in range(20):
+        name = "third-{}".format(i)
+        node = nextapp_pb2.Node(kind=nextapp_pb2.Node.Kind.FOLDER, name=name, parent=parent)
+        req = nextapp_pb2.CreateNodeReq(node=node)
+        status = gd['stub'].CreateNode(req)
+        assert status.error == nextapp_pb2.Error.OK
+        assert status.node.name == name
+        assert status.node.parent == parent
+
+        iiparent = status.node.uuid
+        for ii in range(8):
+            name = "third-{}-{}".format(i, ii)
+            node = nextapp_pb2.Node(kind=nextapp_pb2.Node.Kind.FOLDER, name=name, parent=iiparent)
+            req = nextapp_pb2.CreateNodeReq(node=node)
+            status = gd['stub'].CreateNode(req)
+            assert status.error == nextapp_pb2.Error.OK
+            assert status.node.name == name
+            assert status.node.parent == iiparent
+
 
 def test_add_tenant(gd):
     template = nextapp_pb2.Tenant(kind=nextapp_pb2.Tenant.Kind.Regular, name='dogs')
@@ -56,6 +85,8 @@ def test_add_tenant_with_user(gd):
 
     # Todo. Fetch the user to validate
 
-
+def test_get_nodes(gd):
+    req = nextapp_pb2.GetNodesReq()
+    nodes = gd['stub'].GetNodes(req)
 
 

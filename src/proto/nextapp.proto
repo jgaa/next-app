@@ -70,6 +70,7 @@ message Node {
     string name = 5;
     Kind kind = 6;
     string descr = 7;
+    int64 version = 8;
 }
 
 message UpdateRequest {
@@ -86,22 +87,10 @@ message NodeTreeItem {
 }
 
 message NodeTree {
-    repeated NodeTreeItem nodes = 1;
+    NodeTreeItem root = 1; // The root-node has no valid Node object, but just children
 }
 
 message NodeUpdate {
-    enum Operation {
-        ADDED = 0;      // When a refresh is requested, all the existing nodes are 'ADDED'
-        DELETED = 1;    // For deleted nodes, only the id is set in the Node's body
-        UPDATED = 2;    // Some data was changed, but the node is at the same position on the tree
-        MOVED = 4;      // The node moved in the three. The data has not changed
-        ALL = 5;        // A full transfer. Sends a tree.
-    }
-
-    // The operation applies to all the nodes in the list
-    Operation op = 1;
-    // We send either nodes or a tree, but pb 3 'oneof' does not support 'repeated'
-    repeated Node nodes = 2;
     NodeTree tree = 3;
 }
 
@@ -199,6 +188,9 @@ message CreateNodeReq {
     Node node = 1;
 }
 
+message GetNodesReq {
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -213,7 +205,7 @@ message Status {
 
 service Nextapp {
     rpc GetServerInfo(Empty) returns (ServerInfo) {}
-    //rpc GetNodes(UpdateRequest) returns (stream NodeUpdate) {}
+    rpc GetNodes(GetNodesReq) returns (NodeTree) {}
     rpc NodeChanged(NodeUpdate) returns (Status) {}
     rpc GetDayColorDefinitions(Empty) returns (DayColorDefinitions) {}
     rpc GetDay(Date) returns (CompleteDay) {}

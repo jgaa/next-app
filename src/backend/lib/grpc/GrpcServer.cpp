@@ -1,4 +1,6 @@
 
+#include <map>
+
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/json.hpp>
@@ -85,6 +87,32 @@ void setError(pb::Status& status, pb::Error err, const std::string& message = {}
 
     LOG_DEBUG << "Setting error " << status.message() << " on request.";
 }
+
+struct ToNode {
+    enum Cols {
+        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION
+    };
+
+    static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version";
+
+    static void assign(const boost::mysql::row_view& row, pb::Node& node) {
+        node.set_uuid(row.at(ID).as_string());
+        node.set_user(row.at(USER).as_string());
+        node.set_name(row.at(NAME).as_string());
+        node.set_version(row.at(VERSION).as_int64());
+        const auto kind = row.at(KIND).as_int64();
+        if (pb::Node::Kind_IsValid(kind)) {
+            node.set_kind(static_cast<pb::Node::Kind>(kind));
+        }
+        if (!row.at(DESCR).is_null()) {
+            node.set_descr(row.at(DESCR).as_string());
+        }
+        node.set_active(row.at(ACTIVE).as_int64() != 0);
+        if (!row.at(PARENT).is_null()) {
+            node.set_parent(row.at(PARENT).as_string());
+        }
+    }
+};
 
 } // anon ns
 
@@ -481,12 +509,12 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         }
 
         enum Cols {
-            ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT
+            ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION
         };
 
-        const auto res = co_await owner_.server().db().exec(
+        const auto res = co_await owner_.server().db().exec(format(
             "INSERT INTO node (id, user, name, kind, descr, active, parent) VALUES (?, ?, ?, ?, ?, ?, ?) "
-            "RETURNING id, user, name, kind, descr, active, parent",
+            "RETURNING {}", ToNode::selectCols),
                id,
                cuser,
                req->node().name(),
@@ -496,22 +524,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                parent);
 
         if (!res.empty()) {
-            const auto& row = res.rows().front();
             auto node = reply->mutable_node();
-            node->set_uuid(row.at(ID).as_string());
-            node->set_user(row.at(USER).as_string());
-            node->set_name(row.at(NAME).as_string());
-            const auto kind = row.at(KIND).as_int64();
-            if (pb::Node::Kind_IsValid(kind)) {
-                node->set_kind(static_cast<pb::Node::Kind>(kind));
-            }
-            if (!row.at(DESCR).is_null()) {
-                node->set_descr(row.at(DESCR).as_string());
-            }
-            node->set_active(row.at(ACTIVE).as_int64() != 0);
-            if (!row.at(PARENT).is_null()) {
-                node->set_parent(row.at(PARENT).as_string());
-            }
+            ToNode::assign(res.rows().front(), *node);
             reply->set_error(pb::Error::OK);
         } else {
             assert(false); // Should get exception on error
@@ -523,6 +537,70 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         *node = reply->node();
         update->set_op(pb::Update::Operation::Update_Operation_ADDED);
         owner_.publish(update);
+
+        co_return;
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetNodes(::grpc::CallbackServerContext *ctx,
+                                                              const pb::GetNodesReq *req,
+                                                              pb::NodeTree *reply)
+{
+    return unaryHandler(ctx, req, reply,
+    [this, req, ctx] (pb::NodeTree *reply) -> boost::asio::awaitable<void> {
+        const auto cuser = owner_.currentUser(ctx);
+
+        const auto res = co_await owner_.server().db().exec(format(R"(
+        WITH RECURSIVE tree AS (
+          SELECT * FROM node WHERE user=?
+          UNION
+          SELECT n.* FROM node AS n, tree AS p
+          WHERE n.parent = p.id or n.parent IS NULL
+        )
+        SELECT {} from tree ORDER BY parent, name)", ToNode::selectCols)
+        , cuser);
+
+        std::deque<pb::NodeTreeItem> pending;
+        map<string, pb::NodeTreeItem *> known;
+
+        // Root level
+        known[""] = reply->mutable_root();
+
+        if (res.has_value()) {
+            for(const auto& row : res.rows()) {
+                pb::Node n;
+                ToNode::assign(row, n);
+                const auto parent = n.parent();
+
+                if (auto it = known.find(parent); it != known.end()) {
+                    auto child = it->second->add_children();
+                    child->mutable_node()->Swap(&n);
+                    known[child->node().uuid()] = child;
+                } else {
+                    // Track it for later
+                    const auto id = n.uuid();
+                    pending.push_back({});
+                    auto child = &pending.back();
+                    child->mutable_node()->Swap(&n);
+                    known[child->node().uuid()] = child;
+                }
+            }
+        }
+
+        // By now, all the parents are in the known list.
+        // We can safely move all the pending items to the child lists of the parents
+        for(auto& v : pending) {
+            if (auto it = known.find(v.node().parent()); it != known.end()) {
+                auto id = v.node().uuid();
+                auto& parent = *it->second;
+                parent.add_children()->Swap(&v);
+                // known lookup must point to the node's new memory location
+                assert(parent.children().size() > 0);
+                known[id] = &parent.mutable_children()->at(parent.children().size()-1);
+            } else {
+                assert(false);
+            }
+        }
 
         co_return;
     });
@@ -591,7 +669,6 @@ void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
         }
     }
 }
-
 
 
 } // ns
