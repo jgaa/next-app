@@ -38,7 +38,7 @@ QUuid DayColorModel::getUuid(int index)
         return {};
     }
 
-    if (index < 1 || index >= daycolors_.size()) {
+    if (index < 1 || index > daycolors_.size()) {
         LOG_WARN_N << "Index out of bound: " << index;
         return {};
     }

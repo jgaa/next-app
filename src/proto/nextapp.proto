@@ -10,6 +10,7 @@ enum Error {
     ALREADY_EXIST = 4;
     INVALID_PARENT = 5;
     DATABASE_UPDATE_FAILED = 6;
+    DATABASE_REQUEST_FAILED = 7;
 }
 
 message KeyValue {

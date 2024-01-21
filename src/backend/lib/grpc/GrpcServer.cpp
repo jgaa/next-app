@@ -557,8 +557,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
           SELECT n.* FROM node AS n, tree AS p
           WHERE n.parent = p.id or n.parent IS NULL
         )
-        SELECT {} from tree ORDER BY parent, name)", ToNode::selectCols)
-        , cuser);
+        SELECT {} from tree ORDER BY parent, name)", ToNode::selectCols), cuser);
 
         std::deque<pb::NodeTreeItem> pending;
         map<string, pb::NodeTreeItem *> known;

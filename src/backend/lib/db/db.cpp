@@ -89,94 +89,31 @@ void Db::init() {
         throw runtime_error{"Failed to resolve database hostname"};
     }
 
-    auto user = dbUser();
-    auto passwd = dbPasswd();
-
-    mysql::handshake_params params(
-        user,
-        passwd,
-        config_.database
-        );
-
     LOG_DEBUG_N << "Connecting to mysql compatible database at "
                 << config_.host << ':' << config_.port
                 << " as user " << dbUser() << " with database "
                 << config_.database;
 
-    auto && connect = [&](auto iteration) {
-        mysql::tcp_connection conn{ctx_.get_executor()};
-        std::string why;
-        unsigned retries = 0;
-
-        for(auto ep : endpoints) {
-            LOG_TRACE_N << "New db connection to " << ep.endpoint();
-again:
-            if (ctx_.stopped()) {
-                LOG_INFO << "Server is shutting down. Aborting connect to the database.";
-                throw aborted{"Server is shutting down"};
-            }
-            try {
-                conn.connect(ep.endpoint(), params);
-                return std::move(conn);
-            } catch (const boost::mysql::error_with_diagnostics& ex) {
-                if (ex.code() == boost::system::errc::connection_refused
-                    || ex.code() == boost::asio::error::eof) {
-                    if (iteration == 0 && ++retries <= config_.retry_connect) {
-                        LOG_INFO << "Failed to connect to the database server. Will retry "
-                                 << retries << "/" << config_.retry_connect;
-                        boost::asio::steady_timer timer(ctx_);
-                        boost::system::error_code ec;
-                        timer.expires_after(std::chrono::milliseconds{config_.retry_connect_delay_ms});
-                        timer.wait(ec);
-                        goto again;
-                    }
-                }
-
-                retries = 0;
-                LOG_DEBUG_N << LogEvent::LE_DATABASE_FAILED_TO_CONNECT
-                            << "Failed to connect to to mysql compatible database at "
-                            << ep.endpoint()
-                            << " as user " << dbUser() << " with database "
-                            << config_.database
-                            << ": " << ex.what();
-                if (why.empty()) {
-                    why = ex.what();
-                }
-            } catch (const std::exception& ex) {
-                LOG_DEBUG_N << LogEvent::LE_DATABASE_FAILED_TO_CONNECT
-                          << "Failed to connect to to mysql compatible database at "
-                          << ep.endpoint()
-                          << " as user " << dbUser() << " with database "
-                          << config_.database
-                          << ": " << ex.what();
-
-                if (why.empty()) {
-                    why = ex.what();
-                }
-            }
-        }
-
-        LOG_ERROR << LogEvent::LE_DATABASE_FAILED_TO_CONNECT
-                  << "Failed to connect to to mysql compatible database at "
-                  << config_.host << ':' << config_.port
-                  << " as user " << dbUser() << " with database "
-                  << config_.database
-                  << ": " << why;
-
-        throw runtime_error{"Failed to connect to database"};
-    };
 
     connections_.reserve(config_.max_connections);
 
-    for(size_t i = 0; i < config_.max_connections; ++i) {
-        connections_.emplace_back(connect(i));
-    }
+
+    auto future = asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        for(size_t i = 0; i < config_.max_connections; ++i) {
+            mysql::tcp_connection conn{ctx_.get_executor()};
+            co_await connect(conn, endpoints, 0, true);
+            connections_.emplace_back(std::move(conn));
+            co_return;
+        }
+        }, boost::asio::use_future);
+
+    future.get();
 
     static constexpr auto one_hundred_years = 8766 * 100;
     semaphore_.expires_from_now(boost::posix_time::hours(one_hundred_years));
 }
 
-void Db::handleError(const boost::system::error_code &ec, boost::mysql::diagnostics &diag)
+bool Db::handleError(const boost::system::error_code &ec, boost::mysql::diagnostics &diag)
 {
     if (ec) {
         LOG_DEBUG << "Statement failed with error:  " << ec.message()
@@ -186,9 +123,14 @@ void Db::handleError(const boost::system::error_code &ec, boost::mysql::diagnost
 
         switch(ec.value()) {
             case static_cast<int>(mysql::common_server_errc::er_dup_entry):
-            throw db_err{pb::Error::ALREADY_EXIST, ec.message()};
+                throw db_err{pb::Error::ALREADY_EXIST, ec.message()};
+            case boost::asio::error::eof:
+                return false;
+            default:
+                throw db_err{pb::Error::DATABASE_REQUEST_FAILED, ec.message()};
         }
     }
+    return true;
 }
 
 void Db::release(Handle &h) noexcept {
@@ -214,6 +156,23 @@ string Db::dbPasswd() const
     }
 
     return config_.password;
+}
+
+boost::asio::awaitable<void> Db::Handle::reconnect()
+{
+    asio::ip::tcp::resolver resolver(parent_->ctx_.get_executor());
+    auto endpoints = resolver.resolve(parent_->config_.host,
+                                      std::to_string(parent_->config_.port));
+
+    if (endpoints.empty()) {
+        LOG_ERROR << LogEvent::LE_DATABASE_FAILED_TO_RESOLVE
+                  << "Failed to resolve hostname "
+                  << parent_->config_.host << " tor the database server: ";
+        throw runtime_error{"Failed to resolve database hostname"};
+    }
+
+    co_await parent_->connect(connection_->connection_, endpoints, 0, true);
+    co_return;
 }
 
 } // ns

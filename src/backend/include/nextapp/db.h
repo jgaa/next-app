@@ -10,6 +10,7 @@
 
 #include "nextapp/config.h"
 #include "nextapp/logging.h"
+#include "nextapp/errors.h"
 
 template <typename T>
 concept OptionalPrintable = requires {
@@ -40,16 +41,6 @@ constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitabl
 
 class Db {
 public:
-    // enum class DbPrecence {
-    //     OK,
-    //     LOWER_VERSION,
-    //     NO_SERVER,
-    //     NO_DATABASE,
-    //     UNKNOWN_DB_VERSION // Database is for a newer version of nextappd
-    // };
-
-    // static DbPrecence checkDbPrecence(const DbConfig& config);
-
     Db(boost::asio::io_context& ctx, const DbConfig& config)
         : ctx_{ctx}, semaphore_{ctx}, config_{config}
     {
@@ -114,6 +105,8 @@ public:
 
         Db *parent_{};
         Connection *connection_{};
+
+        boost::asio::awaitable<void> reconnect();
     };
 
     [[nodiscard]] boost::asio::awaitable<Handle> getConnection(bool throwOnEmpty = true);
@@ -124,9 +117,13 @@ public:
         auto conn = co_await getConnection();
         logQuery("static", query);
         results res;
-        co_await conn.connection().async_execute(query,
-                                                 res,
-                                                 boost::asio::use_awaitable);
+        boost::mysql::diagnostics diag;
+        auto [ec] = co_await conn.connection().async_execute(query,
+                                                             res, diag,
+                                                             tuple_awaitable);
+        if (ec) {
+            handleError(ec, diag);
+        }
         co_return std::move(res);
     }
 
@@ -137,14 +134,25 @@ public:
         results res;
         boost::mysql::diagnostics diag;
 
+        again:
+
         if constexpr (sizeof...(argsT) == 0) {
             auto [ec] = co_await conn.connection().async_execute(query, res, diag, tuple_awaitable);
-            handleError(ec, diag);
+            if (!handleError(ec, diag)) {
+                co_await conn.reconnect();
+                goto again;
+            }
         } else {
             auto [ec, stmt] = co_await conn.connection().async_prepare_statement(query, diag, tuple_awaitable);
-            handleError(ec, diag);
+            if (!handleError(ec, diag)) {
+                co_await conn.reconnect();
+                goto again;
+            }
             std::tie(ec) = co_await conn.connection().async_execute(stmt.bind(args...), res, diag, tuple_awaitable);\
-            handleError(ec, diag);
+            if (!handleError(ec, diag)) {
+                co_await conn.reconnect();
+                goto again;
+            }
         }
 
         co_return std::move(res);
@@ -154,7 +162,76 @@ public:
 
 private:
     void init();
-    void handleError(const boost::system::error_code& ec, boost::mysql::diagnostics& diag);
+
+    template <typename epT, typename connT = boost::mysql::tcp_connection>
+    boost::asio::awaitable<void> connect(connT& conn, epT& endpoints, unsigned iteration, bool retry) {
+
+        const auto user = dbUser();
+        const auto pwd = dbPasswd();
+        boost::mysql::handshake_params params(
+            user,
+            pwd,
+            config_.database
+            );
+
+        std::string why;
+        unsigned retries = 0;
+
+        for(auto ep : endpoints) {
+            LOG_TRACE_N << "New db connection to " << ep.endpoint();
+        again:
+            if (ctx_.stopped()) {
+                LOG_INFO << "Server is shutting down. Aborting connect to the database.";
+                throw aborted{"Server is shutting down"};
+            }
+
+            boost::mysql::diagnostics diag;
+            boost::system::error_code ec;
+            std::tie(ec) = co_await conn.async_connect(ep.endpoint(), params, diag, tuple_awaitable);
+            if (ec) {
+                if (ec == boost::system::errc::connection_refused
+                    || ec == boost::asio::error::broken_pipe
+                    || ec == boost::asio::error::eof) {
+                    if (retry && iteration == 0 && ++retries <= config_.retry_connect) {
+                        LOG_INFO << "Failed to connect to the database server. Will retry "
+                                 << retries << "/" << config_.retry_connect;
+                        boost::asio::steady_timer timer(ctx_);
+                        boost::system::error_code ec;
+                        timer.expires_after(std::chrono::milliseconds{config_.retry_connect_delay_ms});
+                        timer.wait(ec);
+                        goto again;
+                    }
+                }
+
+                retries = 0;
+                LOG_DEBUG_N << ::nextapp::logging::LogEvent::LE_DATABASE_FAILED_TO_CONNECT
+                            << "Failed to connect to to mysql compatible database at "
+                            << ep.endpoint()
+                            << " as user " << dbUser() << " with database "
+                            << config_.database
+                            << ": " << ec.message();
+                if (why.empty()) {
+                    why = ec.message();
+                }
+
+            } else {
+                //co_return std::move(conn);
+                co_return;
+            }
+        }
+
+        LOG_ERROR << ::nextapp::logging::LogEvent::LE_DATABASE_FAILED_TO_CONNECT
+                  << "Failed to connect to to mysql compatible database at "
+                  << config_.host << ':' << config_.port
+                  << " as user " << dbUser() << " with database "
+                  << config_.database
+                  << ": " << why;
+
+        throw std::runtime_error{"Failed to connect to database"};
+    }
+
+    // If it returns false, connection to server is closed
+    bool handleError(const boost::system::error_code& ec, boost::mysql::diagnostics& diag);
     template <typename... T>
     std::string logArgs(const T... args) {
         if constexpr (sizeof...(T)) {

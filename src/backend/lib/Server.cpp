@@ -285,7 +285,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             ('b6abb366-a95d-11ee-b079-ef6165b96e9b', 'Awsome Day!', 'limegreen', 5),
             ('bb8aee74-a95d-11ee-b235-7f42126afd6d', 'Hollyday / Vacation / Day off', 'skyblue', 0),
             ('c0f7cb16-a95d-11ee-9da5-b3f4aed7f930', 'Failed Day', 'orange', 0),
-            ('c5dfe53c-a95d-11ee-9465-73e10d6c4ad9', 'Disastorous Day!', 'violet', 0),
+            ('c5dfe53c-a95d-11ee-9465-73e10d6c4ad9', 'Disastorous Day!', 'fuchsia', 0),
             ('ca8a5edc-a95d-11ee-bae3-7b924c4b0414', 'Sick', 'lightseagreen', 0))",
 
         R"(CREATE TABLE day (
@@ -304,6 +304,10 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "ALTER TABLE user ADD COLUMN email varchar(255) NOT NULL default 'jgaa@jgaa.com'",
         "ALTER TABLE user ADD COLUMN properties JSON",
         "ALTER TABLE node ADD COLUMN version INT NOT NULL DEFAULT 1",
+        "UPDATE day_colors SET color = 'hotpink' WHERE id = 'c0f7cb16-a95d-11ee-9da5-b3f4aed7f930'",
+        "UPDATE day_colors SET color = 'fuchsia' WHERE id = 'c5dfe53c-a95d-11ee-9465-73e10d6c4ad9'",
+        "UPDATE day_colors SET color = 'yellow' WHERE id = '965864e2-a95d-11ee-960b-87185e67f3da'",
+        "UPDATE day_colors SET color = 'orangered' WHERE id = 'ca8a5edc-a95d-11ee-bae3-7b924c4b0414'",
         "CREATE UNIQUE INDEX ix_tenant_name ON tenant(name)",
         "CREATE UNIQUE INDEX ix_user_email ON user(email)",
         "ALTER TABLE tenant CHANGE kind kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'guest'",
