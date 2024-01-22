@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(NextAppUi VERSION 0.1 LANGUAGES CXX)
+project(NextAppUi VERSION 0.2 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -148,6 +148,13 @@ install(TARGETS appNextAppUi
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+qt_generate_deploy_app_script(
+    TARGET appNextAppUi
+    OUTPUT_SCRIPT deploy_script
+
+)
+install(SCRIPT ${deploy_script})
+
 # if (WITH_TESTS)
 #     find_package(GTest REQUIRED)
 
@@ -171,4 +178,3 @@ install(TARGETS appNextAppUi
 #     add_test(NAME data_models COMMAND tst_data_models)
 
 # endif() # tests
-
