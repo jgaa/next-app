@@ -76,11 +76,12 @@ boost::asio::awaitable<void> Db::close()
     }
 }
 
-void Db::init() {
+boost::asio::awaitable<void> Db::init() {
 
     asio::ip::tcp::resolver resolver(ctx_.get_executor());
-    auto endpoints = resolver.resolve(config_.host,
-                                      std::to_string(config_.port));
+    auto endpoints = co_await resolver.async_resolve(config_.host,
+                                                     std::to_string(config_.port),
+                                                     boost::asio::use_awaitable);
 
     if (endpoints.empty()) {
         LOG_ERROR << LogEvent::LE_DATABASE_FAILED_TO_RESOLVE
@@ -98,19 +99,17 @@ void Db::init() {
     connections_.reserve(config_.max_connections);
 
 
-    auto future = asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-        for(size_t i = 0; i < config_.max_connections; ++i) {
-            mysql::tcp_connection conn{ctx_.get_executor()};
-            co_await connect(conn, endpoints, 0, true);
-            connections_.emplace_back(std::move(conn));
-            co_return;
-        }
-        }, boost::asio::use_future);
-
-    future.get();
+    for(size_t i = 0; i < config_.max_connections; ++i) {
+        mysql::tcp_connection conn{ctx_.get_executor()};
+        co_await connect(conn, endpoints, 0, true);
+        connections_.emplace_back(std::move(conn));
+        co_return;
+    }
 
     static constexpr auto one_hundred_years = 8766 * 100;
     semaphore_.expires_from_now(boost::posix_time::hours(one_hundred_years));
+
+    co_return;
 }
 
 bool Db::handleError(const boost::system::error_code &ec, boost::mysql::diagnostics &diag)
@@ -124,8 +123,11 @@ bool Db::handleError(const boost::system::error_code &ec, boost::mysql::diagnost
         switch(ec.value()) {
             case static_cast<int>(mysql::common_server_errc::er_dup_entry):
                 throw db_err{pb::Error::ALREADY_EXIST, ec.message()};
+
             case boost::asio::error::eof:
-                return false;
+            case boost::asio::error::broken_pipe:
+                return false; // retry
+
             default:
                 throw db_err{pb::Error::DATABASE_REQUEST_FAILED, ec.message()};
         }

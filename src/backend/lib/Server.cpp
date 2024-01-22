@@ -46,6 +46,7 @@ void Server::init()
 void Server::run()
 {
     asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+            co_await db().init();
             if (!co_await checkDb()) {
                 LOG_ERROR << "The database version is wrong. Please upgrade before starting the server.";
                 stop();
@@ -163,7 +164,7 @@ boost::asio::awaitable<void> Server::createDb(const BootstrapOptions& opts)
 
     co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
 
-        //boost::mysql::results result;
+        co_await db.init();
 
         if (opts.drop_old_db) {
             LOG_TRACE_N << "Dropping database " << config_.db.database ;
@@ -327,8 +328,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     db::Db db{ctx_, cfg};
 
     co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-
-        LOG_TRACE << "in coro...";
+        co_await db.init();
 
         // Here we will run all SQL queries for upgrading from the specified version to the current version.
         auto relevant = ranges::drop_view(versions, version);
@@ -340,7 +340,6 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         co_await db.close();
 
     }, asio::use_awaitable);
-
 }
 
 boost::asio::awaitable<void> Server::startGrpcService()

@@ -44,7 +44,6 @@ public:
     Db(boost::asio::io_context& ctx, const DbConfig& config)
         : ctx_{ctx}, semaphore_{ctx}, config_{config}
     {
-        init();
     }
 
     Db(const Db&) = delete;
@@ -158,10 +157,10 @@ public:
         co_return std::move(res);
     }
 
+    boost::asio::awaitable<void> init();
     boost::asio::awaitable<void> close();
 
 private:
-    void init();
 
     template <typename epT, typename connT = boost::mysql::tcp_connection>
     boost::asio::awaitable<void> connect(connT& conn, epT& endpoints, unsigned iteration, bool retry) {
