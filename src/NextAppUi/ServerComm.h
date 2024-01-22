@@ -78,6 +78,9 @@ signals:
     // When we get the full node-list
     void receivedNodeTree(const nextapp::pb::NodeTree& tree);
 
+    // Triggered on all updates from the server
+    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+
 private:
     void errorOccurred(const QGrpcStatus &status);
     void onServerInfo(nextapp::pb::ServerInfo info);

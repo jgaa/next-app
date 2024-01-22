@@ -234,20 +234,19 @@ void ServerComm::onUpdateMessage()
 {
     LOG_TRACE_N << "Received an update...";
     try {
-        auto msg = updates_->read<nextapp::pb::Update>();
-        LOG_TRACE << "Got update: " << msg.when().seconds();
-        if (msg.hasDayColor()) {
-            LOG_DEBUG << "Day color is " << msg.dayColor().color();
+        auto msg = make_shared<nextapp::pb::Update>(updates_->read<nextapp::pb::Update>());
+        LOG_TRACE << "Got update: " << msg->when().seconds();
+        if (msg->hasDayColor()) {
+            LOG_DEBUG << "Day color is " << msg->dayColor().color();
             QUuid color;
-            if (!msg.dayColor().color().isEmpty()) {
-                color = QUuid{msg.dayColor().color()};
+            if (!msg->dayColor().color().isEmpty()) {
+                color = QUuid{msg->dayColor().color()};
             }
-            const auto& date = msg.dayColor().date();
+            const auto& date = msg->dayColor().date();
             emit dayColorChanged(date.year(), date.month(), date.mday(), color);
         }
-        if (msg.hasNode()) {
-            LOG_DEBUG << "Received notification about node " << msg.node().name();
-        }
+
+        emit onUpdate(std::move(msg));
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();
     }

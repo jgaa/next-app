@@ -104,26 +104,16 @@ void Server::initCtx(size_t numThreads)
 void Server::runIoThread(const size_t id)
 {
     LOG_DEBUG_N << "starting io-thread " << id;
-    try {
-        ++running_io_threads_;
-        ctx_.run();
-        --running_io_threads_;
-    } catch (const std::exception& ex) {
-        --running_io_threads_;
-        LOG_ERROR << LogEvent::LE_IOTHREAD_THREW
-                  << "Caught exception from IO therad #" << id
-                  << ": " << ex.what();
-
-        LOG_ERROR << LogEvent::LE_IOTHREAD_THREW
-                  << "I have " << running_io_threads_
-                  << " remaining running IO threads.";
-
-        if (running_io_threads_ <= 2) {
+    while(!ctx_.stopped()) {
+        try {
+            ++running_io_threads_;
+            ctx_.run();
+            --running_io_threads_;
+        } catch (const std::exception& ex) {
+            --running_io_threads_;
             LOG_ERROR << LogEvent::LE_IOTHREAD_THREW
-                      << "*** FATAL **** Lower treashold for required IO threads is reached. Aborting.";
-
-            // TODO: Shutdown, don't abort. terminate() only if all the IO threads are gone.
-            std::terminate();
+                      << "Caught exception from IO therad #" << id
+                      << ": " << ex.what();
         }
     }
 

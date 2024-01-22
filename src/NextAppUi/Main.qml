@@ -62,12 +62,21 @@ ApplicationWindow {
         }
 
         MyMenu {
+            enabled: sidebar.currentMainItem == 1
             title: qsTr("Lists")
 
             Action {
                 text: qsTr("New Folder")
-                onTriggered: { openDialog("EditNodeDlg.qml",
-                    {isNew: true, type: "folder", title: qsTr("New Folder")})}
+                onTriggered: {
+
+                    console.log("parent: ", mainTree.currentIndex);
+
+                    openDialog("EditNodeDlg.qml", {
+                    isNew: true,
+                    parentIx: mainTree.currentIndex,
+                    type: "folder",
+                    title: qsTr("New Folder")
+                })}
             }
             Action {
                 text: qsTr("New Customer")
@@ -182,7 +191,7 @@ ApplicationWindow {
 
                             // Shows the files on the file system.
                             MainTree {
-                                id: fileSystemView
+                                id: mainTree
                                 color: Colors.surface1
                                 //onFileClicked: path => root.currentFilePath = path
                             }

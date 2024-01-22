@@ -11,6 +11,7 @@ Dialog {
     property string type: "folder"
     property bool isNew: true
     property var node: null
+    property var parentIx: null
     property string parentUuid: ""
     property string currentUuid: ""
 
@@ -81,7 +82,8 @@ Dialog {
 
         var args = {
             name: name.text,
-            kind: type
+            kind: type,
+            parent: MainTreeModel.uuidFromModelIndex(parentIx)
         }
 
         MainTreeModel.addNode(args)

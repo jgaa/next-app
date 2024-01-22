@@ -108,6 +108,7 @@ public:
 
     // The UI's interface to add a new node in the tree
     Q_INVOKABLE void addNode(const QVariantMap args);
+    Q_INVOKABLE QString uuidFromModelIndex(const QModelIndex ix);
 
     QModelIndex index(int row, int column, const QModelIndex &parent) const;
     QModelIndex parent(const QModelIndex &child) const;
@@ -138,6 +139,8 @@ public slots:
     // Deletes any existing nodes and copys the tree from 'tree'
     void setAllNodes(const nextapp::pb::NodeTree& tree);
 
+    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+
     void clear();
 
     std::unique_ptr<ResetScope> resetScope() {
@@ -145,9 +148,15 @@ public slots:
     }
 
 private:
+    void addNode(TreeNode *parent, const nextapp::pb::Node& node);
+    QModelIndex getIndex(TreeNode *node);
+    int getInsertRow(const TreeNode *parent, const nextapp::pb::Node& node);
+    void pocessUpdate(const nextapp::pb::Update& update);
+    TreeNode *lookupTreeNode(const QUuid& uuid);
+
     TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child);
-
-
     TreeNode root_;
     QMap<QUuid, TreeNode*> uuid_index_;
+    std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
+    bool has_initial_tree_ = false;
 };

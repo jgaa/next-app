@@ -83,6 +83,10 @@ void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, i
         auto& current = list.back();
         copyTreeBranch(current->children(), node.children(), index, current.get());
     }
+
+    std::ranges::sort(list, [](const auto& left, const auto& right) {
+        return left->node().name().compare(right->node().name(), Qt::CaseInsensitive) < 0;
+    });
 }
 
 } // anon ns
@@ -97,9 +101,14 @@ void MainTreeModel::start()
 {
     connect(std::addressof(ServerComm::instance()),
             &ServerComm::receivedNodeTree,
-            [this](const nextapp::pb::NodeTree& tree) {
-                setAllNodes(tree);
-            });
+            this,
+            &MainTreeModel::setAllNodes);
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::onUpdate,
+            this,
+            &MainTreeModel::onUpdate);
+
 
     ServerComm::instance().getNodeTree();
 }
@@ -210,6 +219,111 @@ void MainTreeModel::clear()
     uuid_index_.clear();
 }
 
+void MainTreeModel::addNode(TreeNode *parent, const nextapp::pb::Node &node)
+{
+    const int row = getInsertRow(parent, node);
+    beginInsertRows(getIndex(parent), row, row);
+    auto new_node = make_shared<TreeNode>(node, parent);
+    uuid_index_[new_node->uuid()] = new_node.get();
+    if (row >= parent->children().size()) {
+        parent->children().append(new_node);
+    } else {
+        parent->children().insert(row, new_node);
+    }
+    endInsertRows();
+}
+
+QModelIndex MainTreeModel::getIndex(TreeNode *node)
+{
+    assert(node);
+
+    if (node == &root_) {
+        return createIndex(0, 0, &root_);
+    }
+
+    auto& list = const_cast<MainTreeModel *>(this)->getListFromChild(*node);
+    const auto row = getRow(list, node->uuid());
+    if (row) {
+        return createIndex(*row, 0, node);
+    }
+
+    assert(false);
+    return {};
+}
+
+// We insert in sorted order.
+int MainTreeModel::getInsertRow(const TreeNode *parent, const nextapp::pb::Node &node)
+{
+    assert(parent);
+    int row = 0;
+    for(const auto& n : parent->children()) {
+        if (n->node().name().compare(node.name(), Qt::CaseInsensitive) > 0) {
+            return row;
+        }
+        ++row;
+    }
+
+    return row;
+}
+
+void MainTreeModel::pocessUpdate(const nextapp::pb::Update &update)
+{
+    using nextapp::pb::Update;
+    using nextapp::pb::Node;
+
+
+    assert(update.hasNode());
+    const Node& node = update.node();
+
+    TreeNode* parent = &root_;
+    if (!node.parent().isEmpty()) {
+        parent = lookupTreeNode(QUuid{node.parent()});
+    }
+    assert(!node.uuid().isEmpty());
+
+    TreeNode* current = lookupTreeNode(QUuid{node.uuid()});
+
+    const auto op = update.op();
+
+    if (op != Update::Operation::DELETED) {
+        if (current && current->node().version() > node.version()) {
+            LOG_DEBUG << "Received updated/added/moved node " << node.uuid() <<" with version less than the existing node. Ignoring.";
+            return;
+        }
+    }
+
+    switch(op) {
+    case Update::Operation::ADDED:
+        assert(current == nullptr);
+        assert(parent);
+        addNode(parent, node);
+        break;
+    case Update::Operation::UPDATED:
+        assert(current);
+        {
+            auto cix = getIndex(current);
+            current->node() = node;
+            emit dataChanged(cix, cix);
+        }
+        break;
+    case Update::Operation::MOVED:
+        assert(false); // Implement!
+        break;
+    case Update::Operation::DELETED:
+        assert(false); // Implement!
+        break;
+    }
+}
+
+MainTreeModel::TreeNode *MainTreeModel::lookupTreeNode(const QUuid &uuid)
+{
+    if (auto it = uuid_index_.find(uuid); it != uuid_index_.end()) {
+        return it.value();
+    }
+
+    return {};
+}
+
 MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &child)
 {
 
@@ -287,9 +401,29 @@ void MainTreeModel::deleteNode(const QUuid &uuid)
 
 void MainTreeModel::setAllNodes(const nextapp::pb::NodeTree& tree)
 {
-    ResetScope scope{*this};
-    clear();
-    copyTreeBranch(root_.children(), tree.root().children(), uuid_index_, &root_);
+    {
+        ResetScope scope{*this};
+        clear();
+        copyTreeBranch(root_.children(), tree.root().children(), uuid_index_, &root_);
+    }
+
+    // Handle corner-case when updates are arriving before we get the initial tree
+    has_initial_tree_ = true;
+    std::ranges::for_each(pending_updates_, [this](const auto& update) {
+        pocessUpdate(*update);
+    });
+}
+
+void MainTreeModel::onUpdate(const std::shared_ptr<nextapp::pb::Update>& update)
+{
+    assert(update);
+    if (update->hasNode()) {
+        if (has_initial_tree_) {
+            return pocessUpdate(*update);
+        }
+
+        pending_updates_.emplace_back(update);
+    }
 }
 
 MainTreeModel::TreeNode::TreeNode(nextapp::pb::Node node, TreeNode *parent)
@@ -360,7 +494,7 @@ void MainTreeModel::addNode(QVariantMap args)
         if (k == "kind") {
             node.setKind(toKind(v.toString()));
         }
-        if (k == "parent") {
+        if (k == "parent" && !QUuid{v.toString()}.isNull()) {
             node.setParent(v.toString());
         }
     }
@@ -369,6 +503,15 @@ void MainTreeModel::addNode(QVariantMap args)
 
     // We will update the UI when we get the update notification
     ServerComm::instance().addNode(node);
+}
+
+QString MainTreeModel::uuidFromModelIndex(const QModelIndex ix)
+{
+    if (auto current = getTreeNode(ix)) {
+        return current->node().uuid();
+    }
+
+    return {};
 }
 
 // void MainTreeModel::addNode(const nextapp::pb::Node *node, QString parentUuid, QString currentUuid)

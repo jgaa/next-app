@@ -8,6 +8,9 @@ pragma ComponentBehavior: Bound
 
 Rectangle {
     id: root
+
+    property alias currentIndex : treeView.selectionModel.currentIndex
+
     color: Colors.background
 
     ColumnLayout {
@@ -34,6 +37,8 @@ Rectangle {
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: MainTreeModel
+
+            selectionModel: ItemSelectionModel {}
 
             Component.onCompleted: treeView.toggleExpanded(0)
 
