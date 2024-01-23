@@ -235,7 +235,7 @@ private:
     std::string logArgs(const T... args) {
         if constexpr (sizeof...(T)) {
             std::stringstream out;
-            out << " args: ";
+            out << " | args: ";
             auto col = 0;
             ((out << (++col == 1 ? "" : ", ")  << args), ...);
             return out.str();

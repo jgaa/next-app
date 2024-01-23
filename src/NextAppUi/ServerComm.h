@@ -58,6 +58,12 @@ public:
 
     void setDayColor(int year, int month, int day, QUuid colorUuid);
     void addNode(const nextapp::pb::Node& node);
+
+    // node.parent cannoty be changed. Only data-values can be updated.
+    void updateNode(const nextapp::pb::Node& node);
+
+    void deleteNode(const QUuid& uuid);
+
     void getNodeTree();
 
     static QString getDefaultServerAddress() {

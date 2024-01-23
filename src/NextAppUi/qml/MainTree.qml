@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
+import QtQuick.Dialogs
 import NextAppUi
 
 pragma ComponentBehavior: Bound
@@ -53,6 +54,7 @@ Rectangle {
                 // to bind the properties provided by the model's role names.
                 required property int index
                 required property string name
+                required property string uuid
                 //required property nextapp.pb.Node node
 
                 indicator: Image {
@@ -114,8 +116,15 @@ Rectangle {
                                 //     root.fileClicked(treeDelegate.filePath)
                             break;
                             case Qt.RightButton:
-                                if (treeDelegate.hasChildren)
-                                    contextMenu.popup();
+                                // var my_uuid = treeDelegate.uuid;
+                                // console.log("Tapped node uuid=", my_uuid)
+                                // var node = MainTreeModel.nodeMapFromUuid(my_uuid)
+                                // //var node = MainTreeModel.nodeFromUuid(my_uuid)
+                                // console.log("node: ", node)
+                                // console.log("Tapped node name=", node.name)
+
+                                contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                                contextMenu.popup();
                             break;
                         }
                     }
@@ -123,15 +132,21 @@ Rectangle {
 
                 MyMenu {
                     id: contextMenu
+                    property var node: null
                     Action {
-                        text: qsTr("Set as root index")
+                        text: qsTr("Edit")
+                        icon.source: "../icons/fontawsome/pen-to-square.svg"
                         onTriggered: {
-                            treeView.rootIndex = treeView.index(treeDelegate.row, 0)
+                            openForEditNodeDlg(contextMenu.node)
                         }
                     }
                     Action {
-                        text: qsTr("Reset root index")
-                        onTriggered: treeView.rootIndex = undefined
+                        icon.source: "../icons/fontawsome/trash-can.svg"
+                        text: qsTr("Delete")
+                        onTriggered: {
+                            confirmDelete.node = contextMenu.node
+                            confirmDelete.open()
+                        }
                     }
                 }
             }
@@ -157,5 +172,41 @@ Rectangle {
             }
 
         }
+    }
+
+    MessageDialog {
+        property var node : null
+
+        id: confirmDelete
+        title: qsTr("Please confirm")
+        text: qsTr("Do you really want to delete \"%1\" ?").arg(node.name)
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        onAccepted: {
+           MainTreeModel.deleteNode(node.uuid)
+           confirmDelete.close()
+        }
+
+        onRejected: {
+            confirmDelete.close()
+        }
+    }
+
+    function openDialog(name, args) {
+        var component = Qt.createComponent(name);
+        if (component.status !== Component.Ready) {
+            if(component.status === Component.Error )
+                console.debug("Error:"+ component.errorString() );
+            return;
+        }
+        var dlg = component.createObject(root, args);
+        dlg.open()
+    }
+
+    function openForEditNodeDlg(node) {
+        openDialog("EditNodeDlg.qml", {
+            isNew: true,
+            node: node,
+            title: qsTr("Edit " + node.kind)
+        });
     }
 }

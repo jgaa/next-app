@@ -36,8 +36,9 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
 
 int main(int argc, char *argv[])
 {
-    // volatile auto registration = &qml_register_types_nextapp_pb;
-    // Q_UNUSED(registration);
+    qRegisterProtobufTypes();
+    volatile auto registration = &qml_register_types_nextapp_pb;
+    Q_UNUSED(registration);
     std::string log_level_qt = "trace";
 
     QGuiApplication app(argc, argv);
@@ -67,8 +68,6 @@ int main(int argc, char *argv[])
     nextapp::pb::Nextapp::Client cli{&app};
     auto info = cli.GetServerInfo({});
 
-    qRegisterProtobufTypes();
-
     QQmlApplicationEngine engine;
     engine.loadFromModule("NextAppUi", "Main");
     if (engine.rootObjects().isEmpty()) {
@@ -87,7 +86,9 @@ int main(int argc, char *argv[])
         auto tree = engine.singletonInstance<MainTreeModel*>("NextAppUi","MainTreeModel");
         assert(tree);
 
+#ifdef WITH_TREE_MODEL_TESTING
         new QAbstractItemModelTester{tree, QAbstractItemModelTester::FailureReportingMode::Fatal, &engine};
+#endif
 
         tree->start();
 

@@ -1,5 +1,6 @@
 
 #include <map>
+#include <chrono>
 
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -10,6 +11,7 @@
 
 using namespace std;
 using namespace std::literals;
+using namespace std::chrono_literals;
 using namespace std;
 namespace json = boost::json;
 namespace asio = boost::asio;
@@ -479,7 +481,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateNode(::grpc::CallbackServerContext *ctx, const pb::CreateNodeReq *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to create node " << req->node().name() << " for tenant " << owner_.currentTenant(ctx);
+    LOG_DEBUG << "Request to create node " << req->node().uuid() << " for tenant " << owner_.currentTenant(ctx);
 
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
@@ -490,12 +492,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         if (parent->empty()) {
             parent.reset();
         } else {
-            // Check that parent exists and is owned by the same user
-            auto res = co_await owner_.server().db().exec("SELECT id FROM node where id=? and user=?",
-                                                          *parent, cuser);
-            if (!res.has_value()) {
-                throw db_err{pb::Error::INVALID_PARENT, "Parent id must exist and be owned by the user"};
-            }
+            co_await owner_.validateParent(*parent, cuser);
         }
 
         auto id = req->node().uuid();
@@ -536,6 +533,122 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         auto node = update->mutable_node();
         *node = reply->node();
         update->set_op(pb::Update::Operation::Update_Operation_ADDED);
+        owner_.publish(update);
+
+        co_return;
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateNode(::grpc::CallbackServerContext *ctx, const pb::Node *req, pb::Status *reply)
+{
+    LOG_DEBUG << "Request to update node " << req->uuid() << " for tenant " << owner_.currentTenant(ctx);
+
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            // Get the existing node
+
+        const auto cuser = owner_.currentUser(ctx);
+
+        bool moved = false;
+        bool data_changed = false;
+
+        for(auto retry = 0;; ++retry) {
+
+            const pb::Node existing = co_await owner_.fetcNode(req->uuid(), cuser);
+
+            // Check if any data has changed
+            data_changed = req->name() != existing.name()
+                                || req->active() != existing.active()
+                                || req->kind() != existing.kind()
+                                || req->descr() != existing.descr();
+
+            // Check if the parent has changed.
+            if (req->parent() != existing.parent()) {
+                throw db_err{pb::Error::DIFFEREENT_PARENT, "UpdateNode cannot move nodes in the tree"};
+            }
+
+            // // If the parent has changed, validate that it belongs to us.
+            // if (moved) {
+            //     co_await owner_.validateParent(req->parent(), cuser);
+            // }
+
+            // Update the data, if version is unchanged
+            auto res = co_await owner_.server().db().exec(
+                "UPDATE node SET name=?, active=?, kind=?, descr=?, version=version+1 WHERE id=? AND user=? AND version=?",
+                req->name(),
+                req->active(),
+                static_cast<int>(req->kind()),
+                req->descr(),
+                req->uuid(),
+                cuser,
+                req->version()
+                );
+
+            if (res.affected_rows() > 0) {
+                break; // Only succes-path out of the loop
+            }
+
+            LOG_DEBUG << "updateNode: Failed to update. Looping for retry.";
+            if (retry >= 5) {
+                throw db_err(pb::Error::DATABASE_UPDATE_FAILED, "I failed to update, despite retrying");
+            }
+
+            boost::asio::steady_timer timer{owner_.server().ctx()};
+            timer.expires_from_now(100ms);
+            co_await timer.async_wait(boost::asio::use_awaitable);
+        }
+
+        // Get the current record
+        const pb::Node current = co_await owner_.fetcNode(req->uuid(), cuser);
+        // Notify clients about changes
+
+        // if (data_changed) {
+        //     auto update = make_shared<pb::Update>();
+        //     auto node = update->mutable_node();
+        //     *node = current;
+        //     update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+        //     owner_.publish(update);
+        // }
+
+        reply->set_error(pb::Error::OK);
+        *reply->mutable_node() = current;
+
+        // Notify clients
+        auto update = make_shared<pb::Update>();
+        update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+        *update->mutable_node() = current;
+        owner_.publish(update);
+
+        co_return;
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteNode(::grpc::CallbackServerContext *ctx, const pb::DeleteNodeReq *req, pb::Status *reply)
+{
+    LOG_DEBUG << "Request to delete node " << req->uuid() << " for tenant " << owner_.currentTenant(ctx);
+
+    return unaryHandler(ctx, req, reply,
+    [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        // Get the existing node
+
+        const auto cuser = owner_.currentUser(ctx);
+
+        const auto node = co_await owner_.fetcNode(req->uuid(), cuser);
+
+        auto res = co_await owner_.server().db().exec(format("DELETE from node where id=? and user=?", ToNode::selectCols),
+                                                      req->uuid(), cuser);
+
+        if (!res.has_value() || res.affected_rows() == 0) {
+            throw db_err{pb::Error::NOT_FOUND, format("Node {} not found", req->uuid())};
+        }
+
+        reply->set_error(pb::Error::OK);
+        *reply->mutable_node() = node;
+
+        // Notify clients
+        auto update = make_shared<pb::Update>();
+        update->set_op(pb::Update::Operation::Update_Operation_DELETED);
+        *update->mutable_node() = node;
         owner_.publish(update);
 
         co_return;
@@ -667,6 +780,29 @@ void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
             LOG_WARN_N << "Failed to get a pointer to publisher " << uuid;
         }
     }
+}
+
+boost::asio::awaitable<void> GrpcServer::validateParent(const std::string &parentUuid, const std::string &userUuid)
+{
+    auto res = co_await server().db().exec("SELECT id FROM node where id=? and user=?", parentUuid, userUuid);
+    if (!res.has_value()) {
+        throw db_err{pb::Error::INVALID_PARENT, "Parent id must exist and be owned by the user"};
+    }
+
+    co_return;
+}
+
+boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, const std::string &userUuid)
+{
+    auto res = co_await server().db().exec(format("SELECT {} from node where id=? and user=?", ToNode::selectCols),
+                                           uuid, userUuid);
+    if (!res.has_value()) {
+        throw db_err{pb::Error::NOT_FOUND, format("Node {} not found", uuid)};
+    }
+
+    pb::Node rval;
+    ToNode::assign(res.rows().front(), rval);
+    co_return rval;
 }
 
 

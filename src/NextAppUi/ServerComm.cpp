@@ -196,6 +196,29 @@ void ServerComm::addNode(const nextapp::pb::Node &node)
         });
 }
 
+void ServerComm::updateNode(const nextapp::pb::Node &node)
+{
+    auto call = client_->UpdateNode(node);
+    call->subscribe(this, [call, this]() {
+            call->read<nextapp::pb::Status>();
+        }, [this](QGrpcStatus status) {
+            LOG_ERROR_N << "Comm error: " << status.message();
+        });
+}
+
+void ServerComm::deleteNode(const QUuid &uuid)
+{
+    nextapp::pb::DeleteNodeReq req;
+    req.setUuid(uuid.toString(QUuid::WithoutBraces));
+
+    auto call = client_->DeleteNode(req);
+    call->subscribe(this, [call, this]() {
+            call->read<nextapp::pb::Status>();
+        }, [this](QGrpcStatus status) {
+            LOG_ERROR_N << "Comm error: " << status.message();
+        });
+}
+
 void ServerComm::getNodeTree()
 {
     if (!grpc_is_ready_) {

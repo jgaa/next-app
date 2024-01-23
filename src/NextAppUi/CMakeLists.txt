@@ -9,16 +9,15 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(SERVER_ADDRESS "http://127.0.0.1:10321" CACHE STRING "Default address to server")
 add_definitions("-DSERVER_ADDRESS=\"${SERVER_ADDRESS}\"")
 
+option(WITH_TREE_MODEL_TESTING "Enable ongoing tests for the MainTreeModel" OFF)
+if (WITH_TREE_MODEL_TESTING)
+    add_definitions(-DWITH_TREE_MODEL_TESTING)
+endif()
+
 option(WITH_TESTS "Enable Tests" ON)
 option(DEVEL_SETTINGS "Use '-devel' postfix for the settings location." ON)
 if (DEVEL_SETTINGS)
-    add_definitions(-DDEVEL_SETTINGS=1)
-endif()
-
-# Fallback if we run into problems with server-comm
-option(ASYNC_GRPC "Async gRPC (do not disable. Sync comm is not properly implemented!)" ON)
-if (ASYNC_GRPC)
-    add_definitions(-DASYNC_GRPC=1)
+    add_definitions(-DDEVEL_SETTINGS)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -92,8 +91,15 @@ qt_add_qml_module(appNextAppUi
         icons/read.svg
         icons/resize.svg
         icons/nextapp.svg
+        icons/folder.svg
+        icons/organization.svg
+        icons/person.svg
+        icons/project.svg
+        icons/task.svg
         icons/fontawsome/calendar-days.svg
         icons/fontawsome/folder.svg
+        icons/fontawsome/trash-can.svg
+        icons/fontawsome/pen-to-square.svg
     SOURCES
         ServerComm.h
         ServerComm.cpp

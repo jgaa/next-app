@@ -22,15 +22,6 @@ ApplicationWindow {
                 text: qsTr("Settings")
                 shortcut: StandardKey.ZoomIn
                 onTriggered: { openDialog("SettingsDlg.qml") }
-                //     var component = Qt.createComponent("qml/SettingsDlg.qml");
-                //     if (component.status !== Component.Ready) {
-                //         if(component.status === Component.Error )
-                //             console.debug("Error:"+ component.errorString() );
-                //         return;
-                //     }
-                //     var dlg = component.createObject(root, {});
-                //     dlg.open()
-                // }
             }
             // Action {
             //     text: qsTr("Decrease Font")
@@ -67,28 +58,23 @@ ApplicationWindow {
 
             Action {
                 text: qsTr("New Folder")
-                onTriggered: {
-
-                    console.log("parent: ", mainTree.currentIndex);
-
-                    openDialog("EditNodeDlg.qml", {
-                    isNew: true,
-                    parentIx: mainTree.currentIndex,
-                    type: "folder",
-                    title: qsTr("New Folder")
-                })}
+                onTriggered: openNodeDlg("folder")
             }
             Action {
-                text: qsTr("New Customer")
-                //onTriggered: editor.text.copy()
+                text: qsTr("New Organization/Customer")
+                onTriggered: openNodeDlg("organization")
+            }
+            Action {
+                text: qsTr("New Person")
+                onTriggered: openNodeDlg("person")
             }
             Action {
                 text: qsTr("New Project")
-                //onTriggered: editor.text.paste()
+                onTriggered: openNodeDlg("project")
             }
             Action {
-                text: qsTr("New List")
-                //onTriggered: editor.text.selectAll()
+                text: qsTr("New Task")
+                onTriggered: openNodeDlg("task")
             }
         }
 
@@ -236,5 +222,14 @@ ApplicationWindow {
         }
         var dlg = component.createObject(root, args);
         dlg.open()
+    }
+
+    function openNodeDlg(kind) {
+        openDialog("EditNodeDlg.qml", {
+            isNew: true,
+            parentIx: mainTree.currentIndex,
+            kind: kind,
+            title: qsTr("New Folder")
+        });
     }
 }

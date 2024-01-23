@@ -219,6 +219,67 @@ void MainTreeModel::clear()
     uuid_index_.clear();
 }
 
+pb::Node MainTreeModel::toNode(const QVariantMap &map)
+{
+    pb::Node n;
+
+    n.setUuid(map.value("uuid").toString());
+    n.setName(map.value("name").toString());
+    n.setParent(map.value("parent").toString());
+    n.setUser(map.value("user").toString());
+    n.setActive(map.value("active").toBool());
+    n.setKind(toNodeKind(map.value("kind").toString()));
+    n.setDescr(map.value("descr").toString());
+    n.setVersion(map.value("version").toLongLong());
+
+    return n;
+}
+
+QVariantMap MainTreeModel::toMap(const nextapp::pb::Node &node)
+{
+    QVariantMap vm;
+
+    vm["uuid"] = node.uuid();
+    vm["name"] = node.name();
+    vm["parent"] = node.parent();
+    vm["active"] = node.active();
+    vm["kind"] = toString(node.kind());
+    vm["descr"] = node.descr();
+    vm["version"] = static_cast<qint64>(node.version());
+
+    return vm;
+}
+
+pb::Node::Kind MainTreeModel::toNodeKind(const QString &name)
+{
+    if (name == "folder") return nextapp::pb::Node::Kind::FOLDER;
+    if (name == "organization") return nextapp::pb::Node::Kind::ORGANIZATION;
+    if (name == "person") return nextapp::pb::Node::Kind::PERSON;
+    if (name == "project") return nextapp::pb::Node::Kind::PROJECT;
+    if (name == "task") return nextapp::pb::Node::Kind::TASK;
+    assert(false);
+    return nextapp::pb::Node::Kind::FOLDER;
+}
+
+QString MainTreeModel::toString(const nextapp::pb::Node::Kind &kind)
+{
+    using kind_t = nextapp::pb::Node::Kind;
+    switch(kind) {
+    case kind_t::FOLDER:
+        return "folder";
+    case kind_t::ORGANIZATION:
+        return "organization";
+    case kind_t::PERSON:
+        return "person";
+    case kind_t::PROJECT:
+        return "project";
+    case kind_t::TASK:
+        return "task";
+    }
+
+    return {};
+}
+
 void MainTreeModel::addNode(TreeNode *parent, const nextapp::pb::Node &node)
 {
     const int row = getInsertRow(parent, node);
@@ -310,7 +371,18 @@ void MainTreeModel::pocessUpdate(const nextapp::pb::Update &update)
         assert(false); // Implement!
         break;
     case Update::Operation::DELETED:
-        assert(false); // Implement!
+        if (current) {
+            if (current == &root_) {
+                LOG_WARN << "Cannot delete root node!";
+                return;
+            }
+            assert(parent);
+            auto cix = getIndex(current);
+            auto parent_ix = getIndex(parent);
+            beginRemoveRows(parent_ix, cix.row(), cix.row());
+            parent->children().removeAt(cix.row());
+            endRemoveRows();
+        }
         break;
     }
 }
@@ -342,7 +414,7 @@ void MainTreeModel::addNode(const nextapp::pb::Node& node, const std::optional<Q
     assert(!uuid_str.isEmpty());
     const QUuid node_uuid{uuid_str};
 
-    deleteNode(node_uuid);
+    //deleteNode(node_uuid);
 
     // The node cannot exist in the tree at this point
     assert(uuid_index_.find(node_uuid) == uuid_index_.end());
@@ -385,18 +457,6 @@ void MainTreeModel::moveNode(const QUuid &node,
                              const std::optional<QUuid> &beforeSibling)
 {
     assert(false && "Not implemented");
-}
-
-void MainTreeModel::deleteNode(const QUuid &uuid)
-{
-    if (auto current = uuid_index_.value(uuid)) {
-        assert(current->uuid() == uuid);
-        auto& parent_list = getListFromChild(*current);
-        if (auto row = getRow(parent_list, uuid)) {
-            parent_list.removeAt(*row);
-            uuid_index_.remove(uuid);
-        }
-    }
 }
 
 void MainTreeModel::setAllNodes(const nextapp::pb::NodeTree& tree)
@@ -473,36 +533,49 @@ pb::Node *MainTreeModel::node(const QModelIndex &ix)
     return new pb::Node{};
 }
 
-void MainTreeModel::addNode(QVariantMap args)
+QVariantMap MainTreeModel::nodeMap(const QModelIndex &ix)
 {
-    nextapp::pb::Node node;
-
-    static const auto toKind = [](const QString& name) {
-        if (name == "folder") return nextapp::pb::Node::Kind::FOLDER;
-        if (name == "organization") return nextapp::pb::Node::Kind::ORGANIZATION;
-        if (name == "person") return nextapp::pb::Node::Kind::PERSON;
-        if (name == "project") return nextapp::pb::Node::Kind::PROJECT;
-        if (name == "task") return nextapp::pb::Node::Kind::TASK;
-        assert(false);
-        return nextapp::pb::Node::Kind::FOLDER;
-    };
-
-    for(const auto& [k, v] : args.asKeyValueRange()) {
-        if (k == "name") {
-            node.setName(v.toString());
-        }
-        if (k == "kind") {
-            node.setKind(toKind(v.toString()));
-        }
-        if (k == "parent" && !QUuid{v.toString()}.isNull()) {
-            node.setParent(v.toString());
-        }
+    if (auto current = getTreeNode(ix)) {
+        return toMap(current->node());
     }
 
+    return {};
+}
+
+pb::Node *MainTreeModel::nodeFromUuid(const QString &uuid)
+{
+    if (auto it = uuid_index_.find(QUuid{uuid}); it != uuid_index_.end()) {
+        return new pb::Node{it.value()->node()};
+    }
+
+    return {};
+}
+
+QVariantMap MainTreeModel::nodeMapFromUuid(const QString &uuid)
+{
+    if (auto it = uuid_index_.find(QUuid{uuid}); it != uuid_index_.end()) {
+        return toMap(it.value()->node());
+    }
+
+    return {};
+}
+
+void MainTreeModel::addNode(QVariantMap args)
+{
+    nextapp::pb::Node node = toNode(args);
     assert(!node.name().isEmpty());
 
     // We will update the UI when we get the update notification
     ServerComm::instance().addNode(node);
+}
+
+void MainTreeModel::updateNode(const QVariantMap args)
+{
+    nextapp::pb::Node node = toNode(args);
+    assert(!node.name().isEmpty());
+    assert(!node.uuid().isEmpty());
+
+    ServerComm::instance().updateNode(node);
 }
 
 QString MainTreeModel::uuidFromModelIndex(const QModelIndex ix)
@@ -514,20 +587,13 @@ QString MainTreeModel::uuidFromModelIndex(const QModelIndex ix)
     return {};
 }
 
-// void MainTreeModel::addNode(const nextapp::pb::Node *node, QString parentUuid, QString currentUuid)
-// {
-//     std::optional<QUuid> parent;
-//     std::optional<QUuid> beforeSibling;
+void MainTreeModel::deleteNode(const QString &uuid)
+{
+    QUuid id{uuid};
+    assert(!id.isNull());
 
-//     if (!parentUuid.isEmpty()) {
-//         parent = QUuid{parentUuid};
-//     }
-
-//     auto name = node->name();
-//     auto uuid = node->uuid();
-
-//     addNode(*node, parent, beforeSibling);
-// }
+    ServerComm::instance().deleteNode(id);
+}
 
 MainTreeModel::ResetScope::ResetScope(MainTreeModel &model)
     : model_{model} {

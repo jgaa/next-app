@@ -95,6 +95,9 @@ signals:
 public:
     QString nodeName(const QModelIndex& index) const;
     Q_INVOKABLE nextapp::pb::Node *node(const QModelIndex& ix);
+    Q_INVOKABLE QVariantMap nodeMap(const QModelIndex& ix);
+    Q_INVOKABLE nextapp::pb::Node *nodeFromUuid(const QString& uuid);
+    Q_INVOKABLE QVariantMap nodeMapFromUuid(const QString& uuid);
     Q_INVOKABLE nextapp::pb::Node *emptyNode() {
         return node({});
     }
@@ -108,7 +111,9 @@ public:
 
     // The UI's interface to add a new node in the tree
     Q_INVOKABLE void addNode(const QVariantMap args);
+    Q_INVOKABLE void updateNode(const QVariantMap args);
     Q_INVOKABLE QString uuidFromModelIndex(const QModelIndex ix);
+    Q_INVOKABLE void deleteNode(const QString& uuid);
 
     QModelIndex index(int row, int column, const QModelIndex &parent) const;
     QModelIndex parent(const QModelIndex &child) const;
@@ -134,7 +139,6 @@ public slots:
     // As addNode, but only for move.
     void moveNode(const QUuid& node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
 
-    void deleteNode(const QUuid& uuid);
 
     // Deletes any existing nodes and copys the tree from 'tree'
     void setAllNodes(const nextapp::pb::NodeTree& tree);
@@ -146,6 +150,13 @@ public slots:
     std::unique_ptr<ResetScope> resetScope() {
         return std::make_unique<ResetScope>(*this);
     }
+
+    // I have not been able to use nextapp::pb objects directly in Qml,
+    // so let's serialzie via QVariantMap for now.
+    static nextapp::pb::Node toNode(const QVariantMap& map);
+    static QVariantMap toMap(const nextapp::pb::Node& map);
+    static nextapp::pb::Node::Kind toNodeKind(const QString& name);
+    static QString toString(const nextapp::pb::Node::Kind& kind);
 
 private:
     void addNode(TreeNode *parent, const nextapp::pb::Node& node);

@@ -11,6 +11,8 @@ enum Error {
     INVALID_PARENT = 5;
     DATABASE_UPDATE_FAILED = 6;
     DATABASE_REQUEST_FAILED = 7;
+    NOT_FOUND = 8;
+    DIFFEREENT_PARENT = 9;
 }
 
 message KeyValue {
@@ -192,6 +194,10 @@ message CreateNodeReq {
 message GetNodesReq {
 }
 
+message DeleteNodeReq {
+    string uuid = 1;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -207,7 +213,7 @@ message Status {
 service Nextapp {
     rpc GetServerInfo(Empty) returns (ServerInfo) {}
     rpc GetNodes(GetNodesReq) returns (NodeTree) {}
-    rpc NodeChanged(NodeUpdate) returns (Status) {}
+    //rpc NodeChanged(NodeUpdate) returns (Status) {}
     rpc GetDayColorDefinitions(Empty) returns (DayColorDefinitions) {}
     rpc GetDay(Date) returns (CompleteDay) {}
     rpc GetMonth(MonthReq) returns (Month) {}
@@ -219,5 +225,7 @@ service Nextapp {
     // If called by a super-user, user.uuid can point to any tenant. If unset, the logged-in tenant is used.
     rpc CreateUser(User) returns (Status) {}
     rpc CreateNode(CreateNodeReq) returns (Status) {}
+    rpc UpdateNode(Node) returns (Status) {}
+    rpc DeleteNode(DeleteNodeReq) returns (Status) {}
 }
 
