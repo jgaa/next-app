@@ -95,6 +95,7 @@ public:
         ::grpc::ServerUnaryReactor *CreateTenant(::grpc::CallbackServerContext *ctx, const pb::CreateTenantReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *CreateNode(::grpc::CallbackServerContext *ctx, const pb::CreateNodeReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *UpdateNode(::grpc::CallbackServerContext *ctx, const pb::Node*req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *MoveNode(::grpc::CallbackServerContext *ctx, const pb::MoveNodeReq*req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *DeleteNode(::grpc::CallbackServerContext *ctx, const pb::DeleteNodeReq*req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetNodes(::grpc::CallbackServerContext *ctx, const pb::GetNodesReq *req, pb::NodeTree *reply) override;
 

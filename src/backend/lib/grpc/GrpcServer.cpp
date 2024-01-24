@@ -567,11 +567,6 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 throw db_err{pb::Error::DIFFEREENT_PARENT, "UpdateNode cannot move nodes in the tree"};
             }
 
-            // // If the parent has changed, validate that it belongs to us.
-            // if (moved) {
-            //     co_await owner_.validateParent(req->parent(), cuser);
-            // }
-
             // Update the data, if version is unchanged
             auto res = co_await owner_.server().db().exec(
                 "UPDATE node SET name=?, active=?, kind=?, descr=?, version=version+1 WHERE id=? AND user=? AND version=?",
@@ -581,7 +576,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 req->descr(),
                 req->uuid(),
                 cuser,
-                req->version()
+                existing.version()
                 );
 
             if (res.affected_rows() > 0) {
@@ -616,6 +611,75 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         // Notify clients
         auto update = make_shared<pb::Update>();
         update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+        *update->mutable_node() = current;
+        owner_.publish(update);
+
+        co_return;
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MoveNode(::grpc::CallbackServerContext *ctx, const pb::MoveNodeReq *req, pb::Status *reply)
+{
+    LOG_DEBUG << "Request to move node " << req->uuid() << " for tenant " << owner_.currentTenant(ctx);
+
+    return unaryHandler(ctx, req, reply,
+    [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        // Get the existing node
+
+        const auto cuser = owner_.currentUser(ctx);
+
+        for(auto retry = 0;; ++retry) {
+
+            const pb::Node existing = co_await owner_.fetcNode(req->uuid(), cuser);
+
+            if (existing.parent() == req->parentuuid()) {
+                reply->set_error(pb::Error::NO_CHANGES);
+                reply->set_message("The parent has not changed. Ignoring the reqest!");
+                co_return;
+            }
+
+            if (req->parentuuid() == req->uuid()) {
+                reply->set_error(pb::Error::CONSTRAINT_FAILED);
+                reply->set_message("A node cannot be its own parent. Ignoring the request!");
+                LOG_DEBUG << "A node cannot be its own parent. Ignoring the request for node-id " << req->uuid();
+                co_return;
+            }
+
+            co_await owner_.validateParent(req->parentuuid(), cuser);
+
+            // Update the data, if version is unchanged
+            auto res = co_await owner_.server().db().exec(
+                "UPDATE node SET parent=?, version=version+1 WHERE id=? AND user=? AND version=?",
+                req->parentuuid(),
+                req->uuid(),
+                cuser,
+                existing.version()
+                );
+
+            if (res.affected_rows() > 0) {
+                break; // Only succes-path out of the loop
+            }
+
+            LOG_DEBUG << "updateNode: Failed to update. Looping for retry.";
+            if (retry >= 5) {
+                throw db_err(pb::Error::DATABASE_UPDATE_FAILED, "I failed to update, despite retrying");
+            }
+
+            boost::asio::steady_timer timer{owner_.server().ctx()};
+            timer.expires_from_now(100ms);
+            co_await timer.async_wait(boost::asio::use_awaitable);
+        }
+
+        // Get the current record
+        const pb::Node current = co_await owner_.fetcNode(req->uuid(), cuser);
+        // Notify clients about changes
+
+        reply->set_error(pb::Error::OK);
+        *reply->mutable_node() = current;
+
+        // Notify clients
+        auto update = make_shared<pb::Update>();
+        update->set_op(pb::Update::Operation::Update_Operation_MOVED);
         *update->mutable_node() = current;
         owner_.publish(update);
 

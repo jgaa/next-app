@@ -127,6 +127,8 @@ bool Db::handleError(const boost::system::error_code &ec, boost::mysql::diagnost
             case boost::asio::error::eof:
             case boost::asio::error::broken_pipe:
             case boost::system::errc::connection_reset:
+            case boost::system::errc::connection_aborted:
+            case boost::asio::error::operation_aborted:
                 return false; // retry
 
             default:

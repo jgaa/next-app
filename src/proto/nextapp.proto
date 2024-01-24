@@ -13,6 +13,8 @@ enum Error {
     DATABASE_REQUEST_FAILED = 7;
     NOT_FOUND = 8;
     DIFFEREENT_PARENT = 9;
+    NO_CHANGES = 10;
+    CONSTRAINT_FAILED = 11;
 }
 
 message KeyValue {
@@ -198,6 +200,11 @@ message DeleteNodeReq {
     string uuid = 1;
 }
 
+message MoveNodeReq {
+    string uuid = 1;
+    string parentUuid = 2;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -227,5 +234,6 @@ service Nextapp {
     rpc CreateNode(CreateNodeReq) returns (Status) {}
     rpc UpdateNode(Node) returns (Status) {}
     rpc DeleteNode(DeleteNodeReq) returns (Status) {}
+    rpc MoveNode(MoveNodeReq) returns (Status) {}
 }
 

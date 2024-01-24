@@ -206,6 +206,26 @@ void ServerComm::updateNode(const nextapp::pb::Node &node)
         });
 }
 
+void ServerComm::moveNode(const QUuid &uuid, const QUuid &toParentUuid)
+{
+    nextapp::pb::MoveNodeReq req;
+    req.setUuid(uuid.toString(QUuid::WithoutBraces));
+    req.setParentUuid(toParentUuid.toString(QUuid::WithoutBraces));
+
+    if (uuid == toParentUuid) {
+        LOG_ERROR << "A node cannnot be its own parent!";
+        assert(false);
+        return;
+    }
+
+    auto call = client_->MoveNode(req);
+    call->subscribe(this, [call, this]() {
+            call->read<nextapp::pb::Status>();
+        }, [this](QGrpcStatus status) {
+            LOG_ERROR_N << "Comm error: " << status.message();
+        });
+}
+
 void ServerComm::deleteNode(const QUuid &uuid)
 {
     nextapp::pb::DeleteNodeReq req;

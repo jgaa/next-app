@@ -302,6 +302,9 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "CREATE UNIQUE INDEX ix_tenant_name ON tenant(name)",
         "CREATE UNIQUE INDEX ix_user_email ON user(email)",
         "ALTER TABLE tenant CHANGE kind kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'guest'",
+        "ALTER TABLE node DROP CONSTRAINT IF EXISTS node_ibfk_1",
+        R"(ALTER TABLE node ADD CONSTRAINT node_parent_fk
+            FOREIGN KEY(parent) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({

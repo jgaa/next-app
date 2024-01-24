@@ -13,7 +13,7 @@ class MainTreeModel : public QAbstractItemModel
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    //Q_PROPERTY(string name READ name NOTIFY nameChanged)
+    Q_PROPERTY(QModelIndex useRoot READ useRoot NOTIFY useRootChanged)
 
 public:
     struct ResetScope {
@@ -30,7 +30,8 @@ public:
     public:
         enum Roles {
             NameRole = Qt::UserRole + 1,
-            UuidRole
+            UuidRole,
+            KindRole,
         };
 
         // In QT 6.6, QList<> does not work with std::unique_ptr
@@ -67,6 +68,11 @@ public:
             return parent_;
         }
 
+        void setParent(TreeNode *parent) {
+            parent_ = parent;
+            assert(node_.parent() == parent->node().uuid());
+        }
+
         QVariant data(int role);
 
         [[nodiscard]] const QUuid& uuid() const noexcept {
@@ -91,6 +97,7 @@ public:
     void start();
 
 signals:
+    void useRootChanged();
 
 public:
     QString nodeName(const QModelIndex& index) const;
@@ -98,6 +105,7 @@ public:
     Q_INVOKABLE QVariantMap nodeMap(const QModelIndex& ix);
     Q_INVOKABLE nextapp::pb::Node *nodeFromUuid(const QString& uuid);
     Q_INVOKABLE QVariantMap nodeMapFromUuid(const QString& uuid);
+    Q_INVOKABLE QModelIndex indexFromUuid(const QString& uuid);
     Q_INVOKABLE nextapp::pb::Node *emptyNode() {
         return node({});
     }
@@ -114,6 +122,8 @@ public:
     Q_INVOKABLE void updateNode(const QVariantMap args);
     Q_INVOKABLE QString uuidFromModelIndex(const QModelIndex ix);
     Q_INVOKABLE void deleteNode(const QString& uuid);
+    Q_INVOKABLE void moveNode(const QString& uuid, const QString& toParentUuid);
+    Q_INVOKABLE bool canMove(const QString& uuid, const QString& toParentUuid);
 
     QModelIndex index(int row, int column, const QModelIndex &parent) const;
     QModelIndex parent(const QModelIndex &child) const;
@@ -136,10 +146,6 @@ public slots:
     // If neither sibling or parent is set, the node is added/moved as the last child of the root-node.
     void addNode(const ::nextapp::pb::Node& node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
 
-    // As addNode, but only for move.
-    void moveNode(const QUuid& node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
-
-
     // Deletes any existing nodes and copys the tree from 'tree'
     void setAllNodes(const nextapp::pb::NodeTree& tree);
 
@@ -151,6 +157,8 @@ public slots:
         return std::make_unique<ResetScope>(*this);
     }
 
+    QModelIndex useRoot();
+
     // I have not been able to use nextapp::pb objects directly in Qml,
     // so let's serialzie via QVariantMap for now.
     static nextapp::pb::Node toNode(const QVariantMap& map);
@@ -160,10 +168,13 @@ public slots:
 
 private:
     void addNode(TreeNode *parent, const nextapp::pb::Node& node);
+    void moveNode(TreeNode *parent, TreeNode *current, const nextapp::pb::Node& node);
+    void insertNode(TreeNode::node_list_t& list, std::shared_ptr<TreeNode>& tn, int row);
     QModelIndex getIndex(TreeNode *node);
     int getInsertRow(const TreeNode *parent, const nextapp::pb::Node& node);
     void pocessUpdate(const nextapp::pb::Update& update);
     TreeNode *lookupTreeNode(const QUuid& uuid);
+    bool isDescent(const QUuid &uuid, const QUuid &toParentUuid);
 
     TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child);
     TreeNode root_;

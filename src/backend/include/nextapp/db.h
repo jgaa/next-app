@@ -190,6 +190,9 @@ private:
             if (ec) {
                 if (ec == boost::system::errc::connection_refused
                     || ec == boost::asio::error::broken_pipe
+                    || ec == boost::system::errc::connection_reset
+                    || ec == boost::system::errc::connection_aborted
+                    || ec == boost::asio::error::operation_aborted
                     || ec == boost::asio::error::eof) {
                     if (retry && iteration == 0 && ++retries <= config_.retry_connect) {
                         LOG_INFO << "Failed to connect to the database server. Will retry "

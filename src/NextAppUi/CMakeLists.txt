@@ -100,6 +100,9 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/folder.svg
         icons/fontawsome/trash-can.svg
         icons/fontawsome/pen-to-square.svg
+        icons/fontawsome/angle-down.svg
+        icons/fontawsome/angle-right.svg
+        icons/fontawsome/circle.svg
     SOURCES
         ServerComm.h
         ServerComm.cpp

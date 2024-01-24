@@ -10,7 +10,7 @@ pragma ComponentBehavior: Bound
 Rectangle {
     id: root
 
-    property alias currentIndex : treeView.selectionModel.currentIndex
+    //property alias currentIndex : treeView.selectionModel.currentIndex
 
     color: Colors.background
 
@@ -38,10 +38,11 @@ Rectangle {
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: MainTreeModel
+            //rootIndex: MainTreeModel.useRoot
 
-            selectionModel: ItemSelectionModel {}
+            //selectionModel: ItemSelectionModel { id: selection }
 
-            Component.onCompleted: treeView.toggleExpanded(0)
+            Component.onCompleted: fileSystemTreeView.toggleExpanded(0)
 
             delegate: TreeViewDelegate {
                 id: treeDelegate
@@ -55,28 +56,98 @@ Rectangle {
                 required property int index
                 required property string name
                 required property string uuid
-                //required property nextapp.pb.Node node
+                required property string kind
+
+                //Drag.dragType:
 
                 indicator: Image {
-                    id: directoryIcon
+                    id: treeIcon
 
                     x: treeDelegate.leftMargin + (treeDelegate.depth * treeDelegate.indentation)
                     anchors.verticalCenter: parent.verticalCenter
                     source: treeDelegate.hasChildren ? (treeDelegate.expanded
-                                ? "../icons/folder_open.svg" : "../icons/folder_closed.svg")
-                            : "../icons/generic_file.svg"
-                    sourceSize.width: 20
-                    sourceSize.height: 20
+                                ? "../icons/fontawsome/angle-down.svg" : "../icons/fontawsome/angle-right.svg")
+                            : "../icons/fontawsome/circle.svg"
+                    sourceSize.width: 12
+                    sourceSize.height: 12
                     fillMode: Image.PreserveAspectFit
 
                     smooth: true
                     antialiasing: true
                     asynchronous: true
+                    visible: treeDelegate.hasChildren
                 }
 
-                contentItem: Text {
-                    text: treeDelegate.name
-                    color: Colors.text
+                MultiEffect {
+                    id: iconOverlay
+
+                    anchors.fill: treeIcon
+                    source: treeIcon
+
+                    colorizationColor: (treeDelegate.expanded && treeDelegate.hasChildren)
+                                             ? Colors.color2 : Colors.color1
+                    colorization: 1.0
+                    brightness: 1.0
+                    visible: treeDelegate.hasChildren
+                }
+
+                contentItem: RowLayout {
+                    id: content
+                    spacing: 2
+
+                    Item {
+                        width: 20
+                        height: 16
+
+                        Image {
+                            id: kindIcon
+                            Layout.preferredWidth: 16
+                            Layout.fillWidth: false
+                            source:  "../icons/" + treeDelegate.kind + ".svg"
+                            sourceSize.width: 16
+                            sourceSize.height: 16
+                            fillMode: Image.PreserveAspectFit
+
+                            Layout.alignment: Qt.AlignLeft
+                        }
+
+                        MultiEffect {
+                            anchors.fill: kindIcon
+                            source: kindIcon
+
+                            colorizationColor: Colors.text
+                            colorization: 1.0
+                            brightness: 1.0
+                        }
+
+                        Drag.onDragStarted: {
+                            console.log("Drag started")
+                        }
+                    }
+
+                    Text {
+                        text: treeDelegate.name
+                        color: Colors.text
+                        id: label
+                        clip: true
+                        Layout.alignment: Qt.AlignLeft
+                        Layout.fillWidth: true
+                    }
+                }
+
+                Drag.active: dragHandler.active
+                Drag.dragType: Drag.Automatic
+                Drag.supportedActions: Qt.MoveAction
+                Drag.mimeData: {
+                    "text/plain": treeDelegate.uuid
+                }
+
+                DragHandler {
+                    id: dragHandler
+                    target: content
+                    onActiveChanged: {
+                        console.log("DragHandler: active=", active)
+                    }
                 }
 
                 background: Rectangle {
@@ -85,18 +156,28 @@ Rectangle {
                         : (hoverHandler.hovered ? Colors.active : "transparent")
                 }
 
-                // We color the directory icons with this MultiEffect, where we overlay
-                // the colorization color ontop of the SVG icons.
-                MultiEffect {
-                    id: iconOverlay
+                DropArea {
+                    id: dropArea
+                    anchors.fill: parent
 
-                    anchors.fill: directoryIcon
-                    source: directoryIcon
+                    onEntered: function(drag) {
+                        if (!MainTreeModel.canMove(drag.source.uuid, treeDelegate.uuid)) {
+                            console.log("We should now allow the drop here")
+                        }
+                    }
 
-                    colorizationColor: (treeDelegate.expanded && treeDelegate.hasChildren)
-                                             ? Colors.color2 : Colors.folder
-                    colorization: 1.0
-                    brightness: 1.0
+                    onDropped: function(drop) {
+                        console.log("DropArea receiceived a drop! source=", drop.source.uuid)
+
+                        if (MainTreeModel.canMove(drop.source.uuid, treeDelegate.uuid)) {
+                            console.log("Seems OK")
+                            drop.acceptProposedAction()
+                            MainTreeModel.moveNode(drop.source.uuid, treeDelegate.uuid)
+                        } else {
+                            drop.accept(Qt.IgnoreAction)
+                            console.log("DropArea rejected ", drop.source.uuid)
+                        }
+                    }
                 }
 
                 HoverHandler {
@@ -110,19 +191,8 @@ Rectangle {
                             case Qt.LeftButton:
                                 treeView.toggleExpanded(treeDelegate.row)
                                 treeView.lastIndex = treeDelegate.index
-                                // If this model item doesn't have children, it means it's
-                                // representing a file.
-                                // if (!treeDelegate.hasChildren)
-                                //     root.fileClicked(treeDelegate.filePath)
                             break;
                             case Qt.RightButton:
-                                // var my_uuid = treeDelegate.uuid;
-                                // console.log("Tapped node uuid=", my_uuid)
-                                // var node = MainTreeModel.nodeMapFromUuid(my_uuid)
-                                // //var node = MainTreeModel.nodeFromUuid(my_uuid)
-                                // console.log("node: ", node)
-                                // console.log("Tapped node name=", node.name)
-
                                 contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
                                 contextMenu.popup();
                             break;
@@ -178,8 +248,8 @@ Rectangle {
         property var node : null
 
         id: confirmDelete
-        title: qsTr("Please confirm")
-        text: qsTr("Do you really want to delete \"%1\" ?").arg(node.name)
+        title: qsTr("Do you really want to delete \"%1\" ?").arg(node.name)
+        text: qsTr("Note that any sub-items and all related information, including worked time, project information, actions etc. will also be deleted! This action can not be undone.")
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: {
            MainTreeModel.deleteNode(node.uuid)

@@ -219,6 +219,15 @@ void MainTreeModel::clear()
     uuid_index_.clear();
 }
 
+QModelIndex MainTreeModel::useRoot()
+{
+    if (root_.children().empty()) {
+        return index(0, 0, {});
+    }
+
+    return getIndex(root_.children().front().get());
+}
+
 pb::Node MainTreeModel::toNode(const QVariantMap &map)
 {
     pb::Node n;
@@ -286,12 +295,42 @@ void MainTreeModel::addNode(TreeNode *parent, const nextapp::pb::Node &node)
     beginInsertRows(getIndex(parent), row, row);
     auto new_node = make_shared<TreeNode>(node, parent);
     uuid_index_[new_node->uuid()] = new_node.get();
-    if (row >= parent->children().size()) {
-        parent->children().append(new_node);
-    } else {
-        parent->children().insert(row, new_node);
-    }
+    insertNode(parent->children(), new_node, row);
     endInsertRows();
+
+    if (parent == &root_ && row == 0) {
+        emit useRootChanged();
+    }
+}
+
+void MainTreeModel::moveNode(TreeNode *parent, TreeNode *current, const nextapp::pb::Node &node)
+{
+    // `parent` is the new parent we are moving to
+    // We still have the actual/old parent in `current->parent`
+
+    auto old_parent = lookupTreeNode(current->parent()->uuid());
+    assert(old_parent);
+
+    const auto sourceParentIx = getIndex(old_parent);
+    const auto destinationParentIx = getIndex(parent);
+    const auto src_row = getIndex(current).row();
+    const auto dst_row = getInsertRow(parent, node);
+    beginMoveRows(sourceParentIx, src_row, src_row, destinationParentIx, dst_row);
+
+    auto tn = old_parent->children().takeAt(src_row);
+    tn->node() = node; // We want version and parent to be up to date
+    tn->setParent(parent);
+    insertNode(parent->children(), tn, dst_row);
+    endMoveRows();
+}
+
+void MainTreeModel::insertNode(TreeNode::node_list_t &list, std::shared_ptr<TreeNode> &tn, int row)
+{
+    if (row >= list.size()) {
+        list.append(tn);
+    } else {
+        list.insert(row, tn);
+    }
 }
 
 QModelIndex MainTreeModel::getIndex(TreeNode *node)
@@ -355,6 +394,7 @@ void MainTreeModel::pocessUpdate(const nextapp::pb::Update &update)
 
     switch(op) {
     case Update::Operation::ADDED:
+added:
         assert(current == nullptr);
         assert(parent);
         addNode(parent, node);
@@ -368,7 +408,15 @@ void MainTreeModel::pocessUpdate(const nextapp::pb::Update &update)
         }
         break;
     case Update::Operation::MOVED:
-        assert(false); // Implement!
+        if (current) {
+            assert(parent);
+            assert(parent != current->parent());
+            moveNode(parent, current, node);
+        } else {
+            // Add it!
+            LOG_WARN << "Failed to locate moved node " << current->node().uuid() << ". Will add it.";
+            goto added;
+        }
         break;
     case Update::Operation::DELETED:
         if (current) {
@@ -382,6 +430,10 @@ void MainTreeModel::pocessUpdate(const nextapp::pb::Update &update)
             beginRemoveRows(parent_ix, cix.row(), cix.row());
             parent->children().removeAt(cix.row());
             endRemoveRows();
+
+            if (cix.row() == 0 && parent == &root_) {
+                emit useRootChanged();
+            }
         }
         break;
     }
@@ -394,6 +446,19 @@ MainTreeModel::TreeNode *MainTreeModel::lookupTreeNode(const QUuid &uuid)
     }
 
     return {};
+}
+
+bool MainTreeModel::isDescent(const QUuid &nodeUuid, const QUuid &descentOf)
+{
+    if (auto node = lookupTreeNode(nodeUuid)) {
+        for(auto *parent = node->parent(); parent; parent = parent->parent()) {
+            if (parent->uuid() == descentOf) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &child)
@@ -452,13 +517,6 @@ void MainTreeModel::addNode(const nextapp::pb::Node& node, const std::optional<Q
     root_.children().emplaceBack(std::move(new_node));
 }
 
-void MainTreeModel::moveNode(const QUuid &node,
-                             const std::optional<QUuid> &parent,
-                             const std::optional<QUuid> &beforeSibling)
-{
-    assert(false && "Not implemented");
-}
-
 void MainTreeModel::setAllNodes(const nextapp::pb::NodeTree& tree)
 {
     {
@@ -503,6 +561,8 @@ QVariant MainTreeModel::TreeNode::data(int role)
         return node().name();
     case UuidRole:
         return uuid();
+    case KindRole:
+        return MainTreeModel::toString(node().kind());
     }
 
     return {};
@@ -512,6 +572,7 @@ QHash<int, QByteArray> MainTreeModel::TreeNode::roleNames() {
     QHash<int, QByteArray> roles;
     roles[NameRole] = "name";
     roles[UuidRole] = "uuid";
+    roles[KindRole] = "kind";
     return roles;
 }
 
@@ -560,6 +621,15 @@ QVariantMap MainTreeModel::nodeMapFromUuid(const QString &uuid)
     return {};
 }
 
+QModelIndex MainTreeModel::indexFromUuid(const QString &uuid)
+{
+    if (auto it = uuid_index_.find(QUuid{uuid}); it != uuid_index_.end()) {
+        return getIndex(it.value());
+    }
+
+    return {};
+}
+
 void MainTreeModel::addNode(QVariantMap args)
 {
     nextapp::pb::Node node = toNode(args);
@@ -595,6 +665,30 @@ void MainTreeModel::deleteNode(const QString &uuid)
     ServerComm::instance().deleteNode(id);
 }
 
+void MainTreeModel::moveNode(const QString &uuid, const QString &toParentUuid)
+{
+    QUuid id{uuid};
+    QUuid parentId{toParentUuid};
+    assert(!id.isNull());
+    assert(!parentId.isNull());
+
+    if (isDescent(parentId, id)) {
+        LOG_WARN << "Node cannot be moved to one of its descents";
+        return;
+    }
+
+    ServerComm::instance().moveNode(id, parentId);
+}
+
+bool MainTreeModel::canMove(const QString &uuid, const QString &toParentUuid)
+{
+    if (uuid == toParentUuid || isDescent(QUuid{toParentUuid}, QUuid{uuid})) {
+        return false;
+    }
+
+    return true;
+}
+
 MainTreeModel::ResetScope::ResetScope(MainTreeModel &model)
     : model_{model} {
 
@@ -603,4 +697,5 @@ MainTreeModel::ResetScope::ResetScope(MainTreeModel &model)
 
 MainTreeModel::ResetScope::~ResetScope() {
     model_.endResetModel();
+    emit model_.useRootChanged();
 }
