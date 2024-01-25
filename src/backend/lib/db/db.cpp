@@ -129,9 +129,11 @@ bool Db::handleError(const boost::system::error_code &ec, boost::mysql::diagnost
             case boost::system::errc::connection_reset:
             case boost::system::errc::connection_aborted:
             case boost::asio::error::operation_aborted:
+                LOG_DEBUG << "The error is recoverable if we re-try the query it may succeed...";
                 return false; // retry
 
             default:
+                LOG_DEBUG << "The error is non-recoverable";
                 throw db_err{pb::Error::DATABASE_REQUEST_FAILED, ec.message()};
         }
     }
@@ -168,6 +170,9 @@ boost::asio::awaitable<void> Db::Handle::reconnect()
     asio::ip::tcp::resolver resolver(parent_->ctx_.get_executor());
     auto endpoints = resolver.resolve(parent_->config_.host,
                                       std::to_string(parent_->config_.port));
+
+    LOG_DEBUG << "Will try to re-connect to the database server at "
+              << parent_->config_.host << ":" << parent_->config_.port;
 
     if (endpoints.empty()) {
         LOG_ERROR << LogEvent::LE_DATABASE_FAILED_TO_RESOLVE

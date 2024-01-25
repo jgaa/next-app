@@ -177,7 +177,7 @@ private:
         unsigned retries = 0;
 
         for(auto ep : endpoints) {
-            LOG_TRACE_N << "New db connection to " << ep.endpoint();
+            LOG_DEBUG << "New db connection to " << ep.endpoint();
         again:
             if (ctx_.stopped()) {
                 LOG_INFO << "Server is shutting down. Aborting connect to the database.";

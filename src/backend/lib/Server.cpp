@@ -126,8 +126,8 @@ boost::asio::awaitable<bool> Server::checkDb()
     auto res = co_await db_->exec("SELECT version FROM nextapp");
     if (res.has_value()) {
         const auto version = res.rows().front().front().as_int64();
-        LOG_DEBUG << "The existing database is at version " << version
-                  << ". I need the database to be at version " << latest_version << '.';
+        LOG_DEBUG << "I need the database to be at version " << latest_version
+                  << ". The existing database is at version " << version << '.';
 
         if (latest_version > version) {
             co_await upgradeDbTables(version);
