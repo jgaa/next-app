@@ -10,9 +10,8 @@ Dialog {
     property alias name: name.text
     property string kind: "folder"
     property bool isNew: true
-    property var parentIx: null
     property var node: null
-    property string parentUuid: ""
+    property string parentUuid: MainTreeModel.selected
     property string currentUuid: ""
 
     x: (parent.width - width) / 2
@@ -90,7 +89,7 @@ Dialog {
         var args = {
             name: name.text,
             kind: kind,
-            parent: node ? node.parent : MainTreeModel.uuidFromModelIndex(parentIx)
+            parent: node ? node.parent : root.parentUuid
         }
 
         if (node != null) { // edit
@@ -98,7 +97,6 @@ Dialog {
             let new_args = {}
             Object.assign(new_args, node, args)
             MainTreeModel.updateNode(new_args)
-            //console.log("new_args.name=", new_args.name, " new_args.uuid=", new_args.uuid)
         } else {
             MainTreeModel.addNode(args)
         }

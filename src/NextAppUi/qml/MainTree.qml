@@ -11,6 +11,7 @@ Rectangle {
     id: root
 
     //property alias currentIndex : treeView.selectionModel.currentIndex
+    property string selectedItemUuid: MainTreeModel.selected
 
     color: Colors.background
 
@@ -151,7 +152,7 @@ Rectangle {
                 }
 
                 background: Rectangle {
-                    color: (treeDelegate.index === treeView.lastIndex)
+                    color: (MainTreeModel.selected === treeDelegate.uuid)
                         ? Colors.selection
                         : (hoverHandler.hovered ? Colors.active : "transparent")
                 }
@@ -191,6 +192,7 @@ Rectangle {
                             case Qt.LeftButton:
                                 treeView.toggleExpanded(treeDelegate.row)
                                 treeView.lastIndex = treeDelegate.index
+                                setSelection(treeDelegate.uuid)
                             break;
                             case Qt.RightButton:
                                 contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
@@ -278,5 +280,10 @@ Rectangle {
             node: node,
             title: qsTr("Edit " + node.kind)
         });
+    }
+
+    function setSelection(uuid) {
+        console.log("Selection changed to ", uuid)
+        MainTreeModel.selected = uuid;
     }
 }

@@ -14,6 +14,7 @@ class MainTreeModel : public QAbstractItemModel
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(QModelIndex useRoot READ useRoot NOTIFY useRootChanged)
+    Q_PROPERTY(QString selected READ selected WRITE setSelected NOTIFY selectedChanged)
 
 public:
     struct ResetScope {
@@ -96,8 +97,12 @@ public:
 
     void start();
 
+    void setSelected(const QString& selected);
+    QString selected() const;
+
 signals:
     void useRootChanged();
+    void selectedChanged();
 
 public:
     QString nodeName(const QModelIndex& index) const;
@@ -139,13 +144,6 @@ public:
     void dump();
 
 public slots:    
-    // Replaces the node if it exists, adds it if it don't exist
-    // If sibling is set, the node is added/moved before the sibling.
-    // If parent is set, the node is added/moved as last child.
-    // If both parent ans sibling is set, the node is added/moved before the sibling. In other words, a sibling value of {} is similar to an end() iterator
-    // If neither sibling or parent is set, the node is added/moved as the last child of the root-node.
-    void addNode(const ::nextapp::pb::Node& node, const std::optional<QUuid>& parent, const std::optional<QUuid>& beforeSibling);
-
     // Deletes any existing nodes and copys the tree from 'tree'
     void setAllNodes(const nextapp::pb::NodeTree& tree);
 
@@ -181,4 +179,5 @@ private:
     QMap<QUuid, TreeNode*> uuid_index_;
     std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
     bool has_initial_tree_ = false;
+    QString selected_;
 };

@@ -227,7 +227,6 @@ ApplicationWindow {
     function openNodeDlg(kind) {
         openDialog("EditNodeDlg.qml", {
             isNew: true,
-            parentIx: mainTree.currentIndex,
             kind: kind,
             title: qsTr("New Folder")
         });

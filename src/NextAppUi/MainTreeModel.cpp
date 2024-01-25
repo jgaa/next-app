@@ -89,6 +89,15 @@ void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, i
     });
 }
 
+[[nodiscard]] QString toValidQuid(const QString& str) {
+    QUuid uuid{str};
+    if (uuid.isNull()) {
+        return {};
+    }
+    auto rval = uuid.toString(QUuid::WithoutBraces);
+    return rval;
+}
+
 } // anon ns
 
 
@@ -111,6 +120,17 @@ void MainTreeModel::start()
 
 
     ServerComm::instance().getNodeTree();
+}
+
+void MainTreeModel::setSelected(const QString& newSel)
+{
+    selected_ = toValidQuid(newSel);
+    emit selectedChanged();
+}
+
+QString MainTreeModel::selected() const
+{
+    return selected_;
 }
 
 QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent) const
@@ -232,10 +252,10 @@ pb::Node MainTreeModel::toNode(const QVariantMap &map)
 {
     pb::Node n;
 
-    n.setUuid(map.value("uuid").toString());
+    n.setUuid(toValidQuid(map.value("uuid").toString()));
     n.setName(map.value("name").toString());
-    n.setParent(map.value("parent").toString());
-    n.setUser(map.value("user").toString());
+    n.setParent(toValidQuid(map.value("parent").toString()));
+    n.setUser(toValidQuid(map.value("user").toString()));
     n.setActive(map.value("active").toBool());
     n.setKind(toNodeKind(map.value("kind").toString()));
     n.setDescr(map.value("descr").toString());
@@ -427,6 +447,14 @@ added:
             assert(parent);
             auto cix = getIndex(current);
             auto parent_ix = getIndex(parent);
+
+            if (auto *sel = lookupTreeNode(QUuid{selected()})) {
+                if (sel == current || isDescent(sel->uuid(), current->uuid())) {
+                    LOG_TRACE << "Clearing selection in tree due to deleted node.";
+                    setSelected({});
+                }
+            }
+
             beginRemoveRows(parent_ix, cix.row(), cix.row());
             parent->children().removeAt(cix.row());
             endRemoveRows();
@@ -469,52 +497,6 @@ MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &
     }
 
     return root_.children();
-}
-
-void MainTreeModel::addNode(const nextapp::pb::Node& node, const std::optional<QUuid> &parentUuid, const std::optional<QUuid> &beforeSibling)
-{
-    LOG_TRACE_N << "name=" << node.name();
-
-    auto uuid_str = node.uuid();
-    assert(!uuid_str.isEmpty());
-    const QUuid node_uuid{uuid_str};
-
-    //deleteNode(node_uuid);
-
-    // The node cannot exist in the tree at this point
-    assert(uuid_index_.find(node_uuid) == uuid_index_.end());
-
-    if (beforeSibling) {
-        auto sibling = uuid_index_.value(*beforeSibling);
-        assert(sibling);
-        if (sibling) {
-            assert(sibling->hasParent());
-            auto& list = sibling->parent()->children();
-            auto new_node = make_shared<MainTreeModel::TreeNode>(node, sibling->parent());
-            uuid_index_[new_node->uuid()] = new_node.get();
-            auto siblings_row = getRow(list, *beforeSibling);
-            assert(siblings_row);
-            list.insert(siblings_row ? *siblings_row : 0, std::move(new_node));
-        } else {
-            throw runtime_error{"Failed to lookup sibling"};
-        }
-        return;
-    }
-
-    if (parentUuid) {
-        auto parent = uuid_index_.value(*parentUuid);
-        assert(parent);
-        auto new_node = make_shared<MainTreeModel::TreeNode>(std::move(node), parent);
-
-        uuid_index_[new_node->uuid()] = new_node.get();
-        auto& list = parent->children();
-        list.emplace_back(std::move(new_node));
-        return;
-    }
-
-    auto new_node = make_shared<MainTreeModel::TreeNode>(std::move(node), &root_);
-    uuid_index_[new_node->uuid()] = new_node.get();
-    root_.children().emplaceBack(std::move(new_node));
 }
 
 void MainTreeModel::setAllNodes(const nextapp::pb::NodeTree& tree)
@@ -560,7 +542,7 @@ QVariant MainTreeModel::TreeNode::data(int role)
     case NameRole:
         return node().name();
     case UuidRole:
-        return uuid();
+        return node().uuid();
     case KindRole:
         return MainTreeModel::toString(node().kind());
     }
