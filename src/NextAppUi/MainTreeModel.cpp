@@ -467,8 +467,15 @@ added:
     }
 }
 
-MainTreeModel::TreeNode *MainTreeModel::lookupTreeNode(const QUuid &uuid)
+MainTreeModel::TreeNode *MainTreeModel::lookupTreeNode(const QUuid &uuid, bool emptyIsRoot)
 {
+    if (uuid.isNull()) {
+        if (emptyIsRoot) {
+            return &root_;
+        }
+        return {};
+    }
+
     if (auto it = uuid_index_.find(uuid); it != uuid_index_.end()) {
         return it.value();
     }
@@ -532,6 +539,7 @@ MainTreeModel::TreeNode::TreeNode(nextapp::pb::Node node, TreeNode *parent)
     auto name = node_.name();
     if (!name.isEmpty() && !parent) {
         LOG_WARN << "Impossible!";
+        assert(false);
     }
 }
 
@@ -545,6 +553,8 @@ QVariant MainTreeModel::TreeNode::data(int role)
         return node().uuid();
     case KindRole:
         return MainTreeModel::toString(node().kind());
+    case DescrRole:
+        return node().descr();
     }
 
     return {};
@@ -652,7 +662,6 @@ void MainTreeModel::moveNode(const QString &uuid, const QString &toParentUuid)
     QUuid id{uuid};
     QUuid parentId{toParentUuid};
     assert(!id.isNull());
-    assert(!parentId.isNull());
 
     if (isDescent(parentId, id)) {
         LOG_WARN << "Node cannot be moved to one of its descents";

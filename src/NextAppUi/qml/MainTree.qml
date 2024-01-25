@@ -43,8 +43,6 @@ Rectangle {
 
             //selectionModel: ItemSelectionModel { id: selection }
 
-            Component.onCompleted: fileSystemTreeView.toggleExpanded(0)
-
             delegate: TreeViewDelegate {
                 id: treeDelegate
                 indentation: 8
@@ -199,6 +197,11 @@ Rectangle {
                                 contextMenu.popup();
                             break;
                         }
+                    }
+
+                    onLongPressed: {
+                        contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                        contextMenu.popup();
                     }
                 }
 

@@ -33,6 +33,7 @@ public:
             NameRole = Qt::UserRole + 1,
             UuidRole,
             KindRole,
+            DescrRole,
         };
 
         // In QT 6.6, QList<> does not work with std::unique_ptr
@@ -171,7 +172,7 @@ private:
     QModelIndex getIndex(TreeNode *node);
     int getInsertRow(const TreeNode *parent, const nextapp::pb::Node& node);
     void pocessUpdate(const nextapp::pb::Update& update);
-    TreeNode *lookupTreeNode(const QUuid& uuid);
+    TreeNode *lookupTreeNode(const QUuid& uuid, bool emptyIsRoot = true);
     bool isDescent(const QUuid &uuid, const QUuid &toParentUuid);
 
     TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child);

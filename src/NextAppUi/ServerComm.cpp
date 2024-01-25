@@ -210,7 +210,10 @@ void ServerComm::moveNode(const QUuid &uuid, const QUuid &toParentUuid)
 {
     nextapp::pb::MoveNodeReq req;
     req.setUuid(uuid.toString(QUuid::WithoutBraces));
-    req.setParentUuid(toParentUuid.toString(QUuid::WithoutBraces));
+
+    if (!toParentUuid.isNull()) {
+        req.setParentUuid(toParentUuid.toString(QUuid::WithoutBraces));
+    }
 
     if (uuid == toParentUuid) {
         LOG_ERROR << "A node cannnot be its own parent!";

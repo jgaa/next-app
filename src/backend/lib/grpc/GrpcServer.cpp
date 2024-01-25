@@ -645,12 +645,16 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 co_return;
             }
 
-            co_await owner_.validateParent(req->parentuuid(), cuser);
+            optional<string> parent;
+            if (!req->parentuuid().empty()) {
+                co_await owner_.validateParent(req->parentuuid(), cuser);
+                parent = req->parentuuid();
+            }
 
             // Update the data, if version is unchanged
             auto res = co_await owner_.server().db().exec(
                 "UPDATE node SET parent=?, version=version+1 WHERE id=? AND user=? AND version=?",
-                req->parentuuid(),
+                parent,
                 req->uuid(),
                 cuser,
                 existing.version()
