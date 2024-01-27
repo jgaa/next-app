@@ -174,7 +174,7 @@ message Update {
 
     oneof what {
         Ping ping = 10;
-        Day day = 11;
+        CompleteDay day = 11;
         ColorAtDay DayColor = 12;
         Tenant tenant = 13;
         User user = 14;
@@ -225,6 +225,7 @@ service Nextapp {
     rpc GetDay(Date) returns (CompleteDay) {}
     rpc GetMonth(MonthReq) returns (Month) {}
     rpc SetColorOnDay(SetColorReq) returns (Status) {}
+    rpc SetDay(CompleteDay) returns (Status) {}
     rpc SubscribeToUpdates(UpdatesReq) returns (stream Update) {}
 
     rpc CreateTenant(CreateTenantReq) returns (Status) {}

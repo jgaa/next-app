@@ -2,7 +2,7 @@
 #include <ranges>
 
 #include "DayColorModel.h"
-#include "ServerComm.h"
+#include "DaysModel.h"
 
 #include "logging.h"
 
@@ -11,13 +11,14 @@ using namespace std;
 DayColorModel::DayColorModel(QObject *parent)
     : QObject{parent}
 {
-   connect(std::addressof(ServerComm::instance()),
-           &ServerComm::dayColorDefinitionsChanged,
-           [this]() {
-               setDefinitions();
-            });
+}
 
-    setDefinitions();
+void DayColorModel::start()
+{
+    connect(DaysModel::instance(),
+            &DaysModel::dayColorsChanged,
+            this,
+            &DayColorModel::dayColorsChanged);
 }
 
 QStringList DayColorModel::getNames() const
@@ -61,14 +62,16 @@ int DayColorModel::getIndexForColorUuid(const QString &uuid)
     return -1;
 }
 
-void DayColorModel::setDayColor(int year, int month, int day, int ix)
-{
-    const auto uuid = getUuid(ix);
-    ServerComm::instance().setDayColor(year, month, day, uuid);
-}
+// void DayColorModel::setDayColor(int year, int month, int day, int ix,
+//                                 const QString& notes, const QString& report)
+// {
+//     const auto uuid = getUuid(ix);
+//     ServerComm::instance().setDayColor(year, month, day, uuid, notes, report);
+// }
 
-void DayColorModel::setDefinitions()
+void DayColorModel::dayColorsChanged(const nextapp::pb::DayColorDefinitions& defs)
 {
-    daycolors_ = ServerComm::getDayColorDefs().dayColors();
+    daycolors_ = defs.dayColors();
+    LOG_DEBUG << "DayColorModel -  Colors changed.";
     emit colorsChanged();
 }

@@ -8,6 +8,8 @@
 
 #include "ServerComm.h"
 #include "MainTreeModel.h"
+#include "DaysModel.h"
+#include "DayColorModel.h"
 #include "nextapp.qpb.h"
 
 #include "logging.h"
@@ -92,34 +94,14 @@ int main(int argc, char *argv[])
 
         tree->start();
 
-        // auto rscope = tree->resetScope();
-
-        // ::nextapp::pb::Node first, second, child1, child2, child3;
-        // first.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        // first.setName("first");
-
-        // tree->addNode(first, {}, {});
-
-        // second.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        // second.setName("second");
-        // tree->addNode(second, {}, {});
-
-
-        // child1.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        // child1.setName("child2");
-        // tree->addNode(child1, QUuid{first.uuid()}, {});
-
-        // child2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        // child2.setName("child1");
-
-        // tree->addNode(child2, {}, QUuid{child1.uuid()});
-
-        // child2.setUuid(QUuid::createUuid().toString(QUuid::StringFormat::WithoutBraces));
-        // child2.setName("child3");
-        // tree->addNode(child2, QUuid{child1.uuid()}, {});
-
-        // tree->dump();
+        auto days = engine.singletonInstance<DaysModel*>("NextAppUi","DaysModel");
+        assert(days);
+        days->start();
     }
+
+    auto colors = engine.singletonInstance<DayColorModel*>("NextAppUi","DayColorModel");
+    assert(colors);
+    colors->start();
 
     QObject::connect(
         &engine,

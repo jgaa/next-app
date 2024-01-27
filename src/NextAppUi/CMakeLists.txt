@@ -24,7 +24,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
 
 qt_policy(
     SET QTP0001 NEW
@@ -36,13 +36,13 @@ qt_standard_project_setup()
 
 set (protofile "${CMAKE_CURRENT_SOURCE_DIR}/../proto/nextapp.proto")
 
-qt_add_protobuf(MyProtoMessageLib
+qt_add_protobuf(NextappProtoMessageLib
     QML
     QML_URI nextapp.pb
     PROTO_FILES ${protofile}
 )
 
-qt_add_grpc(MyGrpcClient CLIENT
+qt_add_grpc(NextappGrpcClient CLIENT
     PROTO_FILES ${protofile}
 )
 
@@ -114,8 +114,10 @@ qt_add_qml_module(appNextAppUi
         MonthModel.cpp
         DayColorModel.h
         DayColorModel.cpp
-        # ServerCommMgr.h
-        # ServerCommMgr.cpp
+        DaysModel.h
+        DaysModel.cpp
+        DayModel.h
+        DayModel.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -133,7 +135,7 @@ set_target_properties(appNextAppUi PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-add_dependencies(appNextAppUi logfault MyGrpcClient MyProtoMessageLib)
+add_dependencies(appNextAppUi logfault NextappGrpcClient NextappProtoMessageLib)
 
 target_link_libraries(appNextAppUi
     PRIVATE
@@ -146,8 +148,8 @@ target_link_libraries(appNextAppUi
         Qt6::Grpc
         Qt6::Concurrent
         Qt6::Test
-        MyGrpcClient
-        MyProtoMessageLib
+        NextappGrpcClient
+        NextappProtoMessageLib
 )
 
 include(GNUInstallDirs)
@@ -181,7 +183,7 @@ install(SCRIPT ${deploy_script})
 #     set_property(TARGET tst_data_models PROPERTY CXX_STANDARD 20)
 
 #     target_link_libraries(tst_data_models
-#         PRIVATE MyGrpcClient MyProtoMessageLib Qt6::Protobuf Qt6::Grpc Qt6::Core ${GTEST_LIBRARIES}
+#         PRIVATE NextappGrpcClient NextappProtoMessageLib Qt6::Protobuf Qt6::Grpc Qt6::Core ${GTEST_LIBRARIES}
 #     )
 
 #     add_test(NAME data_models COMMAND tst_data_models)

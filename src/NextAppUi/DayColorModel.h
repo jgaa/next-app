@@ -16,14 +16,17 @@ class DayColorModel : public QObject
 public:
     explicit DayColorModel(QObject *parent = nullptr);
 
+    void start();
+
     // Return a list of the names in the same order as we have them stored
     // Then we can use the indes to get the full record.
     QStringList getNames() const;
 
-    QUuid getUuid(int index);
+    Q_INVOKABLE QUuid getUuid(int index);
 
     Q_INVOKABLE int getIndexForColorUuid(const QString& uuid);
-    Q_INVOKABLE void setDayColor(int year, int month, int day, int ix /* 0 == unset */);
+
+    void dayColorsChanged(const nextapp::pb::DayColorDefinitions& defs);
 
 signals:
     void colorsChanged();

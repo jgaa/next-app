@@ -41,46 +41,45 @@ Rectangle {
             month: Calendar.April
         }
 
-        Month {
-            month: Calendar.July
-        }
+        //Month {
+        //     month: Calendar.July
+        // }
 
-        Month {
-            month: Calendar.October
-        }
+        // Month {
+        //     month: Calendar.October
+        // }
 
-        Month {
-            month: Calendar.February
-        }
+        // Month {
+        //     month: Calendar.February
+        // }
 
-        Month {
-            month: Calendar.May
-        }
+        // Month {
+        //     month: Calendar.May
+        // }
 
-        Month {
-            month: Calendar.August
-        }
+        // Month {
+        //     month: Calendar.August
+        // }
 
-        Month {
-            month: Calendar.November
-        }
+        // Month {
+        //     month: Calendar.November
+        // }
 
+        // Month {
+        //     month: Calendar.March
+        // }
 
-        Month {
-            month: Calendar.March
-        }
+        // Month {
+        //     month: Calendar.June
+        // }
 
-        Month {
-            month: Calendar.June
-        }
+        // Month {
+        //     month: Calendar.September
+        // }
 
-        Month {
-            month: Calendar.September
-        }
-
-        Month {
-            month: Calendar.December
-        }
+        // Month {
+        //     month: Calendar.December
+        // }
 
     }
 
@@ -94,14 +93,14 @@ Rectangle {
         id: monthComponent
         property alias month: grid.month
         property alias year: grid.year
-        property MonthModel mmodel: ServerComm.getMonthModel(year, month)
+        property MonthModel mmodel: DaysModel.getMonth(year, month)
         property bool validColors: mmodel.validColors;
 
         //color: validColors ? "white" : "lightgray"
         //color: "lightgray"
 
         onValidColorsChanged: {
-            let x = 1
+            console.log("Month ", grid.month, " validColors changed to ", monthComponent.validColors)
         }
 
         Layout.fillWidth: true
@@ -153,26 +152,27 @@ Rectangle {
                         height: dtext.height
                         width: dtext.width
                         required property var model
-                        color: {
-                            // if (hover.hovered) {
-                            //     return "lightpink"
-                            // }
+                        color: monthComponent.validColors ? monthComponent.mmodel.getColorForDayInMonth(drect.model.day) : "lightgray"
+                        // color: {
+                        //     // if (hover.hovered) {
+                        //     //     return "lightpink"
+                        //     // }
 
-                            if (!monthComponent.validColors) {
-                                return "lightgray";
-                            }
+                        //     if (!monthComponent.validColors) {
+                        //         return "lightgray";
+                        //     }
 
-                            if (drect.model.month !== grid.month) {
-                                return "white"
-                            }
+                        //     if (drect.model.month !== grid.month) {
+                        //         return "white"
+                        //     }
 
-                            var mday = drect.model.day
-                            const c = monthComponent.mmodel.getColorForDayInMonth(mday);
-                            if (typeof c !== 'string' || c === "") {
-                                return "gray";
-                            }
-                            return c;
-                        }
+                        //     var mday = drect.model.day
+                        //     const c = monthComponent.mmodel.getColorForDayInMonth(mday);
+                        //     if (typeof c !== 'string' || c === "") {
+                        //         return "gray";
+                        //     }
+                        //     return c;
+                        // }
 
                         Rectangle {
                             id: hover_shadow
@@ -204,16 +204,32 @@ Rectangle {
                                 }
 
                                 onDoubleClicked: {
-                                    var uuid = monthComponent.mmodel.getUuidForDayInMonth(drect.model.day);
+                                    //var uuid = monthComponent.mmodel.getUuidForDayInMonth(drect.model.day);
+
+                                    var dmodel = DaysModel.getDay(drect.model.year, drect.model.month, drect.model.day);
+                                    if (dmodel === null) {
+                                        console.debug("Error: dmodel is null");
+                                        return; // or maybe throw
+                                    }
+
                                     var component = Qt.createComponent("../qml/DayDialog.qml");
+                                    if( component.status === Component.Error ) {
+                                        console.debug("Error:"+ component.errorString() );
+                                        return; // or maybe throw
+                                    }
+
                                     var dlg = component.createObject(monthComponent, {
                                          x: 25,
                                          y: 25,
-                                         year: drect.model.year,
-                                         month: drect.model.month,
-                                         day: drect.model.day,
-                                         colorUuid: uuid
+                                         model: dmodel,
+                                         date: new Date(drect.model.year, drect.model.month, drect.model.day)
                                          });
+
+                                    if( component.status === Component.Error ) {
+                                        console.debug("Error:"+ component.errorString() );
+                                        return; // or maybe throw
+                                    }
+
                                     dlg.open()
                                 }
                             }

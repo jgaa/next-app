@@ -9,6 +9,8 @@
 using namespace std;
 using namespace nextapp;
 
+MainTreeModel *MainTreeModel::instance_;
+
 ostream& operator << (ostream& o, const QModelIndex& v) {
 
     if (v.isValid()) {
@@ -104,6 +106,7 @@ void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, i
 MainTreeModel::MainTreeModel(QObject *parent)
     : QAbstractItemModel{parent}
 {
+    instance_ = this;
 }
 
 void MainTreeModel::start()
@@ -136,12 +139,12 @@ QString MainTreeModel::selected() const
 QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent) const
 {
     if (column) {
-        LOG_TRACE_N << "Queried for row=" << row << ", column=" << column
-                    << ". We don't use culumns in this tree.";
+        // LOG_TRACE_N << "Queried for row=" << row << ", column=" << column
+        //             << ". We don't use culumns in this tree.";
         return {};
     }
 
-    LOG_TRACE << "index: row=" << row << ", column=" << column << ", parent=" << parent;
+    //LOG_TRACE << "index: row=" << row << ", column=" << column << ", parent=" << parent;
 
     if (parent.isValid()) {
         if (auto *parent_ptr = static_cast<TreeNode *>(parent.internalPointer())) {
@@ -156,13 +159,13 @@ QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent)
         }
     }
 
-    LOG_TRACE << "index: ** returning empty...";
+    //LOG_TRACE << "index: ** returning empty...";
     return {};
 }
 
 QModelIndex MainTreeModel::parent(const QModelIndex &child) const
 {
-    LOG_TRACE << "parent for : " << child;
+    //LOG_TRACE << "parent for : " << child;
 
     if (auto *current = getTreeNode(child)) {
         if (auto *parent = current->parent()) {
@@ -182,7 +185,7 @@ QModelIndex MainTreeModel::parent(const QModelIndex &child) const
         }
     }
 
-    LOG_TRACE << "parent *** Returning empty...";
+    //LOG_TRACE << "parent *** Returning empty...";
     return {};
 }
 
@@ -193,7 +196,7 @@ int MainTreeModel::rowCount(const QModelIndex &parent) const
         count = getTreeNode(parent)->children().size();
     }
 
-    LOG_TRACE_N << parent << " count=" << count;
+    //LOG_TRACE_N << parent << " count=" << count;
 
     return count;
 }
@@ -205,7 +208,7 @@ int MainTreeModel::columnCount(const QModelIndex &parent) const
 
 QVariant MainTreeModel::data(const QModelIndex &index, int role) const
 {
-    LOG_TRACE_N << index << " role=" << role;
+    //LOG_TRACE_N << index << " role=" << role;
     if (index.isValid()) {
         if (auto current = getTreeNode(index)) {
             return current->data(role);
@@ -222,7 +225,7 @@ bool MainTreeModel::hasChildren(const QModelIndex &parent) const
         children = !getTreeNode(parent)->children().empty();
     }
 
-    LOG_TRACE_N << parent << " children=" << (children ? "true" : "false");
+    //LOG_TRACE_N << parent << " children=" << (children ? "true" : "false");
     return children;
 }
 

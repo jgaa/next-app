@@ -31,36 +31,18 @@ void ServerComm::start()
     QGrpcChannelOptions channelOptions(QUrl(current_server_address_ , QUrl::StrictMode));
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
     LOG_INFO << "Using server at " << current_server_address_;
-    auto info_call = client_->GetServerInfo({});
-    info_call->subscribe(this, [info_call, this]() {
-            nextapp::pb::ServerInfo se = info_call->read<nextapp::pb::ServerInfo>();
-            assert(se.properties().front().key() == "version");
-            server_version_ = se.properties().front().value();
-            LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
-            emit versionChanged();
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
 
-    auto day_color_defs_call = client_->GetDayColorDefinitions({});
-    day_color_defs_call->subscribe(this, [day_color_defs_call, this]() {
-            day_color_definitions_ = day_color_defs_call->read<nextapp::pb::DayColorDefinitions>();
-            LOG_DEBUG_N << "Received " << day_color_definitions_.dayColors().size()
-                        << " day-color definitions.";
-
-            colors_.clear();
-            for(const auto& color: day_color_definitions_.dayColors()) {
-                colors_[QUuid{color.id_proto()}] = color.color();
-            }
-
-            emit dayColorDefinitionsChanged();
-            onGrpcReady();
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
-
-    updates_ = client_->streamSubscribeToUpdates({});
-    connect(updates_.get(), &QGrpcStream::messageReceived, this, &ServerComm::onUpdateMessage);
+    callRpc<nextapp::pb::ServerInfo>([this]() {
+        return client_->GetServerInfo({});
+    }, [this](const nextapp::pb::ServerInfo& se) {
+        assert(se.properties().front().key() == "version");
+        server_version_ = se.properties().front().value();
+        LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
+        emit versionChanged();
+        updates_ = client_->streamSubscribeToUpdates({});
+        connect(updates_.get(), &QGrpcStream::messageReceived, this, &ServerComm::onUpdateMessage);
+        onGrpcReady();
+    }, GrpcCallOptions{false});
 }
 
 void ServerComm::stop()
@@ -70,18 +52,8 @@ void ServerComm::stop()
 
 QString ServerComm::version()
 {
-    emit errorRecieved({});
+    //emit errorRecieved({});
     return server_version_;
-}
-
-nextapp::pb::DayColorRepeated ServerComm::getDayColorsDefinitions()
-{
-    return day_color_definitions_.dayColors();
-}
-
-MonthModel *ServerComm::getMonthModel(int year, int month)
-{
-    return new MonthModel{static_cast<unsigned>(year), static_cast<unsigned>(month)};
 }
 
 void ServerComm::reloadSettings()
@@ -97,113 +69,60 @@ void ServerComm::reloadSettings()
     });
 }
 
-ServerComm::colors_in_months_t
-ServerComm::getColorsInMonth(unsigned int year, unsigned int month, bool force)
+void ServerComm::getColorsInMonth(unsigned int year, unsigned int month)
 {
-    LOG_TRACE_N << "Requesting year=" << year << ", month=" << month;
-    if (!grpc_is_ready_) {
-        grpc_queue_.push([this, year, month] {
-            getColorsInMonth(year, month);
-        });
-    }
-
-    if (!force) {
-        if (auto it = colors_in_months_.find({year, month}); it != colors_in_months_.end()) {
-            return it->second;
-        }
-    }
-
     nextapp::pb::MonthReq req;
     req.setYear(year);
     req.setMonth(month);
-    auto call = client_->GetMonth(req);
-    call->subscribe(this, [call, this, y=year, m=month]() {
-            auto month = call->read<nextapp::pb::Month>();
-            LOG_DEBUG_N << "Received colors for " << month.days().size()
-                        << " days for month: " << y << "-" << (m + 1);
 
-            assert(month.year() == y);
-            assert(month.month() == m);
-            auto current = make_shared<QList<QUuid>>();
-            current->resize(31);
-            for(const auto& day : month.days()) {
-                assert(day.date().mday() > 0);
-                assert(day.date().mday() <= 31);
-                current->replace(day.date().mday() - 1, QUuid{day.color()});
-            }
-            colors_in_months_[{y, m}] = current;
-            emit monthColorsChanged(y, m, current);
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
+    callRpc<nextapp::pb::Month>([this](nextapp::pb::MonthReq req) {
+        return client_->GetMonth(req);
+    } , [this, y=year, m=month](const nextapp::pb::Month& month) {
+        LOG_TRACE << "Received colors for " << month.days().size()
+                  << " days for month: " << y << "-" << (m + 1);
 
-    return {};
-}
+        assert(month.year() == y);
+        assert(month.month() == m);
 
-QString ServerComm::toDayColorName(const QUuid &uuid) const
-{
-    if (auto it = colors_.find(uuid); it != colors_.end()) {
-        return it->second;
-    }
-
-
-    LOG_WARN << "Color " << uuid.toString() << " not found in colors_";
-    return "lightpink";
+        emit receivedMonth(month);
+    }, req);
 }
 
 void ServerComm::setDayColor(int year, int month, int day, QUuid colorUuid)
 {
-    if (!grpc_is_ready_) {
-        grpc_queue_.push([&] {
-            setDayColor(year, month, day, colorUuid);
-        });
-    }
-
     nextapp::pb::SetColorReq req;
-    nextapp::pb::Date date;
-    date.setYear(year);
-    date.setMonth(month);
-    date.setMday(day);
-    req.setDate(date);
-    if (!colorUuid.isNull()) {
-        req.setColor(colorUuid.toString(QUuid::WithoutBraces));
-    }
+    req.date().setYear(year);
+    req.date().setMonth(month);
+    req.date().setMday(day);
+    req.setColor(colorUuid.toString(QUuid::WithoutBraces));
 
-    auto call = client_->SetColorOnDay(req);
-    call->subscribe(this, [call, this, year, month]() {
-            call->read<nextapp::pb::Empty>();
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
+    callRpc<nextapp::pb::Status>([this](nextapp::pb::SetColorReq req) {
+        return client_->SetColorOnDay(req);
+    }, req);
+}
+
+void ServerComm::setDay(const nextapp::pb::CompleteDay &day)
+{
+    callRpc<nextapp::pb::Status>([this](nextapp::pb::CompleteDay day) {
+        return client_->SetDay(day);
+    }, day);
 }
 
 void ServerComm::addNode(const nextapp::pb::Node &node)
 {
-    if (!grpc_is_ready_) {
-        grpc_queue_.push([this, node] {
-            addNode(node);
-        });
-    }
-
     nextapp::pb::CreateNodeReq req;
     req.setNode(node);
 
-    auto call = client_->CreateNode(req);
-    call->subscribe(this, [call, this]() {
-            call->read<nextapp::pb::Status>();
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
+    callRpc<nextapp::pb::Status>([this](nextapp::pb::CreateNodeReq req) {
+        return client_->CreateNode(req);
+    }, req);
 }
 
 void ServerComm::updateNode(const nextapp::pb::Node &node)
 {
-    auto call = client_->UpdateNode(node);
-    call->subscribe(this, [call, this]() {
-            call->read<nextapp::pb::Status>();
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
+    callRpc<nextapp::pb::Status>([this](nextapp::pb::Node node) {
+        return client_->UpdateNode(node);
+    }, node);
 }
 
 void ServerComm::moveNode(const QUuid &uuid, const QUuid &toParentUuid)
@@ -221,44 +140,55 @@ void ServerComm::moveNode(const QUuid &uuid, const QUuid &toParentUuid)
         return;
     }
 
-    auto call = client_->MoveNode(req);
-    call->subscribe(this, [call, this]() {
-            call->read<nextapp::pb::Status>();
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
+    callRpc<nextapp::pb::Status>([this](nextapp::pb::MoveNodeReq req) {
+        return client_->MoveNode(req);
+    }, req);
 }
 
 void ServerComm::deleteNode(const QUuid &uuid)
 {
-    nextapp::pb::DeleteNodeReq req;
-    req.setUuid(uuid.toString(QUuid::WithoutBraces));
-
-    auto call = client_->DeleteNode(req);
-    call->subscribe(this, [call, this]() {
-            call->read<nextapp::pb::Status>();
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
+    callRpc<nextapp::pb::Status>([this](QUuid uuid) {
+        nextapp::pb::DeleteNodeReq req;
+        req.setUuid(uuid.toString(QUuid::WithoutBraces));
+        return client_->DeleteNode(req);
+    }, uuid);
 }
 
 void ServerComm::getNodeTree()
 {
-    if (!grpc_is_ready_) {
-        grpc_queue_.push([this] {
-            getNodeTree();
-        });
-    }
-
     nextapp::pb::GetNodesReq req;
 
-    auto call = client_->GetNodes(req);
-    call->subscribe(this, [call, this]() {
-            auto tree = call->read<nextapp::pb::NodeTree>();
-            emit receivedNodeTree(tree);
-        }, [this](QGrpcStatus status) {
-            LOG_ERROR_N << "Comm error: " << status.message();
-        });
+    callRpc<nextapp::pb::NodeTree>([this](nextapp::pb::GetNodesReq req) {
+        return client_->GetNodes(req);
+    }, [this](const nextapp::pb::NodeTree& tree) {
+        emit receivedNodeTree(tree);
+    }, req);
+}
+
+void ServerComm::getDayColorDefinitions()
+{    
+    callRpc<nextapp::pb::DayColorDefinitions>([this]() {
+        return client_->GetDayColorDefinitions({});
+    } , [this](const nextapp::pb::DayColorDefinitions& defs) {
+        LOG_DEBUG_N << "Received " << defs.dayColors().size()
+                    << " day-color definitions.";
+
+        emit receivedDayColorDefinitions(defs);
+    });
+}
+
+void ServerComm::fetchDay(int year, int month, int day)
+{
+    nextapp::pb::Date req;
+    req.setYear(year);
+    req.setMonth(month);
+    req.setMday(day);
+
+    callRpc<nextapp::pb::CompleteDay>([this](nextapp::pb::Date req) {
+        return client_->GetDay(req);
+    } , [this](const nextapp::pb::CompleteDay& cday) {
+        emit receivedDay(cday);
+    }, req);
 }
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)

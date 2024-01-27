@@ -258,15 +258,22 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
 
-        const auto color = req->color();
-        if (color.empty()) {
-            co_await owner_.server().db().exec("UPDATE day SET color=NULL WHERE date=? AND user=?",
-                                                toAnsiDate(req->date()), owner_.currentUser(ctx));
-        } else {
-            co_await owner_.server().db().exec(
-                R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE color=?)",
-                toAnsiDate(req->date()), owner_.currentUser(ctx), color, color);
+        optional<string> color;
+        if (!req->color().empty()) {
+            color = req->color();
         }
+
+
+        co_await owner_.server().db().exec(
+            R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE color=?)",
+            toAnsiDate(req->date()), owner_.currentUser(ctx),
+            // insert
+            color,
+            // update
+            color
+            );
+
 
         LOG_TRACE_N << "Finish updating color for " << toAnsiDate(req->date());
 
@@ -275,6 +282,40 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         *dc->mutable_date() = req->date();
         dc->set_user(owner_.currentUser(ctx));
         dc->set_color(req->color());
+
+        owner_.publish(update);
+        co_return;
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetDay(::grpc::CallbackServerContext *ctx, const pb::CompleteDay *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+    [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
+
+            optional<string> color;
+        if (!req->day().color().empty()) {
+                color = req->day().color();
+        }
+
+
+        co_await owner_.server().db().exec(
+            R"(INSERT INTO day (date, user, color, notes, report) VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE color=?)",
+            toAnsiDate(req->day().date()), owner_.currentUser(ctx),
+            // insert
+            color,
+            req->notes(),
+            req->report(),
+            // update
+            color,
+            req->notes(),
+            req->report()
+            );
+
+        auto update = make_shared<pb::Update>();
+        auto day = update->mutable_day();
+        *day = *req;
 
         owner_.publish(update);
         co_return;
@@ -595,15 +636,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         // Get the current record
         const pb::Node current = co_await owner_.fetcNode(req->uuid(), cuser);
-        // Notify clients about changes
 
-        // if (data_changed) {
-        //     auto update = make_shared<pb::Update>();
-        //     auto node = update->mutable_node();
-        //     *node = current;
-        //     update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
-        //     owner_.publish(update);
-        // }
+        // Notify clients about changes
 
         reply->set_error(pb::Error::OK);
         *reply->mutable_node() = current;

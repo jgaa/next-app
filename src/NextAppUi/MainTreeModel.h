@@ -98,6 +98,10 @@ public:
 
     void start();
 
+    static MainTreeModel* instance() noexcept {
+        return instance_;
+    }
+
     void setSelected(const QString& selected);
     QString selected() const;
 
@@ -181,4 +185,5 @@ private:
     std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
     bool has_initial_tree_ = false;
     QString selected_;
+    static MainTreeModel *instance_;
 };
