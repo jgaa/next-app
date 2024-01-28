@@ -1,14 +1,21 @@
 #include "DayModel.h"
 #include "DaysModel.h"
 #include "ServerComm.h"
+#include "util.h"
 
 DayModel::DayModel(int year, int month, int day, DaysModel *parent)
     : QObject{parent}, year_{year}, month_{month}, mday_{day}
 {
+    assert(year_);
     connect(&ServerComm::instance(),
             &ServerComm::receivedDay,
             this,
             &DayModel::receivedDay);
+
+    connect(&ServerComm::instance(),
+            &ServerComm::onUpdate,
+            this,
+            &DayModel::onUpdate);
 
     fetch();
 }
@@ -79,6 +86,10 @@ void DayModel::setColorUuid(const QString &value) {
 }
 
 void DayModel::commit() {
+
+    // Avoid sending `00000000-0000-0000-0000-000000000000` which will not work on the server
+    day_.day().setColor(toValidQuid(day_.day().color()));
+
     ServerComm::instance().setDay(day_);
 }
 
@@ -124,7 +135,10 @@ void DayModel::updateSelf(const nextapp::pb::CompleteDay &day) {
     const auto old = day_;
     day_ = day;
 
+    const auto& date = day_.day().date();
+
     if (!valid_) {
+        valid_ = true;
         emit validChanged();
     }
 

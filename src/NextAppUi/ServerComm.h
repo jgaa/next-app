@@ -10,8 +10,6 @@
 #include <QObject>
 #include "logging.h"
 
-#include "MonthModel.h"
-
 template <typename T, typename... Y>
 concept IsValidFunctor = std::invocable<T&, Y...>;
 

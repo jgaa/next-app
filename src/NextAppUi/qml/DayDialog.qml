@@ -6,10 +6,12 @@ import NextAppUi
 
 Dialog {
     id: dayDlg
-    property Date date
+    property var date
     property DayModel model
     property alias notes: notes.text
     property alias report: report.text
+    property bool valid: model.valid
+    property bool colorts_initialized: false
 
     title: {
         return qsTr("Day %1").arg(date.toLocaleDateString())
@@ -19,6 +21,15 @@ Dialog {
 
     function enableSave() {
          standardButtons = Dialog.Save | Dialog.Cancel
+    }
+
+    onValidChanged: {
+        console.log("DayDialog: Valid changed to ", valid)
+        console.log("Report is ", model.report)
+
+        // if (valid && !colorts_initialized) {
+        //     //select.currentIndex = DayColorModel.getIndexForColorUuid(model.colorUuid)
+        // }
     }
 
     GridLayout {
@@ -33,7 +44,7 @@ Dialog {
         ComboBox {
             id: select
             model: DayColorModel.names
-            currentIndex: { return DayColorModel.getIndexForColorUuid(model.colorUuid)}
+            currentIndex: dayDlg.model.valid ? DayColorModel.getIndexForColorUuid(dayDlg.model.colorUuid) : -1
 
             delegate: ItemDelegate {
                 width: parent.width
@@ -57,7 +68,7 @@ Dialog {
 
         TextArea {
             id: notes
-            text: model.notes
+            text: dayDlg.model.valid ? model.notes : ""
             Layout.preferredHeight: 100
             Layout.preferredWidth: 500
             placeholderText: qsTr("Some words to describe your day?")
@@ -75,7 +86,7 @@ Dialog {
 
         TextArea {
             id: report
-            text: model.report
+            text: dayDlg.model.valid ? model.report : ""
             Layout.preferredHeight: 100
             Layout.preferredWidth: 500
             placeholderText: qsTr("Your Daily Report")
@@ -88,6 +99,8 @@ Dialog {
 
     onAccepted: {
         model.colorUuid = DayColorModel.getUuid(select.currentIndex)
+        model.notes = notes.text
+        model.report = report.text
         model.commit();
     }
 }

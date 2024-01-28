@@ -41,46 +41,45 @@ Rectangle {
             month: Calendar.April
         }
 
-        //Month {
-        //     month: Calendar.July
-        // }
+        Month {
+            month: Calendar.July
+        }
 
-        // Month {
-        //     month: Calendar.October
-        // }
+        Month {
+            month: Calendar.October
+        }
 
-        // Month {
-        //     month: Calendar.February
-        // }
+        Month {
+            month: Calendar.February
+        }
 
-        // Month {
-        //     month: Calendar.May
-        // }
+        Month {
+            month: Calendar.May
+        }
 
-        // Month {
-        //     month: Calendar.August
-        // }
+        Month {
+            month: Calendar.August
+        }
 
-        // Month {
-        //     month: Calendar.November
-        // }
+        Month {
+            month: Calendar.November
+        }
 
-        // Month {
-        //     month: Calendar.March
-        // }
+        Month {
+            month: Calendar.March
+        }
 
-        // Month {
-        //     month: Calendar.June
-        // }
+        Month {
+            month: Calendar.June
+        }
 
-        // Month {
-        //     month: Calendar.September
-        // }
+        Month {
+            month: Calendar.September
+        }
 
-        // Month {
-        //     month: Calendar.December
-        // }
-
+        Month {
+            month: Calendar.December
+        }
     }
 
     component Quarter : Text {
@@ -152,27 +151,9 @@ Rectangle {
                         height: dtext.height
                         width: dtext.width
                         required property var model
-                        color: monthComponent.validColors ? monthComponent.mmodel.getColorForDayInMonth(drect.model.day) : "lightgray"
-                        // color: {
-                        //     // if (hover.hovered) {
-                        //     //     return "lightpink"
-                        //     // }
-
-                        //     if (!monthComponent.validColors) {
-                        //         return "lightgray";
-                        //     }
-
-                        //     if (drect.model.month !== grid.month) {
-                        //         return "white"
-                        //     }
-
-                        //     var mday = drect.model.day
-                        //     const c = monthComponent.mmodel.getColorForDayInMonth(mday);
-                        //     if (typeof c !== 'string' || c === "") {
-                        //         return "gray";
-                        //     }
-                        //     return c;
-                        // }
+                        color: drect.model.month === monthComponent.month ? monthComponent.validColors ? monthComponent.mmodel.getColorForDayInMonth(drect.model.day) : "lightgray" : "white"
+                        // TODO: Make a rounded background if the day has notes or report
+                        //radius: 100
 
                         Rectangle {
                             id: hover_shadow

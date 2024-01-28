@@ -29,10 +29,11 @@ DaysModel::DaysModel()
 
 DayModel *DaysModel::getDay(int year, int month, int day)
 {
-    auto rval = make_unique<DayModel>(year, month,day -1, this);
+    assert(day > 0);
+    auto rval = make_unique<DayModel>(year, month, day, this);
 
     assert(day > 0);
-    fetchDay(year, month, day -1);
+    fetchDay(year, month, day);
     return rval.release();
 }
 
@@ -97,7 +98,7 @@ void DaysModel::fetchMonth(int year, int month)
 void DaysModel::fetchDay(int year, int month, int day)
 {
     assert(day > 0);
-    ServerComm::instance().fetchDay(year, month, day -1);
+    ServerComm::instance().fetchDay(year, month, day);
 }
 
 void DaysModel::fetchColors()
@@ -127,7 +128,7 @@ QString DaysModel::getColorName(int year, int month, int day)
 {
     if (auto *di = lookup(year, month, day)) {
         if (di->haveColor()) {
-            const auto rval = color_definitions_.dayColors().at(di->color_ix).name();
+            const auto rval = color_definitions_.dayColors().at(di->color_ix).color();
             return rval;
         }
     }
@@ -165,7 +166,7 @@ uint DaysModel::getColorIx(const QUuid& uuid) const noexcept {
     const auto& list = color_definitions_.dayColors();
     uint row = 0;
     for(auto& c : list) {
-        if (key == c.color()) {
+        if (key == c.id_proto()) {
             return row;
         }
         ++row;
@@ -187,7 +188,9 @@ void DaysModel::fetchedMonth(const nextapp::pb::Month &month)
 
     m.fill({});
     for(const auto& md : month.days()) {
-        auto& day = m.at(md.date().mday());
+        const auto mday = md.date().mday();
+        assert(mday > 0);
+        auto& day = m.at(md.date().mday() -1);
         toDayInfo(md, day);
     }
     emit updatedMonth(month.year(), month.month());
@@ -195,22 +198,31 @@ void DaysModel::fetchedMonth(const nextapp::pb::Month &month)
 
 void DaysModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 {
-    if (update->hasDayColor()) {
-        const auto &day = update->dayColor();
+    auto set = [this](const nextapp::pb::Date& when, const QString& color) {
         PackedMonth key = {};
-        key.date.month_ = day.date().month();
-        key.date.year_ = day.date().year();
+        key.date.month_ = when.month();
+        key.date.year_ = when.year();
         if (auto it = months_.find(key.as_number); it != months_.end()) {
-            if (day.date().mday() >= it->second.size()) {
+            const auto mday = when.mday() -1;
+            if (mday >= it->second.size()) {
                 assert(false);
                 return;
             }
-            auto& md = it->second[day.date().mday()];
-            if (setDayColor(md, QUuid{update->dayColor().color()})) {
-                emit updatedMonth(day.date().year(), day.date().month());
-                emit updatedDay(day.date().year(), day.date().month(), day.date().mday());
+            auto& md = it->second[mday];
+            if (setDayColor(md, QUuid{color})) {
+                emit updatedMonth(when.year(), when.month());
+                emit updatedDay(when.year(), when.month(), when.mday());
             }
+        } else  {
+            LOG_TRACE << "DaysModel::onUpdate - could not find month for " << when.year() << '-' << when.mday();
         }
+    };
+
+    if (update->hasDay()) {
+        set(update->day().day().date(), update->day().day().color());
+    }
+    if (update->hasDayColor()) {
+        set(update->dayColor().date(), update->dayColor().color());
     }
 }
 
@@ -224,8 +236,9 @@ uint32_t DaysModel::getKey(int year, int month) noexcept
 
 DaysModel::DayInfo *DaysModel::lookup(int year, int month, int day)
 {
+    assert(day > 0);
     if (auto it = months_.find(getKey(year, month)); it != months_.end()) {
-        return &it->second.at(day);
+        return &it->second.at(day-1);
     }
 
     return {};

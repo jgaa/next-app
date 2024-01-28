@@ -69,9 +69,10 @@ std::string toAnsiDate(const nextapp::pb::Date& date) {
 
 ::nextapp::pb::Date toDate(const boost::mysql::date& from) {
     assert(from.valid());
+    assert(from.month() > 0);
     ::nextapp::pb::Date date;
     date.set_year(from.year());
-    date.set_month(from.month());
+    date.set_month(from.month() -1); // Our range is 0 - 11, the db's range is 1 - 12
     date.set_mday(from.day());
 
     return date;
@@ -181,19 +182,22 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 {
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::CompleteDay *reply) -> boost::asio::awaitable<void> {
+
+        const auto cuser = owner_.currentUser(ctx);
+
         auto res = co_await owner_.server().db().exec(
             "SELECT date, user, color, notes, report FROM day WHERE user=? AND date=? ORDER BY date",
-            owner_.currentUser(ctx), toAnsiDate(*req));
+            cuser, toAnsiDate(*req));
 
         enum Cols {
             DATE, USER, COLOR, NOTES, REPORT
         };
 
-        if (!res.empty()) {
+        auto* day = reply->mutable_day();
+        if (!res.empty() && !res.rows().empty()) {
             const auto& row = res.rows().front();
             const auto date_val = row.at(DATE).as_date();
 
-            auto day = reply->mutable_day();
             *day->mutable_date() = toDate(date_val);
             if (row.at(USER).is_string()) {
                 day->set_user(row.at(USER).as_string());
@@ -207,12 +211,14 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             }
             if (row.at(REPORT).is_string()) {
                 day->set_hasreport(true);
-                reply->set_notes(row.at(REPORT).as_string());
+                reply->set_report(row.at(REPORT).as_string());
             }
+        } else {
+            *day->mutable_date() = *req;
+            day->set_user(cuser);
         }
 
-        LOG_TRACE << "Finish day lookup.";
-        LOG_TRACE_N << "Reply is: " << toJson(*reply);
+        LOG_TRACE << "Finish day lookup: " << toJson(*reply);
         co_return;
     });
 }
@@ -293,29 +299,42 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
     [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
 
-            optional<string> color;
+        optional<string> color;
         if (!req->day().color().empty()) {
                 color = req->day().color();
         }
 
+        // We want non-existing entries stored as NULL in the database
+        optional<string> notes;
+        optional<string> report;
+
+        if (!req->notes().empty()) {
+            notes = req->notes();
+        }
+
+        if (!req->report().empty()) {
+            report = req->report();
+        }
 
         co_await owner_.server().db().exec(
             R"(INSERT INTO day (date, user, color, notes, report) VALUES (?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE color=?)",
+                ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)",
             toAnsiDate(req->day().date()), owner_.currentUser(ctx),
             // insert
             color,
-            req->notes(),
-            req->report(),
+            notes,
+            report,
             // update
             color,
-            req->notes(),
-            req->report()
+            notes,
+            report
             );
 
         auto update = make_shared<pb::Update>();
-        auto day = update->mutable_day();
-        *day = *req;
+        *update->mutable_day() = *req;
+
+        LOG_DEBUG << "req: " << toJson(*req);
+        LOG_DEBUG << "update: " << toJson(*update);
 
         owner_.publish(update);
         co_return;

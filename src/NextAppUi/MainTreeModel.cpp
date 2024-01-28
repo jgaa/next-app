@@ -4,7 +4,8 @@
 #include "MainTreeModel.h"
 #include "ServerComm.h"
 #include "logging.h"
-#include <stack>
+#include "util.h"
+
 
 using namespace std;
 using namespace nextapp;
@@ -89,15 +90,6 @@ void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, i
     std::ranges::sort(list, [](const auto& left, const auto& right) {
         return left->node().name().compare(right->node().name(), Qt::CaseInsensitive) < 0;
     });
-}
-
-[[nodiscard]] QString toValidQuid(const QString& str) {
-    QUuid uuid{str};
-    if (uuid.isNull()) {
-        return {};
-    }
-    auto rval = uuid.toString(QUuid::WithoutBraces);
-    return rval;
 }
 
 } // anon ns

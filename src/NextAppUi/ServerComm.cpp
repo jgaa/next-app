@@ -103,6 +103,7 @@ void ServerComm::setDayColor(int year, int month, int day, QUuid colorUuid)
 
 void ServerComm::setDay(const nextapp::pb::CompleteDay &day)
 {
+    const auto date = day.day().date();
     callRpc<nextapp::pb::Status>([this](nextapp::pb::CompleteDay day) {
         return client_->SetDay(day);
     }, day);
@@ -186,7 +187,11 @@ void ServerComm::fetchDay(int year, int month, int day)
 
     callRpc<nextapp::pb::CompleteDay>([this](nextapp::pb::Date req) {
         return client_->GetDay(req);
-    } , [this](const nextapp::pb::CompleteDay& cday) {
+    } , [this, year, month, day](const nextapp::pb::CompleteDay& cday) {
+        const auto& date = cday.day().date();
+        assert(date.year() == year);
+        assert(date.month() == month);
+        assert(date.mday() == day);
         emit receivedDay(cday);
     }, req);
 }

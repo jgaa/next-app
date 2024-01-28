@@ -118,6 +118,7 @@ qt_add_qml_module(appNextAppUi
         DaysModel.cpp
         DayModel.h
         DayModel.cpp
+        SOURCES util.h util.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
