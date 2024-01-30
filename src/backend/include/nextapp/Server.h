@@ -8,8 +8,8 @@
 
 #include "nextapp/nextapp.h"
 #include "nextapp/config.h"
-#include "nextapp/db.h"
 #include "nextapp/util.h"
+#include "mysqlpool/mysqlpool.h"
 
 namespace nextapp {
 
@@ -72,7 +72,7 @@ private:
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;
     std::vector <std::jthread> io_threads_;
-    std::optional<db::Db> db_;
+    std::optional<jgaa::mysqlpool::Mysqlpool> db_;
     Config config_;
     std::atomic_size_t running_io_threads_{0};
     std::atomic_bool done_{false};

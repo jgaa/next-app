@@ -18,9 +18,10 @@
 #include "nextapp/logging.h"
 
 using namespace std;
+using namespace jgaa;
 using nextapp::logging::LogEvent;
 namespace asio = boost::asio;
-using nextapp::db::tuple_awaitable;
+using jgaa::mysqlpool::tuple_awaitable;
 
 namespace nextapp {
 
@@ -150,7 +151,7 @@ boost::asio::awaitable<void> Server::createDb(const BootstrapOptions& opts)
     cfg.password = opts.db_root_passwd;
     cfg.max_connections = 1;
 
-    db::Db db{ctx_, cfg};
+    mysqlpool::Mysqlpool db{ctx_, cfg};
 
     co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
 
@@ -318,7 +319,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     auto cfg = config_.db;
     cfg.max_connections = 1;
 
-    db::Db db{ctx_, cfg};
+    mysqlpool::Mysqlpool db{ctx_, cfg};
 
     co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
         co_await db.init();
