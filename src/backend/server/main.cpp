@@ -212,6 +212,7 @@ int main(int argc, char* argv[]) {
         LOG_TRACE_N << LogEvent::LE_TEST << "Getting ready...";
 
         if (bootstrap) {
+            LOG_INFO << appname << ' ' << APP_VERSION << ".";
             try {
                 Server server{config};
                 server.bootstrap(bootstrap_opts);

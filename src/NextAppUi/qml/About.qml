@@ -61,11 +61,11 @@ ApplicationWindow {
                        + "<p>In addition, we have added some gems to improve its usefulness, such as \"Green Days!\".</p>"
                        + "<p>The application is distributed under the <i>\"GNU GENERAL PUBLIC LICENSE v3.0\"</i>. Please see <a href=\"http://%2/\">%2</a> "
                        + "</p>"
-                       + "<p>Copyright (C) %3 The Last Viking LTD, Jarle Aase and other contributors.</p> "
+                       + "<p>Copyright (C) 2023-%3 The Last Viking LTD, Jarle Aase and other contributors.</p> "
                        + "This build of Nextapp use QT version %4 (GPL versioning).<br/>"
                        + "The nextapp-server is version %5."
                        + "")
-                       .arg(Application.version).arg("https://github.com/jgaa/next-app/blob/main/src/NextAppUi/LICENSE").arg("2023").arg(NextAppCore.qtVersion).arg(ServerComm.version);
+                       .arg(Application.version).arg("https://github.com/jgaa/next-app/blob/main/src/NextAppUi/LICENSE").arg("2024").arg(NextAppCore.qtVersion).arg(ServerComm.version);
               color: Colors.textFile
               wrapMode: Text.WordWrap
               readOnly: true

@@ -99,6 +99,82 @@ message NodeUpdate {
     NodeTree tree = 3;
 }
 
+
+enum ActionStatus {
+    ACTIVE  = 0;
+    DONE    = 1;
+    ONHOLD  = 2;
+}
+
+enum ActionDueType {
+    DATETIME    = 0;
+    DATE        = 1;
+    WEEK        = 2;
+    MONTH       = 3;
+    QUATER      = 4;
+    YEAR        = 5;
+}
+
+enum ActionDifficulty {
+    TRIVIAL  = 0;
+    EASY     = 1;
+    NORMAL   = 2;
+    HARD     = 3;
+    VERYHARD = 4;
+    INSPIRED = 5;
+}
+
+// For communicating a list of actions
+message ActionInfo {
+    string id           = 1;
+    string node         = 2; // uuid
+    int32 priority      = 3;
+    ActionStatus status = 4;
+    string name         = 5;
+    string descr        = 6;
+    Date createdDate    = 7;
+    ActionDueType dueType = 8;
+    uint64 dueByTime    = 9; // time_t
+}
+
+message Actions {
+    repeated ActionInfo actions = 1;
+    optional ActionStatus activeFilter = 2; // informative
+}
+
+// The complete information about an action
+message Action {
+    enum RepeatKind {
+        NEVER = 0;
+        COMPLETED = 1;
+        DONE = 2;
+    }
+
+    enum RepeatUnit {
+        DAYS = 0;
+        WEEKS = 1;
+        MONTHS = 2;
+        YEARS = 3;
+    }
+
+    string id = 1;
+    string node = 2; // uuid
+    int32 priority = 3;
+    ActionStatus status = 4;
+    string name = 5;
+    string descr = 6;
+    Date createdDate = 7;
+    ActionDueType dueType = 8;
+    uint64 dueByTime = 9; // time_t
+    uint64 completedTime = 10; // time_t
+    uint64 timeEstimate = 11; // minutes
+    ActionDifficulty difficulty = 12;
+    RepeatKind repeatKind = 13;
+    RepeatUnit repeatUnits = 14;
+    int32 repeatAfter = 15; // Depends on repeatUnits
+    repeated string locations = 16; // Just the uuid's of locations
+}
+
 message DayColor {
     string id = 1;
     bool systemColor = 2; // Should not be deleted or modified

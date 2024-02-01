@@ -230,24 +230,24 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         FOREIGN KEY(parent) REFERENCES node(id),
         FOREIGN KEY(user) REFERENCES user(id)))",
 
-        R"(CREATE TABLE action (
-            id UUID not NULL default UUID() PRIMARY KEY,
-            node UUID NOT NULL,
-            list_id INTEGER NOT NULL,
-            priority INTEGER NOT NULL DEFAULT (5),
-            name VARCHAR(128) NOT NULL,
-            descr TEXT,
-            created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            due_type INTEGER NOT NULL DEFAULT (0),
-            due_by_time DATETIME,
-            completed_time TIMESTAMP NOT NULL DEFAULT(0),
-            completed TINYINT(1) NOT NULL DEFAULT 1,
-            time_estimate INTEGER,
-            focus_needed INTEGER NOT NULL DEFAULT (3),
-            repeat_type INTEGER NOT NULL DEFAULT(0),
-            repeat_unit INTEGER NOT NULL DEFAULT(0),
-            repeat_after INTEGER NOT NULL DEFAULT(0),
-        FOREIGN KEY(node) REFERENCES node(id)))",
+        // R"(CREATE TABLE action (
+        //     id UUID not NULL default UUID() PRIMARY KEY,
+        //     node UUID NOT NULL,
+        //     list_id INTEGER NOT NULL,
+        //     priority INTEGER NOT NULL DEFAULT (5),
+        //     name VARCHAR(128) NOT NULL,
+        //     descr TEXT,
+        //     created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        //     due_type INTEGER NOT NULL DEFAULT (0),
+        //     due_by_time DATETIME,
+        //     completed_time TIMESTAMP NOT NULL DEFAULT(0),
+        //     completed TINYINT(1) NOT NULL DEFAULT 1,
+        //     time_estimate INTEGER,
+        //     focus_needed INTEGER NOT NULL DEFAULT (3),
+        //     repeat_type INTEGER NOT NULL DEFAULT(0),
+        //     repeat_unit INTEGER NOT NULL DEFAULT(0),
+        //     repeat_after INTEGER NOT NULL DEFAULT(0),
+        // FOREIGN KEY(node) REFERENCES node(id)))",
 
         R"(CREATE TABLE work(
               id UUID not NULL default UUID() PRIMARY KEY,
@@ -308,9 +308,54 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             FOREIGN KEY(parent) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
     });
 
+    static constexpr auto v3_upgrade = to_array<string_view>({
+        R"(CREATE OR REPLACE TABLE location (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            user UUID NOT NULL,
+            name TEXT NOT NULL,
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE OR REPLACE TABLE action (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            node UUID NOT NULL,
+            user UUID NOT NULL,
+            origin UUID,
+            priority INTEGER NOT NULL DEFAULT (5),
+            status ENUM ('active', 'done', 'onhold') NOT NULL DEFAULT 'active',
+            name VARCHAR(128) NOT NULL,
+            descr TEXT,
+            created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            due_type ENUM('datetime', 'date', 'week', 'month', 'quater', 'year') NOT NULL DEFAULT 'datetime',
+            due_by_time DATETIME,
+            completed_time TIMESTAMP NOT NULL DEFAULT(0),
+            completed TINYINT(1) NOT NULL DEFAULT 1,
+            time_estimate INTEGER,
+            difficulty ENUM('trivial', 'easy', 'normal', 'hard', 'veryhard', 'inspired') NOT NULL DEFAULT 'normal',
+            repeat_kind ENUM('never','scheduled', 'completed'),
+            repeat_unit ENUM('days', 'weeks', 'months', 'years'),
+            repeat_after INTEGER,
+        FOREIGN KEY(node) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+        FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+        FOREIGN KEY(origin) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE INDEX action_ix2 ON action (user, status, due_by_time))",
+        R"(CREATE INDEX action_ix3 ON action (origin))",
+        R"(CREATE INDEX action_ix4 ON action (node, status, due_by_time))",
+
+        R"(CREATE OR REPLACE TABLE action2location (
+            action UUID NOT NULL,
+            location UUID NOT NULL,
+            PRIMARY KEY (action, location),
+            FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            FOREIGN KEY(location) REFERENCES location(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+         R"(CREATE INDEX action2location_ix2 ON action2location (location, action))",
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
+        v3_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
