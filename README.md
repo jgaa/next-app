@@ -22,7 +22,7 @@ the code for the server and the apps will be freely available.
 
 The application at this moment is unusable for anything but the "Green Days" feature.
 
-I'm working towards a MVP (minimum Viable Product) by end of Q1 2024.
+I'm working towards a MVP (Minimum Viable Product) by end of Q1 2024.
 
 The application use CMake, QT 6.6.1 and require g++-13 or clang-17. It's developed under
 Linux (Ubuntu 23.10). MacOS and Windows will be supported later. The server require boost version 1.83 or newer.
