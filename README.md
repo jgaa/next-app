@@ -15,5 +15,32 @@ This is a pretty large project for a lone hacker. It involves a server part, a d
 and probably an IOS app.
 
 Everything is open source. I will probably offer a hosting-plan for people who don't wan to run
-their own back-end. But for people and companies where privacy and security is paramount,
+their own backend. But for people and companies where privacy and security is paramount,
 the code for the server and the apps will be freely available.
+
+# How to play with the current version
+
+The appication at this moment is unusable for anything but the "Green Days" feature.
+
+I'm working towards a MVP (minimun Viable Product) by end of Q1 2024.
+
+The application use CMake, QT 6.6.1 and require g++-13 or clang-17. It's developed under
+Linux (Ubuntu 23.10). MacOS and Windows will be supported later. The server require boost version 1.83 or newer.
+
+If you don't care about the server, you can start the required components using docker.
+
+```sh
+
+bash bootstrap-and-run-backend.sh
+
+```
+
+When you are done testing, you can stop the containers with this command:
+
+```sh
+
+docker stop nextappd na-mariadb
+
+```
+
+After that, you can start the QT client application, and it will connect to the backend.
