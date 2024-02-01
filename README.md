@@ -35,6 +35,8 @@ bash bootstrap-and-run-backend.sh
 
 ```
 
+After that, you can start the QT client application, and it will connect to the backend.
+
 When you are done testing, you can stop the containers with this command:
 
 ```sh
@@ -43,4 +45,3 @@ docker stop nextappd na-mariadb
 
 ```
 
-After that, you can start the QT client application, and it will connect to the backend.
