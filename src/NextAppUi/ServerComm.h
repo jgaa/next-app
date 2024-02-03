@@ -71,6 +71,8 @@ public:
         return SERVER_ADDRESS;
     }
 
+    Q_INVOKABLE void createPerson(const nextapp::pb::User &user);
+
 signals:
     void versionChanged();
     void dayColorDefinitionsChanged();
@@ -161,6 +163,6 @@ private:
     std::queue<std::function<void()>> grpc_queue_;
     bool grpc_is_ready_ = false;
     static ServerComm *instance_;
-    std::shared_ptr<QGrpcStream> updates_;
+    std::shared_ptr<QGrpcServerStream> updates_;
     QString current_server_address_;
 };

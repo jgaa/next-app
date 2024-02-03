@@ -38,7 +38,7 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
 
 int main(int argc, char *argv[])
 {
-    qRegisterProtobufTypes();
+    // qRegisterProtobufTypes();
     volatile auto registration = &qml_register_types_nextapp_pb;
     Q_UNUSED(registration);
     std::string log_level_qt = "trace";

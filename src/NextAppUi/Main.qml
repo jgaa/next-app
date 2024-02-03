@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NextAppUi
+import nextapp.pb as NextappPB
 
 ApplicationWindow {
     id: root
@@ -22,6 +23,17 @@ ApplicationWindow {
                 text: qsTr("Settings")
                 shortcut: StandardKey.ZoomIn
                 onTriggered: { openDialog("SettingsDlg.qml") }
+            }
+            Action {
+                id: createPersonAction
+                property NextappPB.user user
+                text: qsTr("Create Person")
+                onTriggered: {
+                    createPersonAction.user.name = "test name"
+                    createPersonAction.user.email = "test@name.org"
+                    createPersonAction.user.kind = NextappPB.User.Regular
+                    ServerComm.createPerson(createPersonAction.user)
+                }
             }
             // Action {
             //     text: qsTr("Decrease Font")

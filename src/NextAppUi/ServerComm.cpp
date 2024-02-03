@@ -35,13 +35,15 @@ void ServerComm::start()
     callRpc<nextapp::pb::ServerInfo>([this]() {
         return client_->GetServerInfo({});
     }, [this](const nextapp::pb::ServerInfo& se) {
-        assert(se.properties().front().key() == "version");
-        server_version_ = se.properties().front().value();
-        LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
-        emit versionChanged();
-        updates_ = client_->streamSubscribeToUpdates({});
-        connect(updates_.get(), &QGrpcStream::messageReceived, this, &ServerComm::onUpdateMessage);
-        onGrpcReady();
+        if (!se.properties().empty()) {
+            // assert(se.properties().front().key() == "version");
+            server_version_ = se.properties().front().value();
+            LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
+            emit versionChanged();
+            updates_ = client_->streamSubscribeToUpdates({});
+            connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
+            onGrpcReady();
+        }
     }, GrpcCallOptions{false});
 }
 
@@ -195,6 +197,12 @@ void ServerComm::fetchDay(int year, int month, int day)
         emit receivedDay(cday);
     }, req);
 }
+
+void ServerComm::createPerson(const nextapp::pb::User &user)
+{
+    qDebug() << "ServerComm::createPerson" << user.name() << user.email() << user.kind();
+}
+
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
