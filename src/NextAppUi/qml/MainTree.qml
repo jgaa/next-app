@@ -12,6 +12,7 @@ Rectangle {
 
     //property alias currentIndex : treeView.selectionModel.currentIndex
     property string selectedItemUuid: MainTreeModel.selected
+    property bool hasSelection: selectedItemUuid !== ""
 
     color: Colors.background
 

@@ -35,13 +35,15 @@ void ServerComm::start()
     callRpc<nextapp::pb::ServerInfo>([this]() {
         return client_->GetServerInfo({});
     }, [this](const nextapp::pb::ServerInfo& se) {
-        assert(se.properties().front().key() == "version");
-        server_version_ = se.properties().front().value();
-        LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
-        emit versionChanged();
-        updates_ = client_->streamSubscribeToUpdates({});
-        connect(updates_.get(), &QGrpcStream::messageReceived, this, &ServerComm::onUpdateMessage);
-        onGrpcReady();
+        if (!se.properties().empty()) {
+            // assert(se.properties().front().key() == "version");
+            server_version_ = se.properties().front().value();
+            LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
+            emit versionChanged();
+            updates_ = client_->streamSubscribeToUpdates({});
+            connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
+            onGrpcReady();
+        }
     }, GrpcCallOptions{false});
 }
 
@@ -194,6 +196,48 @@ void ServerComm::fetchDay(int year, int month, int day)
         assert(date.mday() == day);
         emit receivedDay(cday);
     }, req);
+}
+
+void ServerComm::getActions(nextapp::pb::GetActionsReq &filter)
+{
+    callRpc<nextapp::pb::Status>([this, &filter]() {
+        return client_->GetActions(filter);
+    } , [this](const nextapp::pb::Status& status) {
+        if (status.hasActions()) {
+            auto actions = make_shared<nextapp::pb::Actions>(status.actions());
+            emit receivedActions(actions);
+        }
+    });
+}
+
+void ServerComm::addAction(const nextapp::pb::Action &action)
+{
+    callRpc<nextapp::pb::Status>([this, &action]() {
+        return client_->CreateAction(action);
+    } , [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
+void ServerComm::updateAction(const nextapp::pb::Action &action)
+{
+    callRpc<nextapp::pb::Status>([this, &action]() {
+        return client_->UpdateAction(action);
+    } , [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
+void ServerComm::deleteAction(const QString &actionUuid)
+{
+    nextapp::pb::DeleteActionReq req;
+    req.setActionId(actionUuid);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->DeleteAction(req);
+    } , [this](const nextapp::pb::Status& status) {
+        ;
+    });
 }
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)

@@ -5,9 +5,11 @@
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/json.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include "nextapp/GrpcServer.h"
 #include "nextapp/Server.h"
+#include "nextapp/util.h"
 
 using namespace std;
 using namespace std::literals;
@@ -64,18 +66,62 @@ string toJson(const T& map) {
 }
 
 std::string toAnsiDate(const nextapp::pb::Date& date) {
+
+    if (date.year() == 0) {
+        return "0000-00-00";
+    }
+
     return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month() + 1, date.mday());
 }
 
-::nextapp::pb::Date toDate(const boost::mysql::date& from) {
-    assert(from.valid());
-    assert(from.month() > 0);
-    ::nextapp::pb::Date date;
-    date.set_year(from.year());
-    date.set_month(from.month() -1); // Our range is 0 - 11, the db's range is 1 - 12
-    date.set_mday(from.day());
+std::string toAnsiTime(time_t time) {
+    static const auto empty = "0000-00-00 00:00"s;
+    if (time == 0) {
+        return empty;
+    }
 
+
+    string buf{20, ' '};
+
+    if (auto *tm = gmtime(&time)) {
+        auto len = strftime(buf.data(), buf.size(), "%Y-%m-%d %H:%M:%S", tm);
+        buf.resize(len);
+        return buf;
+    }
+
+    LOG_WARN_N << "Unable to format ANSI time for time_t=" << time;
+    return empty;
+}
+
+::nextapp::pb::Date toDate(const boost::mysql::date& from) {
+
+    ::nextapp::pb::Date date;
+    if (from.valid()) {
+        date.set_year(from.year());
+        date.set_month(from.month() -1); // Our range is 0 - 11, the db's range is 1 - 12
+        date.set_mday(from.day());
+    }
     return date;
+}
+
+::nextapp::pb::Date toDate(const boost::mysql::datetime& from) {
+    ::nextapp::pb::Date date;
+    if (from.valid()) {
+        date.set_year(from.year());
+        date.set_month(from.month() -1); // Our range is 0 - 11, the db's range is 1 - 12
+        date.set_mday(from.day());
+    }
+    return date;
+}
+
+time_t toTimeT(const boost::mysql::datetime& from) {
+    if (from.valid()) {
+        uint64_t when = from.as_time_point().time_since_epoch().count();
+        when /= 1000000LL;
+        return when;
+    }
+
+    return {};
 }
 
 void setError(pb::Status& status, pb::Error err, const std::string& message = {}) {
@@ -116,6 +162,174 @@ struct ToNode {
         }
     }
 };
+
+template <typename T>
+concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::Action>;
+
+struct ToAction {
+    enum Cols {
+        ID, NODE, USER, PRIORITY, STATUS, NAME, DESCR, CREATED_DATE, DUE_TYPE, DUE_BY_TIME, COMPLETED, // core
+        COMPLETED_TIME, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_AFTER // remaining
+    };
+
+    static auto coreSelectCols() {
+        static const auto cols = format("{}{}", ids_, core_);
+        return cols;
+    }
+
+    static string_view allSelectCols() {
+        static const auto cols = format("{}{}{}", ids_, core_, remaining_);
+        return cols;
+    }
+
+    static string_view statementBindingStr() {
+        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+    }
+
+    static string_view updateStatementBindingStr() {
+        static const auto cols = buildUpdateBindStr();
+        return cols;
+    }
+
+    template <typename ...Args>
+    static auto prepareBindingArgs(const pb::Action& action, Args... args) {
+        auto bargs = make_tuple(
+            pb::ActionPriority_Name(action.priority()),
+            pb::ActionStatus_Name(action.status()),
+            action.name(),
+            action.descr(),
+            toAnsiDate(action.createddate()),
+            pb::ActionDueType_Name(action.duetype()),
+            toAnsiTime(action.duebytime()),
+            action.completed(),
+            toAnsiTime(action.completedtime()),
+            action.timeestimate(),
+            pb::ActionDifficulty_Name(action.difficulty()),
+            pb::Action::RepeatKind_Name(action.repeatkind()),
+            pb::Action::RepeatUnit_Name(action.repeatunits()),
+            action.repeatafter()
+            );
+
+        if constexpr (sizeof...(Args) > 0) {
+            std::tuple<Args...> t1{args...};
+            return std::tuple_cat(t1, bargs);
+        } else if constexpr (sizeof...(Args)  == 0) {
+            return bargs;
+        }
+    }
+
+    template <ActionType T>
+    static void assign(const boost::mysql::row_view& row, T& obj) {
+        obj.set_id(row.at(ID).as_string());
+        obj.set_node(row.at(NODE).as_string());
+        {
+            pb::ActionPriority pri;
+            const auto name = toUpper(row.at(PRIORITY).as_string());
+            if (pb::ActionPriority_Parse(name, &pri)) {
+                obj.set_priority(pri);
+            } else {
+                LOG_WARN_N << "Invalid ActionPriority: " << name;
+            }
+        }
+        obj.set_descr(row.at(DESCR).as_string());
+
+        {
+            auto * date = obj.mutable_createddate();
+            if (row.at(CREATED_DATE).is_datetime()) {
+                *date = toDate(row.at(CREATED_DATE).as_datetime());
+            }
+        }
+
+        {
+            pb::ActionDueType dt;
+            const auto name = toUpper(row.at(DUE_TYPE).as_string());
+            if (pb::ActionDueType_Parse(name, &dt)) {
+                obj.set_duetype(dt);
+            } else {
+                LOG_WARN_N << "Invalid ActionDueType: " << name;
+            }
+        }
+
+        if (row.at(DUE_BY_TIME).is_datetime()) {
+            obj.set_duebytime(toTimeT(row.at(DUE_BY_TIME).as_datetime()));
+        }
+        obj.set_completed(row.at(COMPLETED).as_int64() == 1);
+
+        if constexpr (std::is_same_v<T, pb::Action>) {
+            if (row.at(COMPLETED_TIME).is_datetime()) {
+                obj.set_completedtime(toTimeT(row.at(COMPLETED_TIME).as_datetime()));
+            }
+            obj.set_timeestimate(row.at(TIME_ESTIMATE).as_int64());
+            *obj.mutable_createddate() = toDate(row.at(CREATED_DATE).as_date());
+            {
+                pb::ActionDifficulty ad;
+                const auto name = toUpper(row.at(DIFFICULTY).as_string());
+                if (pb::ActionDifficulty_Parse(name, &ad)) {
+                    obj.set_difficulty(ad);
+                } else {
+                    LOG_WARN_N << "Invalid ActionDifficulty: " << name;
+                }
+            }
+            {
+                pb::Action::RepeatKind rk;
+                const auto name = toUpper(row.at(REPEAT_KIND).as_string());
+                if (pb::Action::RepeatKind_Parse(name, &rk)) {
+                    obj.set_repeatkind(rk);
+                } else {
+                    LOG_WARN_N << "Invalid RepeatKind: " << name;
+                }
+            }
+            {
+                pb::Action::RepeatUnit ru;
+                const auto name = toUpper(row.at(REPEAT_UNIT).as_string());
+                if (pb::Action::RepeatUnit_Parse(name, &ru)) {
+                    obj.set_repeatunits(ru);
+                } else {
+                    LOG_WARN_N << "Invalid RepeatUnit: " << name;
+                }
+            }
+            obj.set_repeatafter(row.at(REPEAT_AFTER).as_int64());
+        }
+    }
+
+private:
+    static string buildUpdateBindStr() {
+        auto cols = format("{}{}", core_, remaining_);
+        boost::replace_all(cols, ",", "=?,");
+        cols += "=?";
+        return cols;
+    }
+
+    static constexpr string_view ids_ = "id, node, user, ";
+    static constexpr string_view core_ = "priority, status, name, descr, created_date, due_type, due_by_time, completed";
+    static constexpr string_view remaining_ = ", completed_time, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_after";
+};
+
+struct SqlFilter {
+
+    SqlFilter(bool addWhere = true)
+        : add_where_{addWhere} {}
+
+    template <typename T>
+    void add(const T& what) {
+        if (add_where_ && where_.empty()) {
+            where_ = "WHERE ";
+        } else {
+            where_ += " AND ";
+        }
+
+        where_ += what;
+    }
+
+    std::string_view where() const noexcept {
+        return where_;
+    }
+
+private:
+    bool add_where_ = true;
+    std::string where_;
+};
+
 
 } // anon ns
 
@@ -552,7 +766,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         if (parent->empty()) {
             parent.reset();
         } else {
-            co_await owner_.validateParent(*parent, cuser);
+            co_await owner_.validateNode(*parent, cuser);
         }
 
         auto id = req->node().uuid();
@@ -700,7 +914,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
             optional<string> parent;
             if (!req->parentuuid().empty()) {
-                co_await owner_.validateParent(req->parentuuid(), cuser);
+                co_await owner_.validateNode(req->parentuuid(), cuser);
                 parent = req->parentuuid();
             }
 
@@ -839,6 +1053,128 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     });
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetActions(::grpc::CallbackServerContext *ctx, const pb::GetActionsReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+                        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        const auto cuser = owner_.currentUser(ctx);
+
+        SqlFilter filter{false};
+        if (req->has_active()) {
+            filter.add(format("completed={}", req->active() ? "0" : "1"));
+        }
+        if (!req->node().empty()) {
+            filter.add(format("node='{}'", req->node()));
+        }
+
+        string order = "due_by_time";
+
+        const auto res = co_await owner_.server().db().exec(
+            format(R"(SELECT {} from action WHERE user=? {} ORDER BY {})",
+                   ToAction::coreSelectCols(),
+                   filter.where(), order), cuser);
+        assert(res.has_value());
+        auto *actions = reply->mutable_actions();
+        for(const auto& row : res.rows()) {
+            ToAction::assign(row, *actions->add_actions());
+        }
+
+        LOG_TRACE << toJson(*reply);
+
+        co_return;
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto cuser = owner_.currentUser(ctx);
+
+        if (req->node().empty()) {
+            throw runtime_error{"Missing node"};
+        }
+
+        co_await owner_.validateNode(req->node(), cuser);
+
+        auto id = req->id();
+        if (id.empty()) {
+            id = newUuidStr();
+        }
+
+        const auto res = co_await owner_.server().db().exec(format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
+                                                                   ToAction::allSelectCols(),
+                                                                   ToAction::statementBindingStr(),
+                                                                   ToAction::allSelectCols()),
+                                                            ToAction::prepareBindingArgs(*req, id, req->node(), cuser));
+
+        assert(!res.empty());
+        // Set the reply data
+        auto *action = reply->mutable_action();
+        ToAction::assign(res.rows().front(), *action);
+
+        // Copy the new Action to an update and publish it
+        auto update = make_shared<pb::Update>();
+        update->set_op(pb::Update::Operation::Update_Operation_ADDED);
+        *update->mutable_action() = *action;
+        owner_.publish(update);
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto cuser = owner_.currentUser(ctx);
+
+        if (req->node().empty()) {
+            throw runtime_error{"Missing node"};
+        }
+
+        auto existing_res = co_await owner_.server().db().exec("SELECT node FROM action WHERE id=?", req->id());
+        if (existing_res.empty() || existing_res.rows().empty()) {
+            throw db_err{pb::Error::NOT_FOUND, "Action does not exist"};
+        }
+
+        const auto current_node = existing_res.rows().front().at(0).as_string();
+        if (current_node != req->node()) {
+            throw db_err(pb::Error::CONSTRAINT_FAILED, "UpdateAction cannot change the node. Use MoveAction for that.");
+        }
+
+        co_await owner_.validateNode(req->node(), cuser);
+
+        pb::Action new_action{*req};
+
+        const auto res = co_await owner_.server().db().exec(format("UPDATE action where id=? {} RETURNING {} ",
+                                                                   ToAction::updateStatementBindingStr(),
+                                                                   ToAction::allSelectCols()),
+                                                            ToAction::prepareBindingArgs(new_action, new_action.id()));
+
+        assert(!res.empty());
+        // Set the reply data
+        auto *action = reply->mutable_action();
+        ToAction::assign(res.rows().front(), *action);
+
+        // Copy the new Action to an update and publish it
+        auto update = make_shared<pb::Update>();
+        update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+        *update->mutable_action() = *action;
+        owner_.publish(update);
+        });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteAction(::grpc::CallbackServerContext *ctx, const pb::DeleteActionReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto cuser = owner_.currentUser(ctx);
+
+
+            co_return;
+        });
+
+}
+
 GrpcServer::GrpcServer(Server &server)
     : server_{server}
 {
@@ -903,11 +1239,11 @@ void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
     }
 }
 
-boost::asio::awaitable<void> GrpcServer::validateParent(const std::string &parentUuid, const std::string &userUuid)
+boost::asio::awaitable<void> GrpcServer::validateNode(const std::string &parentUuid, const std::string &userUuid)
 {
     auto res = co_await server().db().exec("SELECT id FROM node where id=? and user=?", parentUuid, userUuid);
     if (!res.has_value()) {
-        throw db_err{pb::Error::INVALID_PARENT, "Parent id must exist and be owned by the user"};
+        throw db_err{pb::Error::INVALID_PARENT, "Node id must exist and be owned by the user"};
     }
 
     co_return;

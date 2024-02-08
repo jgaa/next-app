@@ -70,6 +70,9 @@ public:
 
     DaysModel& parent();
 
+    static std::optional<QString> notes(const nextapp::pb::CompleteDay& day);
+    static std::optional<QString> report(const nextapp::pb::CompleteDay& day);
+
 signals:
 
     void validChanged();

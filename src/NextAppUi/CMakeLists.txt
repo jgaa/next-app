@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(NextAppUi VERSION 0.2 LANGUAGES CXX)
+project(NextAppUi VERSION 0.3 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -81,6 +81,8 @@ qt_add_qml_module(appNextAppUi
         qml/ServerSettings.qml
         qml/EditNodeDlg.qml
         qml/DlgInputField.qml
+        qml/ActionsList.qml
+        qml/EditActionDlg.qml
     RESOURCES
         icons/folder_closed.svg
         icons/folder_open.svg
@@ -118,8 +120,9 @@ qt_add_qml_module(appNextAppUi
         DaysModel.cpp
         DayModel.h
         DayModel.cpp
-        SOURCES util.h util.cpp
-        SOURCES ActionsModel.h ActionsModel.cpp
+        util.h util.cpp
+        ActionsModel.h
+        ActionsModel.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

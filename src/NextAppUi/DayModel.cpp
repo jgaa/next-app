@@ -56,11 +56,17 @@ bool DayModel::haveReport() const {
 }
 
 QString DayModel::report() const {
-    return day_.report();
+    if (auto val = report(day_)) {
+        return *val;
+    }
+    return {};
 }
 
 QString DayModel::notes() const {
-    return day_.notes();
+    if (auto val = notes(day_)) {
+        return *val;
+    }
+    return {};
 }
 
 void DayModel::setNotes(const QString &value) {
@@ -109,6 +115,22 @@ DaysModel &DayModel::parent()
     return dynamic_cast<DaysModel&>(*QObject::parent());
 }
 
+std::optional<QString> DayModel::notes(const nextapp::pb::CompleteDay &day)
+{
+    if (day.hasNotes()) {
+        return day.notes();
+    }
+    return {};
+}
+
+std::optional<QString> DayModel::report(const nextapp::pb::CompleteDay &day)
+{
+    if (day.hasReport()) {
+        return day.report();
+    }
+    return {};
+}
+
 void DayModel::receivedDay(const nextapp::pb::CompleteDay& day) {
     updateSelf(day);
 }
@@ -147,11 +169,11 @@ void DayModel::updateSelf(const nextapp::pb::CompleteDay &day) {
         emit colorUuidChanged();
     }
 
-    if (old.notes() != day_.notes()) {
-        emit colorChanged();
+    if (notes(old) != notes(day)) {
+        emit notesChanged();
     }
 
-    if (old.report() != day_.report()) {
+    if (report(old) != report(day_)) {
         emit reportChanged();
     }
 }

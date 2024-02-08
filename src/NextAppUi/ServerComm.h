@@ -5,6 +5,7 @@
 
 #include <memory>
 
+
 #include "nextapp_client.grpc.qpb.h"
 
 #include <QObject>
@@ -67,6 +68,12 @@ public:
 
     void fetchDay(int year, int month, int day);
 
+    void getActions(nextapp::pb::GetActionsReq &filter);
+
+    void addAction(const nextapp::pb::Action& action);
+    void updateAction(const nextapp::pb::Action& action);
+    void deleteAction(const QString& actionUuid);
+
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
     }
@@ -88,6 +95,8 @@ signals:
     void receivedMonth(const nextapp::pb::Month& month);
 
     void receivedDay(const nextapp::pb::CompleteDay& day);
+
+    void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions);
 
     // Triggered on all updates from the server
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
@@ -161,6 +170,6 @@ private:
     std::queue<std::function<void()>> grpc_queue_;
     bool grpc_is_ready_ = false;
     static ServerComm *instance_;
-    std::shared_ptr<QGrpcStream> updates_;
+    std::shared_ptr<QGrpcServerStream> updates_;
     QString current_server_address_;
 };

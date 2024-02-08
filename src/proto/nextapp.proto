@@ -124,6 +124,17 @@ enum ActionDifficulty {
     INSPIRED = 5;
 }
 
+enum ActionPriority {
+    PRI_CRITICAL        = 0;
+    PRI_VERY_IMPORNANT  = 1;
+    PRI_HIGHER          = 2;
+    PRI_HIGH            = 3;
+    PRI_NORMAL          = 4;
+    PRI_MEDIUM          = 5;
+    PRI_LOW             = 6;
+    PRI_INSIGNIFICANT   = 7;
+}
+
 // For communicating a list of actions
 message ActionInfo {
     string id           = 1;
@@ -135,6 +146,7 @@ message ActionInfo {
     Date createdDate    = 7;
     ActionDueType dueType = 8;
     uint64 dueByTime    = 9; // time_t
+    bool completed      = 10;
 }
 
 message Actions {
@@ -159,20 +171,21 @@ message Action {
 
     string id = 1;
     string node = 2; // uuid
-    int32 priority = 3;
+    ActionPriority priority = 3;
     ActionStatus status = 4;
     string name = 5;
     string descr = 6;
     Date createdDate = 7;
     ActionDueType dueType = 8;
     uint64 dueByTime = 9; // time_t
-    uint64 completedTime = 10; // time_t
-    uint64 timeEstimate = 11; // minutes
-    ActionDifficulty difficulty = 12;
-    RepeatKind repeatKind = 13;
-    RepeatUnit repeatUnits = 14;
-    int32 repeatAfter = 15; // Depends on repeatUnits
-    repeated string locations = 16; // Just the uuid's of locations
+    bool completed      = 10;
+    uint64 completedTime = 11; // time_t
+    uint64 timeEstimate = 12; // minutes
+    ActionDifficulty difficulty = 13;
+    RepeatKind repeatKind = 14;
+    RepeatUnit repeatUnits = 15;
+    int32 repeatAfter = 16; // Depends on repeatUnits
+    repeated string locations = 17; // Just the uuid's of locations
 }
 
 message DayColor {
@@ -255,6 +268,7 @@ message Update {
         Tenant tenant = 13;
         User user = 14;
         Node node = 15;
+        Action action = 16;
     }
 }
 
@@ -281,6 +295,15 @@ message MoveNodeReq {
     string parentUuid = 2;
 }
 
+message GetActionsReq {
+    optional bool active = 1;
+    string node = 2;
+}
+
+message DeleteActionReq {
+    string actionId = 1;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -290,6 +313,8 @@ message Status {
         Tenant tenant = 10;
         User user = 11;
         Node node = 12;
+        Actions actions = 13;
+        Action action = 14;
     }
 }
 
@@ -312,5 +337,11 @@ service Nextapp {
     rpc UpdateNode(Node) returns (Status) {}
     rpc DeleteNode(DeleteNodeReq) returns (Status) {}
     rpc MoveNode(MoveNodeReq) returns (Status) {}
+    rpc GetActions(GetActionsReq) returns (Status) {}
+
+    rpc CreateAction(Action) returns (Status) {}
+    rpc UpdateAction(Action) returns (Status) {}
+    rpc DeleteAction(DeleteActionReq) returns (Status) {}
+
 }
 

@@ -320,7 +320,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             node UUID NOT NULL,
             user UUID NOT NULL,
             origin UUID,
-            priority INTEGER NOT NULL DEFAULT (5),
+            priority ENUM ('pri_critical', 'pri_very_impornant', 'pri_higher', 'pri_high', 'pri_normal', 'pri_medium', 'pri_low', 'pri_insignificant') NOT NULL DEFAULT ('pri_normal'),
             status ENUM ('active', 'done', 'onhold') NOT NULL DEFAULT 'active',
             name VARCHAR(128) NOT NULL,
             descr TEXT,

@@ -78,6 +78,16 @@ ApplicationWindow {
             }
         }
 
+        MyMenu {
+            enabled: sidebar.currentMainItem == 1 && mainTree.hasSelection
+            title: qsTr("Actions")
+
+            Action {
+                text: qsTr("New Action")
+                onTriggered: openActionDlg()
+            }
+        }
+
         // MyMenu {
         //     title: qsTr("Edit")
 
@@ -191,6 +201,14 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         Layout.minimumWidth: 100
                         Layout.preferredWidth: 600
+                        StackLayout {
+                            id: currentData
+                            anchors.fill: parent
+
+                            ActionsList {
+
+                            }
+                        }
                     }
                 }
 
@@ -229,6 +247,13 @@ ApplicationWindow {
             isNew: true,
             kind: kind,
             title: qsTr("New Folder")
+        });
+    }
+
+    function openActionDlg(kind) {
+        openDialog("EditActionDlg.qml", {
+            node: mainTree.selectedItemUuid,
+            title: qsTr("New Action")
         });
     }
 }
