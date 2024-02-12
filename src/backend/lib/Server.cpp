@@ -161,8 +161,8 @@ boost::asio::awaitable<void> Server::createDb(const BootstrapOptions& opts)
             LOG_TRACE_N << "Dropping database " << config_.db.database ;
 
             try {
-                co_await db.exec(format("REVOKE ALL PRIVILEGES FROM '{}'@'%'",
-                                        config_.db.username));
+                co_await db.exec(format("REVOKE ALL PRIVILEGES ON {}.* FROM `{}`@`%`",
+                                        config_.db.database, config_.db.username));
             } catch (const exception&) {};
 
             try {

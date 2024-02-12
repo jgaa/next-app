@@ -158,6 +158,9 @@ int main(int argc, char* argv[]) {
             ("db-port",
              po::value(&config.db.port)->default_value(config.db.port),
              "Port number for the database server")
+            ("db-min-connections",
+             po::value(&config.db.min_connections)->default_value(config.db.min_connections),
+             "Max concurrent connections to the database server")
             ("db-max-connections",
              po::value(&config.db.max_connections)->default_value(config.db.max_connections),
              "Max concurrent connections to the database server")

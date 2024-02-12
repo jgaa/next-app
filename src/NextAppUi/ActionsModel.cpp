@@ -43,9 +43,25 @@ nextapp::pb::Action ActionsModel::newAction()
     return action;
 }
 
+void ActionsModel::start()
+{
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::receivedActions,
+            this,
+            &ActionsModel::receivedActions);
+}
+
 void ActionsModel::fetch(nextapp::pb::GetActionsReq &filter)
 {
     ServerComm::instance().getActions(filter);
+}
+
+void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &actions)
+{
+    LOG_DEBUG << "Action model reset with " << actions->actions().size() << " items";
+    beginResetModel();
+    actions_ = actions;
+    endResetModel();
 }
 
 int ActionsModel::rowCount(const QModelIndex &parent) const
@@ -53,7 +69,7 @@ int ActionsModel::rowCount(const QModelIndex &parent) const
     return actions_->actions().size();
 }
 
-QVariant ActionsModel::data(const QModelIndex &index, int role) constNEXTAPP_DBPASSW
+QVariant ActionsModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid()) {
         return {};
@@ -134,7 +150,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[CreatedDateRole] = "createdDate";
     roles[DueTypeRole] = "dueType";
     roles[DueByTimeRole] = "dueBy";
-    roles[CompletedRole] = "completed";
+    roles[CompletedRole] = "done";
     return roles;
 }
 

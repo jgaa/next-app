@@ -83,6 +83,7 @@ qt_add_qml_module(appNextAppUi
         qml/DlgInputField.qml
         qml/ActionsList.qml
         qml/EditActionDlg.qml
+        qml/StyledCheckBox.qml
     RESOURCES
         icons/folder_closed.svg
         icons/folder_open.svg

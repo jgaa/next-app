@@ -31,6 +31,7 @@ public:
     Q_INVOKABLE void updateAction(const nextapp::pb::Action& action);
     Q_INVOKABLE nextapp::pb::Action newAction();
 
+    void start();
     void fetch(nextapp::pb::GetActionsReq& filter);
     void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions);
 

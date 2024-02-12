@@ -10,6 +10,7 @@
 #include "MainTreeModel.h"
 #include "DaysModel.h"
 #include "DayColorModel.h"
+#include "ActionsModel.h"
 #include "nextapp.qpb.h"
 
 #include "logging.h"
@@ -93,15 +94,25 @@ int main(int argc, char *argv[])
 #endif
 
         tree->start();
+    }
 
+    {
         auto days = engine.singletonInstance<DaysModel*>("NextAppUi","DaysModel");
         assert(days);
         days->start();
     }
 
-    auto colors = engine.singletonInstance<DayColorModel*>("NextAppUi","DayColorModel");
-    assert(colors);
-    colors->start();
+    {
+        auto actions = engine.singletonInstance<ActionsModel*>("NextAppUi","ActionsModel");
+        assert(actions);
+        actions->start();
+    }
+
+    {
+        auto colors = engine.singletonInstance<DayColorModel*>("NextAppUi","DayColorModel");
+        assert(colors);
+        colors->start();
+    }
 
     QObject::connect(
         &engine,

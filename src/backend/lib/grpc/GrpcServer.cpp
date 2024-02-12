@@ -2,6 +2,7 @@
 #include <map>
 #include <chrono>
 
+
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/json.hpp>
@@ -183,11 +184,17 @@ struct ToAction {
     }
 
     static string_view statementBindingStr() {
-        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
     }
 
     static string_view updateStatementBindingStr() {
         static const auto cols = buildUpdateBindStr();
+        return cols;
+    }
+
+    static string_view insertCols() {
+        // Remove columns we don't use for insert
+        static const auto cols = boost::replace_all_copy(string{allSelectCols()}, "created_date,", "");
         return cols;
     }
 
@@ -198,7 +205,7 @@ struct ToAction {
             pb::ActionStatus_Name(action.status()),
             action.name(),
             action.descr(),
-            toAnsiDate(action.createddate()),
+            //toAnsiDate(action.createddate()),
             pb::ActionDueType_Name(action.duetype()),
             toAnsiTime(action.duebytime()),
             action.completed(),
@@ -231,6 +238,8 @@ struct ToAction {
                 LOG_WARN_N << "Invalid ActionPriority: " << name;
             }
         }
+
+        obj.set_name(row.at(NAME).as_string());
         obj.set_descr(row.at(DESCR).as_string());
 
         {
@@ -260,7 +269,7 @@ struct ToAction {
                 obj.set_completedtime(toTimeT(row.at(COMPLETED_TIME).as_datetime()));
             }
             obj.set_timeestimate(row.at(TIME_ESTIMATE).as_int64());
-            *obj.mutable_createddate() = toDate(row.at(CREATED_DATE).as_date());
+            *obj.mutable_createddate() = toDate(row.at(CREATED_DATE).as_datetime());
             {
                 pb::ActionDifficulty ad;
                 const auto name = toUpper(row.at(DIFFICULTY).as_string());
@@ -295,6 +304,7 @@ struct ToAction {
 private:
     static string buildUpdateBindStr() {
         auto cols = format("{}{}", core_, remaining_);
+        boost::replace_all(cols, "created_date,", "");
         boost::replace_all(cols, ",", "=?,");
         cols += "=?";
         return cols;
@@ -1013,26 +1023,26 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         // Root level
         known[""] = reply->mutable_root();
 
-        if (res.has_value()) {
-            for(const auto& row : res.rows()) {
-                pb::Node n;
-                ToNode::assign(row, n);
-                const auto parent = n.parent();
+        assert(res.has_value());
+        for(const auto& row : res.rows()) {
+            pb::Node n;
+            ToNode::assign(row, n);
+            const auto parent = n.parent();
 
-                if (auto it = known.find(parent); it != known.end()) {
-                    auto child = it->second->add_children();
-                    child->mutable_node()->Swap(&n);
-                    known[child->node().uuid()] = child;
-                } else {
-                    // Track it for later
-                    const auto id = n.uuid();
-                    pending.push_back({});
-                    auto child = &pending.back();
-                    child->mutable_node()->Swap(&n);
-                    known[child->node().uuid()] = child;
-                }
+            if (auto it = known.find(parent); it != known.end()) {
+                auto child = it->second->add_children();
+                child->mutable_node()->Swap(&n);
+                known[child->node().uuid()] = child;
+            } else {
+                // Track it for later
+                const auto id = n.uuid();
+                pending.push_back({});
+                auto child = &pending.back();
+                child->mutable_node()->Swap(&n);
+                known[child->node().uuid()] = child;
             }
         }
+
 
         // By now, all the parents are in the known list.
         // We can safely move all the pending items to the child lists of the parents
@@ -1067,7 +1077,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             filter.add(format("node='{}'", req->node()));
         }
 
-        string order = "due_by_time";
+        string order = "completed DESC, priority DESC, due_by_time, created_date";
 
         const auto res = co_await owner_.server().db().exec(
             format(R"(SELECT {} from action WHERE user=? {} ORDER BY {})",
@@ -1103,7 +1113,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         }
 
         const auto res = co_await owner_.server().db().exec(format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
-                                                                   ToAction::allSelectCols(),
+                                                                   ToAction::insertCols(),
                                                                    ToAction::statementBindingStr(),
                                                                    ToAction::allSelectCols()),
                                                             ToAction::prepareBindingArgs(*req, id, req->node(), cuser));
