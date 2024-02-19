@@ -8,40 +8,59 @@ import nextapp.pb as NextappPb
 Dialog {
     id: root
     property string node: MainTreeModel.selected
-    //property NextappPb.action action
-    property NextappPb.action action: ActionsModel.newAction()
+    property ActionPrx aprx
+    property NextappPb.action action: aprx.action
+    property bool assigned: false
+    property bool valid: aprx.valid
 
     x: (parent.width - width) / 2
     y: (parent.height - height) / 2
     width: 800
     height: 600
 
-    standardButtons: Dialog.Ok | Dialog.Cancel
+    standardButtons: root.aprx.valid ? (Dialog.Ok | Dialog.Cancel) : Dialog.Cancel
 
     onOpened: {
         console.log("Dialog opened :)");
-
         console.log("action.name is", action.name)
+        assign()
+    }
 
-        if (action.id_proto === "") {
-            action.proprity = NextappPb.ActionPriority.PRI_NORMAL;
+    onValidChanged: {
+        if (valid) {
+            assign()
+        } else {
+            // TODO: Popup
+            console.log("Failed to fetch existing Action")
         }
+    }
 
-        // Set the values in the controld. We can't bind them directly for some reason.
-        name.text = root.action.name = action.name
-        done.checked = root.action.completed
-        descr.text = root.action.descr
+    function assign() {
+        if (aprx.valid && !root.assigned) {
 
-        if (action.node === "") {
-            action.node = node;
-        }
+            //root.action = aprx.action
 
-        if (action.node === "") {
-            throw "No node"
+            // Set the values in the controld. We can't bind them directly for some reason.
+            name.text = root.action.name = action.name
+            done.checked = root.action.completed
+            descr.text = root.action.descr
+            priority.currentIndex = root.action.priority
+
+            if (action.node === "") {
+                action.node = node;
+            }
+
+            if (action.node === "") {
+                throw "No node"
+            }
+
+            // Don't do it again for this instance
+            root.assigned = true
         }
     }
 
     RowLayout {
+        visible: root.aprx.valid
         anchors.fill: parent
         // Image {
         //     width: 96
@@ -120,20 +139,10 @@ Dialog {
     }
 
     onAccepted: {
-        // var args = {
-        //     name: root.name,
-        //     kind: root.kind,
-        //     active: root.active,
-        //     parent: root.parentUuid,
-        //     descr: root.descr
-        // }
-
         root.action.name = name.text;
         root.action.completed = done.checked
         root.action.descr = descr.text
-       // action.priority =
-
-        console.log("action.name", action.name, " action.descr=", action.descr, " descr.text", descr.text, " action.completed=", action.completed, " done.checked=", done.checked)
+        root.action.priority = priority.currentIndex
 
         if (root.action.id_proto !== "") { // edit
             ActionsModel.updateAction(root.action)

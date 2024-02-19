@@ -135,18 +135,28 @@ enum ActionPriority {
     PRI_INSIGNIFICANT   = 7;
 }
 
+enum ActionKind {
+    AC_UNSET            = 0;
+    AC_OVERDUE          = 1;
+    AC_TODAY            = 2;
+    AC_UPCOMING         = 3;
+    AC_UNSCHEDULED      = 4;
+    AC_DONE             = 5;
+}
+
 // For communicating a list of actions
 message ActionInfo {
     string id           = 1;
     string node         = 2; // uuid
-    int32 priority      = 3;
+    ActionPriority priority = 3;
     ActionStatus status = 4;
     string name         = 5;
-    string descr        = 6;
     Date createdDate    = 7;
     ActionDueType dueType = 8;
     uint64 dueByTime    = 9; // time_t
     bool completed      = 10;
+     uint64 completedTime = 11; // time_t
+    ActionKind kind     = 12;
 }
 
 message Actions {
@@ -174,18 +184,19 @@ message Action {
     ActionPriority priority = 3;
     ActionStatus status = 4;
     string name = 5;
-    string descr = 6;
     Date createdDate = 7;
     ActionDueType dueType = 8;
     uint64 dueByTime = 9; // time_t
     bool completed      = 10;
     uint64 completedTime = 11; // time_t
+    string descr = 6;
     uint64 timeEstimate = 12; // minutes
     ActionDifficulty difficulty = 13;
     RepeatKind repeatKind = 14;
     RepeatUnit repeatUnits = 15;
     int32 repeatAfter = 16; // Depends on repeatUnits
     repeated string locations = 17; // Just the uuid's of locations
+    ActionKind kind = 18;
 }
 
 message DayColor {
@@ -300,6 +311,10 @@ message GetActionsReq {
     string node = 2;
 }
 
+message GetActionReq {
+    string uuid = 2;
+}
+
 message DeleteActionReq {
     string actionId = 1;
 }
@@ -328,17 +343,17 @@ service Nextapp {
     rpc SetColorOnDay(SetColorReq) returns (Status) {}
     rpc SetDay(CompleteDay) returns (Status) {}
     rpc SubscribeToUpdates(UpdatesReq) returns (stream Update) {}
-
     rpc CreateTenant(CreateTenantReq) returns (Status) {}
 
     // If called by a super-user, user.uuid can point to any tenant. If unset, the logged-in tenant is used.
     rpc CreateUser(User) returns (Status) {}
+
     rpc CreateNode(CreateNodeReq) returns (Status) {}
     rpc UpdateNode(Node) returns (Status) {}
     rpc DeleteNode(DeleteNodeReq) returns (Status) {}
     rpc MoveNode(MoveNodeReq) returns (Status) {}
     rpc GetActions(GetActionsReq) returns (Status) {}
-
+    rpc GetAction(GetActionReq) returns (Status) {}
     rpc CreateAction(Action) returns (Status) {}
     rpc UpdateAction(Action) returns (Status) {}
     rpc DeleteAction(DeleteActionReq) returns (Status) {}

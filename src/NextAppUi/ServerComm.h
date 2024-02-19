@@ -69,6 +69,7 @@ public:
     void fetchDay(int year, int month, int day);
 
     void getActions(nextapp::pb::GetActionsReq &filter);
+    void getAction(nextapp::pb::GetActionReq &req);
 
     void addAction(const nextapp::pb::Action& action);
     void updateAction(const nextapp::pb::Action& action);
@@ -93,15 +94,14 @@ signals:
     void receivedNodeTree(const nextapp::pb::NodeTree& tree);
 
     void receivedMonth(const nextapp::pb::Month& month);
-
     void receivedDay(const nextapp::pb::CompleteDay& day);
-
+    void receivedDayColorDefinitions(const nextapp::pb::DayColorDefinitions& defs);
     void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions);
+    void receivedAction(const nextapp::pb::Status& status);
 
     // Triggered on all updates from the server
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
 
-    void receivedDayColorDefinitions(const nextapp::pb::DayColorDefinitions& defs);
 
 private:
     void errorOccurred(const QGrpcStatus &status);

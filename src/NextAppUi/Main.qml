@@ -253,7 +253,8 @@ ApplicationWindow {
     function openActionDlg(kind) {
         openDialog("EditActionDlg.qml", {
             node: mainTree.selectedItemUuid,
-            title: qsTr("New Action")
+            title: qsTr("New Action"),
+            aprx: ActionsModel.getAction("")
         });
     }
 }

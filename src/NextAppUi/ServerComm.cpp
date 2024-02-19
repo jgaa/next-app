@@ -210,6 +210,15 @@ void ServerComm::getActions(nextapp::pb::GetActionsReq &filter)
     });
 }
 
+void ServerComm::getAction(nextapp::pb::GetActionReq &req)
+{
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->GetAction(req);
+    }, [this](const nextapp::pb::Status& status) {
+        emit receivedAction(status);
+    });
+}
+
 void ServerComm::addAction(const nextapp::pb::Action &action)
 {
     callRpc<nextapp::pb::Status>([this, &action]() {

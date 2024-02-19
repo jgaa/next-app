@@ -230,25 +230,6 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         FOREIGN KEY(parent) REFERENCES node(id),
         FOREIGN KEY(user) REFERENCES user(id)))",
 
-        // R"(CREATE TABLE action (
-        //     id UUID not NULL default UUID() PRIMARY KEY,
-        //     node UUID NOT NULL,
-        //     list_id INTEGER NOT NULL,
-        //     priority INTEGER NOT NULL DEFAULT (5),
-        //     name VARCHAR(128) NOT NULL,
-        //     descr TEXT,
-        //     created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        //     due_type INTEGER NOT NULL DEFAULT (0),
-        //     due_by_time DATETIME,
-        //     completed_time TIMESTAMP NOT NULL DEFAULT(0),
-        //     completed TINYINT(1) NOT NULL DEFAULT 1,
-        //     time_estimate INTEGER,
-        //     focus_needed INTEGER NOT NULL DEFAULT (3),
-        //     repeat_type INTEGER NOT NULL DEFAULT(0),
-        //     repeat_unit INTEGER NOT NULL DEFAULT(0),
-        //     repeat_after INTEGER NOT NULL DEFAULT(0),
-        // FOREIGN KEY(node) REFERENCES node(id)))",
-
         R"(CREATE TABLE work(
               id UUID not NULL default UUID() PRIMARY KEY,
               node UUID NOT NULL,
@@ -308,7 +289,11 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             FOREIGN KEY(parent) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
     });
 
-    static constexpr auto v3_upgrade = to_array<string_view>({
+    static constexpr array<string_view, 0> v3_upgrade;
+
+    static constexpr auto v4_upgrade = to_array<string_view>({
+        R"(DROP TABLE IF EXISTS action2location)",
+
         R"(CREATE OR REPLACE TABLE location (
             id UUID not NULL default UUID() PRIMARY KEY,
             user UUID NOT NULL,
@@ -327,7 +312,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             due_type ENUM('datetime', 'date', 'week', 'month', 'quater', 'year') NOT NULL DEFAULT 'datetime',
             due_by_time DATETIME,
-            completed_time TIMESTAMP NOT NULL DEFAULT(0),
+            completed_time TIMESTAMP,
             completed TINYINT(1) NOT NULL DEFAULT 1,
             time_estimate INTEGER,
             difficulty ENUM('trivial', 'easy', 'normal', 'hard', 'veryhard', 'inspired') NOT NULL DEFAULT 'normal',
@@ -356,6 +341,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v1_bootstrap,
         v2_upgrade,
         v3_upgrade,
+        v4_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

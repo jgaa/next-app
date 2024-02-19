@@ -56,10 +56,11 @@ Rectangle {
                 property bool selected: listView.currentIndex === index
                 required property int index
                 required property string name
+                required property string uuid
                 required property bool done
 
                 implicitHeight: row.implicitHeight
-                width: parent.width
+                width: listView.width
                 clip: true
 
                 Rectangle {
@@ -75,6 +76,10 @@ Rectangle {
                             case Qt.LeftButton:
                                 listView.currentIndex = index
                                 console.log("Actions: Current selection is ", index)
+                                break;
+                            case Qt.RightButton:
+                                contextMenu.uuid = uuid
+                                contextMenu.popup();
                         }
                     }
                 }
@@ -98,5 +103,33 @@ Rectangle {
                 }
             }
         }
+    }
+
+    MyMenu {
+        id: contextMenu
+        property string uuid
+        Action {
+            text: qsTr("Edit")
+            icon.source: "../icons/fontawsome/pen-to-square.svg"
+            onTriggered: {
+                openActionDlg(contextMenu.uuid)
+            }
+        }
+        // Action {
+        //     icon.source: "../icons/fontawsome/trash-can.svg"
+        //     text: qsTr("Delete")
+        //     onTriggered: {
+        //         confirmDelete.node = contextMenu.node
+        //         confirmDelete.open()
+        //     }
+        // }
+    }
+
+    function openActionDlg(uuid) {
+        openDialog("EditActionDlg.qml", {
+            node: mainTree.selectedItemUuid,
+            title: qsTr("Edit Action"),
+            aprx: ActionsModel.getAction(uuid)
+        });
     }
 }

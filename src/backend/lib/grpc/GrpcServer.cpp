@@ -5,6 +5,9 @@
 
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/string_generator.hpp>
+#include <iostream>
 #include <boost/json.hpp>
 #include <boost/algorithm/string.hpp>
 
@@ -34,6 +37,14 @@ string newUuidStr()
 
 
 namespace {
+
+ostream& operator << (ostream& out, const optional<string>& v) {
+    if (v) {
+        return out << *v;
+    }
+
+    return out << "[empty]";
+}
 
 template <typename T>
 concept ProtoMessage = std::is_base_of_v<google::protobuf::Message, T>;
@@ -66,19 +77,18 @@ string toJson(const T& map) {
     return json::serialize(o);
 }
 
-std::string toAnsiDate(const nextapp::pb::Date& date) {
+optional<string> toAnsiDate(const nextapp::pb::Date& date) {
 
     if (date.year() == 0) {
-        return "0000-00-00";
+        return {};
     }
 
     return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month() + 1, date.mday());
 }
 
-std::string toAnsiTime(time_t time) {
-    static const auto empty = "0000-00-00 00:00"s;
+optional<string> toAnsiTime(time_t time) {
     if (time == 0) {
-        return empty;
+        return {};
     }
 
 
@@ -91,7 +101,7 @@ std::string toAnsiTime(time_t time) {
     }
 
     LOG_WARN_N << "Unable to format ANSI time for time_t=" << time;
-    return empty;
+    return {};
 }
 
 ::nextapp::pb::Date toDate(const boost::mysql::date& from) {
@@ -169,8 +179,8 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, PRIORITY, STATUS, NAME, DESCR, CREATED_DATE, DUE_TYPE, DUE_BY_TIME, COMPLETED, // core
-        COMPLETED_TIME, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_AFTER // remaining
+        ID, NODE, USER, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_TYPE, DUE_BY_TIME, COMPLETED, COMPLETED_TIME,  // core
+        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_AFTER // remaining
     };
 
     static auto coreSelectCols() {
@@ -204,12 +214,12 @@ struct ToAction {
             pb::ActionPriority_Name(action.priority()),
             pb::ActionStatus_Name(action.status()),
             action.name(),
-            action.descr(),
             //toAnsiDate(action.createddate()),
             pb::ActionDueType_Name(action.duetype()),
             toAnsiTime(action.duebytime()),
             action.completed(),
             toAnsiTime(action.completedtime()),
+            action.descr(),
             action.timeestimate(),
             pb::ActionDifficulty_Name(action.difficulty()),
             pb::Action::RepeatKind_Name(action.repeatkind()),
@@ -226,7 +236,7 @@ struct ToAction {
     }
 
     template <ActionType T>
-    static void assign(const boost::mysql::row_view& row, T& obj) {
+    static void assign(const boost::mysql::row_view& row, T& obj, const std::chrono::time_zone *ts) {
         obj.set_id(row.at(ID).as_string());
         obj.set_node(row.at(NODE).as_string());
         {
@@ -240,7 +250,6 @@ struct ToAction {
         }
 
         obj.set_name(row.at(NAME).as_string());
-        obj.set_descr(row.at(DESCR).as_string());
 
         {
             auto * date = obj.mutable_createddate();
@@ -264,10 +273,39 @@ struct ToAction {
         }
         obj.set_completed(row.at(COMPLETED).as_int64() == 1);
 
-        if constexpr (std::is_same_v<T, pb::Action>) {
+        if (obj.completed()) {
+            obj.set_kind(pb::ActionKind::AC_DONE);
+        } else if (ts) {
+            // If we have due_by_time set, we can see a) if it's expired, b) if it's today and c) it it's in the future
+            // We need to convert the time from the database and the time right now to the time-zone used by the client to get it right.
             if (row.at(COMPLETED_TIME).is_datetime()) {
-                obj.set_completedtime(toTimeT(row.at(COMPLETED_TIME).as_datetime()));
+                const auto due = row.at(COMPLETED_TIME).as_datetime();
+                const auto zt = std::chrono::zoned_time(ts, due.as_time_point());
+                const auto when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
+
+                const auto now_zt = std::chrono::zoned_time(ts, chrono::system_clock::now());
+                const auto now = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(now_zt.get_local_time())};
+
+                if (when.year() == now.year() && when.month() == now.month() && when.day() == now.day()) {
+                    obj.set_kind(pb::ActionKind::AC_TODAY);
+                } else if (when < now) {
+                    obj.set_kind(pb::ActionKind::AC_OVERDUE);
+                } else if (when > now) {
+                    obj.set_kind(pb::ActionKind::AC_UPCOMING);
+                } else {
+                    assert(false); // Not possible!
+                }
+            } else {
+                obj.set_kind(pb::ActionKind::AC_UNSCHEDULED);
             }
+        }
+
+        if (row.at(COMPLETED_TIME).is_datetime()) {
+            obj.set_completedtime(toTimeT(row.at(COMPLETED_TIME).as_datetime()));
+        }
+
+        if constexpr (std::is_same_v<T, pb::Action>) {
+            obj.set_descr(row.at(DESCR).as_string());
             obj.set_timeestimate(row.at(TIME_ESTIMATE).as_int64());
             *obj.mutable_createddate() = toDate(row.at(CREATED_DATE).as_datetime());
             {
@@ -311,8 +349,8 @@ private:
     }
 
     static constexpr string_view ids_ = "id, node, user, ";
-    static constexpr string_view core_ = "priority, status, name, descr, created_date, due_type, due_by_time, completed";
-    static constexpr string_view remaining_ = ", completed_time, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_after";
+    static constexpr string_view core_ = "priority, status, name, created_date, due_type, due_by_time, completed, completed_time";
+    static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_after";
 };
 
 struct SqlFilter {
@@ -1086,13 +1124,53 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         assert(res.has_value());
         auto *actions = reply->mutable_actions();
         for(const auto& row : res.rows()) {
-            ToAction::assign(row, *actions->add_actions());
+            ToAction::assign(row, *actions->add_actions(), owner_.currentTimeZone(ctx));
         }
 
         LOG_TRACE << toJson(*reply);
 
         co_return;
     });
+}
+
+const string& validatedUuid(const string& uuid) {
+    using namespace boost::uuids;
+
+    try {
+        auto result = string_generator()(uuid);
+        return uuid;
+    } catch(const runtime_error&) {
+
+    }
+
+    throw runtime_error{"invalid uuid"};
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetAction(::grpc::CallbackServerContext *ctx, const pb::GetActionReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto cuser = owner_.currentUser(ctx);
+            const auto& uuid = validatedUuid(req->uuid());
+
+            const auto res = co_await owner_.server().db().exec(
+                format(R"(SELECT {} from action WHERE id=? AND user=? )",
+                       ToAction::allSelectCols()), uuid, cuser);
+
+            assert(res.has_value());
+            if (!res.rows().empty()) {
+                const auto& row = res.rows().front();
+                auto *action = reply->mutable_action();
+                ToAction::assign(row, *action, owner_.currentTimeZone(ctx));
+            } else {
+                reply->set_error(pb::Error::NOT_FOUND);
+                reply->set_message(format("Action with id={} not found for the current user.", uuid));
+            }
+
+            LOG_TRACE << toJson(*reply);
+
+            co_return;
+        });
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply)
@@ -1121,7 +1199,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         assert(!res.empty());
         // Set the reply data
         auto *action = reply->mutable_action();
-        ToAction::assign(res.rows().front(), *action);
+        ToAction::assign(res.rows().front(), *action, owner_.currentTimeZone(ctx));
 
         // Copy the new Action to an update and publish it
         auto update = make_shared<pb::Update>();
@@ -1163,7 +1241,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         assert(!res.empty());
         // Set the reply data
         auto *action = reply->mutable_action();
-        ToAction::assign(res.rows().front(), *action);
+        ToAction::assign(res.rows().front(), *action, owner_.currentTimeZone(ctx));
 
         // Copy the new Action to an update and publish it
         auto update = make_shared<pb::Update>();

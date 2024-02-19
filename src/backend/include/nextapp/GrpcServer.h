@@ -100,6 +100,7 @@ public:
         ::grpc::ServerUnaryReactor *DeleteNode(::grpc::CallbackServerContext *ctx, const pb::DeleteNodeReq*req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetNodes(::grpc::CallbackServerContext *ctx, const pb::GetNodesReq *req, pb::NodeTree *reply) override;
         ::grpc::ServerUnaryReactor *GetActions(::grpc::CallbackServerContext *ctx, const pb::GetActionsReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetAction(::grpc::CallbackServerContext *ctx, const pb::GetActionReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *CreateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *UpdateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *DeleteAction(::grpc::CallbackServerContext *ctx, const pb::DeleteActionReq *req, pb::Status *reply) override;
@@ -172,6 +173,10 @@ private:
     // TODO: Implement auth
     std::string currentTenant(::grpc::CallbackServerContext */*ctx*/) const {
         return "a5e7bafc-9cba-11ee-a971-978657e51f0c";
+    }
+
+    const auto *currentTimeZone(::grpc::CallbackServerContext */*ctx*/) const {
+        return std::chrono::current_zone();
     }
 
     // The Server instance where we get objects in the application, like config and database
