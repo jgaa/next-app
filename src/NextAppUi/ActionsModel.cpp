@@ -5,6 +5,7 @@
 
 #include "ActionsModel.h"
 #include "ServerComm.h"
+#include "MainTreeModel.h"
 
 #include "logging.h"
 
@@ -19,7 +20,7 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 template <ActionType T, ActionType U>
 int comparePriName(const T& left, const U& right) {
     if (left.priority() != right.priority()) {
-        return right.priority() - left.priority();
+        return left.priority() - right.priority();
     }
 
     return left.name().compare(right.name(), Qt::CaseInsensitive);
@@ -67,13 +68,20 @@ int findInsertRow(const T& action, const QList<U>& list) {
     int row = 0;
     // assume that list is already sorted
 
+    bool prev_was_target = false;
+    const U *prev = {};
     for(const auto& a: list) {
         if (comparePred(action, a)) {
             break;
         }
+        prev_was_target = a.id_proto() == action.id_proto();
         ++row;
     }
 
+    if (prev_was_target) {
+        --row; // Assume exactely the same sorting order
+        assert(row >= 0);
+    }
     return row;
 }
 
@@ -177,6 +185,20 @@ void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &
     endResetModel();
 }
 
+template <ActionType T>
+int findCurrentRow(const QList<T>& list, QString id) {
+
+    auto it = std::ranges::find_if(list, [&id](const T& a) {
+        return a.id_proto() == id;
+    });
+
+    if (it != list.end()) {
+        auto row = ranges::distance(list.begin(), it);
+        return row;
+    }
+
+    return -1;
+}
 
 void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 {
@@ -185,15 +207,55 @@ void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
     }
 
     const auto& action = update->action();
+
+    if (action.node() != MainTreeModel::instance()->selected()) {
+        return; // Irrelevant
+    }
+
     switch(update->op()) {
     case pb::Update::Operation::ADDED: {
+insert_as_new:
         auto row = findInsertRow(action, actions_->actions());
         beginInsertRows({}, row, row);
         insertAction(actions_->actions(), action, row);
         endInsertRows();
     }
     break;
+    case pb::Update::Operation::UPDATED: {
+        auto row = findInsertRow(action, actions_->actions());
+        if (auto currentRow = findCurrentRow(actions_->actions(), action.id_proto()) ; currentRow >=0 ) {
+            auto& list = actions_->actions();
+            if (list.at(currentRow).version() > action.version()) {
+                // We have a newer version already. Ignore
+                LOG_DEBUG << "Ignoring update of Action " << action.id_proto() << " \"" << action.name()
+                          << "\", version " << action.version() << ": we already have a newer version.";
+                return;
+            }
 
+            if (row != currentRow) {
+                beginMoveRows({}, currentRow, currentRow, {}, min<int>(row, list.size()));
+                if (row > currentRow) {
+                    --row; // Compensate for the deleted row
+                }
+                list.removeAt(currentRow);
+                insertAction(list, action, row);
+                endMoveRows();
+            } else {
+                // Update in place
+                auto &crow = list[currentRow];
+                assert(crow.id_proto() == action.id_proto());
+                crow = toActionInfo(action);
+                const auto cix = index(currentRow);
+                emit dataChanged(cix, cix);
+            }
+        } else {
+            // Not found
+            LOG_DEBUG << "Did not find updated action  " << action.id_proto() << " \"" << action.name()
+                      << "\" in the current list af actions. Inserting it as new.";
+            goto insert_as_new;
+        }
+    }
+    break;
     }
 }
 

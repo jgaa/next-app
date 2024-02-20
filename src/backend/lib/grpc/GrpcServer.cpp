@@ -179,7 +179,7 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_TYPE, DUE_BY_TIME, COMPLETED, COMPLETED_TIME,  // core
+        ID, NODE, USER, VERSION, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_TYPE, DUE_BY_TIME, COMPLETED, COMPLETED_TIME,  // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_AFTER // remaining
     };
 
@@ -202,13 +202,14 @@ struct ToAction {
         return cols;
     }
 
-    static string_view insertCols() {
+    static string insertCols() {
         // Remove columns we don't use for insert
-        static const auto cols = boost::replace_all_copy(string{allSelectCols()}, "created_date,", "");
+        auto cols = boost::replace_all_copy(string{allSelectCols()}, "created_date,", "");
+        boost::replace_all(cols, "version,", "");
         return cols;
     }
 
-    template <typename ...Args>
+    template <bool argsFirst = true, typename ...Args>
     static auto prepareBindingArgs(const pb::Action& action, Args... args) {
         auto bargs = make_tuple(
             pb::ActionPriority_Name(action.priority()),
@@ -229,7 +230,11 @@ struct ToAction {
 
         if constexpr (sizeof...(Args) > 0) {
             std::tuple<Args...> t1{args...};
-            return std::tuple_cat(t1, bargs);
+            if constexpr (argsFirst) {
+                return std::tuple_cat(t1, bargs);
+            } else {
+                return std::tuple_cat(bargs, t1);
+            }
         } else if constexpr (sizeof...(Args)  == 0) {
             return bargs;
         }
@@ -239,6 +244,7 @@ struct ToAction {
     static void assign(const boost::mysql::row_view& row, T& obj, const std::chrono::time_zone *ts) {
         obj.set_id(row.at(ID).as_string());
         obj.set_node(row.at(NODE).as_string());
+        obj.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
         {
             pb::ActionPriority pri;
             const auto name = toUpper(row.at(PRIORITY).as_string());
@@ -348,7 +354,7 @@ private:
         return cols;
     }
 
-    static constexpr string_view ids_ = "id, node, user, ";
+    static constexpr string_view ids_ = "id, node, user, version, ";
     static constexpr string_view core_ = "priority, status, name, created_date, due_type, due_by_time, completed, completed_time";
     static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_after";
 };
@@ -1214,41 +1220,62 @@ const string& validatedUuid(const string& uuid) {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             const auto cuser = owner_.currentUser(ctx);
+            const auto& uuid = validatedUuid(req->id());
 
-        if (req->node().empty()) {
-            throw runtime_error{"Missing node"};
-        }
+            if (req->node().empty()) {
+                throw runtime_error{"Missing node"};
+            }
 
-        auto existing_res = co_await owner_.server().db().exec("SELECT node FROM action WHERE id=?", req->id());
-        if (existing_res.empty() || existing_res.rows().empty()) {
-            throw db_err{pb::Error::NOT_FOUND, "Action does not exist"};
-        }
+            auto existing_res = co_await owner_.server().db().exec("SELECT node FROM action WHERE id=? AND user=?", uuid, cuser);
+            if (existing_res.empty() || existing_res.rows().empty()) {
+                throw db_err{pb::Error::NOT_FOUND, "Action does not exist"};
+            }
 
-        const auto current_node = existing_res.rows().front().at(0).as_string();
-        if (current_node != req->node()) {
-            throw db_err(pb::Error::CONSTRAINT_FAILED, "UpdateAction cannot change the node. Use MoveAction for that.");
-        }
+            const auto current_node = existing_res.rows().front().at(0).as_string();
+            if (current_node != req->node()) {
+                throw db_err(pb::Error::CONSTRAINT_FAILED, "UpdateAction cannot change the node. Use MoveAction for that.");
+            }
 
-        co_await owner_.validateNode(req->node(), cuser);
+            co_await owner_.validateNode(req->node(), cuser);
 
-        pb::Action new_action{*req};
+            pb::Action new_action{*req};
+            assert(new_action.id() == uuid);
 
-        const auto res = co_await owner_.server().db().exec(format("UPDATE action where id=? {} RETURNING {} ",
-                                                                   ToAction::updateStatementBindingStr(),
-                                                                   ToAction::allSelectCols()),
-                                                            ToAction::prepareBindingArgs(new_action, new_action.id()));
+            auto res = co_await owner_.server().db().exec(format("UPDATE action SET {}, version=version+1 WHERE id=? AND user=? ",
+                                                                       ToAction::updateStatementBindingStr()),
+                                                                ToAction::prepareBindingArgs<false>(new_action, uuid, cuser));
 
-        assert(!res.empty());
-        // Set the reply data
-        auto *action = reply->mutable_action();
-        ToAction::assign(res.rows().front(), *action, owner_.currentTimeZone(ctx));
+            assert(!res.empty());
 
-        // Copy the new Action to an update and publish it
-        auto update = make_shared<pb::Update>();
-        update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
-        *update->mutable_action() = *action;
-        owner_.publish(update);
-        });
+            if (res.affected_rows() == 1) {
+
+                auto res = co_await owner_.server().db().exec(
+                    format(R"(SELECT {} from action WHERE id=? AND user=? )",
+                           ToAction::allSelectCols()), uuid, cuser);
+
+                assert(res.has_value());
+                if (!res.rows().empty()) {
+                    const auto& row = res.rows().front();
+                    auto *action = reply->mutable_action();
+                    ToAction::assign(row, *action, owner_.currentTimeZone(ctx));
+
+                    // Copy the new Action to an update and publish it
+                    auto update = make_shared<pb::Update>();
+                    update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+                    *update->mutable_action() = *action;
+                    owner_.publish(update);
+
+                } else {
+                    reply->set_error(pb::Error::NOT_FOUND);
+                    reply->set_message(format("Action with id={} not found for the current user.", uuid));
+                }
+
+                LOG_TRACE << toJson(*reply);
+            } else {
+                reply->set_error(pb::Error::GENERIC_ERROR);
+                reply->set_message(format("Action with id={} was not updated.", uuid));
+            }
+     });
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteAction(::grpc::CallbackServerContext *ctx, const pb::DeleteActionReq *req, pb::Status *reply)

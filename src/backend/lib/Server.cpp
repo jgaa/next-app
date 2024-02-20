@@ -319,6 +319,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             repeat_kind ENUM('never','scheduled', 'completed'),
             repeat_unit ENUM('days', 'weeks', 'months', 'years'),
             repeat_after INTEGER,
+            version INT NOT NULL DEFAULT 1,
         FOREIGN KEY(node) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT,
         FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
         FOREIGN KEY(origin) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT))",

@@ -15,6 +15,7 @@ enum Error {
     DIFFEREENT_PARENT = 9;
     NO_CHANGES = 10;
     CONSTRAINT_FAILED = 11;
+    GENERIC_ERROR = 12;
 }
 
 message KeyValue {
@@ -155,8 +156,9 @@ message ActionInfo {
     ActionDueType dueType = 8;
     uint64 dueByTime    = 9; // time_t
     bool completed      = 10;
-     uint64 completedTime = 11; // time_t
+    uint64 completedTime = 11; // time_t
     ActionKind kind     = 12;
+    int32 version       = 13;
 }
 
 message Actions {
@@ -197,6 +199,7 @@ message Action {
     int32 repeatAfter = 16; // Depends on repeatUnits
     repeated string locations = 17; // Just the uuid's of locations
     ActionKind kind = 18;
+    int32 version   = 19;
 }
 
 message DayColor {
