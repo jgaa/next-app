@@ -1298,7 +1298,23 @@ const string& validatedUuid(const string& uuid) {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             const auto cuser = owner_.currentUser(ctx);
+            const auto& uuid = validatedUuid(req->actionid());
 
+            auto res = co_await owner_.server().db().exec("DELETE FROM action WHERE id=? AND user=?",
+                                                          uuid, cuser);
+
+            assert(res.has_value());
+            if (res.affected_rows() == 1) {
+                reply->set_deletedactionid(uuid);
+                auto update = make_shared<pb::Update>();
+                update->set_op(pb::Update::Operation::Update_Operation_DELETED);
+                update->mutable_action()->set_id(uuid);
+                owner_.publish(update);
+            } else {
+                reply->set_uuid(uuid);
+                reply->set_error(pb::Error::NOT_FOUND);
+                reply->set_message(format("Action with id={} not found for the current user.", uuid));
+            }
 
             co_return;
         });

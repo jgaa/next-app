@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import NextAppUi
 import nextapp.pb as NextappPB
 
@@ -79,6 +80,7 @@ Rectangle {
                                 break;
                             case Qt.RightButton:
                                 contextMenu.uuid = uuid
+                                contextMenu.name = name
                                 contextMenu.popup();
                         }
                     }
@@ -87,8 +89,6 @@ Rectangle {
                 RowLayout {
                     id: row
                     spacing: 6
-                    //height: doneCtl.height
-                    // Priority color
 
                     StyledCheckBox {
                         id: doneCtl
@@ -108,6 +108,8 @@ Rectangle {
     MyMenu {
         id: contextMenu
         property string uuid
+        property string name
+
         Action {
             text: qsTr("Edit")
             icon.source: "../icons/fontawsome/pen-to-square.svg"
@@ -115,14 +117,34 @@ Rectangle {
                 openActionDlg(contextMenu.uuid)
             }
         }
-        // Action {
-        //     icon.source: "../icons/fontawsome/trash-can.svg"
-        //     text: qsTr("Delete")
-        //     onTriggered: {
-        //         confirmDelete.node = contextMenu.node
-        //         confirmDelete.open()
-        //     }
-        // }
+        Action {
+            icon.source: "../icons/fontawsome/trash-can.svg"
+            text: qsTr("Delete")
+            onTriggered: {
+                confirmDelete.uuid = contextMenu.uuid
+                confirmDelete.name = contextMenu.name
+                confirmDelete.open()
+            }
+        }
+    }
+
+    MessageDialog {
+        id: confirmDelete
+
+        property string uuid;
+        property string name;
+
+        title: qsTr("Do you really want to delete the Action \"%1\" ?").arg(name)
+        text: qsTr("Note that any sub-items and all related information, including worked time, etc. will also be deleted! This action can not be undone.")
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        onAccepted: {
+           ActionsModel.deleteAction(uuid)
+           confirmDelete.close()
+        }
+
+        onRejected: {
+            confirmDelete.close()
+        }
     }
 
     function openActionDlg(uuid) {

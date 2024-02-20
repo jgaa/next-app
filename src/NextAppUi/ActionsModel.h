@@ -60,6 +60,7 @@ public:
     Q_INVOKABLE void populate(QString node);
     Q_INVOKABLE void addAction(const nextapp::pb::Action& action);
     Q_INVOKABLE void updateAction(const nextapp::pb::Action& action);
+    Q_INVOKABLE void deleteAction(const QString& uuid);
     Q_INVOKABLE nextapp::pb::Action newAction();
     Q_INVOKABLE ActionPrx *getAction(QString uuid);
 

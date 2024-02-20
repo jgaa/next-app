@@ -325,6 +325,7 @@ message DeleteActionReq {
 message Status {
     Error error = 1;
     string message = 2;
+    optional string uuid = 3;
 
     // Set for some objects when they are created
     oneof what {
@@ -333,6 +334,7 @@ message Status {
         Node node = 12;
         Actions actions = 13;
         Action action = 14;
+        string deletedActionId = 15;
     }
 }
 

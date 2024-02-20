@@ -139,6 +139,11 @@ void ActionsModel::updateAction(const nextapp::pb::Action &action)
     ServerComm::instance().updateAction(action);
 }
 
+void ActionsModel::deleteAction(const QString &uuid)
+{
+    ServerComm::instance().deleteAction(uuid);
+}
+
 nextapp::pb::Action ActionsModel::newAction()
 {
     nextapp::pb::Action action;
@@ -207,12 +212,17 @@ void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
     }
 
     const auto& action = update->action();
+    const auto op = update->op();
 
-    if (action.node() != MainTreeModel::instance()->selected()) {
-        return; // Irrelevant
+    if (op == pb::Update::Operation::ADDED || op == pb::Update::Operation::UPDATED) {
+        if (action.node() != MainTreeModel::instance()->selected()) {
+            return; // Irrelevant
+        }
     }
 
-    switch(update->op()) {
+    // TODO: For moved, we need to handle both cases, old node and new node
+
+    switch(op) {
     case pb::Update::Operation::ADDED: {
 insert_as_new:
         auto row = findInsertRow(action, actions_->actions());
@@ -253,6 +263,16 @@ insert_as_new:
             LOG_DEBUG << "Did not find updated action  " << action.id_proto() << " \"" << action.name()
                       << "\" in the current list af actions. Inserting it as new.";
             goto insert_as_new;
+        }
+    }
+    break;
+    case pb::Update::Operation::DELETED: {
+        // The deleted event gives us an empty Action with just the id field containing information.
+        if (auto currentRow = findCurrentRow(actions_->actions(), action.id_proto()) ; currentRow >=0 ) {
+            beginRemoveRows({}, currentRow, currentRow);
+            auto& list = actions_->actions();
+            list.removeAt(currentRow);
+            endRemoveRows();
         }
     }
     break;
