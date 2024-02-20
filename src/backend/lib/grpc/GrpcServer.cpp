@@ -611,6 +611,11 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 ::grpc::ServerWriteReactor<pb::Update> *GrpcServer::NextappImpl::SubscribeToUpdates(::grpc::CallbackServerContext *context, const pb::UpdatesReq *request)
 {
+    if (!owner_.active()) {
+        LOG_WARN << "Rejecting subscription. We are shutting down.";
+        return {};
+    }
+
     class ServerWriteReactorImpl
         : public std::enable_shared_from_this<ServerWriteReactorImpl>
         , public Publisher
@@ -678,10 +683,20 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             reply();
         }
 
+        void close() override {
+            LOG_TRACE << "Closing subscription " << uuid();
+            Finish(::grpc::Status::OK);
+        }
+
     private:
         void reply() {
             scoped_lock lock{mutex_};
             if (state_ != State::READY || updates_.empty()) {
+                return;
+            }
+
+            if (!owner_.active()) {
+                close();
                 return;
             }
 
@@ -1315,13 +1330,24 @@ void GrpcServer::start() {
 
         // The useful information
         << " listening on " << config().address;
+
+    active_ = true;
 }
 
 void GrpcServer::stop() {
-    LOG_INFO << "Shutting down "
-             << boost::typeindex::type_id_runtime(*this).pretty_name();
-    grpc_server_->Shutdown();
-    grpc_server_->Wait();
+    LOG_INFO << "Shutting down GrpcServer.";
+    active_ = false;
+    for(auto& [_, wp] : publishers_) {
+        if (auto pub = wp.lock()) {
+            pub->close();
+        }
+    }
+    auto deadline = std::chrono::system_clock::now() + 6s;
+    grpc_server_->Shutdown(deadline);
+    publishers_.clear();
+    //grpc_server_->Wait();
+    grpc_server_.reset();
+    LOG_DEBUG << "GrpcServer is done.";
 }
 
 void GrpcServer::addPublisher(const std::shared_ptr<Publisher> &publisher)

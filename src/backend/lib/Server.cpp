@@ -69,8 +69,25 @@ void Server::run()
 
 void Server::stop()
 {
+    LOG_DEBUG << "Server stopping...";
     done_ = true;
+    if (grpc_service_) {
+        grpc_service_->stop();
+    }
+    if (db_) {
+        LOG_DEBUG << "Closing database connections...";
+        try {
+            asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+                co_await db_->close();
+            }, asio::use_future).get();
+        } catch (const exception& ex) {
+            LOG_WARN << "Caught exception while closing the database handles: " << ex.what();
+        }
+        LOG_DEBUG << "Database connections closed.";
+    }
+    LOG_DEBUG << "Shutting down the thread-pool.";
     ctx_.stop();
+    LOG_DEBUG << "Server stopped.";
 }
 
 void Server::bootstrap(const BootstrapOptions& opts)

@@ -67,6 +67,7 @@ public:
         virtual ~Publisher() = default;
 
         virtual void publish(const std::shared_ptr<pb::Update>& message) = 0;
+        virtual void close() = 0;
 
         auto& uuid() const noexcept {
             return uuid_;
@@ -163,6 +164,10 @@ public:
     boost::asio::awaitable<void> validateNode(const std::string& parentUuid, const std::string& userUuid);
     boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
 
+    bool active() const noexcept {
+        return active_;
+    }
+
 private:
 
     // TODO: Implement auth
@@ -196,6 +201,7 @@ private:
 
     std::map<boost::uuids::uuid, std::weak_ptr<Publisher>> publishers_;
     std::mutex mutex_;
+    std::atomic_bool active_{false};
 };
 
 } // ns
