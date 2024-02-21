@@ -86,22 +86,27 @@ optional<string> toAnsiDate(const nextapp::pb::Date& date) {
     return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month() + 1, date.mday());
 }
 
-optional<string> toAnsiTime(time_t time) {
+optional<string> toAnsiTime(time_t time, const std::chrono::time_zone *ts = {}) {
+    using namespace std::chrono;
+
+    static const auto *default_ts = locate_zone("UTC");
+
     if (time == 0) {
         return {};
     }
 
-
-    string buf{20, ' '};
-
-    if (auto *tm = gmtime(&time)) {
-        auto len = strftime(buf.data(), buf.size(), "%Y-%m-%d %H:%M:%S", tm);
-        buf.resize(len);
-        return buf;
+    if (!ts) {
+        if (!default_ts) {
+            LOG_ERROR << "toAnsiTime: No time zone for \"UTC\"";
+            return {};
+        }
+        ts = default_ts;
     }
 
-    LOG_WARN_N << "Unable to format ANSI time for time_t=" << time;
-    return {};
+    const auto when = round<seconds>(system_clock::from_time_t(time));
+    const auto zoned = zoned_time{ts, when};
+    auto out = format("{:%F %T}", zoned);
+    return out;
 }
 
 ::nextapp::pb::Date toDate(const boost::mysql::date& from) {
@@ -210,16 +215,16 @@ struct ToAction {
     }
 
     template <bool argsFirst = true, typename ...Args>
-    static auto prepareBindingArgs(const pb::Action& action, Args... args) {
+    static auto prepareBindingArgs(const pb::Action& action, const std::chrono::time_zone *ts, Args... args) {
         auto bargs = make_tuple(
             pb::ActionPriority_Name(action.priority()),
             pb::ActionStatus_Name(action.status()),
             action.name(),
             //toAnsiDate(action.createddate()),
             pb::ActionDueType_Name(action.duetype()),
-            toAnsiTime(action.duebytime()),
+            toAnsiTime(action.duebytime(), ts),
             action.completed(),
-            toAnsiTime(action.completedtime()),
+            toAnsiTime(action.completedtime(), ts),
             action.descr(),
             action.timeestimate(),
             pb::ActionDifficulty_Name(action.difficulty()),
@@ -384,6 +389,33 @@ private:
     std::string where_;
 };
 
+boost::asio::awaitable<void>
+replyWithAction(GrpcServer& grpc, const std::string actionId, const string& cuser,
+                ::grpc::CallbackServerContext *ctx, pb::Status *reply, bool publish = true) {
+    auto res = co_await grpc.server().db().exec(
+        format(R"(SELECT {} from action WHERE id=? AND user=? )",
+               ToAction::allSelectCols()), actionId, cuser);
+
+    assert(res.has_value());
+    if (!res.rows().empty()) {
+        const auto& row = res.rows().front();
+        auto *action = reply->mutable_action();
+        ToAction::assign(row, *action, grpc.currentTimeZone(ctx));
+
+        if (publish) {
+            // Copy the new Action to an update and publish it
+            auto update = make_shared<pb::Update>();
+            update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+            *update->mutable_action() = *action;
+            grpc.publish(update);
+        }
+    } else {
+        reply->set_error(pb::Error::NOT_FOUND);
+        reply->set_message(format("Action with id={} not found for the current user.", actionId));
+    }
+
+    LOG_TRACE << "Reply: " << toJson(*reply);
+}
 
 } // anon ns
 
@@ -1129,8 +1161,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         const auto cuser = owner_.currentUser(ctx);
 
         SqlFilter filter{false};
-        if (req->has_active()) {
-            filter.add(format("completed={}", req->active() ? "0" : "1"));
+        if (req->has_active() && req->active()) {
+            filter.add("(completed=0 || DATE(completed_time) = CURDATE())");
         }
         if (!req->node().empty()) {
             filter.add(format("node='{}'", req->node()));
@@ -1198,7 +1230,8 @@ const string& validatedUuid(const string& uuid) {
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cuser = owner_.currentUser(ctx);
+        const auto cuser = owner_.currentUser(ctx);
+        const auto *ts = owner_.currentTimeZone(ctx);
 
         if (req->node().empty()) {
             throw runtime_error{"Missing node"};
@@ -1206,21 +1239,25 @@ const string& validatedUuid(const string& uuid) {
 
         co_await owner_.validateNode(req->node(), cuser);
 
-        auto id = req->id();
-        if (id.empty()) {
-            id = newUuidStr();
+
+        pb::Action new_action{*req};
+        if (new_action.id().empty()) {
+            new_action.set_id(newUuidStr());
+        }
+        if (new_action.completed() && new_action.completedtime() == 0) {
+            new_action.set_completedtime(time({}));
         }
 
         const auto res = co_await owner_.server().db().exec(format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
                                                                    ToAction::insertCols(),
                                                                    ToAction::statementBindingStr(),
                                                                    ToAction::allSelectCols()),
-                                                            ToAction::prepareBindingArgs(*req, id, req->node(), cuser));
+                                                            ToAction::prepareBindingArgs(new_action, ts, new_action.id(), req->node(), cuser));
 
         assert(!res.empty());
         // Set the reply data
         auto *action = reply->mutable_action();
-        ToAction::assign(res.rows().front(), *action, owner_.currentTimeZone(ctx));
+        ToAction::assign(res.rows().front(), *action, ts);
 
         // Copy the new Action to an update and publish it
         auto update = make_shared<pb::Update>();
@@ -1236,6 +1273,7 @@ const string& validatedUuid(const string& uuid) {
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             const auto cuser = owner_.currentUser(ctx);
             const auto& uuid = validatedUuid(req->id());
+            const auto *ts = owner_.currentTimeZone(ctx);
 
             if (req->node().empty()) {
                 throw runtime_error{"Missing node"};
@@ -1255,37 +1293,20 @@ const string& validatedUuid(const string& uuid) {
 
             pb::Action new_action{*req};
             assert(new_action.id() == uuid);
+            if (new_action.completed() && new_action.completedtime() == 0) {
+                new_action.set_completedtime(time({}));
+            } else if (!new_action.completed() && new_action.completedtime() != 0) {
+                new_action.set_completedtime(0);
+            }
 
             auto res = co_await owner_.server().db().exec(format("UPDATE action SET {}, version=version+1 WHERE id=? AND user=? ",
                                                                        ToAction::updateStatementBindingStr()),
-                                                                ToAction::prepareBindingArgs<false>(new_action, uuid, cuser));
+                                                                ToAction::prepareBindingArgs<false>(new_action, ts, uuid, cuser));
 
             assert(!res.empty());
 
             if (res.affected_rows() == 1) {
-
-                auto res = co_await owner_.server().db().exec(
-                    format(R"(SELECT {} from action WHERE id=? AND user=? )",
-                           ToAction::allSelectCols()), uuid, cuser);
-
-                assert(res.has_value());
-                if (!res.rows().empty()) {
-                    const auto& row = res.rows().front();
-                    auto *action = reply->mutable_action();
-                    ToAction::assign(row, *action, owner_.currentTimeZone(ctx));
-
-                    // Copy the new Action to an update and publish it
-                    auto update = make_shared<pb::Update>();
-                    update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
-                    *update->mutable_action() = *action;
-                    owner_.publish(update);
-
-                } else {
-                    reply->set_error(pb::Error::NOT_FOUND);
-                    reply->set_message(format("Action with id={} not found for the current user.", uuid));
-                }
-
-                LOG_TRACE << toJson(*reply);
+                co_await replyWithAction(owner_, uuid, cuser, ctx, reply);
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated.", uuid));
@@ -1319,6 +1340,34 @@ const string& validatedUuid(const string& uuid) {
             co_return;
         });
 
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto cuser = owner_.currentUser(ctx);
+            const auto& uuid = validatedUuid(req->uuid());
+
+            optional<string> when;
+            if (req->done()) {
+                when = toAnsiTime(time({}));
+            }
+
+            auto res = co_await owner_.server().db().exec(
+                "UPDATE action SET completed=?, completed_time=?, version=version+1 WHERE id=? AND user=?",
+                req->done(), when, uuid, cuser);
+
+            assert(res.has_value());
+            if (res.affected_rows() == 1) {
+                co_await replyWithAction(owner_, uuid, cuser, ctx, reply);
+            } else {
+                reply->set_error(pb::Error::GENERIC_ERROR);
+                reply->set_message(format("Action with id={} was not updated.", uuid));
+            }
+
+            co_return;
+        });
 }
 
 GrpcServer::GrpcServer(Server &server)

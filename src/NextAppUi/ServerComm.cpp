@@ -249,6 +249,19 @@ void ServerComm::deleteAction(const QString &actionUuid)
     });
 }
 
+void ServerComm::markActionAsDone(const QString &actionUuid, bool done)
+{
+    nextapp::pb::ActionDoneReq req;
+    req.setUuid(actionUuid);
+    req.setDone(done);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->MarkActionAsDone(req);
+    } , [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Call to gRPC server failed: " << status.message();

@@ -105,6 +105,7 @@ public:
         ::grpc::ServerUnaryReactor *CreateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *UpdateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *DeleteAction(::grpc::CallbackServerContext *ctx, const pb::DeleteActionReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
@@ -168,8 +169,6 @@ public:
         return active_;
     }
 
-private:
-
     // TODO: Implement auth
     std::string currentUser(::grpc::CallbackServerContext */*ctx*/) const {
         return "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
@@ -183,6 +182,8 @@ private:
     const auto *currentTimeZone(::grpc::CallbackServerContext */*ctx*/) const {
         return std::chrono::current_zone();
     }
+
+private:
 
     // The Server instance where we get objects in the application, like config and database
     Server& server_;

@@ -99,6 +99,8 @@ qt_add_qml_module(appNextAppUi
         icons/person.svg
         icons/project.svg
         icons/task.svg
+        icons/square-checked.svg
+        icons/square-unchecked.svg
         icons/fontawsome/calendar-days.svg
         icons/fontawsome/folder.svg
         icons/fontawsome/trash-can.svg
@@ -106,6 +108,8 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/angle-down.svg
         icons/fontawsome/angle-right.svg
         icons/fontawsome/circle.svg
+        icons/fontawsome/square-check.svg
+        icons/fontawsome/square.svg
     SOURCES
         ServerComm.h
         ServerComm.cpp

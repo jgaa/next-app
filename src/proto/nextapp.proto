@@ -322,6 +322,11 @@ message DeleteActionReq {
     string actionId = 1;
 }
 
+message ActionDoneReq {
+    string uuid = 1;
+    bool done = 2;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -362,6 +367,7 @@ service Nextapp {
     rpc CreateAction(Action) returns (Status) {}
     rpc UpdateAction(Action) returns (Status) {}
     rpc DeleteAction(DeleteActionReq) returns (Status) {}
+    rpc MarkActionAsDone(ActionDoneReq) returns (Status) {}
 
 }
 

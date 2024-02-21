@@ -70,10 +70,11 @@ public:
 
     void getActions(nextapp::pb::GetActionsReq &filter);
     void getAction(nextapp::pb::GetActionReq &req);
-
     void addAction(const nextapp::pb::Action& action);
     void updateAction(const nextapp::pb::Action& action);
     void deleteAction(const QString& actionUuid);
+    void markActionAsDone(const QString& actionUuid, bool done);
+
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

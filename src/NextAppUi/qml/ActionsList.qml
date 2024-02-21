@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPB
 
@@ -90,10 +91,32 @@ Rectangle {
                     id: row
                     spacing: 6
 
-                    StyledCheckBox {
-                        id: doneCtl
-                        height: name.height
-                        checked: done
+                    // StyledCheckBox {
+                    //     id: doneCtl
+                    //     height: name.height
+                    //     checked: done
+                    // }
+
+                    // Rectangle {
+                    //     anchors.fill: check
+                    //     color: white
+                    // }
+
+                    Image {
+                        id: checkIcon
+                        Layout.topMargin: 2
+                        Layout.bottomMargin: 2
+                        source:  done ? "../icons/square-checked.svg" : "../icons/square-unchecked.svg"
+                        sourceSize.height: font.pixelSize * 1.4
+                        fillMode: Image.PreserveAspectFit
+
+                        MouseArea {
+                            anchors.fill: parent
+
+                            onClicked: {
+                                ActionsModel.markActionAsDone(uuid, !done)
+                            }
+                        }
                     }
 
                     Text {

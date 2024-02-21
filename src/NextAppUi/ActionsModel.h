@@ -63,6 +63,7 @@ public:
     Q_INVOKABLE void deleteAction(const QString& uuid);
     Q_INVOKABLE nextapp::pb::Action newAction();
     Q_INVOKABLE ActionPrx *getAction(QString uuid);
+    Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
 
     void start();
     void fetch(nextapp::pb::GetActionsReq& filter);

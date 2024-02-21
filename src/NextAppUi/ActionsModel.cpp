@@ -30,11 +30,10 @@ template <ActionType T, ActionType U>
 int64_t compare(const T& left, const U& right) {
     if (left.kind() != right.kind()) {
         // Lowest is most significalt
-        return right.kind() - left.kind();
+        return left.kind() - right.kind();
     }
 
     assert(left.kind() == right.kind()) ;
-    //assert(left.kind() != pb::ActionKindGadget::ActionKind::AC_UNSET);
     switch(left.kind()) {
     case pb::ActionKindGadget::ActionKind::AC_OVERDUE:
     case pb::ActionKindGadget::ActionKind::AC_UNSCHEDULED:
@@ -161,6 +160,11 @@ ActionPrx *ActionsModel::getAction(QString uuid)
     return prx.release();
 }
 
+void ActionsModel::markActionAsDone(const QString &actionUuid, bool done)
+{
+    ServerComm::instance().markActionAsDone(actionUuid, done);
+}
+
 void ActionsModel::start()
 {
     connect(std::addressof(ServerComm::instance()),
@@ -250,6 +254,8 @@ insert_as_new:
                 list.removeAt(currentRow);
                 insertAction(list, action, row);
                 endMoveRows();
+                const auto cix = index(row);
+                emit dataChanged(cix, cix);
             } else {
                 // Update in place
                 auto &crow = list[currentRow];
