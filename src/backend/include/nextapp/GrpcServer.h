@@ -183,6 +183,11 @@ public:
         return std::chrono::current_zone();
     }
 
+    const jgaa::mysqlpool::Options& currentDbOptions(::grpc::CallbackServerContext */*ctx*/) {
+        static const jgaa::mysqlpool::Options opts{true, std::string{std::chrono::current_zone()->name()}};
+        return opts;
+    }
+
 private:
 
     // The Server instance where we get objects in the application, like config and database

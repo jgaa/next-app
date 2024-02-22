@@ -392,9 +392,12 @@ private:
 boost::asio::awaitable<void>
 replyWithAction(GrpcServer& grpc, const std::string actionId, const string& cuser,
                 ::grpc::CallbackServerContext *ctx, pb::Status *reply, bool publish = true) {
+
+    const auto dbopts = grpc.currentDbOptions(ctx);
+
     auto res = co_await grpc.server().db().exec(
         format(R"(SELECT {} from action WHERE id=? AND user=? )",
-               ToAction::allSelectCols()), actionId, cuser);
+               ToAction::allSelectCols()), dbopts, actionId, cuser);
 
     assert(res.has_value());
     if (!res.rows().empty()) {
@@ -484,10 +487,11 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                         [this, req, ctx] (pb::CompleteDay *reply) -> boost::asio::awaitable<void> {
 
         const auto cuser = owner_.currentUser(ctx);
+        const auto& dbopts = owner_.currentDbOptions(ctx);
 
         auto res = co_await owner_.server().db().exec(
             "SELECT date, user, color, notes, report FROM day WHERE user=? AND date=? ORDER BY date",
-            cuser, toAnsiDate(*req));
+            dbopts, cuser, toAnsiDate(*req));
 
         enum Cols {
             DATE, USER, COLOR, NOTES, REPORT
@@ -528,9 +532,11 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Month *reply) -> boost::asio::awaitable<void> {
 
+        const auto& dbopts = owner_.currentDbOptions(ctx);
+
         auto res = co_await owner_.server().db().exec(
             "SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? ORDER BY date",
-            owner_.currentUser(ctx), req->year(), req->month() + 1);
+            dbopts, owner_.currentUser(ctx), req->year(), req->month() + 1);
 
         enum Cols {
             DATE, USER, COLOR, NOTES, REPORT
@@ -564,6 +570,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
 
+        const auto& dbopts = owner_.currentDbOptions(ctx);
+
         optional<string> color;
         if (!req->color().empty()) {
             color = req->color();
@@ -572,9 +580,10 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         co_await owner_.server().db().exec(
             R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?)
-                ON DUPLICATE KEY UPDATE color=?)",
-            toAnsiDate(req->date()), owner_.currentUser(ctx),
+                ON DUPLICATE KEY UPDATE color=?)", dbopts,
             // insert
+            toAnsiDate(req->date()),
+            owner_.currentUser(ctx),
             color,
             // update
             color
@@ -598,6 +607,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 {
     return unaryHandler(ctx, req, reply,
     [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
+        const auto& dbopts = owner_.currentDbOptions(ctx);
 
         optional<string> color;
         if (!req->day().color().empty()) {
@@ -618,9 +628,10 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         co_await owner_.server().db().exec(
             R"(INSERT INTO day (date, user, color, notes, report) VALUES (?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)",
-            toAnsiDate(req->day().date()), owner_.currentUser(ctx),
+                ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)", dbopts,
             // insert
+            toAnsiDate(req->day().date()),
+            owner_.currentUser(ctx),
             color,
             notes,
             report,
@@ -863,6 +874,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 
         const auto cuser = owner_.currentUser(ctx);
+        auto dbopts = owner_.currentDbOptions(ctx);
+
         optional<string> parent = req->node().parent();
         if (parent->empty()) {
             parent.reset();
@@ -884,9 +897,10 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION
         };
 
+        dbopts.reconnect_and_retry_query_ = false;
         const auto res = co_await owner_.server().db().exec(format(
             "INSERT INTO node (id, user, name, kind, descr, active, parent) VALUES (?, ?, ?, ?, ?, ?, ?) "
-            "RETURNING {}", ToNode::selectCols),
+            "RETURNING {}", ToNode::selectCols), dbopts,
                id,
                cuser,
                req->node().name(),
@@ -923,6 +937,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             // Get the existing node
 
         const auto cuser = owner_.currentUser(ctx);
+        const auto& dbopts = owner_.currentDbOptions(ctx);
 
         bool moved = false;
         bool data_changed = false;
@@ -945,6 +960,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             // Update the data, if version is unchanged
             auto res = co_await owner_.server().db().exec(
                 "UPDATE node SET name=?, active=?, kind=?, descr=?, version=version+1 WHERE id=? AND user=? AND version=?",
+                dbopts,
                 req->name(),
                 req->active(),
                 static_cast<int>(req->kind()),
@@ -1098,6 +1114,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
     [this, req, ctx] (pb::NodeTree *reply) -> boost::asio::awaitable<void> {
         const auto cuser = owner_.currentUser(ctx);
+        const auto& dbopts = owner_.currentDbOptions(ctx);
 
         const auto res = co_await owner_.server().db().exec(format(R"(
         WITH RECURSIVE tree AS (
@@ -1106,7 +1123,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
           SELECT n.* FROM node AS n, tree AS p
           WHERE n.parent = p.id or n.parent IS NULL
         )
-        SELECT {} from tree ORDER BY parent, name)", ToNode::selectCols), cuser);
+        SELECT {} from tree ORDER BY parent, name)", ToNode::selectCols), dbopts, cuser);
 
         std::deque<pb::NodeTreeItem> pending;
         map<string, pb::NodeTreeItem *> known;
@@ -1159,6 +1176,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
         const auto cuser = owner_.currentUser(ctx);
+        const auto& dbopts = owner_.currentDbOptions(ctx);
 
         SqlFilter filter{false};
         if (req->has_active() && req->active()) {
@@ -1173,7 +1191,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         const auto res = co_await owner_.server().db().exec(
             format(R"(SELECT {} from action WHERE user=? {} ORDER BY {})",
                    ToAction::coreSelectCols(),
-                   filter.where(), order), cuser);
+                   filter.where(), order), dbopts, cuser);
         assert(res.has_value());
         auto *actions = reply->mutable_actions();
         for(const auto& row : res.rows()) {
@@ -1205,10 +1223,11 @@ const string& validatedUuid(const string& uuid) {
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             const auto cuser = owner_.currentUser(ctx);
             const auto& uuid = validatedUuid(req->uuid());
+            const auto& dbopts = owner_.currentDbOptions(ctx);
 
             const auto res = co_await owner_.server().db().exec(
                 format(R"(SELECT {} from action WHERE id=? AND user=? )",
-                       ToAction::allSelectCols()), uuid, cuser);
+                       ToAction::allSelectCols()), dbopts, uuid, cuser);
 
             assert(res.has_value());
             if (!res.rows().empty()) {
@@ -1232,6 +1251,7 @@ const string& validatedUuid(const string& uuid) {
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
         const auto cuser = owner_.currentUser(ctx);
         const auto *ts = owner_.currentTimeZone(ctx);
+        auto dbopts = owner_.currentDbOptions(ctx);
 
         if (req->node().empty()) {
             throw runtime_error{"Missing node"};
@@ -1248,11 +1268,16 @@ const string& validatedUuid(const string& uuid) {
             new_action.set_completedtime(time({}));
         }
 
-        const auto res = co_await owner_.server().db().exec(format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
-                                                                   ToAction::insertCols(),
-                                                                   ToAction::statementBindingStr(),
-                                                                   ToAction::allSelectCols()),
-                                                            ToAction::prepareBindingArgs(new_action, ts, new_action.id(), req->node(), cuser));
+        // Not an idempotent query
+        dbopts.reconnect_and_retry_query_ = false;
+
+        const auto res = co_await owner_.server().db().exec(
+            format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
+                   ToAction::insertCols(),
+                   ToAction::statementBindingStr(),
+                   ToAction::allSelectCols()),
+            dbopts,
+            ToAction::prepareBindingArgs(new_action, ts, new_action.id(), req->node(), cuser));
 
         assert(!res.empty());
         // Set the reply data
@@ -1274,6 +1299,7 @@ const string& validatedUuid(const string& uuid) {
             const auto cuser = owner_.currentUser(ctx);
             const auto& uuid = validatedUuid(req->id());
             const auto *ts = owner_.currentTimeZone(ctx);
+            const auto& dbopts = owner_.currentDbOptions(ctx);
 
             if (req->node().empty()) {
                 throw runtime_error{"Missing node"};
@@ -1300,7 +1326,7 @@ const string& validatedUuid(const string& uuid) {
             }
 
             auto res = co_await owner_.server().db().exec(format("UPDATE action SET {}, version=version+1 WHERE id=? AND user=? ",
-                                                                       ToAction::updateStatementBindingStr()),
+                                                                       ToAction::updateStatementBindingStr()), dbopts,
                                                                 ToAction::prepareBindingArgs<false>(new_action, ts, uuid, cuser));
 
             assert(!res.empty());
@@ -1348,6 +1374,7 @@ const string& validatedUuid(const string& uuid) {
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             const auto cuser = owner_.currentUser(ctx);
             const auto& uuid = validatedUuid(req->uuid());
+            const auto dbopts = owner_.currentDbOptions(ctx);
 
             optional<string> when;
             if (req->done()) {
@@ -1356,7 +1383,7 @@ const string& validatedUuid(const string& uuid) {
 
             auto res = co_await owner_.server().db().exec(
                 "UPDATE action SET completed=?, completed_time=?, version=version+1 WHERE id=? AND user=?",
-                req->done(), when, uuid, cuser);
+                dbopts, req->done(), when, uuid, cuser);
 
             assert(res.has_value());
             if (res.affected_rows() == 1) {
