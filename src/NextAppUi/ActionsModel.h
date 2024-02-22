@@ -51,7 +51,8 @@ class ActionsModel : public QAbstractListModel
         DueByTimeRole,
         CompletedRole,
         CompletedTimeRole,
-        SectionRole
+        SectionRole,
+        SectionNameRole,
     };
 
 public:
@@ -64,6 +65,7 @@ public:
     Q_INVOKABLE nextapp::pb::Action newAction();
     Q_INVOKABLE ActionPrx *getAction(QString uuid);
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
+    Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind) const;
 
     void start();
     void fetch(nextapp::pb::GetActionsReq& filter);

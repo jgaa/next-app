@@ -155,7 +155,6 @@ message ActionInfo {
     Date createdDate    = 7;
     ActionDueType dueType = 8;
     uint64 dueByTime    = 9; // time_t
-    bool completed      = 10;
     uint64 completedTime = 11; // time_t
     ActionKind kind     = 12;
     int32 version       = 13;
@@ -189,7 +188,6 @@ message Action {
     Date createdDate = 7;
     ActionDueType dueType = 8;
     uint64 dueByTime = 9; // time_t
-    bool completed      = 10;
     uint64 completedTime = 11; // time_t
     string descr = 6;
     uint64 timeEstimate = 12; // minutes

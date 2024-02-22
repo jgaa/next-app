@@ -28,6 +28,24 @@ Rectangle {
             }
         }
 
+        Component {
+            id: sectionHeading
+            Rectangle {
+                width: ListView.view.width
+                height: childrenRect.height
+                color: Colors.text
+
+                required property string section
+
+                Text {
+                    id: label
+                    text: ActionsModel.toName(parent.section)
+                    font.bold: true
+                    color: Colors.background
+                }
+            }
+        }
+
         ListView {
             id: listView
             property string currentNode: MainTreeModel.selected
@@ -37,6 +55,12 @@ Rectangle {
             clip: true
             Layout.fillHeight: true
             Layout.fillWidth: true
+
+            section {
+                criteria: ViewSection.FullString
+                property: "section"
+                delegate: sectionHeading
+            }
 
             model: ActionsModel
 

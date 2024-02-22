@@ -41,8 +41,8 @@ Dialog {
             //root.action = aprx.action
 
             // Set the values in the controld. We can't bind them directly for some reason.
+            status.currentIndex = root.action.status
             name.text = root.action.name = action.name
-            done.checked = root.action.completed
             descr.text = root.action.descr
             priority.currentIndex = root.action.priority
 
@@ -89,13 +89,22 @@ Dialog {
                 //text: root.action.name
             }
 
-            Item {}
-
-            CheckBox {
-                id: done
-                //checked: root.action.completed
-                text: qsTr("Done")
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                color: Colors.disabledText
+                text: qsTr("Status")
             }
+
+            ComboBox {
+                id: status
+                //currentIndex: kinds.indexOf(root.action.priority, 0)
+                model: ListModel {
+                    ListElement{ text: qsTr("Active")}
+                    ListElement{ text: qsTr("Done")}
+                    ListElement{ text: qsTr("On Hold")}
+                }
+            }
+
 
             Label {
                 Layout.alignment: Qt.AlignLeft
@@ -139,8 +148,8 @@ Dialog {
     }
 
     onAccepted: {
+        root.action.status = status.currentIndex
         root.action.name = name.text;
-        root.action.completed = done.checked
         root.action.descr = descr.text
         root.action.priority = priority.currentIndex
 

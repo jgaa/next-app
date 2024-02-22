@@ -330,7 +330,6 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             due_type ENUM('datetime', 'date', 'week', 'month', 'quater', 'year') NOT NULL DEFAULT 'datetime',
             due_by_time DATETIME,
             completed_time TIMESTAMP,
-            completed TINYINT(1) NOT NULL DEFAULT 1,
             time_estimate INTEGER,
             difficulty ENUM('trivial', 'easy', 'normal', 'hard', 'veryhard', 'inspired') NOT NULL DEFAULT 'normal',
             repeat_kind ENUM('never','scheduled', 'completed'),

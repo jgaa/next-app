@@ -93,7 +93,6 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     ai.setName(action.name());
     ai.setCreatedDate(ai.createdDate());
     ai.setDueType(action.dueType());
-    ai.setCompleted(action.completed());
     ai.setCompletedTime(ai.completedTime());
     ai.setKind(action.kind());
     return ai;
@@ -285,6 +284,26 @@ insert_as_new:
     }
 }
 
+QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) const
+{
+    using namespace nextapp::pb::ActionKindGadget;
+    switch(kind) {
+    case ActionKind::AC_UNSET:
+        return tr("Unset");
+    case ActionKind::AC_OVERDUE:
+        return tr("Overdue");
+    case ActionKind::AC_TODAY:
+        return tr("Today");
+    case ActionKind::AC_UPCOMING:
+        return tr("Upcoming");
+    case ActionKind::AC_UNSCHEDULED:
+        return tr("Unscheduled");
+    case ActionKind::AC_DONE:
+        return tr("Done");
+    }
+    assert(false);
+}
+
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
     return actions_->actions().size();
@@ -321,12 +340,17 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case DueByTimeRole:
         return static_cast<quint64>(action.dueByTime());
     case CompletedRole:
-        return action.completed();
+        return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DONE;
     case CompletedTimeRole:
         if (action.completedTime()) {
             return QDateTime::fromSecsSinceEpoch(action.completedTime());
         }
         return {};
+    case SectionRole:
+        return action.kind();
+    case SectionNameRole:
+        auto name = toName(action.kind());
+        return name;
     }
 
     return {};
@@ -356,6 +380,10 @@ QVariant ActionsModel::headerData(int section, Qt::Orientation orientation, int 
             return "CompletedTime";
         case CompletedRole:
             return "Done";
+        case SectionRole:
+            return "Section";
+        case SectionNameRole:
+            return "Section Name";
         }
     }
 
@@ -375,6 +403,8 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[DueByTimeRole] = "dueBy";
     roles[CompletedRole] = "done";
     roles[CompletedTimeRole] = "completedTime";
+    roles[SectionRole] = "section";
+    roles[SectionNameRole] = "sname";
     return roles;
 }
 

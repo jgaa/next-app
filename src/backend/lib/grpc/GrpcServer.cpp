@@ -184,7 +184,7 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_TYPE, DUE_BY_TIME, COMPLETED, COMPLETED_TIME,  // core
+        ID, NODE, USER, VERSION, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_TYPE, DUE_BY_TIME, COMPLETED_TIME,  // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_AFTER // remaining
     };
 
@@ -199,7 +199,7 @@ struct ToAction {
     }
 
     static string_view statementBindingStr() {
-        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
     }
 
     static string_view updateStatementBindingStr() {
@@ -220,10 +220,8 @@ struct ToAction {
             pb::ActionPriority_Name(action.priority()),
             pb::ActionStatus_Name(action.status()),
             action.name(),
-            //toAnsiDate(action.createddate()),
             pb::ActionDueType_Name(action.duetype()),
             toAnsiTime(action.duebytime(), ts),
-            action.completed(),
             toAnsiTime(action.completedtime(), ts),
             action.descr(),
             action.timeestimate(),
@@ -250,6 +248,16 @@ struct ToAction {
         obj.set_id(row.at(ID).as_string());
         obj.set_node(row.at(NODE).as_string());
         obj.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
+        {
+            pb::ActionStatus status;
+            const auto name = toUpper(row.at(STATUS).as_string());
+            if (pb::ActionStatus_Parse(name, &status)) {
+                obj.set_status(status);
+            } else {
+                LOG_WARN_N << "Invalid ActionStatus: " << name;
+            }
+        }
+
         {
             pb::ActionPriority pri;
             const auto name = toUpper(row.at(PRIORITY).as_string());
@@ -282,9 +290,8 @@ struct ToAction {
         if (row.at(DUE_BY_TIME).is_datetime()) {
             obj.set_duebytime(toTimeT(row.at(DUE_BY_TIME).as_datetime()));
         }
-        obj.set_completed(row.at(COMPLETED).as_int64() == 1);
 
-        if (obj.completed()) {
+        if (obj.status() == pb::ActionStatus::DONE) {
             obj.set_kind(pb::ActionKind::AC_DONE);
         } else if (ts) {
             // If we have due_by_time set, we can see a) if it's expired, b) if it's today and c) it it's in the future
@@ -360,7 +367,7 @@ private:
     }
 
     static constexpr string_view ids_ = "id, node, user, version, ";
-    static constexpr string_view core_ = "priority, status, name, created_date, due_type, due_by_time, completed, completed_time";
+    static constexpr string_view core_ = "priority, status, name, created_date, due_type, due_by_time, completed_time";
     static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_after";
 };
 
@@ -1180,13 +1187,13 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         SqlFilter filter{false};
         if (req->has_active() && req->active()) {
-            filter.add("(completed=0 || DATE(completed_time) = CURDATE())");
+            filter.add("(status='done' || DATE(completed_time) = CURDATE())");
         }
         if (!req->node().empty()) {
             filter.add(format("node='{}'", req->node()));
         }
 
-        string order = "completed DESC, priority DESC, due_by_time, created_date";
+        string order = "status DESC, priority DESC, due_by_time, created_date";
 
         const auto res = co_await owner_.server().db().exec(
             format(R"(SELECT {} from action WHERE user=? {} ORDER BY {})",
@@ -1264,7 +1271,7 @@ const string& validatedUuid(const string& uuid) {
         if (new_action.id().empty()) {
             new_action.set_id(newUuidStr());
         }
-        if (new_action.completed() && new_action.completedtime() == 0) {
+        if (new_action.status() == pb::ActionStatus::DONE && new_action.completedtime() == 0) {
             new_action.set_completedtime(time({}));
         }
 
@@ -1319,9 +1326,9 @@ const string& validatedUuid(const string& uuid) {
 
             pb::Action new_action{*req};
             assert(new_action.id() == uuid);
-            if (new_action.completed() && new_action.completedtime() == 0) {
+            if (new_action.status() == pb::ActionStatus::DONE && new_action.completedtime() == 0) {
                 new_action.set_completedtime(time({}));
-            } else if (!new_action.completed() && new_action.completedtime() != 0) {
+            } else if (new_action.status() != pb::ActionStatus::DONE && new_action.completedtime() != 0) {
                 new_action.set_completedtime(0);
             }
 
@@ -1365,7 +1372,6 @@ const string& validatedUuid(const string& uuid) {
 
             co_return;
         });
-
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply)
@@ -1382,8 +1388,8 @@ const string& validatedUuid(const string& uuid) {
             }
 
             auto res = co_await owner_.server().db().exec(
-                "UPDATE action SET completed=?, completed_time=?, version=version+1 WHERE id=? AND user=?",
-                dbopts, req->done(), when, uuid, cuser);
+                "UPDATE action SET status=?, completed_time=?, version=version+1 WHERE id=? AND user=?",
+                dbopts, (req->done() ? "done" : "active"), when, uuid, cuser);
 
             assert(res.has_value());
             if (res.affected_rows() == 1) {
