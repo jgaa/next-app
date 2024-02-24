@@ -304,6 +304,88 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) con
     assert(false);
 }
 
+QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueTypeGadget::ActionDueType dt)
+{
+    using namespace nextapp::pb::ActionDueTypeGadget;
+
+    if (!when) {
+        return tr("No due time set");
+    }
+
+    const std::chrono::time_zone *ts = std::chrono::current_zone();
+    const auto tp = round<std::chrono::seconds>(std::chrono::system_clock::from_time_t(when));
+    //const auto zoned = zoned_time{ts, when};
+    const auto zoned = std::chrono::zoned_time{ts, tp};
+
+    switch(dt) {
+    case ActionDueType::DATETIME:
+        return QString::fromUtf8(std::format("{:%F %R}", zoned));
+    case ActionDueType::DATE:
+        return QString::fromUtf8(std::format("{:%F}", zoned));
+    case ActionDueType::WEEK:
+        return QString::fromUtf8(std::format("#{:%W %Y}", zoned));
+    case ActionDueType::MONTH:
+        return QString::fromUtf8(std::format("{:%b %Y}", zoned));
+    case ActionDueType::QUARTER: {
+        const auto ymd = std::chrono::year_month_day(floor<std::chrono::days>(zoned.get_local_time()));
+        const auto month = static_cast<unsigned>(ymd.month());
+        const auto quarter = (month - 1) / 3 + 1;
+        return QString::fromUtf8(std::format("Q{} {:%Y}", quarter, zoned));
+        }
+    case ActionDueType::YEAR:
+        return QString::fromUtf8(std::format("{:%Y}", zoned));
+    }
+    return {};
+}
+
+QString ActionsModel::whenListElement(uint64_t when,
+                                      nextapp::pb::ActionDueTypeGadget::ActionDueType dt,
+                                      nextapp::pb::ActionDueTypeGadget::ActionDueType btn)
+{
+    using namespace nextapp::pb::ActionDueTypeGadget;
+
+    if (when == 0 || dt > btn) {
+        switch(btn) {
+        case ActionDueType::DATETIME:
+            return tr("Time");
+        case ActionDueType::DATE:
+            return tr("Date");
+        case ActionDueType::WEEK:
+            return tr("Week");
+        case ActionDueType::MONTH:
+            return tr("Month");
+        case ActionDueType::QUARTER:
+            return tr("Quarter");
+        case ActionDueType::YEAR:
+            return tr("Year");
+        default:
+            ;
+        }
+    }
+
+    return formatWhen(when, btn);
+}
+
+
+
+QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::ActionDueTypeGadget::ActionDueType dt)
+{
+    using namespace nextapp::pb::ActionDueTypeGadget;
+    auto model = new QStringListModel{};
+
+    QStringList list;
+    list << whenListElement(when, dt, ActionDueType::DATETIME);
+    list << whenListElement(when, dt, ActionDueType::DATE);
+    list << whenListElement(when, dt, ActionDueType::WEEK);
+    list << whenListElement(when, dt, ActionDueType::MONTH);
+    list << whenListElement(when, dt, ActionDueType::QUARTER);
+    list << whenListElement(when, dt, ActionDueType::YEAR);
+    list << whenListElement(when, dt, ActionDueType::UNSET);
+
+    model->setStringList(list);
+    return model;
+}
+
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
     return actions_->actions().size();

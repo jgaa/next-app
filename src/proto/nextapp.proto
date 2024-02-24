@@ -112,8 +112,9 @@ enum ActionDueType {
     DATE        = 1;
     WEEK        = 2;
     MONTH       = 3;
-    QUATER      = 4;
+    QUARTER     = 4;
     YEAR        = 5;
+    UNSET       = 6;
 }
 
 enum ActionDifficulty {

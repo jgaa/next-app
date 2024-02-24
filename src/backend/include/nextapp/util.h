@@ -9,7 +9,6 @@ namespace nextapp {
 template <class T, class V>
 concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
 
-
 std::string getEnv(const char *name, std::string def = {});
 
 template <range_of<char> T>

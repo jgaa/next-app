@@ -67,67 +67,70 @@ qt_add_qml_module(appNextAppUi
     VERSION ${VERSION}
     QML_FILES
         Main.qml
-        qml/MainTree.qml
-        qml/Colors.qml # x
-        qml/MyMenuBar.qml # x
-        qml/MyMenu.qml # x
-        qml/WindowDragHandler.qml # x
-        qml/Sidebar.qml
         qml/About.qml
-        qml/ResizeButton.qml # x
-        qml/DaysInYear.qml
-        qml/DayDialog.qml
-        qml/SettingsDlg.qml
-        qml/ServerSettings.qml
-        qml/EditNodeDlg.qml
-        qml/DlgInputField.qml
         qml/ActionsList.qml
+        qml/Colors.qml # x
+        qml/DayDialog.qml
+        qml/DaysInYear.qml
+        qml/DlgInputField.qml
+        qml/DueSelectionDialog.qml
         qml/EditActionDlg.qml
+        qml/EditNodeDlg.qml
+        qml/MainTree.qml
+        qml/MyMenu.qml # x
+        qml/MyMenuBar.qml # x
+        qml/ResizeButton.qml # x
+        qml/ServerSettings.qml
+        qml/SettingsDlg.qml
+        qml/Sidebar.qml
         qml/StyledCheckBox.qml
+        qml/WhenControl.qml
+        qml/WindowDragHandler.qml # x
     RESOURCES
+        icons/folder.svg
         icons/folder_closed.svg
         icons/folder_open.svg
+        icons/fontawsome/angle-down.svg
+        icons/fontawsome/angle-right.svg
+        icons/fontawsome/calendar-days.svg
+        icons/fontawsome/calendar.svg
+        icons/fontawsome/circle.svg
+        icons/fontawsome/folder.svg
+        icons/fontawsome/pen-to-square.svg
+        icons/fontawsome/square-check.svg
+        icons/fontawsome/square.svg
+        icons/fontawsome/trash-can.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg
         icons/light_bulb.svg
-        icons/read.svg
-        icons/resize.svg
         icons/nextapp.svg
-        icons/folder.svg
         icons/organization.svg
         icons/person.svg
         icons/project.svg
-        icons/task.svg
+        icons/read.svg
+        icons/resize.svg
         icons/square-checked.svg
         icons/square-unchecked.svg
-        icons/fontawsome/calendar-days.svg
-        icons/fontawsome/folder.svg
-        icons/fontawsome/trash-can.svg
-        icons/fontawsome/pen-to-square.svg
-        icons/fontawsome/angle-down.svg
-        icons/fontawsome/angle-right.svg
-        icons/fontawsome/circle.svg
-        icons/fontawsome/square-check.svg
-        icons/fontawsome/square.svg
+        icons/task.svg
     SOURCES
-        ServerComm.h
-        ServerComm.cpp
-        MainTreeModel.h
-        MainTreeModel.cpp
-        NextAppCore.h
-        NextAppCore.cpp
-        MonthModel.h
-        MonthModel.cpp
-        DayColorModel.h
-        DayColorModel.cpp
-        DaysModel.h
-        DaysModel.cpp
-        DayModel.h
-        DayModel.cpp
-        util.h util.cpp
-        ActionsModel.h
         ActionsModel.cpp
+        ActionsModel.h
+        DayColorModel.cpp
+        DayColorModel.h
+        DayModel.cpp
+        DayModel.h
+        DaysModel.cpp
+        DaysModel.h
+        MainTreeModel.cpp
+        MainTreeModel.h
+        MonthModel.cpp
+        MonthModel.h
+        NextAppCore.cpp
+        NextAppCore.h
+        ServerComm.cpp
+        ServerComm.h
+        util.h util.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

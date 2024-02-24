@@ -1,4 +1,5 @@
 
+
 #include "nextapp/util.h"
 #include "nextapp/logging.h"
 
@@ -11,6 +12,5 @@ std::string getEnv(const char *name, std::string def) {
 
     return def;
 }
-
 
 } // ns

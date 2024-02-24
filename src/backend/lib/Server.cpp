@@ -327,7 +327,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             name VARCHAR(128) NOT NULL,
             descr TEXT,
             created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            due_type ENUM('datetime', 'date', 'week', 'month', 'quater', 'year') NOT NULL DEFAULT 'datetime',
+            due_type ENUM('datetime', 'date', 'week', 'month', 'quarter', 'year') NOT NULL DEFAULT 'datetime',
             due_by_time DATETIME,
             completed_time TIMESTAMP,
             time_estimate INTEGER,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QStringListModel>
 
 #include "nextapp.qpb.h"
 
@@ -34,6 +35,16 @@ private:
     nextapp::pb::Action action_;
 };
 
+// class SimpleListModel : public QStringListModel {
+//     Q_OBJECT
+//     QML_ELEMENT
+// public:
+//     SimpleListModel(QObject *parent = {})
+//         : QStringListModel{parent}
+//     {
+//     }
+// };
+
 class ActionsModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -66,6 +77,11 @@ public:
     Q_INVOKABLE ActionPrx *getAction(QString uuid);
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
     Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind) const;
+    Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueTypeGadget::ActionDueType dt);
+    Q_INVOKABLE QString whenListElement(uint64_t when,
+                                        nextapp::pb::ActionDueTypeGadget::ActionDueType dt,
+                                        nextapp::pb::ActionDueTypeGadget::ActionDueType btn);
+    Q_INVOKABLE QStringListModel *getDueSelections(uint64_t when, nextapp::pb::ActionDueTypeGadget::ActionDueType dt);
 
     void start();
     void fetch(nextapp::pb::GetActionsReq& filter);

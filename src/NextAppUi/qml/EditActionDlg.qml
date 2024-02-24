@@ -12,6 +12,7 @@ Dialog {
     property NextappPb.action action: aprx.action
     property bool assigned: false
     property bool valid: aprx.valid
+    property int controlsPreferredWidth: 200
 
     x: (parent.width - width) / 2
     y: (parent.height - height) / 2
@@ -97,7 +98,7 @@ Dialog {
 
             ComboBox {
                 id: status
-                //currentIndex: kinds.indexOf(root.action.priority, 0)
+                Layout.preferredWidth: root.controlsPreferredWidth
                 model: ListModel {
                     ListElement{ text: qsTr("Active")}
                     ListElement{ text: qsTr("Done")}
@@ -105,6 +106,31 @@ Dialog {
                 }
             }
 
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                color: Colors.disabledText
+                text: qsTr("When")
+            }
+
+            WhenControl {
+                //width: root.controlsPreferredWidth * 2
+                id: whenControl
+                when: root.action.dueByTime
+                dueType: root.action.dueType
+                Layout.preferredWidth: root.controlsPreferredWidth
+
+                // onDueTypeChanged: (when, dueType) =>  {
+                //     console.log("DueType changed to", dueType)
+                //     root.action.dueByTime = when
+                //     root.action.dueType = dueType
+                // }
+
+                onSelectionChanged: {
+                    console.log("DueType changed to", whenControl.dueType)
+                    root.action.dueByTime = whenControl.when
+                    root.action.dueType = whenControl.dueType
+                }
+            }
 
             Label {
                 Layout.alignment: Qt.AlignLeft
@@ -114,8 +140,8 @@ Dialog {
 
             TextArea {
                 id: descr
-                Layout.preferredHeight: 250
-                Layout.preferredWidth: 400
+                Layout.preferredHeight: 200
+                Layout.preferredWidth: 600
                 placeholderText: qsTr("Some words to describe the purpose of this item?")
                 //text: root.action.descr
 

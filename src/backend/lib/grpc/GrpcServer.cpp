@@ -49,6 +49,19 @@ ostream& operator << (ostream& out, const optional<string>& v) {
 template <typename T>
 concept ProtoMessage = std::is_base_of_v<google::protobuf::Message, T>;
 
+const string& validatedUuid(const string& uuid) {
+    using namespace boost::uuids;
+
+    try {
+        auto result = string_generator()(uuid);
+        return uuid;
+    } catch(const runtime_error&) {
+
+    }
+
+    throw runtime_error{"invalid uuid"};
+}
+
 template <ProtoMessage T>
 std::string toJson(const T& obj) {
     std::string str;
@@ -1187,7 +1200,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         SqlFilter filter{false};
         if (req->has_active() && req->active()) {
-            filter.add("(status='done' || DATE(completed_time) = CURDATE())");
+            filter.add("(status!='done' || DATE(completed_time) = CURDATE())");
         }
         if (!req->node().empty()) {
             filter.add(format("node='{}'", req->node()));
@@ -1209,19 +1222,6 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         co_return;
     });
-}
-
-const string& validatedUuid(const string& uuid) {
-    using namespace boost::uuids;
-
-    try {
-        auto result = string_generator()(uuid);
-        return uuid;
-    } catch(const runtime_error&) {
-
-    }
-
-    throw runtime_error{"invalid uuid"};
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetAction(::grpc::CallbackServerContext *ctx, const pb::GetActionReq *req, pb::Status *reply)
