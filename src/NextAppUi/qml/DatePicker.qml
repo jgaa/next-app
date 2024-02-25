@@ -24,7 +24,9 @@ Popup {
     property int currentDay
 
     property bool closeOnSelect: mode === NextappPB.ActionDueType.DATE
-    property bool canSelectMonth: mode === NextappPB.ActionDueType.DATE || mode === NextappPB.ActionDueType.DATETIME
+                                 || mode === NextappPB.ActionDueType.WEEK
+    property bool canSelectMonth: mode === NextappPB.ActionDueType.DATE
+                                  || mode === NextappPB.ActionDueType.DATETIME
 
     signal selectedDateClosed(var date, var accepted)
 
@@ -32,10 +34,6 @@ Popup {
         grid.year = date.getFullYear()
         grid.month = date.getMonth()
         currentDay = date.getDate()
-    }
-
-    onOpened: {
-        console.log("DatePicker opened. mode=", mode, "Can select month=", canSelectMonth, " teste=", teste)
     }
 
     background: Rectangle {
@@ -55,6 +53,31 @@ Popup {
         id: content
         //anchors.fill: parent
         spacing: 5
+
+        Text {
+            font.bold: true
+            font.pointSize: font.pointSize * 1.5
+            Layout.alignment: Qt.AlignHCenter
+            text: {
+                switch(popup.mode) {
+                    case NextappPB.ActionDueType.DATE:
+                        return qsTr("Select a date")
+                    case NextappPB.ActionDueType.WEEK:
+                        return qsTr("Select a week")
+                    case NextappPB.ActionDueType.DATETIME:
+                        return qsTr("Select a date and time")
+                    case NextappPB.ActionDueType.QUARTER:
+                        return qsTr("Select a quarter")
+                    case NextappPB.ActionDueType.MONTH:
+                        return qsTr("Select a month")
+                    case NextappPB.ActionDueType.YEAR:
+                        return qsTr("Select a year")
+                    default:
+                        return qsTr("Select a date")
+                }
+            }
+
+        }
 
         // Year Selector
         RowLayout {
@@ -104,18 +127,75 @@ Popup {
         }
 
         DayOfWeekRow {
+            id: week
             locale: grid.locale
-
             Layout.fillWidth: false
+            leftPadding: weekNumberCtl.width + 5
         }
 
         RowLayout {
             WeekNumberColumn {
+                id: weekNumberCtl
                 month: grid.month
                 year: grid.year
                 locale: grid.locale
-
                 Layout.fillWidth: false
+
+                delegate: Rectangle {
+                    width: weekCtl.width
+                    height: weekCtl.height
+
+                    required property int weekNumber
+                    property bool selectedWeek: weekNumber === Common.getISOWeekNumber(popup.date)
+                    property bool sameYear: {
+                        if (popup.currentMonth === Calendar.January) {
+                            return weekNumber < 50
+                        } else if (popup.currentMonth === Calendar.December) {
+                            return weekNumber > 10
+                        } else {
+                            return true
+                        }
+                    }
+                    property bool canSelect: sameYear && popup.mode === NextappPB.ActionDueType.WEEK
+
+                    color: canSelect ? selectedWeek ? "yellow" : "white" : "#f0f0f0"
+
+                    Text {
+                        id: weekCtl
+                        text: weekNumber
+                        font: weekNumberCtl.font
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+
+                    Rectangle {
+                        id: week_hover_shadow
+                        anchors.fill: parent
+                        opacity: 0
+                        color: "Blue"
+                    }
+
+                    MouseArea {
+                        enabled: canSelect
+                        anchors.fill: weekCtl
+                        onClicked: {
+                            popup.date = Common.getDateFromISOWeekNumber(popup.currentYear, weekNumber)
+                            if (popup.closeOnSelect) {
+                                popup.accepted = true
+                                popup.close()
+                            }
+                            console.log("weekNumber ", weekNumber)
+                        }
+
+                        hoverEnabled: canSelect
+                        onEntered: {
+                            week_hover_shadow.opacity = 0.30
+                        }
+                        onExited: {
+                            week_hover_shadow.opacity = 0
+                        }
+                    }
+                }
             }
 
             MonthGrid {
@@ -139,7 +219,7 @@ Popup {
                                       && model.month === now.getMonth()
                                       && model.year === now.getFullYear()
 
-                    color: today && currentDate ? "orange" :  currentDate ? "yellow" : "white"
+                    color:  canSelectMonth && today && currentDate ? "orange" :  canSelectMonth && currentDate ? "yellow" : canSelectMonth ?  "white" : "#f0f0f0"
                     opacity: inRange ? 1 : 0
 
                     Rectangle {
@@ -181,9 +261,9 @@ Popup {
                                 popup.date.setYear(grid.year)
                                 popup.date.setMonth(grid.month)
                                 popup.date.setDate(drect.model.day)
-                                popup.accepted = true
 
                                 if (popup.closeOnSelect) {
+                                    popup.accepted = true
                                     popup.close()
                                 }
                             }

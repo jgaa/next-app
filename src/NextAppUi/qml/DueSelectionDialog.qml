@@ -12,6 +12,7 @@ Popup {
     modal: true
     contentHeight: btn1.height * 8 + 10 * 7
     contentWidth: 300
+    closePolicy: Popup.NoAutoClose
 
     topInset: -2
     leftInset: -2
@@ -74,11 +75,13 @@ Popup {
             text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.WEEK)
             Layout.fillWidth: true
             onClicked: {
-                picker.open()
-                when = Date.now() / 1000
-                dueType = NextappPB.ActionDueType.WEEK
-                selectionChanged(when, dueType)
-                popup.close()
+                if (when == 0) {
+                    when = Date.now() / 1000
+                }
+                maybeDueType = NextappPB.ActionDueType.WEEK
+                datePicker.mode = maybeDueType
+                datePicker.date = new Date(when * 1000)
+                datePicker.open()
             }
         }
 
@@ -132,7 +135,6 @@ Popup {
             }
         }
     }
-
 
     DatePicker {
         id: datePicker
