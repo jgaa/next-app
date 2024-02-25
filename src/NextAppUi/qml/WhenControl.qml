@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import NextAppUi
 import nextapp.pb as NextappPB
+import "common.js" as Common
 
 Item {
     id: root
@@ -33,18 +34,13 @@ Item {
                     text: ActionsModel.formatWhen(when, dueType)
                     verticalAlignment: Text.AlignVCenter
                     font: btn.font // Inherit font from Button
-                    color: btn.textColor // Inherit text color from Button
+                    //color: btn.textColor // Inherit text color from Button
                 }
             }
 
 
         onClicked: {
-            var ctl = Qt.createComponent("DueSelectionDialog.qml")
-            if (ctl.status !== Component.Ready) {
-                console.log("Error loading component:", ctl.errorString())
-                return
-            }
-            var dialog = ctl.createObject(root, {
+            var dialog = Common.createDialog("DueSelectionDialog.qml", root, {
                 when: root.when,
                 dueType: root.dueType
             })
@@ -63,47 +59,3 @@ Item {
     }
 }
 
-// Item {
-//     id: root
-//     property int when: 0
-//     property int dueType: NextappPB.ActionDueType.NONE
-
-//     width: button.width
-//     height: button.height
-
-//     onWhenChanged: {
-//         if (when === 0) {
-//             dueType = NextappPB.ActionDueType.NONE
-//         }
-//     }
-
-//     ComboBox {
-//         id: button
-//         currentIndex: dueType
-//         displayText: ActionsModel.formatWhen(when, dueType)
-
-//         // TODO: Need more advanced model
-//         model: ActionsModel.getDueSelections(when, dueType)
-//         textRole: "display"
-
-//         onCurrentIndexChanged: {
-//             dueType = currentIndex
-//             //displayText = ActionsModel.formatWhen(when, dueType)
-//             switch(currentIndex) {
-//             case NextappPB.ActionDueType.DATETIME:
-//             case NextappPB.ActionDueType.DATE:
-//             case NextappPB.ActionDueType.TIME:
-//             case NextappPB.ActionDueType.WEEKDAY:
-//             case NextappPB.ActionDueType.MONTHDAY:
-//             case NextappPB.ActionDueType.YEAR:
-//                 if (when == 0) {
-//                     when = new Date().getTime() / 1000
-//                 }
-//                 break
-//             case NextappPB.ActionDueType.NONE:
-//                 when = 0
-//                 break
-//             }
-//         }
-//     }
-// }

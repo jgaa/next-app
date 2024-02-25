@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import NextAppUi
 import nextapp.pb as NextappPB
+import "common.js" as CommonJS
 
 Popup {
     id: popup
@@ -18,7 +19,8 @@ Popup {
     bottomInset: -6
 
     property int when: 0
-    property int dueType: NextappPB.ActionDueType.NONE
+    property int dueType: 0
+    property int maybeDueType: 0
     signal selectionChanged(int when, int dueType)
 
     background: Rectangle {
@@ -34,7 +36,7 @@ Popup {
         }
     }
 
-    contentItem: ColumnLayout {
+    ColumnLayout {
         spacing: 10
         anchors.fill: parent
 
@@ -43,10 +45,13 @@ Popup {
             text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.DATETIME)
             Layout.fillWidth: true
             onClicked: {
-                when = Date.now() / 1000
-                dueType = NextappPB.ActionDueType.DATETIME
-                selectionChanged(when, dueType)
-                popup.close()
+                if (!when) {
+                    when = Date.now() / 1000
+                }
+                maybeDueType = NextappPB.ActionDueType.DATETIME
+                datePicker.mode = maybeDueType
+                datePicker.date = new Date(when * 1000)
+                datePicker.open()
             }
         }
 
@@ -54,10 +59,14 @@ Popup {
             text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.DATE)
             Layout.fillWidth: true
             onClicked: {
-                when = Date.now() / 1000
-                dueType = NextappPB.ActionDueType.DATE
-                selectionChanged(when, dueType)
-                popup.close()
+                if (!when) {
+                    when = Date.now() / 1000
+                }
+
+                maybeDueType = NextappPB.ActionDueType.DATE
+                datePicker.mode = maybeDueType
+                datePicker.date = new Date(when * 1000)
+                datePicker.open()
             }
         }
 
@@ -65,6 +74,7 @@ Popup {
             text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.WEEK)
             Layout.fillWidth: true
             onClicked: {
+                picker.open()
                 when = Date.now() / 1000
                 dueType = NextappPB.ActionDueType.WEEK
                 selectionChanged(when, dueType)
@@ -120,6 +130,23 @@ Popup {
             onClicked: {
                 popup.close()
             }
+        }
+    }
+
+
+    DatePicker {
+        id: datePicker
+        modal: true
+
+        onSelectedDateClosed: (date, accepted) => {
+            if (accepted) {
+                when = date.getTime() / 1000
+                dueType = maybeDueType
+                selectionChanged(when, dueType)
+
+            }
+
+            popup.close()
         }
     }
 }

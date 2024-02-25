@@ -10,6 +10,7 @@
 #include "logging.h"
 
 using namespace std;
+using namespace std::string_literals;
 using namespace nextapp;
 
 namespace {
@@ -297,7 +298,7 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) con
     case ActionKind::AC_UPCOMING:
         return tr("Upcoming");
     case ActionKind::AC_UNSCHEDULED:
-        return tr("Unscheduled");
+        return tr("No due time set");
     case ActionKind::AC_DONE:
         return tr("Done");
     }
@@ -314,26 +315,37 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueTypeGadget
 
     const std::chrono::time_zone *ts = std::chrono::current_zone();
     const auto tp = round<std::chrono::seconds>(std::chrono::system_clock::from_time_t(when));
-    //const auto zoned = zoned_time{ts, when};
     const auto zoned = std::chrono::zoned_time{ts, tp};
+    const auto ymd = std::chrono::year_month_day(floor<std::chrono::days>(zoned.get_local_time()));
+
+    const auto current = std::chrono::zoned_time{ts, round<std::chrono::seconds>(std::chrono::system_clock::now())};
+    const auto current_ymd = std::chrono::year_month_day(floor<std::chrono::days>(current.get_local_time()));
+
+    auto select = [&](const std::string& formatted, const QString& phrase, const QString& prefix = {}) -> QString {
+        if (ymd == current_ymd) {
+            return phrase;
+        }
+        return prefix + QString::fromUtf8(formatted);
+    };
 
     switch(dt) {
     case ActionDueType::DATETIME:
         return QString::fromUtf8(std::format("{:%F %R}", zoned));
     case ActionDueType::DATE:
-        return QString::fromUtf8(std::format("{:%F}", zoned));
+        return select(format("{:%F}", zoned), tr("Today"));
     case ActionDueType::WEEK:
-        return QString::fromUtf8(std::format("#{:%W %Y}", zoned));
+        return select(format("{:%W %Y}", zoned), tr("This week"), tr("W"));
     case ActionDueType::MONTH:
-        return QString::fromUtf8(std::format("{:%b %Y}", zoned));
+        return select(std::format("{:%b %Y}", zoned), tr("This month"));
     case ActionDueType::QUARTER: {
-        const auto ymd = std::chrono::year_month_day(floor<std::chrono::days>(zoned.get_local_time()));
         const auto month = static_cast<unsigned>(ymd.month());
         const auto quarter = (month - 1) / 3 + 1;
-        return QString::fromUtf8(std::format("Q{} {:%Y}", quarter, zoned));
+        return select(std::format("{} {:%Y}", quarter, zoned), tr("This Quarter"), tr("Q"));
         }
     case ActionDueType::YEAR:
-        return QString::fromUtf8(std::format("{:%Y}", zoned));
+            return select(std::format("{:%Y}", zoned), tr("This year"));
+    case ActionDueType::UNSET:
+        return tr("No due time set");
     }
     return {};
 }

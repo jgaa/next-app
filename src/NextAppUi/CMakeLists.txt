@@ -86,6 +86,8 @@ qt_add_qml_module(appNextAppUi
         qml/StyledCheckBox.qml
         qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
+        qml/DatePicker.qml
+        qml/common.js
     RESOURCES
         icons/folder.svg
         icons/folder_closed.svg

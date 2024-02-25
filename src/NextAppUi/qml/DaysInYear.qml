@@ -17,68 +17,21 @@ Rectangle {
         columnSpacing: 20
         rowSpacing: 10
 
-        Quarter {
-            text: "Q1"
+        Repeater {
+            model: [1, 2, 3, 4]
+            delegate: Quarter {
+                text: qsTr("Q") + modelData
+            }
         }
 
-        Quarter {
-            text: "Q2"
-        }
-
-        Quarter {
-            text: "Q3"
-        }
-
-        Quarter {
-            text: "Q4"
-        }
-
-        Month {
-            month: Calendar.January
-        }
-
-        Month {
-            month: Calendar.April
-        }
-
-        Month {
-            month: Calendar.July
-        }
-
-        Month {
-            month: Calendar.October
-        }
-
-        Month {
-            month: Calendar.February
-        }
-
-        Month {
-            month: Calendar.May
-        }
-
-        Month {
-            month: Calendar.August
-        }
-
-        Month {
-            month: Calendar.November
-        }
-
-        Month {
-            month: Calendar.March
-        }
-
-        Month {
-            month: Calendar.June
-        }
-
-        Month {
-            month: Calendar.September
-        }
-
-        Month {
-            month: Calendar.December
+        Repeater {
+            model: [Calendar.January, Calendar.April, Calendar.July, Calendar.October,
+                    Calendar.February, Calendar.May, Calendar.August, Calendar.November,
+                    Calendar.March, Calendar.June, Calendar.September, Calendar.December]
+            delegate: Month {
+                month: modelData
+                year: 2024
+            }
         }
     }
 
@@ -215,7 +168,7 @@ Rectangle {
                                 }
                             }
                         }
-                    }
+                    }// delegate
                 }
             }
         }
