@@ -16,17 +16,17 @@ Popup {
     width: 300
     height: 400
 
-    property int mode: NextappPB.ActionDueType.UNSET
+    property int mode: NextappPB.ActionDueKind.UNSET
     property var date: new Date()
     property bool accepted: false
     property alias currentYear: grid.year
     property alias currentMonth: grid.month
     property int currentDay
 
-    property bool closeOnSelect: mode === NextappPB.ActionDueType.DATE
-                                 || mode === NextappPB.ActionDueType.WEEK
-    property bool canSelectMonth: mode === NextappPB.ActionDueType.DATE
-                                  || mode === NextappPB.ActionDueType.DATETIME
+    property bool closeOnSelect: mode === NextappPB.ActionDueKind.DATE
+                                 || mode === NextappPB.ActionDueKind.WEEK
+    property bool canSelectMonth: mode === NextappPB.ActionDueKind.DATE
+                                  || mode === NextappPB.ActionDueKind.DATETIME
 
     signal selectedDateClosed(var date, var accepted)
 
@@ -56,21 +56,21 @@ Popup {
 
         Text {
             font.bold: true
-            font.pointSize: font.pointSize * 1.5
+            font.pointSize: content.font.pointSize * 1.5
             Layout.alignment: Qt.AlignHCenter
             text: {
                 switch(popup.mode) {
-                    case NextappPB.ActionDueType.DATE:
+                    case NextappPB.ActionDueKind.DATE:
                         return qsTr("Select a date")
-                    case NextappPB.ActionDueType.WEEK:
+                    case NextappPB.ActionDueKind.WEEK:
                         return qsTr("Select a week")
-                    case NextappPB.ActionDueType.DATETIME:
+                    case NextappPB.ActionDueKind.DATETIME:
                         return qsTr("Select a date and time")
-                    case NextappPB.ActionDueType.QUARTER:
+                    case NextappPB.ActionDueKind.QUARTER:
                         return qsTr("Select a quarter")
-                    case NextappPB.ActionDueType.MONTH:
+                    case NextappPB.ActionDueKind.MONTH:
                         return qsTr("Select a month")
-                    case NextappPB.ActionDueType.YEAR:
+                    case NextappPB.ActionDueKind.YEAR:
                         return qsTr("Select a year")
                     default:
                         return qsTr("Select a date")
@@ -156,7 +156,7 @@ Popup {
                             return true
                         }
                     }
-                    property bool canSelect: sameYear && popup.mode === NextappPB.ActionDueType.WEEK
+                    property bool canSelect: sameYear && popup.mode === NextappPB.ActionDueKind.WEEK
 
                     color: canSelect ? selectedWeek ? "yellow" : "white" : "#f0f0f0"
 
@@ -275,7 +275,7 @@ Popup {
 
         RowLayout {
             id: timeSelector
-            visible: popup.mode === NextappPB.ActionDueType.DATETIME
+            visible: popup.mode === NextappPB.ActionDueKind.DATETIME
             Layout.alignment: Qt.AlignHCenter
 
             SpinBox {

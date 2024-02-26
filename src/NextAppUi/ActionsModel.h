@@ -64,6 +64,7 @@ class ActionsModel : public QAbstractListModel
         CompletedTimeRole,
         SectionRole,
         SectionNameRole,
+        DueRole,
     };
 
 public:
@@ -77,11 +78,11 @@ public:
     Q_INVOKABLE ActionPrx *getAction(QString uuid);
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
     Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind) const;
-    Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueTypeGadget::ActionDueType dt);
+    Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
     Q_INVOKABLE QString whenListElement(uint64_t when,
-                                        nextapp::pb::ActionDueTypeGadget::ActionDueType dt,
-                                        nextapp::pb::ActionDueTypeGadget::ActionDueType btn);
-    Q_INVOKABLE QStringListModel *getDueSelections(uint64_t when, nextapp::pb::ActionDueTypeGadget::ActionDueType dt);
+                                        nextapp::pb::ActionDueKindGadget::ActionDueKind dt,
+                                        nextapp::pb::ActionDueKindGadget::ActionDueKind btn);
+    Q_INVOKABLE QStringListModel *getDueSelections(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
 
     void start();
     void fetch(nextapp::pb::GetActionsReq& filter);

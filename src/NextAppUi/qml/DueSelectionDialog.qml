@@ -43,13 +43,13 @@ Popup {
 
         Button {
             id: btn1
-            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.DATETIME)
+            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueKind.DATETIME)
             Layout.fillWidth: true
             onClicked: {
                 if (!when) {
                     when = Date.now() / 1000
                 }
-                maybeDueType = NextappPB.ActionDueType.DATETIME
+                maybeDueType = NextappPB.ActionDueKind.DATETIME
                 datePicker.mode = maybeDueType
                 datePicker.date = new Date(when * 1000)
                 datePicker.open()
@@ -57,14 +57,14 @@ Popup {
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.DATE)
+            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueKind.DATE)
             Layout.fillWidth: true
             onClicked: {
                 if (!when) {
                     when = Date.now() / 1000
                 }
 
-                maybeDueType = NextappPB.ActionDueType.DATE
+                maybeDueType = NextappPB.ActionDueKind.DATE
                 datePicker.mode = maybeDueType
                 datePicker.date = new Date(when * 1000)
                 datePicker.open()
@@ -72,13 +72,13 @@ Popup {
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.WEEK)
+            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueKind.WEEK)
             Layout.fillWidth: true
             onClicked: {
                 if (when == 0) {
                     when = Date.now() / 1000
                 }
-                maybeDueType = NextappPB.ActionDueType.WEEK
+                maybeDueType = NextappPB.ActionDueKind.WEEK
                 datePicker.mode = maybeDueType
                 datePicker.date = new Date(when * 1000)
                 datePicker.open()
@@ -86,33 +86,33 @@ Popup {
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.MONTH)
+            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueKind.MONTH)
             Layout.fillWidth: true
             onClicked: {
                 when = Date.now() / 1000
-                dueType = NextappPB.ActionDueType.MONTH
+                dueType = NextappPB.ActionDueKind.MONTH
                 selectionChanged(when, dueType)
                 popup.close()
             }
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.QUARTER)
+            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueKind.QUARTER)
             Layout.fillWidth: true
             onClicked: {
                 when = Date.now() / 1000
-                dueType = NextappPB.ActionDueType.QUARTER
+                dueType = NextappPB.ActionDueKind.QUARTER
                 selectionChanged(when, dueType)
                 popup.close()
             }
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueType.YEAR)
+            text: ActionsModel.whenListElement(when, dueType, NextappPB.ActionDueKind.YEAR)
             Layout.fillWidth: true
             onClicked: {
                 when = Date.now() / 1000
-                dueType = NextappPB.ActionDueType.YEAR
+                dueType = NextappPB.ActionDueKind.YEAR
                 selectionChanged(when, dueType)
                 popup.close()
             }
@@ -122,7 +122,7 @@ Popup {
             text: qsTr("No due time")
             Layout.fillWidth: true
             onClicked: {
-                selectionChanged(0,  NextappPB.ActionDueType.UNSET)
+                selectionChanged(0,  NextappPB.ActionDueKind.UNSET)
                 popup.close()
             }
         }

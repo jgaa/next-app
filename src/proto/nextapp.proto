@@ -107,7 +107,7 @@ enum ActionStatus {
     ONHOLD  = 2;
 }
 
-enum ActionDueType {
+enum ActionDueKind {
     DATETIME    = 0;
     DATE        = 1;
     WEEK        = 2;
@@ -140,10 +140,24 @@ enum ActionPriority {
 enum ActionKind {
     AC_UNSET            = 0;
     AC_OVERDUE          = 1;
-    AC_TODAY            = 2;
-    AC_UPCOMING         = 3;
-    AC_UNSCHEDULED      = 4;
-    AC_DONE             = 5;
+    AC_TODAY            = 2; // The action is due today
+    AC_ACTIVE           = 3; // The action is active and can be worked on
+    AC_UPCOMING         = 4; // The action is not active yet
+    AC_UNSCHEDULED      = 5; // The action is not scheduled
+    AC_DONE             = 6;
+}
+
+// Due time for an action
+// The window between start and due is when the action should be done.
+
+// If start is null and due is set, the action is due at the specified time.
+// If start is set, due must a so be set, and the task shpuld be done within the window.
+// ActionDueKind dictates how the due time is constructed
+message Due {
+    optional uint64 start    = 1; // time_t
+    optional uint64 due      = 2; // time_t
+    ActionDueKind kind       = 8;
+    string timezone          = 3; // Time zone for the user when Due was set
 }
 
 // For communicating a list of actions
@@ -154,8 +168,7 @@ message ActionInfo {
     ActionStatus status = 4;
     string name         = 5;
     Date createdDate    = 7;
-    ActionDueType dueType = 8;
-    uint64 dueByTime    = 9; // time_t
+    Due due             = 9;
     uint64 completedTime = 11; // time_t
     ActionKind kind     = 12;
     int32 version       = 13;
@@ -187,8 +200,8 @@ message Action {
     ActionStatus status = 4;
     string name = 5;
     Date createdDate = 7;
-    ActionDueType dueType = 8;
-    uint64 dueByTime = 9; // time_t
+    Due due = 9;
+    // 8, 9 is free
     uint64 completedTime = 11; // time_t
     string descr = 6;
     uint64 timeEstimate = 12; // minutes

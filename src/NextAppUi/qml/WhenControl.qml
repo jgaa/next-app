@@ -8,7 +8,7 @@ import "common.js" as Common
 Item {
     id: root
     property int when: 0
-    property int dueType: NextappPB.ActionDueType.NONE
+    property int dueType: NextappPB.ActionDueKind.NONE
     height: btn.height
 
     signal selectionChanged(int when, int dueType)

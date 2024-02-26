@@ -153,6 +153,16 @@ time_t toTimeT(const boost::mysql::datetime& from) {
     return {};
 }
 
+template <typename T>
+optional<string> toStringOrNull(const T& val) {
+    if (val.empty()) {
+        return {};
+    }
+
+    return string{val};
+}
+
+
 void setError(pb::Status& status, pb::Error err, const std::string& message = {}) {
 
 
@@ -197,7 +207,7 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_TYPE, DUE_BY_TIME, COMPLETED_TIME,  // core
+        ID, NODE, USER, VERSION, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME,  // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_AFTER // remaining
     };
 
@@ -212,7 +222,7 @@ struct ToAction {
     }
 
     static string_view statementBindingStr() {
-        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
     }
 
     static string_view updateStatementBindingStr() {
@@ -233,8 +243,13 @@ struct ToAction {
             pb::ActionPriority_Name(action.priority()),
             pb::ActionStatus_Name(action.status()),
             action.name(),
-            pb::ActionDueType_Name(action.duetype()),
-            toAnsiTime(action.duebytime(), ts),
+
+            // due
+            pb::ActionDueKind_Name(action.due().kind()),
+            toAnsiTime(action.due().start(), ts),
+            toAnsiTime(action.due().due(), ts),
+            toStringOrNull(action.due().timezone()),
+
             toAnsiTime(action.completedtime(), ts),
             action.descr(),
             action.timeestimate(),
@@ -291,17 +306,25 @@ struct ToAction {
         }
 
         {
-            pb::ActionDueType dt;
-            const auto name = toUpper(row.at(DUE_TYPE).as_string());
-            if (pb::ActionDueType_Parse(name, &dt)) {
-                obj.set_duetype(dt);
+            pb::ActionDueKind dt;
+            const auto name = toUpper(row.at(DUE_KIND).as_string());
+            if (pb::ActionDueKind_Parse(name, &dt)) {
+                obj.mutable_due()->set_kind(dt);
             } else {
-                LOG_WARN_N << "Invalid ActionDueType: " << name;
+                LOG_WARN_N << "Invalid ActionDueKind: " << name;
             }
         }
 
         if (row.at(DUE_BY_TIME).is_datetime()) {
-            obj.set_duebytime(toTimeT(row.at(DUE_BY_TIME).as_datetime()));
+            obj.mutable_due()->set_due(toTimeT(row.at(DUE_BY_TIME).as_datetime()));
+
+            if (row.at(START_TIME).is_datetime()) {
+                obj.mutable_due()->set_start(toTimeT(row.at(START_TIME).as_datetime()));
+            }
+
+            if (row.at(DUE_TIMEZONE).is_string()) {
+                obj.mutable_due()->set_timezone(row.at(DUE_TIMEZONE).as_string());
+            }
         }
 
         if (obj.status() == pb::ActionStatus::DONE) {
@@ -312,19 +335,31 @@ struct ToAction {
             if (row.at(COMPLETED_TIME).is_datetime()) {
                 const auto due = row.at(COMPLETED_TIME).as_datetime();
                 const auto zt = std::chrono::zoned_time(ts, due.as_time_point());
-                const auto when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
+                const auto due_when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
+
+                optional<chrono::year_month_day> start;
+                if (row.at(START_TIME).is_datetime()) {
+                    const auto start_time = row.at(START_TIME).as_datetime();
+                    const auto zt = std::chrono::zoned_time(ts, start_time.as_time_point());
+                    start = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
+                }
 
                 const auto now_zt = std::chrono::zoned_time(ts, chrono::system_clock::now());
                 const auto now = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(now_zt.get_local_time())};
 
-                if (when.year() == now.year() && when.month() == now.month() && when.day() == now.day()) {
+                if (due_when.year() == now.year() && due_when.month() == now.month() && due_when.day() == now.day()) {
                     obj.set_kind(pb::ActionKind::AC_TODAY);
-                } else if (when < now) {
+                } else if (due_when < now) {
                     obj.set_kind(pb::ActionKind::AC_OVERDUE);
-                } else if (when > now) {
-                    obj.set_kind(pb::ActionKind::AC_UPCOMING);
+                } else if (due_when > now) {
+                    if (start < now) {
+                        obj.set_kind(pb::ActionKind::AC_ACTIVE);
+                    } else{
+                        obj.set_kind(pb::ActionKind::AC_UPCOMING);
+                    }
                 } else {
                     assert(false); // Not possible!
+                    obj.set_kind(pb::ActionKind::AC_TODAY); // Just in case the impossible occur in release build
                 }
             } else {
                 obj.set_kind(pb::ActionKind::AC_UNSCHEDULED);
@@ -380,7 +415,7 @@ private:
     }
 
     static constexpr string_view ids_ = "id, node, user, version, ";
-    static constexpr string_view core_ = "priority, status, name, created_date, due_type, due_by_time, completed_time";
+    static constexpr string_view core_ = "priority, status, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time";
     static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_after";
 };
 

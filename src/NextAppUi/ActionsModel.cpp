@@ -27,6 +27,30 @@ int comparePriName(const T& left, const U& right) {
     return left.name().compare(right.name(), Qt::CaseInsensitive);
 }
 
+int compare(const pb::Due& left, const pb::Due& right) {
+    if (left.kind() != right.kind()) {
+        return left.kind() - right.kind();
+    }
+
+    if (left.hasStart() && right.hasStart()) {
+        return left.start() - right.start();
+    }
+
+    if (left.hasStart() || right.hasStart()) {
+        return left.hasStart() ? -1 : 1;
+    }
+
+    if (left.hasDue() && right.hasDue()) {
+        return left.due() - right.due();
+    }
+
+    if (left.hasDue() || right.hasDue()) {
+        return left.hasDue() ? -1 : 1;
+    }
+
+    return 0;
+}
+
 template <ActionType T, ActionType U>
 int64_t compare(const T& left, const U& right) {
     if (left.kind() != right.kind()) {
@@ -38,24 +62,26 @@ int64_t compare(const T& left, const U& right) {
     switch(left.kind()) {
     case pb::ActionKindGadget::ActionKind::AC_OVERDUE:
     case pb::ActionKindGadget::ActionKind::AC_UNSCHEDULED:
+    case pb::ActionKindGadget::ActionKind::AC_UNSET:
         return comparePriName(left, right);
     case pb::ActionKindGadget::ActionKind::AC_TODAY:
-        if (left.dueByTime() || right.dueByTime()) {
-            return left.dueByTime() - right.dueByTime();
+        if (left.due().due() && right.due().due()) {
+            return left.due().due() - right.due().due();
         }
         return left.name().compare(right.name(), Qt::CaseInsensitive);
+    case pb::ActionKindGadget::ActionKind::AC_ACTIVE:
     case pb::ActionKindGadget::ActionKind::AC_UPCOMING:
-        if (left.dueByTime() || right.dueByTime()) {
-            return left.dueByTime() - right.dueByTime();
+        if (const auto cmp = compare(left.due(), right.due())) {
+            return cmp;
         }
         return comparePriName(left, right);
     case pb::ActionKindGadget::ActionKind::AC_DONE:
         if (left.completedTime() != right.completedTime()) {
             return left.completedTime() - right.completedTime();
         }
-    case pb::ActionKindGadget::ActionKind::AC_UNSET:
-        return comparePriName(left, right);
+        return left.name().compare(right.name(), Qt::CaseInsensitive);
     }
+
 }
 
 template <ActionType T, ActionType U>
@@ -93,7 +119,14 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     ai.setStatus(action.status());
     ai.setName(action.name());
     ai.setCreatedDate(ai.createdDate());
-    ai.setDueType(action.dueType());
+    ai.due().setKind(action.due().kind());
+    if (action.due().hasStart()) {
+        ai.due().setStart(action.due().start());
+    }
+    if (action.due().hasDue()) {
+        ai.due().setDue(action.due().due());
+    }
+    ai.due().setTimezone(action.due().timezone());
     ai.setCompletedTime(ai.completedTime());
     ai.setKind(action.kind());
     return ai;
@@ -305,9 +338,9 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) con
     assert(false);
 }
 
-QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueTypeGadget::ActionDueType dt)
+QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
 {
-    using namespace nextapp::pb::ActionDueTypeGadget;
+    using namespace nextapp::pb::ActionDueKindGadget;
 
     if (!when) {
         return tr("No due time set");
@@ -329,47 +362,49 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueTypeGadget
     };
 
     switch(dt) {
-    case ActionDueType::DATETIME:
+    case ActionDueKind::DATETIME:
         return QString::fromUtf8(std::format("{:%F %R}", zoned));
-    case ActionDueType::DATE:
+    case ActionDueKind::DATE:
         return select(format("{:%F}", zoned), tr("Today"));
-    case ActionDueType::WEEK:
+    case ActionDueKind::WEEK:
         return select(format("{:%W %Y}", zoned), tr("This week"), tr("W"));
-    case ActionDueType::MONTH:
+    case ActionDueKind::MONTH:
         return select(std::format("{:%b %Y}", zoned), tr("This month"));
-    case ActionDueType::QUARTER: {
+    case ActionDueKind::QUARTER: {
         const auto month = static_cast<unsigned>(ymd.month());
         const auto quarter = (month - 1) / 3 + 1;
         return select(std::format("{} {:%Y}", quarter, zoned), tr("This Quarter"), tr("Q"));
         }
-    case ActionDueType::YEAR:
+    case ActionDueKind::YEAR:
             return select(std::format("{:%Y}", zoned), tr("This year"));
-    case ActionDueType::UNSET:
+    case ActionDueKind::UNSET:
         return tr("No due time set");
     }
     return {};
 }
 
 QString ActionsModel::whenListElement(uint64_t when,
-                                      nextapp::pb::ActionDueTypeGadget::ActionDueType dt,
-                                      nextapp::pb::ActionDueTypeGadget::ActionDueType btn)
+                                      nextapp::pb::ActionDueKindGadget::ActionDueKind dt,
+                                      nextapp::pb::ActionDueKindGadget::ActionDueKind btn)
 {
-    using namespace nextapp::pb::ActionDueTypeGadget;
+    using namespace nextapp::pb::ActionDueKindGadget;
 
     if (when == 0 || dt > btn) {
         switch(btn) {
-        case ActionDueType::DATETIME:
+        case ActionDueKind::DATETIME:
             return tr("Time");
-        case ActionDueType::DATE:
+        case ActionDueKind::DATE:
             return tr("Date");
-        case ActionDueType::WEEK:
+        case ActionDueKind::WEEK:
             return tr("Week");
-        case ActionDueType::MONTH:
+        case ActionDueKind::MONTH:
             return tr("Month");
-        case ActionDueType::QUARTER:
+        case ActionDueKind::QUARTER:
             return tr("Quarter");
-        case ActionDueType::YEAR:
+        case ActionDueKind::YEAR:
             return tr("Year");
+        case ActionDueKind::UNSET:
+            return tr("No due time set");
         default:
             ;
         }
@@ -380,19 +415,19 @@ QString ActionsModel::whenListElement(uint64_t when,
 
 
 
-QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::ActionDueTypeGadget::ActionDueType dt)
+QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
 {
-    using namespace nextapp::pb::ActionDueTypeGadget;
+    using namespace nextapp::pb::ActionDueKindGadget;
     auto model = new QStringListModel{};
 
     QStringList list;
-    list << whenListElement(when, dt, ActionDueType::DATETIME);
-    list << whenListElement(when, dt, ActionDueType::DATE);
-    list << whenListElement(when, dt, ActionDueType::WEEK);
-    list << whenListElement(when, dt, ActionDueType::MONTH);
-    list << whenListElement(when, dt, ActionDueType::QUARTER);
-    list << whenListElement(when, dt, ActionDueType::YEAR);
-    list << whenListElement(when, dt, ActionDueType::UNSET);
+    list << whenListElement(when, dt, ActionDueKind::DATETIME);
+    list << whenListElement(when, dt, ActionDueKind::DATE);
+    list << whenListElement(when, dt, ActionDueKind::WEEK);
+    list << whenListElement(when, dt, ActionDueKind::MONTH);
+    list << whenListElement(when, dt, ActionDueKind::QUARTER);
+    list << whenListElement(when, dt, ActionDueKind::YEAR);
+    list << whenListElement(when, dt, ActionDueKind::UNSET);
 
     model->setStringList(list);
     return model;
@@ -430,9 +465,9 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case CreatedDateRole:
         return QDate{action.createdDate().year(), action.createdDate().month(), action.createdDate().mday()};
     case DueTypeRole:
-        return action.dueType();
+        return action.due().kind();
     case DueByTimeRole:
-        return static_cast<quint64>(action.dueByTime());
+        return static_cast<quint64>(action.due().due());
     case CompletedRole:
         return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DONE;
     case CompletedTimeRole:
@@ -442,9 +477,13 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return {};
     case SectionRole:
         return action.kind();
-    case SectionNameRole:
+    case SectionNameRole: {
         auto name = toName(action.kind());
         return name;
+        }
+    case DueRole:
+        //return action.due(); // Does not work
+        return {};
     }
 
     return {};
@@ -478,6 +517,8 @@ QVariant ActionsModel::headerData(int section, Qt::Orientation orientation, int 
             return "Section";
         case SectionNameRole:
             return "Section Name";
+        case DueRole:
+            return "Due";
         }
     }
 
@@ -499,6 +540,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[CompletedTimeRole] = "completedTime";
     roles[SectionRole] = "section";
     roles[SectionNameRole] = "sname";
+    roles[DueRole] = "due";
     return roles;
 }
 
