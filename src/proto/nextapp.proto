@@ -380,6 +380,6 @@ service Nextapp {
     rpc UpdateAction(Action) returns (Status) {}
     rpc DeleteAction(DeleteActionReq) returns (Status) {}
     rpc MarkActionAsDone(ActionDoneReq) returns (Status) {}
-
+    rpc ValidateDue(Due) returns (Status) {}
 }
 

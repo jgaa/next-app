@@ -115,20 +115,12 @@ Dialog {
             WhenControl {
                 //width: root.controlsPreferredWidth * 2
                 id: whenControl
-                when: root.action.dueByTime
-                dueType: root.action.dueType
+                due: root.action.due
                 Layout.preferredWidth: root.controlsPreferredWidth
 
-                // onDueTypeChanged: (when, dueType) =>  {
-                //     console.log("DueType changed to", dueType)
-                //     root.action.dueByTime = when
-                //     root.action.dueType = dueType
-                // }
-
                 onSelectionChanged: {
-                    console.log("DueType changed to", whenControl.dueType)
-                    root.action.dueByTime = whenControl.when
-                    root.action.dueType = whenControl.dueType
+                    console.log("DueType changed to", whenControl.due.kind)
+                    //root.action.due = whenControl.due
                 }
             }
 
@@ -178,6 +170,7 @@ Dialog {
         root.action.name = name.text;
         root.action.descr = descr.text
         root.action.priority = priority.currentIndex
+        root.action.due = whenControl.due
 
         if (root.action.id_proto !== "") { // edit
             ActionsModel.updateAction(root.action)

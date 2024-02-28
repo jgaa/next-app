@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick
 import QtQuick.Controls
 import NextAppUi
 import nextapp.pb as NextappPB
@@ -7,11 +6,10 @@ import "common.js" as Common
 
 Item {
     id: root
-    property int when: 0
-    property int dueType: NextappPB.ActionDueKind.NONE
+    property NextappPB.due due
     height: btn.height
 
-    signal selectionChanged(int when, int dueType)
+    signal selectionChanged(NextappPB.due due)
 
     Button {
         id: btn
@@ -31,31 +29,37 @@ Item {
                 }
 
                 Text {
-                    text: ActionsModel.formatWhen(when, dueType)
+                    text: ActionsModel.formatDue(root.due)
                     verticalAlignment: Text.AlignVCenter
                     font: btn.font // Inherit font from Button
-                    //color: btn.textColor // Inherit text color from Button
                 }
             }
 
 
         onClicked: {
             var dialog = Common.createDialog("DueSelectionDialog.qml", root, {
-                when: root.when,
-                dueType: root.dueType
+                due: root.due,
             })
 
             if (dialog !== null) {
-                dialog.selectionChanged.connect(function(when, dueType) {
+                dialog.selectionChanged.connect(function(due) {
                     // Relay the signal to notify our parent
-                    root.when = when
-                    root.dueType = dueType
-                    selectionChanged(when, dueType)
+                    root.due = due
+                    selectionChanged(due)
                 })
             }
 
             dialog.open()
         }
     }
+
+    // DueSelectionDialog {
+    //     id: dialog
+    //     due: root.due
+    //     onSelectionChanged: {
+    //         root.due = due
+    //         selectionChanged(due)
+    //     }
+    // }
 }
 

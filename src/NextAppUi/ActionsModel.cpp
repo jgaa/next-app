@@ -2,6 +2,8 @@
 #include <memory>
 #include <QDate>
 #include <QUuid>
+#include <QTimeZone>
+#include <QDateTime>
 
 #include "ActionsModel.h"
 #include "ServerComm.h"
@@ -383,6 +385,12 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget
     return {};
 }
 
+QString ActionsModel::formatDue(const nextapp::pb::Due &due)
+{
+    auto when = due.hasStart() ? due.start() : 0;
+    return formatWhen(when, due.kind());
+}
+
 QString ActionsModel::whenListElement(uint64_t when,
                                       nextapp::pb::ActionDueKindGadget::ActionDueKind dt,
                                       nextapp::pb::ActionDueKindGadget::ActionDueKind btn)
@@ -431,6 +439,107 @@ QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::Act
 
     model->setStringList(list);
     return model;
+}
+
+auto timeZoneOffset(const std::chrono::time_zone *tz, const auto& tp) {
+
+    const auto ts_offset = tz->get_info(tp).offset;
+    const auto offset = ts_offset.count();
+    return offset;
+}
+
+pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const
+{
+    pb::Due due;
+    due.setKind(kind);
+    const auto zone = QTimeZone::systemTimeZone();
+
+    time_t start = 0;
+    time_t end = 0;
+
+    QLocale locale = QLocale::system();
+    const Qt::DayOfWeek firstDayOfWeek = locale.firstDayOfWeek();
+
+    // How many days to subtract from any weekday to get to the start of the week
+    static constexpr auto sunday_first = to_array<int8_t>({1, 2, 3, 4, 5, 6, 0});
+    static constexpr auto monday_first = to_array<int8_t>({0, 1, 2, 3, 4, 5, 6});
+    const auto days_offset = firstDayOfWeek == Qt::Sunday ? sunday_first : monday_first;
+
+    // Month to quarter mapping
+    static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
+
+
+    auto qt_start = QDateTime::fromSecsSinceEpoch(when);
+    qt_start.setTimeZone(zone);
+    qt_start.setTimeSpec(Qt::LocalTime);
+    const auto tz_name = qt_start.timeZoneAbbreviation();
+    due.setTimezone(tz_name.toUtf8().constData());
+    auto d_start = qt_start.date().startOfDay();
+    //qt_start.setTimeZone(zone);
+    //qt_start.setTimeSpec(Qt::LocalTime);
+
+    switch(kind) {
+    case pb::ActionDueKindGadget::ActionDueKind::DATETIME:
+        end = start = when;
+        break;
+    case pb::ActionDueKindGadget::ActionDueKind::DATE: {
+        start = d_start.toSecsSinceEpoch();
+        auto d_end = d_start.addDays(1);
+        d_end.setTime(QTime(0,0));
+        end = d_end.toSecsSinceEpoch();
+    }
+    break;
+    case pb::ActionDueKindGadget::ActionDueKind::WEEK: {
+        auto day_in_week = qt_start.date().dayOfWeek();
+        assert(day_in_week != 0);
+        // Jump back in time to the start of the week
+        auto offset = days_offset.at(day_in_week - 1) * -1;
+        auto w_start = d_start.addDays(offset);
+        start = w_start.toSecsSinceEpoch();
+        auto d_end = w_start.addDays(7);
+        d_end.setTime(QTime(0,0));
+        end = d_end.toSecsSinceEpoch();
+    }
+    break;
+    case pb::ActionDueKindGadget::ActionDueKind::MONTH: {
+        auto m_start = d_start;
+        m_start.setDate(QDate{d_start.date().year(), d_start.date().month(), 1});
+        start = d_start.toSecsSinceEpoch();
+        auto d_end = d_start.addMonths(1);
+        d_end.setTime(QTime(0,0));
+        end = d_end.toSecsSinceEpoch();
+    }
+    break;
+    case pb::ActionDueKindGadget::ActionDueKind::QUARTER: {
+        auto m_start = d_start;
+        auto qmonth = quarters.at(d_start.date().month() - 1);
+        m_start.setDate(QDate{d_start.date().year(), qmonth, 1});
+        start = d_start.toSecsSinceEpoch();
+        auto d_end = d_start.addMonths(3);
+        d_end.setTime(QTime(0,0));
+        end = d_end.toSecsSinceEpoch();
+    }
+    case pb::ActionDueKindGadget::ActionDueKind::YEAR: {
+        auto y_start = d_start;
+        y_start.setDate(QDate{d_start.date().year(), 1, 1});
+        start = d_start.toSecsSinceEpoch();
+        auto d_end = d_start.addYears(1);
+        d_end.setTime(QTime(0,0));
+        end = d_end.toSecsSinceEpoch();
+    }
+    break;
+    case pb::ActionDueKindGadget::ActionDueKind::UNSET:
+        break;
+    }
+
+    due.setStart(start);
+    due.setDue(end);
+
+    auto qfrom = QDateTime::fromMSecsSinceEpoch(start * 1000);
+
+    LOG_TRACE << "Setting due: from=" << qfrom.toLocalTime().toString() << ", to=" << QDateTime::fromMSecsSinceEpoch(end * 1000).toLocalTime().toString();
+
+    return due;
 }
 
 int ActionsModel::rowCount(const QModelIndex &parent) const

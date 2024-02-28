@@ -79,10 +79,12 @@ public:
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
     Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind) const;
     Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
+    Q_INVOKABLE QString formatDue(const nextapp::pb::Due& due);
     Q_INVOKABLE QString whenListElement(uint64_t when,
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind dt,
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind btn);
     Q_INVOKABLE QStringListModel *getDueSelections(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
+    Q_INVOKABLE nextapp::pb::Due adjustDue(time_t start, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const;
 
     void start();
     void fetch(nextapp::pb::GetActionsReq& filter);

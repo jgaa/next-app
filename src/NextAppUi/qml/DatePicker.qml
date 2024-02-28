@@ -5,6 +5,13 @@ import NextAppUi
 import nextapp.pb as NextappPB
 import "common.js" as Common
 
+/* Selects a time.
+  The selected time is the start of the unit, based on the ActionDueKind.
+  For example, if the ActionDueKind is WEEK, the selected time is the start of that week.
+
+  The time is based on the local time zone, so if the user later viewe the events in a different
+  time-zone, the time may be unaligned. For example, the original datem wee or month etc. may be different.
+ */
 Popup {
     id: popup
 
@@ -31,9 +38,11 @@ Popup {
     signal selectedDateClosed(var date, var accepted)
 
     onDateChanged: {
+        console.log("DatePicker.onDateChanged: date=", date.toISOString())
         grid.year = date.getFullYear()
         grid.month = date.getMonth()
         currentDay = date.getDate()
+        quarterCombo.currentIndex = Math.floor(grid.month / 3)
     }
 
     background: Rectangle {
@@ -56,7 +65,11 @@ Popup {
 
         Text {
             font.bold: true
-            font.pointSize: content.font.pointSize * 1.5
+
+            Component.onCompleted: {
+                font.pointSize = font.pointSize * 1.5
+            }
+
             Layout.alignment: Qt.AlignHCenter
             text: {
                 switch(popup.mode) {
@@ -76,7 +89,6 @@ Popup {
                         return qsTr("Select a date")
                 }
             }
-
         }
 
         // Year Selector
@@ -99,6 +111,11 @@ Popup {
 
         // Month Selector
         RowLayout {
+            visible: popup.mode === NextappPB.ActionDueKind.DATETIME
+                    || popup.mode === NextappPB.ActionDueKind.DATE
+                    || popup.mode === NextappPB.ActionDueKind.MONTH
+                    || popup.mode === NextappPB.ActionDueKind.WEEK
+
             Layout.alignment: Qt.AlignHCenter
             Label {text: qsTr("Month")}
 
@@ -126,152 +143,180 @@ Popup {
             }
         }
 
-        DayOfWeekRow {
-            id: week
-            locale: grid.locale
-            Layout.fillWidth: false
-            leftPadding: weekNumberCtl.width + 5
-        }
-
+        // Quarter Selector
         RowLayout {
-            WeekNumberColumn {
-                id: weekNumberCtl
-                month: grid.month
-                year: grid.year
-                locale: grid.locale
-                Layout.fillWidth: false
+            visible: mode === NextappPB.ActionDueKind.QUARTER
+            Layout.alignment: Qt.AlignHCenter
+            Label {text: qsTr("Quarter")}
 
-                delegate: Rectangle {
-                    width: weekCtl.width
-                    height: weekCtl.height
+            ComboBox {
+                id: quarterCombo
+                model: ListModel {
+                    ListElement{ text: qsTr("Q1")}
+                    ListElement{ text: qsTr("Q2") }
+                    ListElement{ text: qsTr("Q3") }
+                    ListElement{ text: qsTr("Q4") }
+                }
 
-                    required property int weekNumber
-                    property bool selectedWeek: weekNumber === Common.getISOWeekNumber(popup.date)
-                    property bool sameYear: {
-                        if (popup.currentMonth === Calendar.January) {
-                            return weekNumber < 50
-                        } else if (popup.currentMonth === Calendar.December) {
-                            return weekNumber > 10
-                        } else {
-                            return true
-                        }
-                    }
-                    property bool canSelect: sameYear && popup.mode === NextappPB.ActionDueKind.WEEK
-
-                    color: canSelect ? selectedWeek ? "yellow" : "white" : "#f0f0f0"
-
-                    Text {
-                        id: weekCtl
-                        text: weekNumber
-                        font: weekNumberCtl.font
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-
-                    Rectangle {
-                        id: week_hover_shadow
-                        anchors.fill: parent
-                        opacity: 0
-                        color: "Blue"
-                    }
-
-                    MouseArea {
-                        enabled: canSelect
-                        anchors.fill: weekCtl
-                        onClicked: {
-                            popup.date = Common.getDateFromISOWeekNumber(popup.currentYear, weekNumber)
-                            if (popup.closeOnSelect) {
-                                popup.accepted = true
-                                popup.close()
-                            }
-                            console.log("weekNumber ", weekNumber)
-                        }
-
-                        hoverEnabled: canSelect
-                        onEntered: {
-                            week_hover_shadow.opacity = 0.30
-                        }
-                        onExited: {
-                            week_hover_shadow.opacity = 0
-                        }
-                    }
+                onCurrentIndexChanged: {
+                    var mapping = [0, 3, 6, 9]
+                    grid.month = mapping[currentIndex]
                 }
             }
+        }
 
-            MonthGrid {
-                id: grid
-                // month: popup.currentMonth
-                // year: popup.currentYear
+        ColumnLayout {
+            visible: popup.mode === NextappPB.ActionDueKind.DATETIME
+                    || popup.mode === NextappPB.ActionDueKind.DATE
+                    || popup.mode === NextappPB.ActionDueKind.WEEK
 
+            DayOfWeekRow {
+                id: week
+                locale: grid.locale
                 Layout.fillWidth: false
+                leftPadding: weekNumberCtl.width + 5
+            }
 
-                delegate: Rectangle {
-                    id: drect
-                    height: dtext.height
-                    width: dtext.width
-                    required property var model
-                    property bool currentDate: model.day === popup.currentDay
-                                                 && model.month === grid.month
-                                                 && model.year === grid.year
-                    property bool inRange: drect.model.month === grid.month && drect.model.year === grid.year
-                    property var now: new Date()
-                    property bool today: model.day === now.getDate()
-                                      && model.month === now.getMonth()
-                                      && model.year === now.getFullYear()
+            RowLayout {
+                WeekNumberColumn {
+                    id: weekNumberCtl
+                    month: grid.month
+                    year: grid.year
+                    locale: grid.locale
+                    Layout.fillWidth: false
 
-                    color:  canSelectMonth && today && currentDate ? "orange" :  canSelectMonth && currentDate ? "yellow" : canSelectMonth ?  "white" : "#f0f0f0"
-                    opacity: inRange ? 1 : 0
+                    delegate: Rectangle {
+                        width: weekCtl.width
+                        height: weekCtl.height
 
-                    Rectangle {
-                        id: hover_shadow
-                        anchors.fill: parent
-                        opacity: 0
-                        color: "Blue"
-                    }
+                        required property int weekNumber
+                        property bool selectedWeek: weekNumber === Common.getISOWeekNumber(popup.date)
+                        property bool sameYear: {
+                            if (popup.currentMonth === Calendar.January) {
+                                return weekNumber < 50
+                            } else if (popup.currentMonth === Calendar.December) {
+                                return weekNumber > 10
+                            } else {
+                                return true
+                            }
+                        }
+                        property bool canSelect: sameYear && popup.mode === NextappPB.ActionDueKind.WEEK
 
-                    //color: "white"
-                    Text {
-                        id: dtext
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        opacity: inRange ? 1 : 0
-                        text: drect.model.day
-                        font.family: grid.font.family
-                        font.pixelSize: grid.font.pixelSize
-                        font.bold: drect.today
+                        color: canSelect ? selectedWeek ? "yellow" : "white" : "#f0f0f0"
+
+                        Text {
+                            id: weekCtl
+                            text: weekNumber
+                            font: weekNumberCtl.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        Rectangle {
+                            id: week_hover_shadow
+                            anchors.fill: parent
+                            opacity: 0
+                            color: "Blue"
+                        }
 
                         MouseArea {
-                            //cursorShape: Qt.PointingHandCursor
-                            anchors.fill: parent
-                            visible: drect.model.month === grid.month && canSelectMonth
-
-                            hoverEnabled: true
-                            onEntered: {
-                                hover_shadow.opacity = 0.20
-                            }
-                            onExited: {
-                                hover_shadow.opacity = 0
-                            }
-
+                            enabled: canSelect
+                            anchors.fill: weekCtl
                             onClicked: {
-                                console.log("model.month ", model.month, "model.year ", model.year, "model.day ", model.day)
-                                console.log("popup.currentMonth", popup.currentMonth, "popup.currentYear", popup.currentYear)
-                                console.log("currentDate", currentDate, "inRange", inRange)
-
-                                popup.date.setYear(grid.year)
-                                popup.date.setMonth(grid.month)
-                                popup.date.setDate(drect.model.day)
-
+                                popup.date = Common.getDateFromISOWeekNumber(popup.currentYear, weekNumber)
                                 if (popup.closeOnSelect) {
                                     popup.accepted = true
                                     popup.close()
                                 }
+                                console.log("weekNumber ", weekNumber)
+                            }
+
+                            hoverEnabled: canSelect
+                            onEntered: {
+                                week_hover_shadow.opacity = 0.30
+                            }
+                            onExited: {
+                                week_hover_shadow.opacity = 0
                             }
                         }
                     }
-                }// delegate
+                }
+
+                MonthGrid {
+                    id: grid
+                    // month: popup.currentMonth
+                    // year: popup.currentYear
+
+                    Layout.fillWidth: false
+
+                    delegate: Rectangle {
+                        id: drect
+                        height: dtext.height
+                        width: dtext.width
+                        required property var model
+                        property bool currentDate: model.day === popup.currentDay
+                                                     && model.month === grid.month
+                                                     && model.year === grid.year
+                        property bool inRange: drect.model.month === grid.month && drect.model.year === grid.year
+                        property var now: new Date()
+                        property bool today: model.day === now.getDate()
+                                          && model.month === now.getMonth()
+                                          && model.year === now.getFullYear()
+
+                        color:  canSelectMonth && today && currentDate ? "orange" :  canSelectMonth && currentDate ? "yellow" : canSelectMonth ?  "white" : "#f0f0f0"
+                        opacity: inRange ? 1 : 0
+
+                        Rectangle {
+                            id: hover_shadow
+                            anchors.fill: parent
+                            opacity: 0
+                            color: "Blue"
+                        }
+
+                        //color: "white"
+                        Text {
+                            id: dtext
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            opacity: inRange ? 1 : 0
+                            text: drect.model.day
+                            font.family: grid.font.family
+                            font.pixelSize: grid.font.pixelSize
+                            font.bold: drect.today
+
+                            MouseArea {
+                                //cursorShape: Qt.PointingHandCursor
+                                anchors.fill: parent
+                                visible: drect.model.month === grid.month && canSelectMonth
+
+                                hoverEnabled: true
+                                onEntered: {
+                                    hover_shadow.opacity = 0.20
+                                }
+                                onExited: {
+                                    hover_shadow.opacity = 0
+                                }
+
+                                onClicked: {
+                                    console.log("model.month ", model.month, "model.year ", model.year, "model.day ", model.day)
+                                    console.log("popup.currentMonth", popup.currentMonth, "popup.currentYear", popup.currentYear)
+                                    console.log("currentDate", currentDate, "inRange", inRange)
+
+                                    popup.date.setYear(grid.year)
+                                    popup.date.setMonth(grid.month)
+                                    popup.date.setDate(drect.model.day)
+
+                                    if (popup.closeOnSelect) {
+                                        popup.accepted = true
+                                        popup.close()
+                                    }
+                                }
+                            }
+                        }
+                    }// delegate
+                }
             }
-        }
+        } // date picker
 
         RowLayout {
             id: timeSelector
@@ -301,6 +346,7 @@ Popup {
         }
 
         Button {
+            visible: popup.mode === NextappPB.ActionDueKind.DATETIME
             spacing: 6
             text: qsTr("Today")
             onClicked: {
@@ -337,6 +383,14 @@ Popup {
     }
 
     onClosed: {
+        if (mode === NextappPB.ActionDueKind.MONTH) {
+            date = new Date(grid.year, grid.month, 1)
+        } else if (mode === NextappPB.ActionDueKind.QUARTER) {
+            date = new Date(grid.year, grid.month, 1)
+        } else if (mode === NextappPB.ActionDueKind.YEAR) {
+            date = new Date(grid.year, 0, 1)
+        }
+
         selectedDateClosed(date, accepted)
     }
 }
