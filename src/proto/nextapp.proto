@@ -191,7 +191,32 @@ message Action {
         DAYS = 0;
         WEEKS = 1;
         MONTHS = 2;
-        YEARS = 3;
+        QUARTERS = 3;
+        YEARS = 4;
+    }
+
+    enum RepeatWhen {
+        AT_DATE = 0;
+        AT_DAYSPEC = 1;
+    }
+
+    // Represent bits in repeatAfter if repeatWhen is AT_DAYSPEC
+    enum RepeatSpecs {
+        SUNDAY = 0;
+        MONDAY = 1;
+        TUESDAY = 2;
+        WEDNESDAY = 3;
+        THURSDAY = 4;
+        FRIDAY = 5;
+        SATURDAY = 6;
+        FIRST_DAY_IN_WEEK = 7;
+        LAST_DAY_OF_WEEK = 8;
+        FIRST_DAY_IN_MONTH = 9;
+        LAST_DAY_IN_MONTH = 10;
+        FIRST_DAY_IN_QUARTER = 11;
+        LAST_DAY_IN_QUARTER = 12;
+        FIRST_DAY_IN_YEAR = 13;
+        LAST_DAY_IN_YEAR = 14;
     }
 
     string id = 1;
@@ -208,10 +233,11 @@ message Action {
     ActionDifficulty difficulty = 13;
     RepeatKind repeatKind = 14;
     RepeatUnit repeatUnits = 15;
-    int32 repeatAfter = 16; // Depends on repeatUnits
-    repeated string locations = 17; // Just the uuid's of locations
-    ActionKind kind = 18;
-    int32 version   = 19;
+    RepeatWhen repeatWhen = 16;
+    int32 repeatAfter = 17; // Depends on repeatUnits
+    repeated string locations = 18; // Just the uuid's of locations
+    ActionKind kind = 19;
+    int32 version   = 20;
 }
 
 message DayColor {

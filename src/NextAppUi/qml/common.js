@@ -24,37 +24,60 @@ function openDialog(name, parent, args, bind) {
     return dialog
 }
 
-// From ChatGPT
-function getDateFromWeekNumber(year, weekNumber) {
-    // Create a date object for January 1st of the given year
-    var januaryFirst = new Date(year, 0, 1);
-
-    // Calculate the day of the week for January 1st (0 for Sunday, 1 for Monday, etc.)
-    var dayOfWeek = januaryFirst.getDay();
-
-    // Calculate the difference between the desired week's starting day and Sunday
-    var firstDayOffset = (7 - dayOfWeek) % 7;
-
-    // Calculate the date of the first day of the first week
-    var firstWeekDate = new Date(year, 0, 1 + firstDayOffset);
-
-    // Calculate the desired date by adding the number of days corresponding to the week number
-    var desiredDate = new Date(firstWeekDate);
-    desiredDate.setDate(desiredDate.getDate() + (7 * (weekNumber - 1)));
-
-    return desiredDate;
+function formatPbDate(date) {
+    console.log("date: ", date.year, " ", date.month, " ", date.mday)
+    var d = new Date(date.year, date.month, date.mday)
+    return d.toLocaleDateString()
 }
 
-function getDateFromISOWeekNumber(year, weekNumber) {
-    var januaryFirst = new Date(year, 0, 1);
-    var dayOfWeek = januaryFirst.getDay();
-    var firstThursdayOffset = (11 - dayOfWeek) % 7; // Offset to the first Thursday of the year
-    var firstThursday = new Date(year, 0, 1 + firstThursdayOffset);
+// ChatGPT Convert minutes to text string
+function minutesToText(minutes) {
+    // Calculate days, hours, and remaining minutes
+    var days = Math.floor(minutes / (8 * 60)); // 8 hours per work day
+    var remainingMinutes = minutes % (8 * 60);
+    var hours = Math.floor(remainingMinutes / 60);
+    var mins = remainingMinutes % 60;
 
-    var targetDate = new Date(firstThursday);
-    targetDate.setDate(targetDate.getDate() + (weekNumber - 1) * 7);
+    // Format the string
+    var result = '';
+    if (days > 0) {
+        result += days + ':';
+    }
+    if (hours < 10) {
+        result += '0';
+    }
+    result += hours + ':';
+    if (mins < 10) {
+        result += '0';
+    }
+    result += mins;
 
-    return targetDate;
+    return result;
+}
+
+// ChatGPT Convert text string to minutes
+function textToMinutes(text) {
+    // Split the string into days, hours, and minutes
+    var parts = text.split(':');
+    var days = 0;
+    var hours = 0;
+    var mins = 0;
+
+    // Parse the parts
+    if (parts.length === 3) {
+        days = parseInt(parts[0]) || 0;
+        hours = parseInt(parts[1]) || 0;
+        mins = parseInt(parts[2]) || 0;
+    } else if (parts.length === 2) {
+        hours = parseInt(parts[0]) || 0;
+        mins = parseInt(parts[1]) || 0;
+    } else if (parts.length === 1) {
+        mins = parseInt(parts[0]) || 0;
+    }
+
+    // Calculate total minutes
+    var totalMinutes = (days * 8 * 60) + (hours * 60) + mins;
+    return totalMinutes;
 }
 
 function getISOWeekNumber(date) {
@@ -70,6 +93,16 @@ function getISOWeekNumber(date) {
     // if (weekNumber < 1) {
     //     weekNumber = getISOWeekNumber(new Date(date.getFullYear() - 1, 11, 31));
     // }
-
     return weekNumber + 1;
+}
+
+function getDateFromISOWeekNumber(year, weekNumber) {
+    var januaryFirst = new Date(year, 0, 1);
+    var dayOfWeek = januaryFirst.getDay();
+    var firstThursdayOffset = (11 - dayOfWeek) % 7; // Offset to the first Thursday of the year
+    var firstThursday = new Date(year, 0, 1 + firstThursdayOffset);
+
+    var targetDate = new Date(firstThursday);
+    targetDate.setDate(targetDate.getDate() + (weekNumber - 1) * 7);
+    return targetDate;
 }

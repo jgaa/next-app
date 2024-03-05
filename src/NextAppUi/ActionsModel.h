@@ -67,6 +67,22 @@ class ActionsModel : public QAbstractListModel
         DueRole,
     };
 
+    enum Shortcuts {
+        TODAY,
+        TOMORROW,
+        THIS_WEEKEND,
+        NEXT_MONDAY,
+        THIS_WEEK,
+        AFTER_ONE_WEEK,
+        NEXT_WEEK,
+        THIS_MONTH,
+        NEXT_MONTH,
+        THIS_QUARTER,
+        NEXT_QUARTER,
+        THIS_YEAR,
+        NEXT_YEAR,
+    };
+
 public:
     ActionsModel(QObject *parent = {});
 
@@ -85,6 +101,7 @@ public:
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind btn);
     Q_INVOKABLE QStringListModel *getDueSelections(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
     Q_INVOKABLE nextapp::pb::Due adjustDue(time_t start, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const;
+    Q_INVOKABLE nextapp::pb::Due changeDue(int shortcut, const nextapp::pb::Due& fromDue) const;
 
     void start();
     void fetch(nextapp::pb::GetActionsReq& filter);

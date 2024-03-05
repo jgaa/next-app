@@ -190,7 +190,8 @@ Popup {
                         height: weekCtl.height
 
                         required property int weekNumber
-                        property bool selectedWeek: weekNumber === Common.getISOWeekNumber(popup.date)
+                        property bool selectedWeek: weekNumber === NextAppCore.weekFromDate(popup.date)
+                                                    //Common.getISOWeekNumber(popup.date)
                         property bool sameYear: {
                             if (popup.currentMonth === Calendar.January) {
                                 return weekNumber < 50
@@ -223,7 +224,8 @@ Popup {
                             enabled: canSelect
                             anchors.fill: weekCtl
                             onClicked: {
-                                popup.date = Common.getDateFromISOWeekNumber(popup.currentYear, weekNumber)
+                                popup.date = NextAppCore.dateFromWeek(popup.currentYear, weekNumber)
+                                        //Common.getDateFromISOWeekNumber(popup.currentYear, weekNumber)
                                 if (popup.closeOnSelect) {
                                     popup.accepted = true
                                     popup.close()
@@ -348,7 +350,7 @@ Popup {
         Button {
             visible: popup.mode === NextappPB.ActionDueKind.DATETIME
             spacing: 6
-            text: qsTr("Today")
+            text: qsTr("Now")
             onClicked: {
                 popup.date = new Date()
                 popup.accepted = true
@@ -360,7 +362,6 @@ Popup {
             Button {
                 spacing: 6
                 text: qsTr("OK")
-                //visible: !popup.closeOnSelect
                 onClicked: {
                     popup.accepted = true
                     popup.close()

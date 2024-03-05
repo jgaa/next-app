@@ -208,7 +208,7 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 struct ToAction {
     enum Cols {
         ID, NODE, USER, VERSION, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME,  // core
-        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_AFTER // remaining
+        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER // remaining
     };
 
     static auto coreSelectCols() {
@@ -222,7 +222,7 @@ struct ToAction {
     }
 
     static string_view statementBindingStr() {
-        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
     }
 
     static string_view updateStatementBindingStr() {
@@ -256,6 +256,7 @@ struct ToAction {
             pb::ActionDifficulty_Name(action.difficulty()),
             pb::Action::RepeatKind_Name(action.repeatkind()),
             pb::Action::RepeatUnit_Name(action.repeatunits()),
+            pb::Action::RepeatWhen_Name(action.repeatwhen()),
             action.repeatafter()
             );
 
@@ -332,8 +333,8 @@ struct ToAction {
         } else if (ts) {
             // If we have due_by_time set, we can see a) if it's expired, b) if it's today and c) it it's in the future
             // We need to convert the time from the database and the time right now to the time-zone used by the client to get it right.
-            if (row.at(COMPLETED_TIME).is_datetime()) {
-                const auto due = row.at(COMPLETED_TIME).as_datetime();
+            if (row.at(START_TIME).is_datetime()) {
+                const auto due = row.at(DUE_BY_TIME).as_datetime();
                 const auto zt = std::chrono::zoned_time(ts, due.as_time_point());
                 const auto due_when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
 
@@ -401,6 +402,15 @@ struct ToAction {
                     LOG_WARN_N << "Invalid RepeatUnit: " << name;
                 }
             }
+            {
+                pb::Action::RepeatWhen rw;
+                const auto name = toUpper(row.at(REPEAT_WHEN).as_string());
+                if (pb::Action::RepeatWhen_Parse(name, &rw)) {
+                    obj.set_repeatwhen(rw);
+                } else {
+                    LOG_WARN_N << "Invalid RepeatWhen: " << name;
+                }
+            }
             obj.set_repeatafter(row.at(REPEAT_AFTER).as_int64());
         }
     }
@@ -416,7 +426,7 @@ private:
 
     static constexpr string_view ids_ = "id, node, user, version, ";
     static constexpr string_view core_ = "priority, status, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time";
-    static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_after";
+    static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after";
 };
 
 struct SqlFilter {

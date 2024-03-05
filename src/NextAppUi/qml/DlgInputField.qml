@@ -5,6 +5,8 @@ import QtQuick.Controls
 
 Rectangle {
     property alias text: input.text
+    property alias inputMask: input.inputMask
+    property alias validator: input.validator
     property int pwidth: 300
     Layout.fillHeight: false
     Layout.fillWidth: false

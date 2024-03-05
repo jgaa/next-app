@@ -41,4 +41,5 @@ build
 nextapp_pb2_grpc.py
 nextapp_pb2.py
 __pycache__
+.vscode
 

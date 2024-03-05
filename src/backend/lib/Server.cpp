@@ -336,6 +336,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             difficulty ENUM('trivial', 'easy', 'normal', 'hard', 'veryhard', 'inspired') NOT NULL DEFAULT 'normal',
             repeat_kind ENUM('never','scheduled', 'completed'),
             repeat_unit ENUM('days', 'weeks', 'months', 'years'),
+            repeat_when ENUM('at_date', 'at_dayspec'),
             repeat_after INTEGER,
             version INT NOT NULL DEFAULT 1,
         FOREIGN KEY(node) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT,

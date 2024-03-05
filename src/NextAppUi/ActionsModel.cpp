@@ -17,6 +17,8 @@ using namespace nextapp;
 
 namespace {
 
+static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
+
 template <typename T>
 concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::Action>;
 
@@ -356,29 +358,29 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget
     const auto current = std::chrono::zoned_time{ts, round<std::chrono::seconds>(std::chrono::system_clock::now())};
     const auto current_ymd = std::chrono::year_month_day(floor<std::chrono::days>(current.get_local_time()));
 
-    auto select = [&](const std::string& formatted, const QString& phrase, const QString& prefix = {}) -> QString {
+    auto select = [&](const std::string& formatted, const QString& phrase, const QString& shortp, const QString& prefix = {}) -> QString {
         if (ymd == current_ymd) {
             return phrase;
         }
-        return prefix + QString::fromUtf8(formatted);
+        return shortp + " " + prefix + QString::fromUtf8(formatted);
     };
 
     switch(dt) {
     case ActionDueKind::DATETIME:
-        return QString::fromUtf8(std::format("{:%F %R}", zoned));
+        return tr("Time") + " " + QString::fromUtf8(std::format("{:%F %R}", zoned));
     case ActionDueKind::DATE:
-        return select(format("{:%F}", zoned), tr("Today"));
+        return select(format("{:%F}", zoned), tr("Today"), tr("Day"));
     case ActionDueKind::WEEK:
-        return select(format("{:%W %Y}", zoned), tr("This week"), tr("W"));
+        return select(format("{:%W %Y}", zoned), tr("This week"), tr("Week"), tr("W"));
     case ActionDueKind::MONTH:
-        return select(std::format("{:%b %Y}", zoned), tr("This month"));
+        return select(std::format("{:%b %Y}", zoned), tr("This month"), tr("Month"));
     case ActionDueKind::QUARTER: {
         const auto month = static_cast<unsigned>(ymd.month());
         const auto quarter = (month - 1) / 3 + 1;
-        return select(std::format("{} {:%Y}", quarter, zoned), tr("This Quarter"), tr("Q"));
+        return select(std::format("{} {:%Y}", quarter, zoned), tr("This Quarter"), tr("Quarter"), tr("Q"));
         }
     case ActionDueKind::YEAR:
-            return select(std::format("{:%Y}", zoned), tr("This year"));
+            return select(std::format("{:%Y}", zoned), tr("This year"), tr("Year"));
     case ActionDueKind::UNSET:
         return tr("No due time set");
     }
@@ -400,7 +402,7 @@ QString ActionsModel::whenListElement(uint64_t when,
     if (when == 0 || dt > btn) {
         switch(btn) {
         case ActionDueKind::DATETIME:
-            return tr("Time");
+            return tr("Date and Time");
         case ActionDueKind::DATE:
             return tr("Date");
         case ActionDueKind::WEEK:
@@ -464,10 +466,6 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
     static constexpr auto sunday_first = to_array<int8_t>({1, 2, 3, 4, 5, 6, 0});
     static constexpr auto monday_first = to_array<int8_t>({0, 1, 2, 3, 4, 5, 6});
     const auto days_offset = firstDayOfWeek == Qt::Sunday ? sunday_first : monday_first;
-
-    // Month to quarter mapping
-    static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
-
 
     auto qt_start = QDateTime::fromSecsSinceEpoch(when);
     qt_start.setTimeZone(zone);
@@ -542,6 +540,144 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
     return due;
 }
 
+pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) const
+{
+
+
+    auto start = QDateTime::currentDateTime().toSecsSinceEpoch();
+    auto end = start;
+    auto kind = fromDue.kind();
+
+    if (fromDue.hasStart()) {
+        start = fromDue.start();
+    }
+    if (fromDue.hasDue()) {
+        end = fromDue.due();
+    }
+
+    auto qt_start = QDateTime::fromSecsSinceEpoch(start);
+    auto qt_end = QDateTime::fromSecsSinceEpoch(end);
+    auto zone = QTimeZone::systemTimeZone();
+    qt_start.setTimeZone(zone);
+    qt_start.setTimeSpec(Qt::LocalTime);
+    qt_end.setTimeZone(zone);
+    qt_end.setTimeSpec(Qt::LocalTime);
+
+    auto today = QDate::currentDate();
+
+    switch(shortcut) {
+    case TODAY:
+        start = today.startOfDay().toSecsSinceEpoch();
+        end = today.addDays(1).startOfDay().toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
+        break;
+    case TOMORROW:
+        start = today.addDays(1).startOfDay().toSecsSinceEpoch();
+        end = today.addDays(2).startOfDay().toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
+        break;
+    case THIS_WEEKEND: {
+        auto day_in_week = today.dayOfWeek();
+        auto offset = Qt::DayOfWeek::Saturday - day_in_week;
+        auto w_start = today.addDays(offset);
+        start = w_start.startOfDay().toSecsSinceEpoch();
+        end = w_start.addDays(2).startOfDay().toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
+        }
+        break;
+    case NEXT_MONDAY: {
+        auto day_in_week = today.dayOfWeek();
+        auto offset = (Qt::DayOfWeek::Sunday - day_in_week) + 1;
+        auto w_start = today.addDays(offset);
+        start = w_start.startOfDay().toSecsSinceEpoch();
+        end = w_start.addDays(1).startOfDay().toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
+        }
+        break;
+    case THIS_WEEK: {
+        auto day_in_week = today.dayOfWeek();
+        auto w_start = today.addDays((day_in_week  -1) * -1);
+        start = w_start.startOfDay().toSecsSinceEpoch();
+        end = w_start.addDays(7).startOfDay().toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::WEEK;
+        }
+        break;
+    case AFTER_ONE_WEEK: {
+        auto s_date = today.addDays(7);
+        auto e_date = today.addDays(8);
+        if (kind == pb::ActionDueKindGadget::ActionDueKind::DATETIME) {
+            auto s_time = QDateTime{s_date, qt_start.time()};
+            auto e_time = QDateTime{s_date, qt_start.time()};
+            start = s_time.toSecsSinceEpoch();
+            end = e_time.toSecsSinceEpoch();
+        } else {
+            kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
+            start = s_date.startOfDay().toSecsSinceEpoch();
+            end = e_date.startOfDay().toSecsSinceEpoch();
+        }
+        }
+        break;
+    case NEXT_WEEK: {
+        auto day_in_week = today.dayOfWeek();
+        auto w_start = today.addDays((day_in_week  -1) * -1);
+        start = w_start.addDays(7).startOfDay().toSecsSinceEpoch();
+        end = w_start.addDays(14).startOfDay().toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::WEEK;
+        }
+        break;
+    case THIS_MONTH: {
+        auto m_start = QDateTime{QDate{today.year(), today.month(), 1}, QTime{0, 0}};
+        start = m_start.toSecsSinceEpoch();
+        end = m_start.addMonths(1).toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::MONTH;
+        }
+        break;
+    case NEXT_MONTH: {
+        auto m_start = QDateTime{QDate{today.year(), today.month(), 1}, QTime{0, 0}};
+        start = m_start.addMonths(1).toSecsSinceEpoch();
+        end = m_start.addMonths(2).toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::MONTH;
+        }
+        break;
+    case THIS_QUARTER: {
+        auto qmonth = quarters.at(today.month() - 1);
+        auto m_start = QDateTime{QDate{today.year(), qmonth, 1}, QTime{0, 0}};
+        start = m_start.toSecsSinceEpoch();
+        end = m_start.addMonths(3).toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::QUARTER;
+        }
+        break;
+    case NEXT_QUARTER: {
+        auto qmonth = quarters.at(today.month() - 1);
+        auto m_start = QDateTime{QDate{today.year(), qmonth, 1}, QTime{0, 0}};
+        start = m_start.addMonths(3).toSecsSinceEpoch();
+        end = m_start.addMonths(6).toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::QUARTER;
+        }
+        break;
+    case THIS_YEAR: {
+        auto y_start = QDateTime{QDate{today.year(), 1, 1}, QTime{0, 0}};
+        start = y_start.toSecsSinceEpoch();
+        end = y_start.addYears(1).toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::YEAR;
+        }
+        break;
+    case NEXT_YEAR: {
+        auto y_start = QDateTime{QDate{today.year(), 1, 1}, QTime{0, 0}};
+        start = y_start.addYears(1).toSecsSinceEpoch();
+        end = y_start.addYears(2).toSecsSinceEpoch();
+        kind = pb::ActionDueKindGadget::ActionDueKind::YEAR;
+        }
+        break;
+    }
+
+    pb::Due due;
+    due.setStart(start);
+    due.setDue(end);
+    due.setKind(kind);
+    return due;
+}
+
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
     return actions_->actions().size();
@@ -572,7 +708,7 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case NodeRole:
         return action.node();
     case CreatedDateRole:
-        return QDate{action.createdDate().year(), action.createdDate().month(), action.createdDate().mday()};
+        return QDate{action.createdDate().year(), action.createdDate().month(), action.createdDate().mday()}.toString();
     case DueTypeRole:
         return action.due().kind();
     case DueByTimeRole:
@@ -674,6 +810,7 @@ ActionPrx::ActionPrx()
     : valid_{true}
 {
     action_.setPriority(nextapp::pb::ActionPriorityGadget::PRI_NORMAL);
+    action_.setDifficulty(nextapp::pb::ActionDifficultyGadget::NORMAL);
 }
 
 void ActionPrx::receivedAction(const nextapp::pb::Status &status)
