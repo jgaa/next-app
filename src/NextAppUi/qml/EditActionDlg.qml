@@ -60,6 +60,12 @@ Dialog {
                 updateListFromInt(repeatSpecCtl.model, root.action.repeatAfter)
             }
 
+            if (root.action.completedTime !== 0) {
+                completedTimeCtl.text = Common.formatPbTimeFromTimet(root.action.completedTime)
+            } else {
+                completedTimeCtl.text = qsTr("Not completed yet")
+            }
+
             if (action.node === "") {
                 action.node = node;
             }
@@ -267,6 +273,17 @@ Dialog {
                     Label {
                         Layout.alignment: Qt.AlignLeft
                         color: Colors.disabledText
+                        text: qsTr("Completed")
+                    }
+
+                    Text {
+                        id: completedTimeCtl
+                        color: Colors.disabledText
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignLeft
+                        color: Colors.disabledText
                         text: qsTr("Time Estimate")
                     }
 
@@ -340,6 +357,7 @@ Dialog {
                             ListElement{ text: qsTr("Never")}
                             ListElement{ text: qsTr("From Completed time")}
                             ListElement{ text: qsTr("From Start time")}
+                            ListElement{ text: qsTr("From Due time")}
                         }
                     }
 

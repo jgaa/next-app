@@ -7,7 +7,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     build-essential g++-13 git vim curl libssl-dev zlib1g-dev libprotobuf-dev \
     protobuf-compiler libicu-dev libbz2-dev libsnappy-dev gcc libgtest-dev libgflags-dev \
     liblz4-dev libgrpc-dev libgrpc++-dev grpc-proto protobuf-compiler-grpc file dpkg-dev language-pack-en &&\
-    locale-gen en_US.UTF-8
+    locale-gen en_US.UTF-8 libcurl4-openssl-dev
 
 RUN mkdir -p /tmp/boost &&\
     curl -L https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 &&\

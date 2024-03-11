@@ -30,6 +30,11 @@ function formatPbDate(date) {
     return d.toLocaleDateString()
 }
 
+function formatPbTimeFromTimet(when) {
+    const d = new Date(when * 1000)
+    return d.toLocaleString()
+}
+
 // ChatGPT Convert minutes to text string
 function minutesToText(minutes) {
     // Calculate days, hours, and remaining minutes

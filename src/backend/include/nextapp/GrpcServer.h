@@ -188,8 +188,15 @@ public:
         return opts;
     }
 
-private:
+    // Called when an action change status to done
+    boost::asio::awaitable<void> handleActionDone(const pb::Action& orig, const std::chrono::time_zone& ts);
 
+    static nextapp::pb::Due
+    processDueAtDate(time_t from_timepoint, const pb::Action_RepeatUnit &units,
+                     pb::ActionDueKind kind, int repeatAfter,
+                     const std::chrono::time_zone& ts);
+
+private:
     // The Server instance where we get objects in the application, like config and database
     Server& server_;
 

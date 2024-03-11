@@ -28,7 +28,10 @@ message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED) # for date/ts library
 find_package(Doxygen)
+
+set(CURL_USE_STATIC_LIBS ON)
 
 if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)

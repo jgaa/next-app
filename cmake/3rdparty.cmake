@@ -49,3 +49,18 @@ ExternalProject_Add(mysqlpool
 
 add_dependencies(mysqlpool logfault)
 
+ExternalProject_Add(HowardHinnantDate
+    PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
+    GIT_REPOSITORY "https://github.com/HowardHinnant/date.git"
+    GIT_TAG "master"
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
+        -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
+        -DBUILD_TZ_LIB=ON
+        -DUSE_OS_TZDB=1
+        -DHAS_REMOTE_API=0
+        -DAUTO_DOWNLOAD=0
+)

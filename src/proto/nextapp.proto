@@ -184,7 +184,8 @@ message Action {
     enum RepeatKind {
         NEVER = 0;
         COMPLETED = 1;
-        DONE = 2;
+        START_TIME = 2;
+        DUE_TIME = 3;
     }
 
     enum RepeatUnit {

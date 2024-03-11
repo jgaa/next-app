@@ -31,6 +31,6 @@ add_subdirectory(server)
 
 if (NEXTAPP_WITH_TESTS)
     find_package(GTest REQUIRED)
+    enable_testing()
     add_subdirectory(tests)
 endif()
-
