@@ -196,6 +196,11 @@ public:
                      pb::ActionDueKind kind, int repeatAfter,
                      const std::chrono::time_zone& ts);
 
+    static nextapp::pb::Due
+    processDueAtDayspec(time_t from_timepoint, const pb::Action_RepeatUnit &units,
+                        pb::ActionDueKind kind, int repeatAfter,
+                        const std::chrono::time_zone& ts, bool sundayIsFirstDayOfWeek);
+
 private:
     // The Server instance where we get objects in the application, like config and database
     Server& server_;

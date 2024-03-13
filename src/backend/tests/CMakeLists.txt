@@ -1,12 +1,12 @@
-####### basic_tests
+####### time_date_tests
 
-add_executable(basic_tests basic_tests.cpp)
+add_executable(time_date_tests time_date_tests.cpp)
 
-set_property(TARGET basic_tests PROPERTY CXX_STANDARD 20)
+set_property(TARGET time_date_tests PROPERTY CXX_STANDARD 20)
 
-add_dependencies(basic_tests nalib)
+add_dependencies(time_date_tests nalib)
 
-target_include_directories(basic_tests
+target_include_directories(time_date_tests
     PRIVATE
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${NEXTAPP_ROOT}/include>
@@ -17,10 +17,10 @@ target_include_directories(basic_tests
     $<INSTALL_INTERFACE:include>
     )
 
-target_link_libraries(basic_tests
+target_link_libraries(time_date_tests
     ${GTEST_LIBRARIES}
     ${NEXTAPP_DEPENDS}
     nalib
 )
 
-add_test(NAME basic_tests COMMAND basic_tests)
+add_test(NAME time_date_tests COMMAND time_date_tests)
