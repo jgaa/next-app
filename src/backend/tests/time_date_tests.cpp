@@ -22,13 +22,16 @@ auto toTimet(const auto& when) {
     return chrono::system_clock::to_time_t(zoned.get_sys_time());
 }
 
+static const nextapp::grpc::UserContext uctx_sunday_fdow{"", "", current_zone()->name(), true, {}};
+static const nextapp::grpc::UserContext uctx_monday_fdow{"", "", current_zone()->name(), false, {}};
+
 TEST(processDueAtDate, setDueDate1day) {
 
     auto due = nextapp::grpc::GrpcServer::processDueAtDate(toTimet(2024_y/February/29),
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/1));
 }
@@ -39,7 +42,7 @@ TEST(processDueAtDate, setDueDate2days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            2,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/2));
 }
@@ -50,7 +53,7 @@ TEST(processDueAtDate, setDueDate3days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            3,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/3));
 }
@@ -61,7 +64,7 @@ TEST(processDueAtDate, setDueDate4days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            4,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/4));
 }
@@ -72,7 +75,7 @@ TEST(processDueAtDate, setDueDate5days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            5,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/5));
 }
@@ -83,7 +86,7 @@ TEST(processDueAtDate, setDueDate6days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            6,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/6));
 }
@@ -94,7 +97,7 @@ TEST(processDueAtDate, setDueDate7days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            7,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/7));
 }
@@ -105,7 +108,7 @@ TEST(processDueAtDate, setDueDate8days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            8,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/8));
 }
@@ -116,7 +119,7 @@ TEST(processDueAtDate, setDueDate9days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            9,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/9));
 }
@@ -127,7 +130,7 @@ TEST(processDueAtDate, setDueDate10days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            10,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/10));
 }
@@ -138,7 +141,7 @@ TEST(processDueAtDate, setDueDate100days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            100,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/June/8));
 }
@@ -149,7 +152,7 @@ TEST(processDueAtDate, setDueDate1000days) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_DAYS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1000,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2026_y/November/25));
 }
@@ -160,7 +163,7 @@ TEST(processDueAtDate, setDueDate1Week) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_WEEKS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/7));
 }
@@ -171,7 +174,7 @@ TEST(processDueAtDate, setDueDate2Weeks) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_WEEKS,
                                                            pb::ActionDueKind::DATETIME,
                                                            2,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/14));
 }
@@ -182,7 +185,7 @@ TEST(processDueAtDate, setDueDate3Weeks) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_WEEKS,
                                                            pb::ActionDueKind::DATETIME,
                                                            3,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/21));
 }
@@ -193,7 +196,7 @@ TEST(processDueAtDate, setDueDate4Weeks) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_WEEKS,
                                                            pb::ActionDueKind::DATETIME,
                                                            4,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/28));
 }
@@ -204,7 +207,7 @@ TEST(processDueAtDate, setDueDate5Weeks) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_WEEKS,
                                                            pb::ActionDueKind::DATETIME,
                                                            5,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/April/4));
 }
@@ -215,7 +218,7 @@ TEST(processDueAtDate, setDueDate6Weeks) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_WEEKS,
                                                            pb::ActionDueKind::DATETIME,
                                                            6,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/April/11));
 }
@@ -226,7 +229,7 @@ TEST(processDueAtDate, setDueDate7Weeks) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_WEEKS,
                                                            pb::ActionDueKind::DATETIME,
                                                            7,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/April/18));
 }
@@ -237,7 +240,7 @@ TEST(processDueAtDate, setDueDate100Weeks) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_WEEKS,
                                                            pb::ActionDueKind::DATETIME,
                                                            100,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2026_y/January/29));
 }
@@ -248,7 +251,7 @@ TEST(processDueAtDate, setDueDate1Month) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/January/31));
 }
@@ -259,7 +262,7 @@ TEST(processDueAtDate, setDueDate2Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            2,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/February/29));
 }
@@ -270,7 +273,7 @@ TEST(processDueAtDate, setDueDate3Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            3,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/March/31));
 }
@@ -281,7 +284,7 @@ TEST(processDueAtDate, setDueDate4Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            4,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/April/30));
 }
@@ -292,7 +295,7 @@ TEST(processDueAtDate, setDueDate5Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            5,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/May/31));
 }
@@ -303,7 +306,7 @@ TEST(processDueAtDate, setDueDate6Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            6,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/June/30));
 }
@@ -314,7 +317,7 @@ TEST(processDueAtDate, setDueDate7Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            7,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/July/31));
 }
@@ -325,7 +328,7 @@ TEST(processDueAtDate, setDueDate8Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            8,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/August/31));
 }
@@ -336,7 +339,7 @@ TEST(processDueAtDate, setDueDate9Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            9,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/September/30));
 }
@@ -347,7 +350,7 @@ TEST(processDueAtDate, setDueDate10Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            10,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/October/31));
 }
@@ -358,7 +361,7 @@ TEST(processDueAtDate, setDueDate11Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            11,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/November/30));
 }
@@ -369,7 +372,7 @@ TEST(processDueAtDate, setDueDate12Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            12,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/December/31));
 }
@@ -380,7 +383,7 @@ TEST(processDueAtDate, setDueDate100Months) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_MONTHS,
                                                            pb::ActionDueKind::DATETIME,
                                                            100,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2032_y/April/30));
 }
@@ -391,7 +394,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromJanuary) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/April/13));
 }
@@ -402,7 +405,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromFebruay) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/April/29));
 }
@@ -413,7 +416,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromMarch) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/April/30));
 }
@@ -424,7 +427,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromApril) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/July/30));
 }
@@ -435,7 +438,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromMay) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/July/11));
 }
@@ -446,7 +449,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromJune) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/July/30));
 }
@@ -457,7 +460,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromJuly) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/October/31));
 }
@@ -468,7 +471,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromAugust) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/October/31));
 }
@@ -479,7 +482,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromSeptember) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/October/30));
 }
@@ -490,7 +493,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromOctober) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2025_y/January/31));
 }
@@ -501,7 +504,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromNovember) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2025_y/January/30));
 }
@@ -512,7 +515,7 @@ TEST(processDueAtDate, setDueDate1QuarterFromDecember) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_QUARTERS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2025_y/January/31));
 }
@@ -523,7 +526,7 @@ TEST(processDueAtDate, setDueDate1Year) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                            pb::ActionDueKind::DATETIME,
                                                            1,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2024_y/December/31));
 }
@@ -534,7 +537,7 @@ TEST(processDueAtDate, setDueDate2Years) {
                                                            pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                            pb::ActionDueKind::DATETIME,
                                                            2,
-                                                           *chrono::current_zone());
+                                                           uctx_sunday_fdow);
 
     EXPECT_EQ(due.start(), toTimet(2026_y/February/28));
 }
@@ -550,13 +553,13 @@ TEST(processDueAtDayspec, setMondayAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -570,13 +573,13 @@ TEST(processDueAtDayspec, setTuesdayAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -589,13 +592,13 @@ TEST(processDueAtDayspec, setWednesdayAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -608,13 +611,13 @@ TEST(processDueAtDayspec, setThursdayAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -627,13 +630,13 @@ TEST(processDueAtDayspec, setFridayAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -646,13 +649,13 @@ TEST(processDueAtDayspec, setSaturdayAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -665,13 +668,13 @@ TEST(processDueAtDayspec, setSundayAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -684,13 +687,13 @@ TEST(processDueAtDayspec, setMondayAtTuesday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -703,13 +706,13 @@ TEST(processDueAtDayspec, setTuesdayAtTuesday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -722,13 +725,13 @@ TEST(processDueAtDayspec, setWednesdayAtTuesday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -741,13 +744,13 @@ TEST(processDueAtDayspec, setThursdayAtTuesday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -760,13 +763,13 @@ TEST(processDueAtDayspec, setFridayAtTuesday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -779,13 +782,13 @@ TEST(processDueAtDayspec, setSaturdayAtTuesday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -798,13 +801,13 @@ TEST(processDueAtDayspec, setSundayAtTuesday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -817,13 +820,13 @@ TEST(processDueAtDayspec, setMondayAtSaturday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -836,13 +839,13 @@ TEST(processDueAtDayspec, setTuesdayAtSaturday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -855,13 +858,13 @@ TEST(processDueAtDayspec, setWednesdayAtSaturday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -874,13 +877,13 @@ TEST(processDueAtDayspec, setThursdayAtSaturday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -893,13 +896,13 @@ TEST(processDueAtDayspec, setFridayAtSaturday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -912,13 +915,13 @@ TEST(processDueAtDayspec, setSaturdayAtSaturday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -931,13 +934,13 @@ TEST(processDueAtDayspec, setSundayAtSaturday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -950,13 +953,13 @@ TEST(processDueAtDayspec, setMondayAtSunday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -969,13 +972,13 @@ TEST(processDueAtDayspec, setSaturdayAtSunday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -988,13 +991,13 @@ TEST(processDueAtDayspec, setSundayAtSunday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1007,14 +1010,14 @@ TEST(processDueAtDayspec, setFirstDayOfWeekAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     valid = toTimet(2024_y/March/11);
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1027,14 +1030,14 @@ TEST(processDueAtDayspec, setFirstDayOfWeekAtTuesday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     valid = toTimet(2024_y/March/11);
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1047,14 +1050,14 @@ TEST(processDueAtDayspec, setFirstDayOfWeekAtSunday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     valid = toTimet(2024_y/March/11);
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1067,14 +1070,14 @@ TEST(processDueAtDayspec, setLastDayOfWeekAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     valid = toTimet(2024_y/March/10);
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1087,14 +1090,14 @@ TEST(processDueAtDayspec, setLastDayOfWeekAtSaturday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     valid = toTimet(2024_y/March/3);
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1107,14 +1110,14 @@ TEST(processDueAtDayspec, setLastDayOfWeekAtSunday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     valid = toTimet(2024_y/March/10);
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1127,13 +1130,13 @@ TEST(processDueAtDayspec, setFirstDayOfMonthAtMonday) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1146,13 +1149,13 @@ TEST(processDueAtDayspec, setFirstDayOfMonthAtChristmas) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1165,13 +1168,13 @@ TEST(processDueAtDayspec, setLastDayOfMonthAtChristmas) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1184,13 +1187,13 @@ TEST(processDueAtDayspec, setLastDayOfMonthWithRollOver) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1203,13 +1206,13 @@ TEST(processDueAtDayspec, setFirstDayInQuarterAtJanuary) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1222,13 +1225,13 @@ TEST(processDueAtDayspec, setFirstDayInQuarterAtFebruary) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1242,13 +1245,13 @@ TEST(processDueAtDayspec, setFirstDayInQuarterAtMarch) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1261,13 +1264,13 @@ TEST(processDueAtDayspec, setFirstDayInQuarterAtApril) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1280,13 +1283,13 @@ TEST(processDueAtDayspec, setFirstDayInQuarterAtChristmas) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1300,13 +1303,13 @@ TEST(processDueAtDayspec, setLastDayInQuarterAtJanuary) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1319,13 +1322,13 @@ TEST(processDueAtDayspec, setLastDayInQuarterAtFebruary) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1338,13 +1341,13 @@ TEST(processDueAtDayspec, setLastDayInQuarterAtMarch) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1357,13 +1360,13 @@ TEST(processDueAtDayspec, setLastDayInQuarterAtApril) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1376,13 +1379,13 @@ TEST(processDueAtDayspec, setFirstDayInYear) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 
@@ -1395,13 +1398,13 @@ TEST(processDueAtDayspec, setLastDayInYear) {
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                               pb::ActionDueKind::DATETIME,
-                                                              val, *chrono::current_zone(), true); // Week start at sunday
+                                                              val, uctx_sunday_fdow); // Week start at sunday
     EXPECT_EQ(due.start(), valid);
 
     due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                          pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
                                                          pb::ActionDueKind::DATETIME,
-                                                         val, *chrono::current_zone(), false); // Week start at monday
+                                                         val, uctx_monday_fdow); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
 

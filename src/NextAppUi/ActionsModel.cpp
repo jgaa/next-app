@@ -119,6 +119,9 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     pb::ActionInfo ai;
     ai.setId_proto(action.id_proto());
     ai.setNode(action.node());
+    if (action.hasOrigin()) {
+        ai.setOrigin(action.origin());
+    }
     ai.setPriority(action.priority());
     ai.setStatus(action.status());
     ai.setName(action.name());
@@ -332,6 +335,8 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) con
         return tr("Overdue");
     case ActionKind::AC_TODAY:
         return tr("Today");
+    case ActionKind::AC_ACTIVE:
+        return tr("Active");
     case ActionKind::AC_UPCOMING:
         return tr("Upcoming");
     case ActionKind::AC_UNSCHEDULED:

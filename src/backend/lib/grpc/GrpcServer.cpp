@@ -210,7 +210,7 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME,  // core
+        ID, NODE, USER, VERSION, ORIGIN, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME,  // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER // remaining
     };
 
@@ -225,7 +225,7 @@ struct ToAction {
     }
 
     static string_view statementBindingStr() {
-        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
     }
 
     static string_view updateStatementBindingStr() {
@@ -243,6 +243,7 @@ struct ToAction {
     template <bool argsFirst = true, typename ...Args>
     static auto prepareBindingArgs(const pb::Action& action, const std::chrono::time_zone *ts, Args... args) {
         auto bargs = make_tuple(
+            toStringOrNull(action.origin()),
             pb::ActionPriority_Name(action.priority()),
             pb::ActionStatus_Name(action.status()),
             action.name(),
@@ -280,6 +281,11 @@ struct ToAction {
         obj.set_id(row.at(ID).as_string());
         obj.set_node(row.at(NODE).as_string());
         obj.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
+
+        if (row.at(ORIGIN).is_string()) {
+            obj.set_origin(row.at(ORIGIN).as_string());
+        }
+
         {
             pb::ActionStatus status;
             const auto name = toUpper(row.at(STATUS).as_string());
@@ -428,7 +434,7 @@ private:
     }
 
     static constexpr string_view ids_ = "id, node, user, version, ";
-    static constexpr string_view core_ = "priority, status, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time";
+    static constexpr string_view core_ = "origin, priority, status, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time";
     static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after";
 };
 
@@ -464,22 +470,20 @@ enum class DoneChanged {
 };
 
 boost::asio::awaitable<void>
-replyWithAction(GrpcServer& grpc, const std::string actionId, const string& cuser,
+replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext& uctx,
                 ::grpc::CallbackServerContext *ctx, pb::Status *reply, DoneChanged done, bool publish = true) {
 
-    const auto dbopts = grpc.currentDbOptions(ctx);
-    const auto ts = grpc.currentTimeZone(ctx);
-    assert(ts);
+    const auto dbopts = uctx.dbOptions();
 
     auto res = co_await grpc.server().db().exec(
         format(R"(SELECT {} from action WHERE id=? AND user=? )",
-               ToAction::allSelectCols()), dbopts, actionId, cuser);
+               ToAction::allSelectCols()), dbopts, actionId, uctx.userUuid());
 
     assert(res.has_value());
     if (!res.rows().empty()) {
         const auto& row = res.rows().front();
         auto *action = reply->mutable_action();
-        ToAction::assign(row, *action, grpc.currentTimeZone(ctx));
+        ToAction::assign(row, *action, &uctx.tz());
         if (publish) {
             // Copy the new Action to an update and publish it
             auto update = make_shared<pb::Update>();
@@ -490,7 +494,7 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const string& cuse
 
         switch (done) {
             case DoneChanged::MARKED_DONE:
-            co_await grpc.handleActionDone(*action, *ts);
+            co_await grpc.handleActionDone(*action, uctx, ctx);
                 break;
             case DoneChanged::MARKED_UNDONE:
                 //reply->set_message(format("Action {} marked as undone.", actionId));
@@ -573,12 +577,12 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::CompleteDay *reply) -> boost::asio::awaitable<void> {
 
-        const auto cuser = owner_.currentUser(ctx);
-        const auto& dbopts = owner_.currentDbOptions(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
 
         auto res = co_await owner_.server().db().exec(
             "SELECT date, user, color, notes, report FROM day WHERE user=? AND date=? ORDER BY date",
-            dbopts, cuser, toAnsiDate(*req));
+            cutx->dbOptions(), cuser, toAnsiDate(*req));
 
         enum Cols {
             DATE, USER, COLOR, NOTES, REPORT
@@ -619,11 +623,12 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Month *reply) -> boost::asio::awaitable<void> {
 
-        const auto& dbopts = owner_.currentDbOptions(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
 
         auto res = co_await owner_.server().db().exec(
             "SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? ORDER BY date",
-            dbopts, owner_.currentUser(ctx), req->year(), req->month() + 1);
+            cutx->dbOptions(), cuser, req->year(), req->month() + 1);
 
         enum Cols {
             DATE, USER, COLOR, NOTES, REPORT
@@ -657,7 +662,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
 
-        const auto& dbopts = owner_.currentDbOptions(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
 
         optional<string> color;
         if (!req->color().empty()) {
@@ -667,10 +673,10 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         co_await owner_.server().db().exec(
             R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?)
-                ON DUPLICATE KEY UPDATE color=?)", dbopts,
+                ON DUPLICATE KEY UPDATE color=?)", cutx->dbOptions(),
             // insert
             toAnsiDate(req->date()),
-            owner_.currentUser(ctx),
+            cuser,
             color,
             // update
             color
@@ -682,7 +688,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         auto update = make_shared<pb::Update>();
         auto dc = update->mutable_daycolor();
         *dc->mutable_date() = req->date();
-        dc->set_user(owner_.currentUser(ctx));
+        dc->set_user(cuser);
         dc->set_color(req->color());
 
         owner_.publish(update);
@@ -694,7 +700,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 {
     return unaryHandler(ctx, req, reply,
     [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
-        const auto& dbopts = owner_.currentDbOptions(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
 
         optional<string> color;
         if (!req->day().color().empty()) {
@@ -715,10 +722,10 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
         co_await owner_.server().db().exec(
             R"(INSERT INTO day (date, user, color, notes, report) VALUES (?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)", dbopts,
+                ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)", cutx->dbOptions(),
             // insert
             toAnsiDate(req->day().date()),
-            owner_.currentUser(ctx),
+            cuser,
             color,
             notes,
             report,
@@ -882,7 +889,11 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
 
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
+
         pb::Tenant tenant{req->tenant()};
+
         if (tenant.uuid().empty()) {
             tenant.set_uuid(newUuidStr());
         }
@@ -904,7 +915,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 tenant.active(),
                 properties);
 
-        LOG_INFO << "User " << owner_.currentUser(ctx)
+        LOG_INFO << "User " << cuser
                  << " has created tenant name=" << tenant.name() << ", id=" << tenant.uuid()
                  << ", kind=" << pb::Tenant::Kind_Name(tenant.kind());
 
@@ -938,7 +949,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                     user.descr(),
                     user_props);
 
-            LOG_INFO << "User " << owner_.currentUser(ctx)
+            LOG_INFO << "User " << cuser
                      << " has created user name=" << user.name() << ", id=" << user.uuid()
                      << ", kind=" << pb::User::Kind_Name(user.kind())
                      << ", tenant=" << user.tenant();
@@ -954,14 +965,16 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateNode(::grpc::CallbackServerContext *ctx, const pb::CreateNodeReq *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to create node " << req->node().uuid() << " for tenant " << owner_.currentTenant(ctx);
+    LOG_DEBUG << "Request to create node " << req->node().uuid() << " for tenant "
+              << owner_.userContext(ctx)->tenantUuid();
 
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
 
 
-        const auto cuser = owner_.currentUser(ctx);
-        auto dbopts = owner_.currentDbOptions(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
+        auto dbopts = cutx->dbOptions();
 
         optional<string> parent = req->node().parent();
         if (parent->empty()) {
@@ -1017,14 +1030,16 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateNode(::grpc::CallbackServerContext *ctx, const pb::Node *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to update node " << req->uuid() << " for tenant " << owner_.currentTenant(ctx);
+    LOG_DEBUG << "Request to update node " << req->uuid() << " for tenant "
+              << owner_.userContext(ctx)->tenantUuid();
 
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             // Get the existing node
 
-        const auto cuser = owner_.currentUser(ctx);
-        const auto& dbopts = owner_.currentDbOptions(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
+        const auto& dbopts = cutx->dbOptions();
 
         bool moved = false;
         bool data_changed = false;
@@ -1091,13 +1106,15 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MoveNode(::grpc::CallbackServerContext *ctx, const pb::MoveNodeReq *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to move node " << req->uuid() << " for tenant " << owner_.currentTenant(ctx);
+    LOG_DEBUG << "Request to move node " << req->uuid() << " for tenant "
+              << owner_.userContext(ctx)->tenantUuid();
 
     return unaryHandler(ctx, req, reply,
     [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
         // Get the existing node
 
-        const auto cuser = owner_.currentUser(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
 
         for(auto retry = 0;; ++retry) {
 
@@ -1164,13 +1181,15 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteNode(::grpc::CallbackServerContext *ctx, const pb::DeleteNodeReq *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to delete node " << req->uuid() << " for tenant " << owner_.currentTenant(ctx);
+    LOG_DEBUG << "Request to delete node " << req->uuid() << " for tenant "
+              << owner_.userContext(ctx)->tenantUuid();
 
     return unaryHandler(ctx, req, reply,
     [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
         // Get the existing node
 
-        const auto cuser = owner_.currentUser(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
 
         const auto node = co_await owner_.fetcNode(req->uuid(), cuser);
 
@@ -1200,8 +1219,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 {
     return unaryHandler(ctx, req, reply,
     [this, req, ctx] (pb::NodeTree *reply) -> boost::asio::awaitable<void> {
-        const auto cuser = owner_.currentUser(ctx);
-        const auto& dbopts = owner_.currentDbOptions(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
+        const auto& dbopts = cutx->dbOptions();
 
         const auto res = co_await owner_.server().db().exec(format(R"(
         WITH RECURSIVE tree AS (
@@ -1262,8 +1282,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 {
     return unaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-        const auto cuser = owner_.currentUser(ctx);
-        const auto& dbopts = owner_.currentDbOptions(ctx);
+        const auto cutx = owner_.userContext(ctx);
+        const auto& cuser = cutx->userUuid();
+        const auto& dbopts = cutx->dbOptions();
 
         SqlFilter filter{false};
         if (req->has_active() && req->active()) {
@@ -1282,7 +1303,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         assert(res.has_value());
         auto *actions = reply->mutable_actions();
         for(const auto& row : res.rows()) {
-            ToAction::assign(row, *actions->add_actions(), owner_.currentTimeZone(ctx));
+            ToAction::assign(row, *actions->add_actions(), &cutx->tz());
         }
 
         LOG_TRACE << toJson(*reply);
@@ -1295,9 +1316,10 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cuser = owner_.currentUser(ctx);
+            const auto cutx = owner_.userContext(ctx);
+            const auto& cuser = cutx->userUuid();
             const auto& uuid = validatedUuid(req->uuid());
-            const auto& dbopts = owner_.currentDbOptions(ctx);
+            const auto& dbopts = cutx->dbOptions();
 
             const auto res = co_await owner_.server().db().exec(
                 format(R"(SELECT {} from action WHERE id=? AND user=? )",
@@ -1307,7 +1329,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             if (!res.rows().empty()) {
                 const auto& row = res.rows().front();
                 auto *action = reply->mutable_action();
-                ToAction::assign(row, *action, owner_.currentTimeZone(ctx));
+                ToAction::assign(row, *action, &cutx->tz());
             } else {
                 reply->set_error(pb::Error::NOT_FOUND);
                 reply->set_message(format("Action with id={} not found for the current user.", uuid));
@@ -1321,9 +1343,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::grpc::CallbackServerContext *ctx,
                                        pb::Status *reply = {}) {
-    const auto cuser = owner.currentUser(ctx);
-    const auto *ts = owner.currentTimeZone(ctx);
-    auto dbopts = owner.currentDbOptions(ctx);
+    const auto cutx = owner.userContext(ctx);
+    const auto& cuser = cutx->userUuid();
+    auto dbopts = cutx->dbOptions();
 
 
     if (action.node().empty()) {
@@ -1348,7 +1370,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
                ToAction::statementBindingStr(),
                ToAction::allSelectCols()),
         dbopts,
-        ToAction::prepareBindingArgs(action, ts, action.id(), action.node(), cuser));
+        ToAction::prepareBindingArgs(action, &cutx->tz(), action.id(), action.node(), cuser));
 
     assert(!res.empty());
     // Set the reply data
@@ -1356,11 +1378,11 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
     auto update = make_shared<pb::Update>();
     if (reply) {
         auto *reply_action = reply->mutable_action();
-        ToAction::assign(res.rows().front(), *reply_action, ts);
+        ToAction::assign(res.rows().front(), *reply_action, &cutx->tz());
         *update->mutable_action() = *reply_action;
     } else {
         action.Clear();
-        ToAction::assign(res.rows().front(), action, ts);
+        ToAction::assign(res.rows().front(), action, &cutx->tz());
         *update->mutable_action() = action;
     }
 
@@ -1386,10 +1408,10 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cuser = owner_.currentUser(ctx);
+            const auto cutx = owner_.userContext(ctx);
+            const auto& cuser = cutx->userUuid();
             const auto& uuid = validatedUuid(req->id());
-            const auto *ts = owner_.currentTimeZone(ctx);
-            const auto& dbopts = owner_.currentDbOptions(ctx);
+            const auto& dbopts = cutx->dbOptions();
             DoneChanged done = DoneChanged::NO_CHANGE;
 
             if (req->node().empty()) {
@@ -1420,12 +1442,12 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 
             auto res = co_await owner_.server().db().exec(format("UPDATE action SET {}, version=version+1 WHERE id=? AND user=? ",
                                                                        ToAction::updateStatementBindingStr()), dbopts,
-                                                                ToAction::prepareBindingArgs<false>(new_action, ts, uuid, cuser));
+                                                                ToAction::prepareBindingArgs<false>(new_action, &cutx->tz(), uuid, cuser));
 
             assert(!res.empty());
 
             if (res.affected_rows() == 1) {
-                co_await replyWithAction(owner_, uuid, cuser, ctx, reply, done);
+                co_await replyWithAction(owner_, uuid, *cutx, ctx, reply, done);
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated.", uuid));
@@ -1437,7 +1459,8 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cuser = owner_.currentUser(ctx);
+            const auto cutx = owner_.userContext(ctx);
+            const auto& cuser = cutx->userUuid();
             const auto& uuid = validatedUuid(req->actionid());
 
             auto res = co_await owner_.server().db().exec("DELETE FROM action WHERE id=? AND user=?",
@@ -1464,15 +1487,16 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cuser = owner_.currentUser(ctx);
+            const auto cutx = owner_.userContext(ctx);
+            const auto& cuser = cutx->userUuid();
             const auto& uuid = validatedUuid(req->uuid());
-            const auto dbopts = owner_.currentDbOptions(ctx);
+            const auto dbopts = cutx->dbOptions();
             DoneChanged done = DoneChanged::MARKED_UNDONE;
 
             optional<string> when;
             if (req->done()) {
                 when = toAnsiTime(time({}));
-                DoneChanged done = DoneChanged::MARKED_DONE;
+                done = DoneChanged::MARKED_DONE;
             }
 
             auto res = co_await owner_.server().db().exec(
@@ -1481,7 +1505,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 
             assert(res.has_value());
             if (res.affected_rows() == 1) {
-                co_await replyWithAction(owner_, uuid, cuser, ctx, reply, done);
+                co_await replyWithAction(owner_, uuid, *cutx, ctx, reply, done);
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated.", uuid));
@@ -1589,6 +1613,28 @@ boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, c
     co_return rval;
 }
 
+const std::shared_ptr<UserContext> GrpcServer::userContext(::grpc::CallbackServerContext *ctx) const
+{
+    static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";
+    static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
+
+    jgaa::mysqlpool::Options dbo;
+    dbo.reconnect_and_retry_query_ = true;
+
+    // TODO: Implement sessions and authentication
+    lock_guard lock{mutex_};
+    if (sessions_.empty()) {
+        const auto zone_name = chrono::current_zone()->name();
+        dbo.locale_name = zone_name;
+        auto ux = make_shared<UserContext>(system_tenant, system_user, zone_name, true, dbo);
+        sessions_[ux->sessionId()] = ux;
+        return ux;
+    }
+
+    // For now we have only one session
+    return sessions_.begin()->second;
+}
+
 // TODO: Add the time, adjusted for local time zone.
 std::time_t addDays(std::time_t input, int n)
 {
@@ -1626,22 +1672,22 @@ time_t getDueTime(const auto& start, const auto& ts, pb::ActionDueKind kind) {
 
 pb::Due GrpcServer::processDueAtDate(time_t from_timepoint, const pb::Action_RepeatUnit &units,
                                      pb::ActionDueKind kind, int repeatAfter,
-                                     const chrono::time_zone& ts)
+                                     const UserContext& uctx)
 {
     pb::Due due;
     due.set_kind(kind);
-    due.set_timezone(string{ts.name()});
+    due.set_timezone(string{uctx.tz().name()});
 
     using namespace date;
     assert(from_timepoint > 0);
     assert(repeatAfter > 0);
 
     // We need to use the date libs zone to get the local time calculations right
-    const auto *local_ts = locate_zone(ts.name());
+    const auto *local_ts = locate_zone(uctx.tz().name());
     assert(local_ts);
     if (!local_ts) {
-        LOG_WARN << "Failed to locate time zone: " << ts.name();
-        throw runtime_error{"Failed to locate time zone "s + string{ts.name()}};
+        LOG_WARN << "Failed to locate time zone: " << uctx.tz().name();
+        throw runtime_error{"Failed to locate time zone "s + string{uctx.tz().name()}};
     }
 
     auto ref_tp = chrono::system_clock::from_time_t(from_timepoint);
@@ -1709,23 +1755,22 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
                                         const pb::Action_RepeatUnit &units,
                                         pb::ActionDueKind kind,
                                         int repeatAfter, // bits
-                                        const std::chrono::time_zone &ts,
-                                        bool sundayIsFirstDayOfWeek)
+                                        const UserContext& uctx)
 {
     pb::Due due;
     due.set_kind(kind);
-    due.set_timezone(string{ts.name()});
+    due.set_timezone(string{uctx.tz().name()});
 
     using namespace date;
     assert(from_timepoint > 0);
     assert(repeatAfter > 0);
 
     // We need to use the date libs zone to get the local time calculations right
-    const auto *local_ts = locate_zone(ts.name());
+    const auto *local_ts = locate_zone(uctx.tz().name());
     assert(local_ts);
     if (!local_ts) {
-        LOG_WARN << "Failed to locate time zone: " << ts.name();
-        throw runtime_error{"Failed to locate time zone "s + string{ts.name()}};
+        LOG_WARN << "Failed to locate time zone: " << uctx.tz().name();
+        throw runtime_error{"Failed to locate time zone "s + string{uctx.tz().name()}};
     }
 
     auto ref_tp = chrono::system_clock::from_time_t(from_timepoint);
@@ -1749,7 +1794,7 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
 
     const auto sysday = sys_days{week_date};
     const auto wday = ref_day.c_encoding();
-    const auto start_of_week_offset = sundayIsFirstDayOfWeek ? days(0) : days(1);
+    const auto start_of_week_offset = uctx.sundayIsFirstWeekday() ? days(0) : days(1);
 
     auto best_match = ldays;
 
@@ -1774,7 +1819,6 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
         }
     }
 
-    // Check each of the special days
     if (repeatAfter & (1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_WEEK)) {
         auto next = ldays;
         next += days(7);
@@ -1906,14 +1950,137 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
     return due;
 }
 
+auto toTimet(const auto& when, const auto *ts) {
+    const auto zoned = date::make_zoned(ts, when);
+    return chrono::system_clock::to_time_t(zoned.get_sys_time());
+}
+
+nextapp::pb::Due GrpcServer::adjustDueTime(const pb::Due &fromDue, const UserContext& uctx)
+{
+    using namespace date;
+    if (fromDue.has_start() || fromDue.start() == 0) {
+        LOG_TRACE << "No start time, in due.";
+        return {};
+    }
+
+    pb::Due due = fromDue;
+    assert(!due.timezone().empty());
+
+    // We need to use the date libs zone to get the local time calculations right
+    const auto *local_ts = locate_zone(due.timezone());
+    assert(local_ts);
+    if (!local_ts) {
+        LOG_WARN << "Failed to locate time zone: " << due.timezone();
+        throw runtime_error{"Failed to locate time zone "s + due.timezone()};
+    }
+
+    auto ref_tp = chrono::system_clock::from_time_t(due.start());
+    auto ref_date = floor<date::days>(ref_tp);
+    auto zoned_ref = zoned_time{local_ts, ref_tp};
+    auto t_local = zoned_ref.get_local_time();
+    auto week_date = year_month_weekday{floor<days>(t_local)};
+    auto ref_day = week_date.weekday();
+    const auto wday = ref_day.c_encoding();
+    const auto start_of_week_offset = uctx.sundayIsFirstWeekday() ? days(0) : days(1);
+
+    auto start_date = year_month_day{floor<days>(t_local)};
+
+    // Days from epoch in local time
+    local_days ldays{start_date};
+
+    // Time of day in local time
+    hh_mm_ss time{t_local - floor<days>(t_local)};
+
+    switch(due.kind()) {
+    case pb::ActionDueKind::DATETIME:
+        // TODO: We need a way to handle windows of time, not just a single point in time.
+        due.set_due(due.start());
+        break;
+    case pb::ActionDueKind::DATE: {
+            // End of day
+            auto when = ldays + days(1) - 1min;
+            due.set_due(toTimet(when, local_ts));
+        } break;
+    case pb::ActionDueKind::WEEK: {
+            // End of week
+            auto next = ldays;
+            next += (days(wday) * -1) + days(6) + start_of_week_offset;
+            if (next <= ldays) {
+                next += days(7);
+            }
+            due.set_due(toTimet(next + days(1) - 1min, local_ts));
+        } break;
+    case pb::ActionDueKind::MONTH: {
+            // End of month
+            auto ymd = start_date.year() / start_date.month()  / last;
+            auto next = local_days{ymd};
+            if (next <= ldays) {
+                ymd += months{1};
+                if (!ymd.ok()) {
+                    ymd = ymd.year() / ymd.month() / last;
+                }
+                next = local_days{ymd};
+            }
+            due.set_due(toTimet(next + days(1) - 1min, local_ts));
+        } break;
+    case pb::ActionDueKind::QUARTER: {
+            // End of quarter
+            // Start of current quarter
+            const auto qmonth = static_cast<unsigned>(quarters.at(static_cast<unsigned>(start_date.month()) - 1));
+
+            // Jump to the end of the quarter
+            auto ymd = start_date.year() / month(qmonth) / last;
+            ymd +=  months{2};
+            if (!ymd.ok()) {
+                ymd = ymd.year() / ymd.month() / last;
+            }
+
+            auto next = local_days{ymd};
+
+            if (next <= ldays) {
+                ymd += months{3};
+                if (!ymd.ok()) {
+                    ymd = ymd.year() / ymd.month() / last;
+                }
+                next = local_days{ymd};
+            }
+
+            due.set_due(toTimet(next + days(1) - 1min, local_ts));
+        }break;
+    case pb::ActionDueKind::YEAR: {
+            // End of month
+            auto ymd = start_date.year() / start_date.month()  / last;
+            auto next = local_days{ymd};
+            if (next <= ldays) {
+                ymd += months{1};
+                if (!ymd.ok()) {
+                    ymd = ymd.year() / ymd.month() / last;
+                }
+                next = local_days{ymd};
+            }
+            due.set_due(toTimet(next + days(1) - 1min, local_ts));
+        } break;
+        case pb::ActionDueKind::UNSET:
+            due.clear_due();
+            break;
+        default:
+            assert(false); // generated enums
+    }
+
+    return due;
+}
+
 boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig,
-                                                          const std::chrono::time_zone& ts)
+                                                          const UserContext& uctx,
+                                                          ::grpc::CallbackServerContext *ctx)
 {
     if (orig.repeatkind() == pb::Action_RepeatKind::Action_RepeatKind_NEVER) {
         co_return;
     }
 
     auto cloned = orig;
+    cloned.set_id(newUuidStr());
+    cloned.set_origin(orig.id());
     cloned.clear_completedtime();
     cloned.set_status(pb::ActionStatus::ACTIVE);
 
@@ -1936,21 +2103,33 @@ boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig
 
     assert(from_timepoint != 0);
 
+    pb::Due due;
+
     switch(orig.repeatwhen()) {
         case pb::Action_RepeatWhen::Action_RepeatWhen_AT_DATE:
-        *cloned.mutable_due() = processDueAtDate(from_timepoint,
-                                                     cloned.repeatunits(),
-                                                     cloned.due().kind(),
-                                                     cloned.repeatafter(),
-                                                     ts);
+            due = processDueAtDate(from_timepoint,
+                                   cloned.repeatunits(),
+                                   cloned.due().kind(),
+                                   cloned.repeatafter(),
+                                   uctx);
             break;
         case pb::Action_RepeatWhen::Action_RepeatWhen_AT_DAYSPEC:
-
+            due = processDueAtDayspec(from_timepoint,
+                                   cloned.repeatunits(),
+                                   cloned.due().kind(),
+                                   cloned.repeatafter(),
+                                   uctx);
             break;
         default:
             assert(false);
             break;
     }
+
+    due = adjustDueTime(due, uctx);
+    *cloned.mutable_due() = due;
+
+    LOG_TRACE << "Adding cloned action: " << toJson(cloned);
+    co_await addAction(cloned, *this, ctx);
 
     co_return;
 }

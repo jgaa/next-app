@@ -334,7 +334,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             completed_time TIMESTAMP,
             time_estimate INTEGER,
             difficulty ENUM('trivial', 'easy', 'normal', 'hard', 'veryhard', 'inspired') NOT NULL DEFAULT 'normal',
-            repeat_kind ENUM('never','scheduled', 'completed'),
+            repeat_kind ENUM('never','completed', 'start_time', 'due_time'),
             repeat_unit ENUM('days', 'weeks', 'months', 'years'),
             repeat_when ENUM('at_date', 'at_dayspec'),
             repeat_after INTEGER,

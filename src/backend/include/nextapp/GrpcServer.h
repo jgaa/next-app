@@ -21,6 +21,63 @@ namespace nextapp::grpc {
 
 boost::uuids::uuid newUuid();
 
+class UserContext {
+public:
+    UserContext() = default;
+
+    UserContext( const std::string& tenantUuid, const std::string& userUuid, const std::string_view timeZone,
+                bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions)
+        : user_uuid_{userUuid},
+          tenant_uuid_{tenantUuid},
+          sunday_is_first_weekday_{sundayIsFirstWeekday},
+          db_options_{dbOptions} {
+        if (timeZone.empty()) {
+            tz_ = std::chrono::current_zone();
+        } else {
+            tz_ = std::chrono::locate_zone(timeZone);
+            if (tz_ == nullptr) {
+                LOG_DEBUG << "UserContext: Invalid timezone: " << timeZone;
+                throw std::invalid_argument("Invalid timezone: " + std::string{timeZone});
+            }
+        }
+    }
+
+    ~UserContext() = default;
+
+    const std::string& userUuid() const noexcept {
+        return user_uuid_;
+    }
+
+    const std::string& tenantUuid() const noexcept {
+        return tenant_uuid_;
+    }
+
+    const std::chrono::time_zone& tz() const noexcept {
+        assert(tz_ != nullptr);
+        return *tz_;
+    }
+
+    bool sundayIsFirstWeekday() const noexcept {
+        return sunday_is_first_weekday_;
+    }
+
+    const jgaa::mysqlpool::Options& dbOptions() const noexcept {
+        return db_options_;
+    }
+
+    const boost::uuids::uuid& sessionId() const noexcept {
+        return sessionid_;
+    }
+
+private:
+    std::string user_uuid_;
+    std::string tenant_uuid_;
+    const std::chrono::time_zone* tz_{};
+    bool sunday_is_first_weekday_{true};
+    jgaa::mysqlpool::Options db_options_;
+    const boost::uuids::uuid sessionid_ = newUuid();
+};
+
 class GrpcServer {
 public:
     template <typename T>
@@ -169,37 +226,25 @@ public:
         return active_;
     }
 
-    // TODO: Implement auth
-    std::string currentUser(::grpc::CallbackServerContext */*ctx*/) const {
-        return "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
-    }
-
-    // TODO: Implement auth
-    std::string currentTenant(::grpc::CallbackServerContext */*ctx*/) const {
-        return "a5e7bafc-9cba-11ee-a971-978657e51f0c";
-    }
-
-    const auto *currentTimeZone(::grpc::CallbackServerContext */*ctx*/) const {
-        return std::chrono::current_zone();
-    }
-
-    const jgaa::mysqlpool::Options& currentDbOptions(::grpc::CallbackServerContext */*ctx*/) {
-        static const jgaa::mysqlpool::Options opts{true, std::string{std::chrono::current_zone()->name()}};
-        return opts;
-    }
+    const std::shared_ptr<UserContext> userContext(::grpc::CallbackServerContext *ctx) const;
 
     // Called when an action change status to done
-    boost::asio::awaitable<void> handleActionDone(const pb::Action& orig, const std::chrono::time_zone& ts);
+    boost::asio::awaitable<void> handleActionDone(const pb::Action& orig,
+                                                  const UserContext& uctx,
+                                                  ::grpc::CallbackServerContext *ctx);
 
     static nextapp::pb::Due
     processDueAtDate(time_t from_timepoint, const pb::Action_RepeatUnit &units,
                      pb::ActionDueKind kind, int repeatAfter,
-                     const std::chrono::time_zone& ts);
+                     const UserContext& uctx);
 
     static nextapp::pb::Due
     processDueAtDayspec(time_t from_timepoint, const pb::Action_RepeatUnit &units,
                         pb::ActionDueKind kind, int repeatAfter,
-                        const std::chrono::time_zone& ts, bool sundayIsFirstDayOfWeek);
+                        const UserContext& uctx);
+
+    /*! Set the due.duie time based ion the due.start time and repeat config */
+    static nextapp::pb::Due adjustDueTime(const nextapp::pb::Due& due, const UserContext& uctx);
 
 private:
     // The Server instance where we get objects in the application, like config and database
@@ -217,8 +262,9 @@ private:
     // A gRPC server object
     std::unique_ptr<::grpc::Server> grpc_server_;
 
+    mutable std::map<boost::uuids::uuid, std::shared_ptr<UserContext>> sessions_;
     std::map<boost::uuids::uuid, std::weak_ptr<Publisher>> publishers_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::atomic_bool active_{false};
 };
 

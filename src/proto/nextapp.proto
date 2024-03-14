@@ -164,6 +164,7 @@ message Due {
 message ActionInfo {
     string id           = 1;
     string node         = 2; // uuid
+    optional string origin = 10; // uuid
     ActionPriority priority = 3;
     ActionStatus status = 4;
     string name         = 5;
@@ -222,6 +223,7 @@ message Action {
 
     string id = 1;
     string node = 2; // uuid
+    optional string origin = 10; // uuid
     ActionPriority priority = 3;
     ActionStatus status = 4;
     string name = 5;
