@@ -717,7 +717,7 @@ TEST(processDueAtDayspec, setWednesdayAtTuesday) {
 
     const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_WEDNESDAY;
     const auto from = toTimet(2024_y/March/Tuesday[1]);
-    const auto valid = toTimet(2024_y/March/Wednesday[2]);
+    const auto valid = toTimet(2024_y/March/Wednesday[1]);
 
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
@@ -736,7 +736,7 @@ TEST(processDueAtDayspec, setThursdayAtTuesday) {
 
     const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_THURSDAY;
     const auto from = toTimet(2024_y/March/Tuesday[1]);
-    const auto valid = toTimet(2024_y/March/Wednesday[2]);
+    const auto valid = toTimet(2024_y/March/Thursday[1]);
 
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
@@ -755,7 +755,7 @@ TEST(processDueAtDayspec, setFridayAtTuesday) {
 
     const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FRIDAY;
     const auto from = toTimet(2024_y/March/Tuesday[1]);
-    const auto valid = toTimet(2024_y/March/Friday[2]);
+    const auto valid = toTimet(2024_y/March/Friday[2]); // week rollover
 
     auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
                                                               pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
@@ -807,6 +807,605 @@ TEST(processDueAtDayspec, setSundayAtTuesday) {
                                                          val, *chrono::current_zone(), false); // Week start at monday
     EXPECT_EQ(due.start(), valid);
 }
+
+TEST(processDueAtDayspec, setMondayAtSaturday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_MONDAY;
+    const auto from = toTimet(2024_y/March/Saturday[2]);
+    const auto valid = toTimet(2024_y/March/Monday[2]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setTuesdayAtSaturday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_TUESDAY;
+    const auto from = toTimet(2024_y/March/Saturday[2]);
+    const auto valid = toTimet(2024_y/March/Tuesday[2]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setWednesdayAtSaturday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_WEDNESDAY;
+    const auto from = toTimet(2024_y/March/Saturday[2]);
+    const auto valid = toTimet(2024_y/March/Wednesday[2]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setThursdayAtSaturday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_THURSDAY;
+    const auto from = toTimet(2024_y/March/Saturday[2]);
+    const auto valid = toTimet(2024_y/March/Thursday[2]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFridayAtSaturday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FRIDAY;
+    const auto from = toTimet(2024_y/March/Saturday[2]);
+    const auto valid = toTimet(2024_y/March/Friday[3]); // week rollover
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setSaturdayAtSaturday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_SATURDAY;
+    const auto from = toTimet(2024_y/March/Saturday[2]);
+    const auto valid = toTimet(2024_y/March/Saturday[3]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setSundayAtSaturday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_SUNDAY;
+    const auto from = toTimet(2024_y/March/Saturday[2]);
+    const auto valid = toTimet(2024_y/March/Sunday[2]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setMondayAtSunday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_MONDAY;
+    const auto from = toTimet(2024_y/March/Sunday[2]);
+    const auto valid = toTimet(2024_y/March/Monday[2]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setSaturdayAtSunday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_SATURDAY;
+    const auto from = toTimet(2024_y/March/Sunday[2]);
+    const auto valid = toTimet(2024_y/March/Saturday[3]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setSundayAtSunday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_SUNDAY;
+    const auto from = toTimet(2024_y/March/Sunday[2]);
+    const auto valid = toTimet(2024_y/March/Sunday[3]);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayOfWeekAtMonday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_WEEK;
+    const auto from = toTimet(2024_y/March/4);
+    auto valid = toTimet(2024_y/March/10);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    valid = toTimet(2024_y/March/11);
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayOfWeekAtTuesday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_WEEK;
+    const auto from = toTimet(2024_y/March/5);
+    auto valid = toTimet(2024_y/March/10);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    valid = toTimet(2024_y/March/11);
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayOfWeekAtSunday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_WEEK;
+    const auto from = toTimet(2024_y/March/3);
+    auto valid = toTimet(2024_y/March/10);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    valid = toTimet(2024_y/March/11);
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayOfWeekAtMonday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_OF_WEEK;
+    const auto from = toTimet(2024_y/March/4);
+    auto valid = toTimet(2024_y/March/9);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    valid = toTimet(2024_y/March/10);
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayOfWeekAtSaturday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_OF_WEEK;
+    const auto from = toTimet(2024_y/March/2);
+    auto valid = toTimet(2024_y/March/9);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    valid = toTimet(2024_y/March/3);
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayOfWeekAtSunday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_OF_WEEK;
+    const auto from = toTimet(2024_y/March/3);
+    auto valid = toTimet(2024_y/March/9);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    valid = toTimet(2024_y/March/10);
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayOfMonthAtMonday) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_MONTH;
+    const auto from = toTimet(2024_y/March/4);
+    const auto valid = toTimet(2024_y/April/1);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayOfMonthAtChristmas) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_MONTH;
+    const auto from = toTimet(2024_y/December/24);
+    const auto valid = toTimet(2025_y/January/1);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayOfMonthAtChristmas) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_IN_MONTH;
+    const auto from = toTimet(2024_y/December/24);
+    const auto valid = toTimet(2024_y/December/31);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayOfMonthWithRollOver) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_IN_MONTH;
+    const auto from = toTimet(2024_y/February/29);
+    const auto valid = toTimet(2024_y/March/last);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayInQuarterAtJanuary) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/January/10);
+    const auto valid = toTimet(2024_y/April/1);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayInQuarterAtFebruary) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/February/10);
+    const auto valid = toTimet(2024_y/April/1);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+
+TEST(processDueAtDayspec, setFirstDayInQuarterAtMarch) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/March/10);
+    const auto valid = toTimet(2024_y/April/1);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayInQuarterAtApril) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/April/last);
+    const auto valid = toTimet(2024_y/July/1);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayInQuarterAtChristmas) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/December/24);
+    const auto valid = toTimet(2025_y/January/1);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+
+TEST(processDueAtDayspec, setLastDayInQuarterAtJanuary) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/January/10);
+    const auto valid = toTimet(2024_y/March/31);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayInQuarterAtFebruary) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/February/10);
+    const auto valid = toTimet(2024_y/March/31);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayInQuarterAtMarch) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/March/10);
+    const auto valid = toTimet(2024_y/March/31);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayInQuarterAtApril) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_IN_QUARTER;
+    const auto from = toTimet(2024_y/April/last);
+    const auto valid = toTimet(2024_y/June/30);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setFirstDayInYear) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_YEAR;
+    const auto from = toTimet(2024_y/April/last);
+    const auto valid = toTimet(2025_y/January/1);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+TEST(processDueAtDayspec, setLastDayInYear) {
+
+    const int val = 1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_IN_YEAR;
+    const auto from = toTimet(2024_y/April/last);
+    const auto valid = toTimet(2024_y/December/last);
+
+    auto due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                              pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                              pb::ActionDueKind::DATETIME,
+                                                              val, *chrono::current_zone(), true); // Week start at sunday
+    EXPECT_EQ(due.start(), valid);
+
+    due = nextapp::grpc::GrpcServer::processDueAtDayspec(from,
+                                                         pb::Action_RepeatUnit::Action_RepeatUnit_YEARS,
+                                                         pb::ActionDueKind::DATETIME,
+                                                         val, *chrono::current_zone(), false); // Week start at monday
+    EXPECT_EQ(due.start(), valid);
+}
+
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

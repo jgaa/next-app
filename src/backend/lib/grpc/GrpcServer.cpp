@@ -1705,13 +1705,6 @@ pb::Due GrpcServer::processDueAtDate(time_t from_timepoint, const pb::Action_Rep
     return due;
 }
 
-constexpr auto sunday_weeks = to_array({date::Sunday, date::Monday, date::Tuesday, date::Wednesday, date::Thursday, date::Friday, date::Saturday});
-constexpr auto monday_weeks = to_array({date::Monday, date::Tuesday, date::Wednesday, date::Thursday, date::Friday, date::Saturday, date::Sunday});
-
-// How many days to subtract from any weekday to get to the start of the week
-static constexpr auto sunday_first_day_of_week = to_array<int8_t>({1, 2, 3, 4, 5, 6, 0});
-static constexpr auto monday_first_day_of_week = to_array<int8_t>({0, 1, 2, 3, 4, 5, 6});
-
 pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
                                         const pb::Action_RepeatUnit &units,
                                         pb::ActionDueKind kind,
@@ -1754,11 +1747,9 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
 
     optional<decltype(make_zoned(local_ts, date::local_days{start_date}))> start;
 
-    const auto& wdays = sundayIsFirstDayOfWeek ? sunday_weeks : monday_weeks;
-    const auto& start_of_week = sundayIsFirstDayOfWeek ? sunday_first_day_of_week : monday_first_day_of_week;
     const auto sysday = sys_days{week_date};
     const auto wday = ref_day.c_encoding();
-    const auto base_day = start_of_week.at(wday);
+    const auto start_of_week_offset = sundayIsFirstDayOfWeek ? days(0) : days(1);
 
     auto best_match = ldays;
 
@@ -1787,7 +1778,8 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
     if (repeatAfter & (1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_WEEK)) {
         auto next = ldays;
         next += days(7);
-        next -= days(start_of_week.at(wday));
+        next += (days(wday) * -1) + start_of_week_offset;
+
         if (best_match < next) {
             best_match = next;
         }
@@ -1795,8 +1787,7 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
 
     if (repeatAfter & (1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_OF_WEEK)) {
         auto next = ldays;
-        next -= days(start_of_week.at(wday));
-        next += days(6);
+        next += (days(wday) * -1) + days(6) + start_of_week_offset;
         if (next <= ldays) {
             next += days(7);
         }
@@ -1808,7 +1799,8 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
     // Always next month
     if (repeatAfter & (1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_MONTH)) {
 
-        auto ymd = start_date.year() / (start_date.month() + months{1}) / 1;
+        auto ymd = start_date.year() / start_date.month() / 1;
+        ymd += months{1};
         auto next = local_days{ymd};
 
         if (best_match < next) {
@@ -1821,7 +1813,11 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
         auto ymd = start_date.year() / start_date.month()  / last;
         auto next = local_days{ymd};
         if (next <= ldays) {
-            next = local_days{start_date.year() / (start_date.month() + months{1})  / last};
+            ymd += months{1};
+            if (!ymd.ok()) {
+                ymd = ymd.year() / ymd.month() / last;
+            }
+            next = local_days{ymd};
         }
 
         if (best_match < next) {
@@ -1835,7 +1831,8 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
         const auto qmonth = static_cast<unsigned>(quarters.at(static_cast<unsigned>(start_date.month()) - 1));
 
         // Jump to the start of next quarter
-        auto ymd = start_date.year() / (month(qmonth) + months{3}) / 1;
+        auto ymd = start_date.year() / month(qmonth) / 1;
+        ymd += + months{3};
         auto next = local_days{ymd};
 
         if (best_match < next) {
@@ -1843,16 +1840,25 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
         }
     }
 
-    if (repeatAfter & (1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_QUARTER)) {
+    if (repeatAfter & (1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_LAST_DAY_IN_QUARTER)) {
         // Start of current quarter
         const auto qmonth = static_cast<unsigned>(quarters.at(static_cast<unsigned>(start_date.month()) - 1));
 
         // Jump to the end of the quarter
-        auto ymd = start_date.year() / (month(qmonth) + months{2}) / last;
+        auto ymd = start_date.year() / month(qmonth) / last;
+        ymd +=  months{2};
+        if (!ymd.ok()) {
+            ymd = ymd.year() / ymd.month() / last;
+        }
+
         auto next = local_days{ymd};
 
         if (next <= ldays) {
-            next = local_days{ymd.year() / (ymd.month() + months{3}) / last};
+            ymd += months{3};
+            if (!ymd.ok()) {
+                ymd = ymd.year() / ymd.month() / last;
+            }
+            next = local_days{ymd};
         }
 
         if (best_match < next) {
@@ -1862,7 +1868,9 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
 
     // Always next year
     if (repeatAfter & (1 << pb::Action_RepeatSpecs::Action_RepeatSpecs_FIRST_DAY_IN_YEAR)) {
-        auto ymd = (start_date.year() + years{1}) / start_date.month()  / 1;
+        auto ymd = start_date.year() / January  / 1;
+        ymd += years{1};
+
         auto next = local_days{ymd};
 
         if (best_match < next) {
@@ -1875,7 +1883,9 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
         auto next = local_days{ymd};
 
         if (next <= ldays) {
-            next = local_days{(ymd.year() + years{1}) / December / last};
+            ymd += years{1};
+            assert(ymd.ok());
+            next = local_days{ymd};
         }
 
         if (best_match < next) {
@@ -1886,7 +1896,8 @@ pb::Due GrpcServer::processDueAtDayspec(time_t from_timepoint,
     start = make_zoned(local_ts, best_match);
 
     cout << "from: " << zoned_ref.get_local_time() << endl;
-    cout << "start: " << start->get_local_time() << endl;
+    cout << "start: " << start->get_local_time()
+         << " = " << chrono::system_clock::to_time_t(start->get_sys_time()) << endl;
 
     if (start) {
         due.set_start(chrono::system_clock::to_time_t(start->get_sys_time()));
