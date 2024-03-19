@@ -1958,13 +1958,15 @@ auto toTimet(const auto& when, const auto *ts) {
 nextapp::pb::Due GrpcServer::adjustDueTime(const pb::Due &fromDue, const UserContext& uctx)
 {
     using namespace date;
-    if (fromDue.has_start() || fromDue.start() == 0) {
+    if (!fromDue.has_start() || fromDue.start() == 0) {
         LOG_TRACE << "No start time, in due.";
         return {};
     }
 
     pb::Due due = fromDue;
     assert(!due.timezone().empty());
+
+    LOG_TRACE << "adjustDueTime after assignment due: " << toJson(due);
 
     // We need to use the date libs zone to get the local time calculations right
     const auto *local_ts = locate_zone(due.timezone());
@@ -2067,6 +2069,7 @@ nextapp::pb::Due GrpcServer::adjustDueTime(const pb::Due &fromDue, const UserCon
             assert(false); // generated enums
     }
 
+    LOG_TRACE << "adjustDueTime before return due: " << toJson(due);
     return due;
 }
 
@@ -2105,6 +2108,8 @@ boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig
 
     pb::Due due;
 
+    LOG_TRACE << "handleActionDone cloned.due: " << toJson(cloned.due());
+
     switch(orig.repeatwhen()) {
         case pb::Action_RepeatWhen::Action_RepeatWhen_AT_DATE:
             due = processDueAtDate(from_timepoint,
@@ -2125,10 +2130,12 @@ boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig
             break;
     }
 
+    LOG_TRACE << "handleActionDone before adj. due: " << toJson(due);
+
     due = adjustDueTime(due, uctx);
     *cloned.mutable_due() = due;
 
-    LOG_TRACE << "Adding cloned action: " << toJson(cloned);
+    LOG_TRACE << "handleActionDone due: " << toJson(due);
     co_await addAction(cloned, *this, ctx);
 
     co_return;
