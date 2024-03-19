@@ -61,7 +61,7 @@ ExternalProject_Add(HowardHinnantDate
         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
         -DBUILD_TZ_LIB=ON
-        -DUSE_OS_TZDB=1
+        -DUSE_SYSTEM_TZ_DB=1
         -DHAS_REMOTE_API=0
         -DAUTO_DOWNLOAD=0
 )
