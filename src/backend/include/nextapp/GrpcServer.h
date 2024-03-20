@@ -233,6 +233,11 @@ public:
                                                   const UserContext& uctx,
                                                   ::grpc::CallbackServerContext *ctx);
 
+    // Called when an action change status to active
+    boost::asio::awaitable<void> handleActionActive(const pb::Action& orig,
+                                                    const UserContext& uctx,
+                                                    ::grpc::CallbackServerContext *ctx);
+
     static nextapp::pb::Due
     processDueAtDate(time_t from_timepoint, const pb::Action_RepeatUnit &units,
                      pb::ActionDueKind kind, int repeatAfter,

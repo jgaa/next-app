@@ -494,10 +494,10 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext&
 
         switch (done) {
             case DoneChanged::MARKED_DONE:
-            co_await grpc.handleActionDone(*action, uctx, ctx);
+                co_await grpc.handleActionDone(*action, uctx, ctx);
                 break;
             case DoneChanged::MARKED_UNDONE:
-                //reply->set_message(format("Action {} marked as undone.", actionId));
+                co_await grpc.handleActionActive(*action, uctx, ctx);
                 break;
             default:
                 break;
@@ -2139,6 +2139,32 @@ boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig
     co_await addAction(cloned, *this, ctx);
 
     co_return;
+}
+
+boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &orig, const UserContext &uctx, ::grpc::CallbackServerContext *ctx)
+{
+    LOG_TRACE << "handleActionActive Action.done changed. Now it is active. Will delete its child (created if it was marked as done and recuirring) if exist, is not a parent and version is 1.";
+
+    // We have to get the list of items to delete manually, as the database does not return that information.
+    // We need the id's to notify the clients.
+    const auto dres = co_await server().db().exec(
+        "select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?",
+        orig.id(), uctx.userUuid());
+
+    // Do the actual delete. There is a potential race-condition here, but it is not a big deal, as it only affect notifications
+    const auto res = co_await server().db().exec(
+        "DELETE FROM action WHERE id IN (select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?)",
+        orig.id(), uctx.userUuid());
+
+    if (res.affected_rows() && dres.has_value()) {
+        for(const auto drow : dres.rows()) {
+            auto id = drow.at(0).as_string();
+            pb::Update update;
+            update.set_op(pb::Update::Operation::Update_Operation_DELETED);
+            update.mutable_action()->set_id(id);
+            publish(make_shared<pb::Update>(update));
+        }
+    }
 }
     // Find the appropriate repeat time
 
