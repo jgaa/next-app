@@ -1,0 +1,9 @@
+[submodule "dependencies/mysqlpool-cpp"]
+	path = dependencies/mysqlpool-cpp
+	url = git@github.com:jgaa/mysqlpool-cpp.git
+[submodule "dependencies/logfault"]
+	path = dependencies/logfault
+	url = git@github.com:jgaa/logfault.git
+[submodule "dependencies/date"]
+	path = dependencies/date
+	url = https://github.com/HowardHinnant/date.git
