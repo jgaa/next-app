@@ -65,6 +65,7 @@ class ActionsModel : public QAbstractListModel
         SectionRole,
         SectionNameRole,
         DueRole,
+        FavoriteRole,
     };
 
     enum Shortcuts {
@@ -93,6 +94,7 @@ public:
     Q_INVOKABLE nextapp::pb::Action newAction();
     Q_INVOKABLE ActionPrx *getAction(QString uuid);
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
+    Q_INVOKABLE void markActionAsFavorite(const QString& actionUuid, bool favorite);
     Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind) const;
     Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
     Q_INVOKABLE QString formatDue(const nextapp::pb::Due& due);

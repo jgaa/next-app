@@ -74,6 +74,7 @@ public:
     void updateAction(const nextapp::pb::Action& action);
     void deleteAction(const QString& actionUuid);
     void markActionAsDone(const QString& actionUuid, bool done);
+    void markActionAsFavorite(const QString& actionUuid, bool favorite);
 
 
     static QString getDefaultServerAddress() {

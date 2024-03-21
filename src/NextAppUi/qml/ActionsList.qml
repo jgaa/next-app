@@ -84,6 +84,7 @@ Rectangle {
                 required property string name
                 required property string uuid
                 required property bool done
+                required property bool favorite
 
                 implicitHeight: row.implicitHeight
                 width: listView.width
@@ -146,6 +147,23 @@ Rectangle {
                     Text {
                         text: name
                         color: Colors.text
+                    }
+
+                    CheckBoxWithFontIcon {
+                        id: favoriteIcon
+                        isChecked: favorite
+                        checkedCode: "\uf005"
+                        uncheckedCode: "\uf005"
+                        checkedColor: "orange"
+                        uncheckedColor: "lightgray"
+                        useSolidForChecked: true
+                        iconSize: 16
+                        autoToggle: false
+                        text: ""
+
+                        onClicked: {
+                            ActionsModel.markActionAsFavorite(uuid, !favorite)
+                        }
                     }
                 }
             }

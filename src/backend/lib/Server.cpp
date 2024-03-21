@@ -309,6 +309,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     static constexpr array<string_view, 0> v3_upgrade;
 
     static constexpr auto v4_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
         R"(DROP TABLE IF EXISTS action2location)",
 
         R"(CREATE OR REPLACE TABLE location (
@@ -324,6 +326,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             origin UUID,
             priority ENUM ('pri_critical', 'pri_very_impornant', 'pri_higher', 'pri_high', 'pri_normal', 'pri_medium', 'pri_low', 'pri_insignificant') NOT NULL DEFAULT ('pri_normal'),
             status ENUM ('active', 'done', 'onhold') NOT NULL DEFAULT 'active',
+            favorite BOOLEAN NOT NULL DEFAULT FALSE,
             name VARCHAR(128) NOT NULL,
             descr TEXT,
             created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -343,9 +346,10 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
         FOREIGN KEY(origin) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
-        R"(CREATE INDEX action_ix2 ON action (user, status, due_by_time))",
+        R"(CREATE INDEX action_ix2 ON action (user, status, start_time, due_by_time))",
         R"(CREATE INDEX action_ix3 ON action (origin))",
-        R"(CREATE INDEX action_ix4 ON action (node, status, due_by_time))",
+        R"(CREATE INDEX action_ix4 ON action (node, status, start_time, due_by_time))",
+        R"(CREATE INDEX action_ix5 ON action (user, status, favorite))",
 
         R"(CREATE OR REPLACE TABLE action2location (
             action UUID NOT NULL,
@@ -355,6 +359,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             FOREIGN KEY(location) REFERENCES location(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
          R"(CREATE INDEX action2location_ix2 ON action2location (location, action))",
+
+        "SET FOREIGN_KEY_CHECKS=1"
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({

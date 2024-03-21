@@ -88,6 +88,7 @@ qt_add_qml_module(appNextAppUi
         qml/WindowDragHandler.qml # x
         qml/DatePicker.qml
         qml/common.js
+        qml/CheckBoxWithFontIcon.qml
     RESOURCES
         icons/folder.svg
         icons/folder_closed.svg
@@ -115,6 +116,9 @@ qt_add_qml_module(appNextAppUi
         icons/square-checked.svg
         icons/square-unchecked.svg
         icons/task.svg
+        "fonts/Font Awesome 6 Free-Regular-400.otf"
+        "fonts/Font Awesome 6 Free-Solid-900.otf"
+        "fonts/Font Awesome 6 Brands-Regular-400.otf"
     SOURCES
         ActionsModel.cpp
         ActionsModel.h

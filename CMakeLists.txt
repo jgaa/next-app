@@ -38,6 +38,7 @@ add_subdirectory(dependencies/logfault)
 include_directories(${NEXTAPP_ROOT}/dependencies/logfault/include)
 
 set(MYSQLPOOL_EMBEDDED ON CACHE INTERNAL "")
+#set(LOGFAULT_ROOT ${NEXTAPP_ROOT}/dependencies/logfault CACHE INTERNAL "")
 set(MYSQLPOOL_LOGGER logfault CACHE INTERNAL "")
 set(MYSQLPOOL_LOG_LEVEL_STR trace CACHE INTERNAL "")
 set(MYSQLPOOL_DBUSER NEXTAPP_DBUSER NEXTAPP_DBUSER CACHE INTERNAL "")

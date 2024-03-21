@@ -210,7 +210,7 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, ORIGIN, PRIORITY, STATUS, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME,  // core
+        ID, NODE, USER, VERSION, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME,  // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER // remaining
     };
 
@@ -225,7 +225,7 @@ struct ToAction {
     }
 
     static string_view statementBindingStr() {
-        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
     }
 
     static string_view updateStatementBindingStr() {
@@ -246,6 +246,7 @@ struct ToAction {
             toStringOrNull(action.origin()),
             pb::ActionPriority_Name(action.priority()),
             pb::ActionStatus_Name(action.status()),
+            action.favorite(),
             action.name(),
 
             // due
@@ -294,6 +295,10 @@ struct ToAction {
             } else {
                 LOG_WARN_N << "Invalid ActionStatus: " << name;
             }
+        }
+
+        if (row.at(FAVORITE).is_int64()) {
+            obj.set_favorite(row.at(FAVORITE).as_int64() != 0);
         }
 
         {
@@ -434,7 +439,7 @@ private:
     }
 
     static constexpr string_view ids_ = "id, node, user, version, ";
-    static constexpr string_view core_ = "origin, priority, status, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time";
+    static constexpr string_view core_ = "origin, priority, status, favorite, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time";
     static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after";
 };
 
@@ -471,7 +476,8 @@ enum class DoneChanged {
 
 boost::asio::awaitable<void>
 replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext& uctx,
-                ::grpc::CallbackServerContext *ctx, pb::Status *reply, DoneChanged done, bool publish = true) {
+                ::grpc::CallbackServerContext *ctx, pb::Status *reply,
+                DoneChanged done = DoneChanged::NO_CHANGE, bool publish = true) {
 
     const auto dbopts = uctx.dbOptions();
 
@@ -1515,6 +1521,66 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
         });
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsFavorite(::grpc::CallbackServerContext *ctx, const pb::ActionFavoriteReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto cutx = owner_.userContext(ctx);
+            const auto& cuser = cutx->userUuid();
+            const auto& uuid = validatedUuid(req->uuid());
+            const auto dbopts = cutx->dbOptions();
+
+            auto res = co_await owner_.server().db().exec(
+                "UPDATE action SET favorite=?, version=version+1 WHERE id=? AND user=?",
+                dbopts, req->favorite(), uuid, cuser);
+
+            assert(res.has_value());
+            if (res.affected_rows() == 1) {
+                co_await replyWithAction(owner_, uuid, *cutx, ctx, reply);
+            } else {
+                reply->set_error(pb::Error::GENERIC_ERROR);
+                reply->set_message(format("Action with id={} was not updated.", uuid));
+            }
+
+            co_return;
+        });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetFavoriteActions(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+         [this, ctx] (auto *reply) -> boost::asio::awaitable<void> {
+
+            const auto cutx = owner_.userContext(ctx);
+            const auto& cuser = cutx->userUuid();
+
+            auto res = co_await owner_.server().db().exec(
+                "SELECT a.id, a.name, n.id, n.name, a.version FROM action as a LEFT JOIN node as n ON n.id = a.node ORDER BY a.name, n.name WHERE a.user = ? AND a.favorite = 1 AND a.status != 'done'",
+                cuser);
+
+             enum Cols {
+                 A_ID, A_NAME, N_ID, N_NAME, A_VERSION
+             };
+
+            if (res.empty() || res.rows().empty()) {
+                reply->set_error(pb::Error::NOT_FOUND);
+                reply->set_message("No favorite actions found");
+                co_return;
+            }
+
+            for(const auto row : res.rows()) {
+                auto *af = reply->mutable_favoriteactions()->add_fa();
+                af->set_actionid(row.at(A_ID).as_string());
+                af->set_actionname(row.at(A_NAME).as_string());
+                af->set_nodeid(row.at(N_ID).as_string());
+                af->set_nodename(row.at(N_NAME).as_string());
+                af->set_actionversion(static_cast<int32_t>(row.at(A_VERSION).as_int64()));
+            }
+
+             co_return;
+        });
+}
+
 GrpcServer::GrpcServer(Server &server)
     : server_{server}
 {
@@ -2165,6 +2231,8 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
             publish(make_shared<pb::Update>(update));
         }
     }
+
+    co_return;
 }
     // Find the appropriate repeat time
 

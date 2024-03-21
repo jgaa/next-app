@@ -124,6 +124,7 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     }
     ai.setPriority(action.priority());
     ai.setStatus(action.status());
+    ai.setFavorite(action.favorite());
     ai.setName(action.name());
     ai.setCreatedDate(ai.createdDate());
     ai.due().setKind(action.due().kind());
@@ -203,6 +204,11 @@ ActionPrx *ActionsModel::getAction(QString uuid)
 void ActionsModel::markActionAsDone(const QString &actionUuid, bool done)
 {
     ServerComm::instance().markActionAsDone(actionUuid, done);
+}
+
+void ActionsModel::markActionAsFavorite(const QString &actionUuid, bool favorite)
+{
+    ServerComm::instance().markActionAsFavorite(actionUuid, favorite);
 }
 
 void ActionsModel::start()
@@ -301,6 +307,7 @@ insert_as_new:
                 auto &crow = list[currentRow];
                 assert(crow.id_proto() == action.id_proto());
                 crow = toActionInfo(action);
+                //LOG_TRACE << "Updated action " << action.id_proto() << " \"" << action.name() << "\" in place. favorite=" << crow.favorite();
                 const auto cix = index(currentRow);
                 emit dataChanged(cix, cix);
             }
@@ -734,7 +741,9 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case DueRole:
         //return action.due(); // Does not work
         return {};
-    }
+    case FavoriteRole:
+        return action.favorite();
+    }    
 
     return {};
 }
@@ -791,6 +800,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[SectionRole] = "section";
     roles[SectionNameRole] = "sname";
     roles[DueRole] = "due";
+    roles[FavoriteRole] = "favorite";
     return roles;
 }
 

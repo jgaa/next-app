@@ -167,6 +167,7 @@ message ActionInfo {
     optional string origin = 10; // uuid
     ActionPriority priority = 3;
     ActionStatus status = 4;
+    bool favorite       = 8;
     string name         = 5;
     Date createdDate    = 7;
     Due due             = 9;
@@ -226,10 +227,10 @@ message Action {
     optional string origin = 10; // uuid
     ActionPriority priority = 3;
     ActionStatus status = 4;
+    bool favorite = 8;
     string name = 5;
     Date createdDate = 7;
     Due due = 9;
-    // 8, 9 is free
     uint64 completedTime = 11; // time_t
     string descr = 6;
     uint64 timeEstimate = 12; // minutes
@@ -368,6 +369,23 @@ message ActionDoneReq {
     bool done = 2;
 }
 
+message ActionFavoriteReq {
+    string uuid = 1;
+    bool favorite = 2;
+}
+
+message FavoriteAction {
+    string actionId = 1;
+    string actionName = 2;
+    string nodeId = 3;
+    string nodeName = 4;
+    int32 actionVersion = 5;
+}
+
+message FavoriteActions {
+    repeated FavoriteAction fa = 1;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -381,6 +399,7 @@ message Status {
         Actions actions = 13;
         Action action = 14;
         string deletedActionId = 15;
+        FavoriteActions favoriteActions = 16;
     }
 }
 
@@ -409,6 +428,8 @@ service Nextapp {
     rpc UpdateAction(Action) returns (Status) {}
     rpc DeleteAction(DeleteActionReq) returns (Status) {}
     rpc MarkActionAsDone(ActionDoneReq) returns (Status) {}
+    rpc MarkActionAsFavorite(ActionFavoriteReq) returns (Status) {}
     rpc ValidateDue(Due) returns (Status) {}
+    rpc GetFavoriteActions(Empty) returns (Status) {}
 }
 

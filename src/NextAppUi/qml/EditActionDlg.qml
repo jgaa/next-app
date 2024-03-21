@@ -53,6 +53,7 @@ Dialog {
             repeatWhenCtl.currentIndex = root.action.repeatWhen
             repeatUnitCtl.currentIndex = root.action.repeatUnits
             repeatKindCtl.currentIndex = root.action.repeatKind
+            favorite.isChecked = root.action.favorite
 
             if (root.action.repeatWhen === 0 /* AT_DATE */) {
                 repeatAfterCtl.value = root.action.repeatAfter
@@ -145,13 +146,26 @@ Dialog {
                         text: qsTr("Status")
                     }
 
-                    ComboBox {
-                        id: status
-                        Layout.preferredWidth: root.controlsPreferredWidth
-                        model: ListModel {
-                            ListElement{ text: qsTr("Active")}
-                            ListElement{ text: qsTr("Done")}
-                            ListElement{ text: qsTr("On Hold")}
+                    RowLayout {
+                        Layout.alignment: Qt.AlignLeft
+                        ComboBox {
+                            id: status
+                            Layout.preferredWidth: root.controlsPreferredWidth
+                            model: ListModel {
+                                ListElement{ text: qsTr("Active")}
+                                ListElement{ text: qsTr("Done")}
+                                ListElement{ text: qsTr("On Hold")}
+                            }
+                        }
+
+                        CheckBoxWithFontIcon {
+                            id: favorite
+                            checkedCode: "\uf005"
+                            uncheckedCode: "\uf005"
+                            checkedColor: "orange"
+                            uncheckedColor: "lightgray"
+                            useSolidForChecked: true
+                            text: qsTr("Favorite")
                         }
                     }
 
@@ -463,6 +477,7 @@ Dialog {
         root.action.difficulty = difficultyCtl.currentIndex
         root.action.repeatKind = repeatKindCtl.currentIndex
         root.action.repeatWhen = repeatWhenCtl.currentIndex
+        root.action.favorite = favorite.isChecked
 
         if (grid.showRepeatSpecCtl) {
             root.action.repeatAfter = createIntFromList(repeatSpecCtl.model)

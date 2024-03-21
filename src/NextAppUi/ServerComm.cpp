@@ -262,6 +262,19 @@ void ServerComm::markActionAsDone(const QString &actionUuid, bool done)
     });
 }
 
+void ServerComm::markActionAsFavorite(const QString &actionUuid, bool favorite)
+{
+    nextapp::pb::ActionFavoriteReq req;
+    req.setUuid(actionUuid);
+    req.setFavorite(favorite);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->MarkActionAsFavorite(req);
+    } , [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Call to gRPC server failed: " << status.message();
