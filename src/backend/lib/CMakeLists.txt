@@ -10,13 +10,16 @@ add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/Server.h
     ${NEXTAPP_BACKEND}/include/nextapp/GrpcServer.h
     ${NEXTAPP_BACKEND}/include/nextapp/util.h
-    util.cpp
     Server.cpp
-    grpc/GrpcServer.cpp
     grpc/Actions.cpp
+    grpc/GreenDays.cpp
+    grpc/GrpcServer.cpp
+    grpc/Node.cpp
     grpc/Work.cpp
-    grpc/shared_grpc_server.h
     grpc/shared_grpc_server.cpp
+    grpc/shared_grpc_server.h
+    grpc/Tenants.cpp
+    util.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
