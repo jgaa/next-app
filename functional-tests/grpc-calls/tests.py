@@ -12,6 +12,8 @@ import nextapp_pb2_grpc
 def gd():
     channel = grpc.insecure_channel(os.getenv('NA_GRPC', '127.0.0.1:10321'))
     stub = nextapp_pb2_grpc.NextappStub(channel)
+    test_node = None
+    test_action = None
     return {'stub': stub}
 
 def test_add_root_node(gd):
@@ -20,6 +22,7 @@ def test_add_root_node(gd):
     status = gd['stub'].CreateNode(req)
     assert status.error == nextapp_pb2.Error.OK
     assert status.node.name == 'first'
+    gd['test_node'] = status.node.uuid
 
 def test_add_child_node(gd):
     node = nextapp_pb2.Node(kind=nextapp_pb2.Node.Kind.FOLDER, name='second')
@@ -89,4 +92,27 @@ def test_get_nodes(gd):
     req = nextapp_pb2.GetNodesReq()
     nodes = gd['stub'].GetNodes(req)
 
+def test_add_action(gd):
+    assert gd['test_node'] != None
 
+    req = nextapp_pb2.Action(name='TestAction', node=gd['test_node'], priority=nextapp_pb2.ActionPriority.PRI_NORMAL, difficulty=nextapp_pb2.ActionDifficulty.NORMAL)
+    status = gd['stub'].CreateAction(req)
+    assert status.error == nextapp_pb2.Error.OK
+    assert status.action.name == 'TestAction'
+    assert status.action.node == gd['test_node']
+    assert status.action.status == nextapp_pb2.ActionStatus.ACTIVE
+    gd['test_action'] = status.action.id
+
+def test_add_work(gd):
+    req = nextapp_pb2.CreateWorkReq(actionId=gd['test_action'])
+    status = gd['stub'].CreateWorkSession(req)
+    assert status.error == nextapp_pb2.Error.OK
+    assert status.work.action == gd['test_action']
+    assert status.work.state == nextapp_pb2.WorkSession.State.ACTIVE
+    work_id = status.work.id
+    
+    # # Pause the work
+    # req = nextapp_pb2.WorkEvent(session=work_id, kind=nextapp_pb2.WorkEvent.Kind.PAUSE)
+    # status = gd['stub'].WorkEvent(req)
+    # assert status.error == nextapp_pb2.Error.OK
+    # assert status.work.state == nextapp_pb2.WorkSession.State.PAUSED
