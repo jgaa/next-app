@@ -16,10 +16,9 @@
 #include "nextapp.grpc.pb.h"
 #include "nextapp/logging.h"
 #include "nextapp/errors.h"
+#include "util.h"
 
 namespace nextapp::grpc {
-
-boost::uuids::uuid newUuid();
 
 class UserContext {
 public:
@@ -165,6 +164,8 @@ public:
         ::grpc::ServerUnaryReactor *MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *MarkActionAsFavorite(::grpc::CallbackServerContext *ctx, const pb::ActionFavoriteReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetFavoriteActions(::grpc::CallbackServerContext *ctx, const pb::Empty *, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *CreateWorkSession(::grpc::CallbackServerContext *ctx, const pb::CreateWorkReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *AddWorkEvent(::grpc::CallbackServerContext *ctx, const pb::WorkEvent *req, pb::Status *reply) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
@@ -222,7 +223,10 @@ public:
     void removePublisher(const boost::uuids::uuid& uuid);
     void publish(const std::shared_ptr<pb::Update>& update);
     boost::asio::awaitable<void> validateNode(const std::string& parentUuid, const std::string& userUuid);
+    boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid);
     boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
+    boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, const UserContext& uctx, bool includeEvents = false);
+    boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx);
 
     bool active() const noexcept {
         return active_;
@@ -252,6 +256,10 @@ public:
 
     /*! Set the due.duie time based ion the due.start time and repeat config */
     static nextapp::pb::Due adjustDueTime(const nextapp::pb::Due& due, const UserContext& uctx);
+
+    boost::asio::awaitable<void> stopWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx);
+    static void updateOutcome(nextapp::pb::WorkSession& work, const UserContext& uctx);
+    boost::asio::awaitable<void> activateNextWorkSession(const UserContext& uctx);
 
 private:
     // The Server instance where we get objects in the application, like config and database

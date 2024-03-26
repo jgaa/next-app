@@ -13,6 +13,10 @@ add_library(${PROJECT_NAME}
     util.cpp
     Server.cpp
     grpc/GrpcServer.cpp
+    grpc/Actions.cpp
+    grpc/Work.cpp
+    grpc/shared_grpc_server.h
+    grpc/shared_grpc_server.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

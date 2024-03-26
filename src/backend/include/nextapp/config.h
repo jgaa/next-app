@@ -16,10 +16,16 @@ struct GrpcConfig {
     std::string address = "127.0.0.1:10321";
 };
 
+struct ServerOptions {
+    /// Delete the work-events when a work session is marked as done.
+    bool delete_work_events_from_db = false;
+};
+
 struct Config {
     ServerConfig svr;
     jgaa::mysqlpool::DbConfig db;
     GrpcConfig grpc;
+    ServerOptions options;
 };
 
 } // ns

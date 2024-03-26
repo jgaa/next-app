@@ -1,22 +1,5 @@
 
-#include <map>
-#include <chrono>
-
-
-#include <boost/uuid/random_generator.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/string_generator.hpp>
-#include <iostream>
-#include <boost/json.hpp>
-#include <boost/algorithm/string.hpp>
-
-#include "date/date.h"
-#include "date/tz.h"
-
-#include "nextapp/GrpcServer.h"
-#include "nextapp/Server.h"
-#include "nextapp/util.h"
+#include "shared_grpc_server.h"
 
 using namespace std;
 using namespace std::literals;
@@ -27,157 +10,7 @@ namespace asio = boost::asio;
 
 namespace nextapp::grpc {
 
-boost::uuids::uuid newUuid()
-{
-    static boost::uuids::random_generator uuid_gen_;
-    return uuid_gen_();
-}
-
-string newUuidStr()
-{
-    return boost::uuids::to_string(newUuid());
-}
-
-
 namespace {
-
-ostream& operator << (ostream& out, const optional<string>& v) {
-    if (v) {
-        return out << *v;
-    }
-
-    return out << "[empty]";
-}
-
-template <typename T>
-concept ProtoMessage = std::is_base_of_v<google::protobuf::Message, T>;
-
-const string& validatedUuid(const string& uuid) {
-    using namespace boost::uuids;
-
-    try {
-        auto result = string_generator()(uuid);
-        return uuid;
-    } catch(const runtime_error&) {
-
-    }
-
-    throw runtime_error{"invalid uuid"};
-}
-
-template <ProtoMessage T>
-std::string toJson(const T& obj) {
-    std::string str;
-    auto res = google::protobuf::util::MessageToJsonString(obj, &str);
-    if (!res.ok()) {
-        LOG_DEBUG << "Failed to convert object to json: "
-                  << typeid(T).name() << ": "
-                  << res.ToString();
-        throw std::runtime_error{"Failed to convert object to json"};
-    }
-    return str;
-}
-
-template <typename T>
-concept ProtoStringStringMap = std::is_same_v<std::remove_cv<T>, std::remove_cv<::google::protobuf::Map<std::string, std::string>>>;
-
-
-template <ProtoStringStringMap T>
-string toJson(const T& map) {
-    json::object o;
-
-    for(const auto [key, value] : map) {
-        o[key] = value;
-    }
-
-    return json::serialize(o);
-}
-
-optional<string> toAnsiDate(const nextapp::pb::Date& date) {
-
-    if (date.year() == 0) {
-        return {};
-    }
-
-    return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month() + 1, date.mday());
-}
-
-optional<string> toAnsiTime(time_t time, const std::chrono::time_zone *ts = {}) {
-    using namespace std::chrono;
-
-    static const auto *default_ts = locate_zone("UTC");
-
-    if (time == 0) {
-        return {};
-    }
-
-    if (!ts) {
-        if (!default_ts) {
-            LOG_ERROR << "toAnsiTime: No time zone for \"UTC\"";
-            return {};
-        }
-        ts = default_ts;
-    }
-
-    const auto when = round<seconds>(system_clock::from_time_t(time));
-    const auto zoned = zoned_time{ts, when};
-    auto out = format("{:%F %T}", zoned);
-    return out;
-}
-
-::nextapp::pb::Date toDate(const boost::mysql::date& from) {
-
-    ::nextapp::pb::Date date;
-    if (from.valid()) {
-        date.set_year(from.year());
-        date.set_month(from.month() -1); // Our range is 0 - 11, the db's range is 1 - 12
-        date.set_mday(from.day());
-    }
-    return date;
-}
-
-::nextapp::pb::Date toDate(const boost::mysql::datetime& from) {
-    ::nextapp::pb::Date date;
-    if (from.valid()) {
-        date.set_year(from.year());
-        date.set_month(from.month() -1); // Our range is 0 - 11, the db's range is 1 - 12
-        date.set_mday(from.day());
-    }
-    return date;
-}
-
-time_t toTimeT(const boost::mysql::datetime& from) {
-    if (from.valid()) {
-        uint64_t when = from.as_time_point().time_since_epoch().count();
-        when /= 1000000LL;
-        return when;
-    }
-
-    return {};
-}
-
-template <typename T>
-optional<string> toStringOrNull(const T& val) {
-    if (val.empty()) {
-        return {};
-    }
-
-    return string{val};
-}
-
-
-void setError(pb::Status& status, pb::Error err, const std::string& message = {}) {
-
-
-    status.set_error(err);
-    if (message.empty()) {
-        status.set_message(pb::Error_Name(err));
-    } else {
-        status.set_message(message);
-    }
-
-    LOG_DEBUG << "Setting error " << status.message() << " on request.";
-}
 
 struct ToNode {
     enum Cols {
@@ -201,6 +34,88 @@ struct ToNode {
         node.set_active(row.at(ACTIVE).as_int64() != 0);
         if (!row.at(PARENT).is_null()) {
             node.set_parent(row.at(PARENT).as_string());
+        }
+    }
+};
+
+struct ToWorkSession {
+    enum Cols {
+        ID, ACTION, USER, START, END, DURATION, PAUSED, STATE, VERSION, EVENTS
+    };
+
+    static constexpr string_view selectCols = "id, action, user, start, end, duration, paused, state, version, events";
+
+    static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws) {
+        ws.set_id(row.at(ID).as_string());
+        ws.set_action(row.at(ACTION).as_string());
+        ws.set_user(row.at(USER).as_string());
+        ws.set_start(row.at(START).as_int64());
+        if (row.at(END).is_uint64()) {
+            ws.set_end(row.at(END).as_int64());
+        }
+        ws.set_end(row.at(END).as_int64());
+        ws.set_duration(row.at(DURATION).as_int64());
+        ws.set_paused(row.at(PAUSED).as_int64() != 0);
+        ws.set_version(row.at(VERSION).as_int64());
+
+        if (!row.at(EVENTS).is_null()) {
+            auto blob = row.at(EVENTS).as_blob();
+            pb::SavedWorkEvents events;
+            if (events.ParseFromArray(blob.data(), blob.size())) {
+                *ws.mutable_events() = std::move(events.events());
+            } else {
+                LOG_WARN_N << "Failed to parse WorkSession.events";
+            }
+        }
+
+        {
+            pb::WorkSession_State state;
+            const auto name = toUpper(row.at(STATE).as_string());
+            if (pb::WorkSession_State_Parse(name, &state)) {
+                ws.set_state(state);
+            } else {
+                LOG_WARN_N << "Invalid WorkSession.State: " << name;
+            }
+        }
+    }
+};
+
+struct ToWorkEvent {
+    enum Cols {
+        ID, SESSION, KIND, TIME, C_START, C_END, C_DURATION, C_PAUSED
+    };
+
+    static constexpr string_view selectCols = "id, session, kind, event_time, start_time, end_time, duration, paused";
+
+    static void assign(const boost::mysql::row_view& row, pb::WorkEvent& we) {
+        we.set_id(row.at(ID).as_string());
+        we.set_session(row.at(SESSION).as_string());
+        we.set_time(row.at(TIME).as_int64());
+
+        {
+            pb::WorkEvent_Kind kind;
+            const auto name = toUpper(row.at(KIND).as_string());
+            if (pb::WorkEvent_Kind_Parse(name, &kind)) {
+                we.set_kind(kind);
+            } else {
+                LOG_WARN_N << "Invalid WorkEvent.Kind: " << name;
+            }
+        }
+
+        // Corrections
+        if (row.at(C_START).is_int64()) {
+            we.set_start(row.at(C_START).as_int64());
+        }
+        if (row.at(C_END).is_int64()) {
+            we.set_end(row.at(C_END).as_int64());
+        }
+
+        if (row.at(C_DURATION).is_int64()) {
+            we.set_duration(row.at(C_DURATION).as_int64());
+        }
+
+        if (row.at(C_PAUSED).is_int64()) {
+            we.set_paused(row.at(C_PAUSED).as_int64() != 0);
         }
     }
 };
@@ -241,7 +156,7 @@ struct ToAction {
     }
 
     template <bool argsFirst = true, typename ...Args>
-    static auto prepareBindingArgs(const pb::Action& action, const std::chrono::time_zone *ts, Args... args) {
+    static auto prepareBindingArgs(const pb::Action& action, const UserContext& uctx, Args... args) {
         auto bargs = make_tuple(
             toStringOrNull(action.origin()),
             pb::ActionPriority_Name(action.priority()),
@@ -251,11 +166,11 @@ struct ToAction {
 
             // due
             pb::ActionDueKind_Name(action.due().kind()),
-            toAnsiTime(action.due().start(), ts),
-            toAnsiTime(action.due().due(), ts),
+            toAnsiTime(action.due().start(), uctx.tz()),
+            toAnsiTime(action.due().due(),  uctx.tz()),
             toStringOrNull(action.due().timezone()),
 
-            toAnsiTime(action.completedtime(), ts),
+            toAnsiTime(action.completedtime(),  uctx.tz()),
             action.descr(),
             action.timeestimate(),
             pb::ActionDifficulty_Name(action.difficulty()),
@@ -278,7 +193,7 @@ struct ToAction {
     }
 
     template <ActionType T>
-    static void assign(const boost::mysql::row_view& row, T& obj, const std::chrono::time_zone *ts) {
+    static void assign(const boost::mysql::row_view& row, T& obj, const UserContext& uctx) {
         obj.set_id(row.at(ID).as_string());
         obj.set_node(row.at(NODE).as_string());
         obj.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
@@ -344,22 +259,22 @@ struct ToAction {
 
         if (obj.status() == pb::ActionStatus::DONE) {
             obj.set_kind(pb::ActionKind::AC_DONE);
-        } else if (ts) {
+        } else {
             // If we have due_by_time set, we can see a) if it's expired, b) if it's today and c) it it's in the future
             // We need to convert the time from the database and the time right now to the time-zone used by the client to get it right.
             if (row.at(START_TIME).is_datetime()) {
                 const auto due = row.at(DUE_BY_TIME).as_datetime();
-                const auto zt = std::chrono::zoned_time(ts, due.as_time_point());
+                const auto zt = std::chrono::zoned_time(&uctx.tz(), due.as_time_point());
                 const auto due_when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
 
                 optional<chrono::year_month_day> start;
                 if (row.at(START_TIME).is_datetime()) {
                     const auto start_time = row.at(START_TIME).as_datetime();
-                    const auto zt = std::chrono::zoned_time(ts, start_time.as_time_point());
+                    const auto zt = std::chrono::zoned_time(&uctx.tz(), start_time.as_time_point());
                     start = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
                 }
 
-                const auto now_zt = std::chrono::zoned_time(ts, chrono::system_clock::now());
+                const auto now_zt = std::chrono::zoned_time(&uctx.tz(), chrono::system_clock::now());
                 const auto now = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(now_zt.get_local_time())};
 
                 if (due_when.year() == now.year() && due_when.month() == now.month() && due_when.day() == now.day()) {
@@ -443,30 +358,6 @@ private:
     static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after";
 };
 
-struct SqlFilter {
-
-    SqlFilter(bool addWhere = true)
-        : add_where_{addWhere} {}
-
-    template <typename T>
-    void add(const T& what) {
-        if (add_where_ && where_.empty()) {
-            where_ = "WHERE ";
-        } else {
-            where_ += " AND ";
-        }
-
-        where_ += what;
-    }
-
-    std::string_view where() const noexcept {
-        return where_;
-    }
-
-private:
-    bool add_where_ = true;
-    std::string where_;
-};
 
 enum class DoneChanged {
     NO_CHANGE,
@@ -489,7 +380,7 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext&
     if (!res.rows().empty()) {
         const auto& row = res.rows().front();
         auto *action = reply->mutable_action();
-        ToAction::assign(row, *action, &uctx.tz());
+        ToAction::assign(row, *action, uctx);
         if (publish) {
             // Copy the new Action to an update and publish it
             auto update = make_shared<pb::Update>();
@@ -1003,7 +894,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION
         };
 
-        dbopts.reconnect_and_retry_query_ = false;
+        dbopts.reconnect_and_retry_query = false;
         const auto res = co_await owner_.server().db().exec(format(
             "INSERT INTO node (id, user, name, kind, descr, active, parent) VALUES (?, ?, ?, ?, ?, ?, ?) "
             "RETURNING {}", ToNode::selectCols), dbopts,
@@ -1309,7 +1200,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         assert(res.has_value());
         auto *actions = reply->mutable_actions();
         for(const auto& row : res.rows()) {
-            ToAction::assign(row, *actions->add_actions(), &cutx->tz());
+            ToAction::assign(row, *actions->add_actions(), *cutx);
         }
 
         LOG_TRACE << toJson(*reply);
@@ -1335,7 +1226,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             if (!res.rows().empty()) {
                 const auto& row = res.rows().front();
                 auto *action = reply->mutable_action();
-                ToAction::assign(row, *action, &cutx->tz());
+                ToAction::assign(row, *action, *cutx);
             } else {
                 reply->set_error(pb::Error::NOT_FOUND);
                 reply->set_message(format("Action with id={} not found for the current user.", uuid));
@@ -1368,7 +1259,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
     }
 
     // Not an idempotent query
-    dbopts.reconnect_and_retry_query_ = false;
+    dbopts.reconnect_and_retry_query = false;
 
     const auto res = co_await owner.server().db().exec(
         format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
@@ -1376,7 +1267,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
                ToAction::statementBindingStr(),
                ToAction::allSelectCols()),
         dbopts,
-        ToAction::prepareBindingArgs(action, &cutx->tz(), action.id(), action.node(), cuser));
+        ToAction::prepareBindingArgs(action, *cutx, action.id(), action.node(), cuser));
 
     assert(!res.empty());
     // Set the reply data
@@ -1384,11 +1275,11 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
     auto update = make_shared<pb::Update>();
     if (reply) {
         auto *reply_action = reply->mutable_action();
-        ToAction::assign(res.rows().front(), *reply_action, &cutx->tz());
+        ToAction::assign(res.rows().front(), *reply_action, *cutx);
         *update->mutable_action() = *reply_action;
     } else {
         action.Clear();
-        ToAction::assign(res.rows().front(), action, &cutx->tz());
+        ToAction::assign(res.rows().front(), action, *cutx);
         *update->mutable_action() = action;
     }
 
@@ -1448,7 +1339,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 
             auto res = co_await owner_.server().db().exec(format("UPDATE action SET {}, version=version+1 WHERE id=? AND user=? ",
                                                                        ToAction::updateStatementBindingStr()), dbopts,
-                                                                ToAction::prepareBindingArgs<false>(new_action, &cutx->tz(), uuid, cuser));
+                                                                ToAction::prepareBindingArgs<false>(new_action, *cutx, uuid, cuser));
 
             assert(!res.empty());
 
@@ -1501,7 +1392,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 
             optional<string> when;
             if (req->done()) {
-                when = toAnsiTime(time({}));
+                when = toAnsiTime(time({}), cutx->tz());
                 done = DoneChanged::MARKED_DONE;
             }
 
@@ -1579,6 +1470,139 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 
              co_return;
         });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateWorkSession(::grpc::CallbackServerContext *ctx, const pb::CreateWorkReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto cutx = owner_.userContext(ctx);
+            const auto& cuser = cutx->userUuid();
+            auto dbopts = cutx->dbOptions();
+            dbopts.reconnect_and_retry_query = false;
+
+            co_await owner_.validateAction(req->actionid(), cuser);
+
+            // TODO: Execute in transaction
+            // Create the work session record
+            const auto res = co_await owner_.server().db().exec(
+                format("INSERT INTO work_session (action, user) VALUES (?,?) "
+                       "RETURNING {}", ToWorkSession::selectCols),
+                dbopts,
+                req->actionid(),
+                cuser);
+
+            assert(res.has_value() && !res.rows().empty());
+
+            pb::WorkSession session;
+            ToWorkSession::assign(res.rows().front(), session);
+
+            // Add the START event
+            const auto evres = co_await owner_.server().db().exec(
+                format("INSERT INTO work_event (session, kind) VALUES (?, 'start')"
+                       "RETURNS {}", ToWorkEvent::selectCols),  dbopts, session.id());
+
+            assert(evres.has_value() && !evres.rows().empty());
+            pb::WorkEvent we;
+            ToWorkEvent::assign(evres.rows().front(), we);
+
+            // Add the start event to the list of the session we return and publish
+            *session.mutable_events()->Add() = std::move(we);
+
+            auto& final_session = *reply->mutable_work();
+            final_session = std::move(session);
+
+            auto update = make_shared<pb::Update>();
+            update->set_op(pb::Update::Operation::Update_Operation_ADDED);
+            *update->mutable_work() = final_session;
+            owner_.publish(update);
+
+            co_return;
+        });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::AddWorkEvent(::grpc::CallbackServerContext *ctx, const pb::WorkEvent *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto cutx = owner_.userContext(ctx);
+            const auto& cuser = cutx->userUuid();
+            auto dbopts = cutx->dbOptions();
+            dbopts.reconnect_and_retry_query = false;
+
+            auto update = make_shared<pb::Update>();
+            update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+            auto work = co_await owner_.fetchWorkSession(req->session(), *cutx, true);
+
+            // Here we do the logic. When the sitch exits, `work` is assumed to be updated
+            switch(req->kind()) {
+                case pb::WorkEvent::Kind::WorkEvent_Kind_START:
+                    throw db_err{pb::Error::INVALID_REQUEST, "Use CreateWorkSession to start a new session"};
+                case pb::WorkEvent::Kind::WorkEvent_Kind_STOP:
+                    if (work.has_end()) {
+                        throw db_err{pb::Error::INVALID_REQUEST, "Session is already stopped"};
+                    }
+                    co_await owner_.stopWorkSession(work, *cutx);
+                    break;
+            }
+
+            *update->mutable_work() = work;
+            owner_.publish(update);
+            *reply->mutable_work() = std::move(work);
+            co_return;
+        });
+}
+
+boost::asio::awaitable<pb::WorkSession> GrpcServer::fetchWorkSession(const std::string &uuid, const UserContext &uctx, bool includeEvents)
+{
+    auto res = co_await server().db().exec(format("SELECT {} from work_session where id=? and user = ?", ToWorkSession::selectCols), uuid, uctx.userUuid());
+    if (!res.has_value() || res.rows().empty()) {
+        throw db_err{pb::Error::NOT_FOUND, format("Work session {} not found", uuid)};
+    }
+
+    pb::WorkSession rval;
+    ToWorkSession::assign(res.rows().front(), rval);
+
+    if (includeEvents) {
+        auto evres = co_await server().db().exec(format("SELECT {} from work_event where session=? ORDER BY event_time", ToWorkEvent::selectCols), uuid);
+        if (evres.has_value()) {
+            for(const auto& row : evres.rows()) {
+                pb::WorkEvent we;
+                ToWorkEvent::assign(row, we);
+                *rval.mutable_events()->Add() = std::move(we);
+            }
+        }
+    }
+
+    co_return rval;
+}
+
+boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, const UserContext &uctx)
+{
+    const auto& dbo = uctx.dbOptions();
+    if (work.has_end()) {
+        assert(work.state() == pb::WorkSession::State::WorkSession_State_DONE);
+
+        pb::SavedWorkEvents events;
+        *events.mutable_events() = work.events();
+        string events_buffer;
+        events.SerializeToString(&events_buffer);
+
+
+        co_await server().db().exec("UPDATE work_session SET start_time=?, end_time=?, state = 'done', "
+                                    "duration = ?, paused = ?, events = ? version=version+1 "
+                                    "WHERE id=? AND user=?",
+                                    dbo,
+                                    toAnsiTime(work.start(), uctx.tz()), toAnsiTime(work.end(), uctx.tz()),
+                                    work.duration(), work.paused(), events_buffer, work.id(), uctx.userUuid());
+    } else {
+        co_await server().db().exec("UPDATE work_session SET start_time = ?, duration = ?, paused = ?, state=?, version=version+1 "
+                                    "WHERE id=? AND user=?",
+                                    dbo,
+                                    toAnsiTime(work.start(), uctx.tz()), work.duration(), work.paused(),
+                                    pb::WorkSession_State_Name(work.state()), work.id(),
+                                    uctx.userUuid());
+    }
 }
 
 GrpcServer::GrpcServer(Server &server)
@@ -1662,8 +1686,14 @@ boost::asio::awaitable<void> GrpcServer::validateNode(const std::string &parentU
     if (!res.has_value()) {
         throw db_err{pb::Error::INVALID_PARENT, "Node id must exist and be owned by the user"};
     }
+}
 
-    co_return;
+boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actionId, const std::string &userUuid)
+{
+    auto res = co_await server().db().exec("SELECT id FROM action where id=? and user=?", actionId, userUuid);
+    if (!res.has_value()) {
+        throw db_err{pb::Error::INVALID_ACTION, "Action not found for the current user"};
+    }
 }
 
 boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, const std::string &userUuid)
@@ -1685,13 +1715,13 @@ const std::shared_ptr<UserContext> GrpcServer::userContext(::grpc::CallbackServe
     static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
 
     jgaa::mysqlpool::Options dbo;
-    dbo.reconnect_and_retry_query_ = true;
+    dbo.reconnect_and_retry_query = true;
 
     // TODO: Implement sessions and authentication
     lock_guard lock{mutex_};
     if (sessions_.empty()) {
         const auto zone_name = chrono::current_zone()->name();
-        dbo.locale_name = zone_name;
+        dbo.time_zone = zone_name;
         auto ux = make_shared<UserContext>(system_tenant, system_user, zone_name, true, dbo);
         sessions_[ux->sessionId()] = ux;
         return ux;
@@ -2137,6 +2167,104 @@ nextapp::pb::Due GrpcServer::adjustDueTime(const pb::Due &fromDue, const UserCon
 
     LOG_TRACE << "adjustDueTime before return due: " << toJson(due);
     return due;
+}
+
+/* This function is called when a work session is maked as done.
+
+    - It calculates the outcome (duration, paused)
+    - It updates the work_session record with the end time.
+    - It adds the events to the work_session `events column.
+    - It sets the state to done
+    - It deletes the records in the work_events table - if configured to do so.
+*/
+boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work, const UserContext &uctx)
+{
+    auto dbopts = uctx.dbOptions();
+    dbopts.reconnect_and_retry_query = false;
+
+    // Write the final event to the database. That way we use the db servers clock for all the events.
+    const auto evres = co_await server().db().exec(
+        format("INSERT INTO work_event (session, kind) VALUES (?, 'stop')"
+               "RETURNS {}", ToWorkEvent::selectCols),  dbopts, work.id());
+
+    assert(evres.has_value() && !evres.rows().empty());
+    pb::WorkEvent we;
+    ToWorkEvent::assign(evres.rows().front(), we);
+
+    // Add the final event to the list of events before we calculate the outcome
+    *work.mutable_events()->Add() = std::move(we);
+
+    updateOutcome(work, uctx);
+    assert(work.state() == pb::WorkSession_State::WorkSession_State_DONE);
+
+    co_await saveWorkSession(work, uctx);
+
+    if (server().config().options.delete_work_events_from_db) {
+        LOG_TRACE_N << "Deleting events from work_event table for work session " << work.id();
+        co_await server().db().exec("DELETE FROM work_event WHERE session=?", work.id());
+    }
+
+}
+
+void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext &uctx)
+{
+    // First event *must* be a start event
+    if (work.events_size() == 0) {
+        return; // Nothing to do
+    }
+
+    if (work.events(0).kind() != pb::WorkEvent::Kind::WorkEvent_Kind_START) {
+        LOG_WARN << "First event in a work-session must be a start event. In work-session " << work.id()
+                 << " The first event is a " << pb::WorkEvent::Kind_Name(work.events(0).kind());
+        throw db_err{pb::Error::CONSTRAINT_FAILED, "First event in a work-session must be a start event"};
+    }
+
+    work.set_paused(0);
+    work.set_duration(0);
+    work.clear_end();
+
+    time_t pause_from = 0;
+
+    const auto end_pause = [&](const pb::WorkEvent& event) {
+        if (pause_from > 0) {
+            auto pduration = event.time() - pause_from;
+            work.set_paused(work.paused() + pduration);
+            pause_from = 0;
+        }
+    };
+
+    unsigned row = 0;
+    for(const auto &event : work.events()) {
+        ++row;
+        switch(event.kind()) {
+            case pb::WorkEvent::Kind::WorkEvent_Kind_START:
+            assert(row == 1);
+            work.set_start(event.time());
+            work.set_state(pb::WorkSession_State::WorkSession_State_ACTIVE);
+            break;
+        case pb::WorkEvent::Kind::WorkEvent_Kind_STOP:
+            end_pause(event);
+            work.set_end(event.time());
+            work.set_state(pb::WorkSession_State::WorkSession_State_DONE);
+            break;
+        case pb::WorkEvent::Kind::WorkEvent_Kind_PAUSE:
+            if (!pause_from) {
+                pause_from = event.time();
+            }
+            work.set_state(pb::WorkSession_State::WorkSession_State_PAUSED);
+            break;
+        case pb::WorkEvent::Kind::WorkEvent_Kind_RESUME:
+            end_pause(event);
+            work.set_state(pb::WorkSession_State::WorkSession_State_ACTIVE);
+            break;
+
+        //TODO: Add corrections
+
+        default:
+            assert(false);
+            throw runtime_error{"Invalid work event kind"s + to_string(event.kind())};
+        }
+    }
 }
 
 boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig,

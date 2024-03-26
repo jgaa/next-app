@@ -358,7 +358,41 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
             FOREIGN KEY(location) REFERENCES location(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
-         R"(CREATE INDEX action2location_ix2 ON action2location (location, action))",
+        R"(CREATE INDEX action2location_ix2 ON action2location (location, action))",
+
+        R"(CREATE OR REPLACE TABLE work_session (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            action UUID NOT NULL,
+            user UUID NOT NULL,
+            state ENUM('active', 'paused', 'done') NOT NULL DEFAULT 'active',
+            version INT NOT NULL DEFAULT 1,
+            start_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            end_time TIMESTAMP,
+            duration INTEGER NOT NULL DEFAULT 0,
+            paused INTEGER NOT NULL DEFAULT 0,
+            events BINARY, -- The events for the session saved as a protobuf message
+            FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE INDEX work_session_ix1 ON work_session (user, action))",
+
+        R"(CREATE OR REPLACE TABLE work_event (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            session UUID NOT NULL,
+            user UUID NOT NULL,
+            action UUID NOT NULL,
+
+            kind ENUM('start', 'stop', 'pause', 'resume', 'correction') NOT NULL,
+            event_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+            start_time TIMESTAMP,
+            end_time TIMESTAMP,
+            duration INTEGER,
+            paused INTEGER,
+
+            FOREIGN KEY(session) REFERENCES work_session(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE INDEX work_event_ix1 ON work_event (action))",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });

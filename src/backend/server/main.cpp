@@ -212,7 +212,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        LOG_TRACE_N << LogEvent::LE_TEST << "Getting ready...";
+        LOG_TRACE_N << "Getting ready...";
 
         if (bootstrap) {
             LOG_INFO << appname << ' ' << APP_VERSION << ".";

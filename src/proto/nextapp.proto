@@ -16,6 +16,8 @@ enum Error {
     NO_CHANGES = 10;
     CONSTRAINT_FAILED = 11;
     GENERIC_ERROR = 12;
+    INVALID_ACTION = 13;
+    INVALID_REQUEST = 14;
 }
 
 message KeyValue {
@@ -77,6 +79,55 @@ message Node {
     Kind kind = 6;
     string descr = 7;
     int64 version = 8;
+}
+
+message WorkEvent {
+    enum Kind {
+        START = 0; // Start a new session
+        STOP = 1; // Stop/End the current session
+        PAUSE = 2; // Pause the current session
+        RESUME = 3; // Resume a paused session
+
+        // Correct a session. Any or all of the optional fields can be used
+        // Any correction for a value set that value absolutely at the time of the correction.
+        // If there are conflicting corrections, the last one wins.
+        // If start or end time is corrected, all events, except corrections, before start or after end are ignored
+        CORRECTION = 4;
+    }
+
+    string id = 1; // uuid
+    string session = 2;
+    Kind kind = 3;
+    uint64 time = 4; // time_t
+
+    // For corrections
+    optional uint64 start = 5; // time_t
+    optional uint64 end = 6; // time_t
+    optional uint32 duration = 7; // minutes
+    optional uint32 paused = 8; // minutes
+}
+
+message WorkSession {
+    enum State {
+        ACTIVE = 0;
+        PAUSED = 1;
+        DONE = 2;
+    }
+
+    string id = 1; // uuid
+    string action = 2;
+    string user = 3;
+    uint64 start = 4; // time_t
+    optional uint64 end = 5; // time_t, also flags if a session is active
+    uint64 duration = 6; // minutes
+    uint32 paused = 7; // minutes
+    State state = 8;
+    int32 version = 9;
+    repeated WorkEvent events = 10;
+}
+
+message SavedWorkEvents {
+    repeated WorkEvent events = 1;
 }
 
 message UpdateRequest {
@@ -325,6 +376,7 @@ message Update {
         User user = 14;
         Node node = 15;
         Action action = 16;
+        WorkSession work = 17;
     }
 }
 
@@ -386,6 +438,10 @@ message FavoriteActions {
     repeated FavoriteAction fa = 1;
 }
 
+message CreateWorkReq {
+    string actionId = 1;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -400,6 +456,7 @@ message Status {
         Action action = 14;
         string deletedActionId = 15;
         FavoriteActions favoriteActions = 16;
+        WorkSession work = 17;
     }
 }
 
@@ -431,5 +488,7 @@ service Nextapp {
     rpc MarkActionAsFavorite(ActionFavoriteReq) returns (Status) {}
     rpc ValidateDue(Due) returns (Status) {}
     rpc GetFavoriteActions(Empty) returns (Status) {}
+    rpc CreateWorkSession(CreateWorkReq) returns (Status) {}
+    rpc AddWorkEvent(WorkEvent) returns (Status) {}
 }
 
