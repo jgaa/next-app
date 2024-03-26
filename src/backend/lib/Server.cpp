@@ -379,7 +379,6 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         R"(CREATE OR REPLACE TABLE work_event (
             id UUID not NULL default UUID() PRIMARY KEY,
             session UUID NOT NULL,
-            user UUID NOT NULL,
             action UUID NOT NULL,
 
             kind ENUM('start', 'stop', 'pause', 'resume', 'correction') NOT NULL,

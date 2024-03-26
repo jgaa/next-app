@@ -1,8 +1,7 @@
 #include <map>
 #include <chrono>
-
-
 #include <iostream>
+
 #include <boost/json.hpp>
 #include <boost/algorithm/string.hpp>
 
@@ -47,9 +46,9 @@ time_t getDueTime(const T& start, const auto& ts, pb::ActionDueKind kind) {
     switch(kind) {
     case pb::ActionDueKind::DATETIME: {
         return chrono::system_clock::to_time_t(start.get_sys_time());
+    }
     default:
         ; // pass
-    }
     }
 
     return {};
@@ -67,7 +66,6 @@ static constexpr auto quarters = to_array({date::January, date::January, date::J
                                            date::April, date::April, date::April,
                                            date::July, date::July, date::July,
                                            date::October, date::October, date::October});
-
 
 struct SqlFilter {
 

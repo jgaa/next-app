@@ -10,17 +10,16 @@ struct ToWorkSession {
         ID, ACTION, USER, START, END, DURATION, PAUSED, STATE, VERSION, EVENTS
     };
 
-    static constexpr string_view selectCols = "id, action, user, start, end, duration, paused, state, version, events";
+    static constexpr string_view selectCols = "id, action, user, start_time, end_time, duration, paused, state, version, events";
 
     static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws) {
         ws.set_id(row.at(ID).as_string());
         ws.set_action(row.at(ACTION).as_string());
         ws.set_user(row.at(USER).as_string());
-        ws.set_start(row.at(START).as_int64());
-        if (row.at(END).is_uint64()) {
-            ws.set_end(row.at(END).as_int64());
+        ws.set_start(toTimeT(row.at(START).as_datetime()));
+        if (row.at(END).is_datetime()) {
+            ws.set_end(toTimeT(row.at(END).as_datetime()));
         }
-        ws.set_end(row.at(END).as_int64());
         ws.set_duration(row.at(DURATION).as_int64());
         ws.set_paused(row.at(PAUSED).as_int64() != 0);
         ws.set_version(row.at(VERSION).as_int64());
@@ -57,7 +56,7 @@ struct ToWorkEvent {
     static void assign(const boost::mysql::row_view& row, pb::WorkEvent& we) {
         we.set_id(row.at(ID).as_string());
         we.set_session(row.at(SESSION).as_string());
-        we.set_time(row.at(TIME).as_int64());
+        we.set_time(toTimeT(row.at(TIME).as_datetime()));
 
         {
             pb::WorkEvent_Kind kind;
@@ -71,10 +70,10 @@ struct ToWorkEvent {
 
         // Corrections
         if (row.at(C_START).is_int64()) {
-            we.set_start(row.at(C_START).as_int64());
+            we.set_start(toTimeT(row.at(C_START).as_datetime()));
         }
         if (row.at(C_END).is_int64()) {
-            we.set_end(row.at(C_END).as_int64());
+            we.set_end(toTimeT(row.at(C_END).as_datetime()));
         }
 
         if (row.at(C_DURATION).is_int64()) {
@@ -116,8 +115,8 @@ struct ToWorkEvent {
 
             // Add the START event
             const auto evres = co_await owner_.server().db().exec(
-                format("INSERT INTO work_event (session, kind) VALUES (?, 'start')"
-                       "RETURNS {}", ToWorkEvent::selectCols),  dbopts, session.id());
+                format("INSERT INTO work_event (session, action, kind) VALUES (?, ?, 'start') "
+                       "RETURNING {}", ToWorkEvent::selectCols),  dbopts, session.id(), session.action());
 
             assert(evres.has_value() && !evres.rows().empty());
             pb::WorkEvent we;
@@ -243,8 +242,8 @@ boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work, 
 
     // Write the final event to the database. That way we use the db servers clock for all the events.
     const auto evres = co_await server().db().exec(
-        format("INSERT INTO work_event (session, kind) VALUES (?, 'stop')"
-               "RETURNS {}", ToWorkEvent::selectCols),  dbopts, work.id());
+        format("INSERT INTO work_event (session, action, kind) VALUES (?, ?, 'stop')"
+               "RETURNS {}", ToWorkEvent::selectCols),  dbopts, work.id(), work.action());
 
     assert(evres.has_value() && !evres.rows().empty());
     pb::WorkEvent we;
