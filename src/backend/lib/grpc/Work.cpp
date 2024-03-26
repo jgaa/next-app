@@ -199,29 +199,30 @@ boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, 
 {
     const auto& dbo = uctx.dbOptions();
 
+    pb::SavedWorkEvents events;
+    *events.mutable_events() = work.events();
+    string events_buffer;
+    events.SerializeToString(&events_buffer);
+    boost::mysql::blob_view blob{reinterpret_cast<const unsigned char *>(events_buffer.data()), events_buffer.size()};
+
     if (work.has_end()) {
         // Is done
         assert(work.state() == pb::WorkSession::State::WorkSession_State_DONE);
 
-        pb::SavedWorkEvents events;
-        *events.mutable_events() = work.events();
-        string events_buffer;
-        events.SerializeToString(&events_buffer);
-
         co_await server().db().exec(
-            "UPDATE work_session SET start_time=?, end_time=?, state = 'done', "
-            "duration = ?, paused = ?, events = ? version=version+1 "
+            "UPDATE work_session SET start_time=?, end_time=?, state='done', "
+            "duration=?, paused=?, events=?, version=version+1 "
             "WHERE id=? AND user=?",
             dbo,
             toAnsiTime(work.start(), uctx.tz()), toAnsiTime(work.end(), uctx.tz()),
-            work.duration(), work.paused(), events_buffer, work.id(), uctx.userUuid());
+            work.duration(), work.paused(), blob, work.id(), uctx.userUuid());
     } else {
         // active or paused
         co_await server().db().exec(
-            "UPDATE work_session SET start_time = ?, duration = ?, paused = ?, state=?, version=version+1 "
+            "UPDATE work_session SET start_time = ?, duration = ?, paused = ?, events=?, state=?, version=version+1 "
             "WHERE id=? AND user=?",
             dbo,
-            toAnsiTime(work.start(), uctx.tz()), work.duration(), work.paused(),
+            toAnsiTime(work.start(), uctx.tz()), work.duration(), work.paused(), blob,
             pb::WorkSession_State_Name(work.state()), work.id(),
             uctx.userUuid());
             }
@@ -243,7 +244,7 @@ boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work, 
     // Write the final event to the database. That way we use the db servers clock for all the events.
     const auto evres = co_await server().db().exec(
         format("INSERT INTO work_event (session, action, kind) VALUES (?, ?, 'stop')"
-               "RETURNS {}", ToWorkEvent::selectCols),  dbopts, work.id(), work.action());
+               "RETURNING {}", ToWorkEvent::selectCols),  dbopts, work.id(), work.action());
 
     assert(evres.has_value() && !evres.rows().empty());
     pb::WorkEvent we;
