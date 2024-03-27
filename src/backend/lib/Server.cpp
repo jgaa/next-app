@@ -366,6 +366,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             user UUID NOT NULL,
             state ENUM('active', 'paused', 'done') NOT NULL DEFAULT 'active',
             version INT NOT NULL DEFAULT 1,
+            touch_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             start_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             end_time TIMESTAMP,
             duration INTEGER NOT NULL DEFAULT 0,
@@ -380,10 +381,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             id UUID not NULL default UUID() PRIMARY KEY,
             session UUID NOT NULL,
             action UUID NOT NULL,
-
             kind ENUM('start', 'stop', 'pause', 'resume', 'correction') NOT NULL,
             event_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
             start_time TIMESTAMP,
             end_time TIMESTAMP,
             duration INTEGER,

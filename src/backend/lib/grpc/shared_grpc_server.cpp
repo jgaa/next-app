@@ -54,4 +54,11 @@ std::time_t addDays(std::time_t input, int n)
     return chrono::system_clock::to_time_t(today);
 }
 
+std::shared_ptr<pb::Update> newUpdate(pb::Update::Operation op)
+{
+    auto update = std::make_shared<pb::Update>();
+    update->set_op(op);
+    return update;
+}
+
 } // ns

@@ -144,7 +144,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             }
 
 
-            co_await owner_.server().db().exec(
+            auto res = co_await owner_.server().db().exec(
                 R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?)
                    ON DUPLICATE KEY UPDATE color=?)", cutx->dbOptions(),
                 // insert
@@ -158,7 +158,11 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
             LOG_TRACE_N << "Finish updating color for " << toAnsiDate(req->date());
 
-            auto update = make_shared<pb::Update>();
+            res.affected_rows();
+
+            auto update = newUpdate(res.affected_rows() == 1 /* inserted, 2 == updated */
+                                        ? pb::Update::Operation::Update_Operation_ADDED
+                                        : pb::Update::Operation::Update_Operation_UPDATED);
             auto dc = update->mutable_daycolor();
             *dc->mutable_date() = req->date();
             dc->set_user(cuser);
@@ -193,7 +197,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 report = req->report();
             }
 
-            co_await owner_.server().db().exec(
+            auto res = co_await owner_.server().db().exec(
                 R"(INSERT INTO day (date, user, color, notes, report) VALUES (?, ?, ?, ?, ?)
                    ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)", cutx->dbOptions(),
                 // insert
@@ -208,7 +212,11 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 report
                 );
 
-            auto update = make_shared<pb::Update>();
+
+
+            auto update = newUpdate(res.affected_rows() == 1 /* inserted, 2 == updated */
+                                        ? pb::Update::Operation::Update_Operation_ADDED
+                                        : pb::Update::Operation::Update_Operation_UPDATED);
             *update->mutable_day() = *req;
 
             LOG_DEBUG << "req: " << toJson(*req);

@@ -123,7 +123,8 @@ message WorkSession {
     uint32 paused = 7; // minutes
     State state = 8;
     int32 version = 9;
-    repeated WorkEvent events = 10;
+    uint64 touched = 10; // time_t
+    repeated WorkEvent events = 11;
 }
 
 message SavedWorkEvents {

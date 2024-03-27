@@ -264,8 +264,7 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext&
         ToAction::assign(row, *action, uctx);
         if (publish) {
             // Copy the new Action to an update and publish it
-            auto update = make_shared<pb::Update>();
-            update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+            auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
             *update->mutable_action() = *action;
             grpc.publish(update);
         }
@@ -388,7 +387,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
     assert(!res.empty());
     // Set the reply data
 
-    auto update = make_shared<pb::Update>();
+    auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
     if (reply) {
         auto *reply_action = reply->mutable_action();
         ToAction::assign(res.rows().front(), *reply_action, *cutx);
@@ -400,7 +399,6 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
     }
 
     // Copy the new Action to an update and publish it
-    update->set_op(pb::Update::Operation::Update_Operation_ADDED);
     owner.publish(update);
 }
 
@@ -482,8 +480,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
             assert(res.has_value());
             if (res.affected_rows() == 1) {
                 reply->set_deletedactionid(uuid);
-                auto update = make_shared<pb::Update>();
-                update->set_op(pb::Update::Operation::Update_Operation_DELETED);
+                auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
                 update->mutable_action()->set_id(uuid);
                 owner_.publish(update);
             } else {

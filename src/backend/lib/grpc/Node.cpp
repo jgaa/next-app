@@ -88,10 +88,9 @@ struct ToNode {
             }
 
             // Notify clients
-            auto update = make_shared<pb::Update>();
+            auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
             auto node = update->mutable_node();
             *node = reply->node();
-            update->set_op(pb::Update::Operation::Update_Operation_ADDED);
             owner_.publish(update);
 
             co_return;
@@ -165,8 +164,7 @@ struct ToNode {
             *reply->mutable_node() = current;
 
             // Notify clients
-            auto update = make_shared<pb::Update>();
-            update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+            auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
             *update->mutable_node() = current;
             owner_.publish(update);
 
@@ -240,8 +238,7 @@ struct ToNode {
             *reply->mutable_node() = current;
 
             // Notify clients
-            auto update = make_shared<pb::Update>();
-            update->set_op(pb::Update::Operation::Update_Operation_MOVED);
+            auto update = newUpdate(pb::Update::Operation::Update_Operation_MOVED);
             *update->mutable_node() = current;
             owner_.publish(update);
 
@@ -274,8 +271,7 @@ struct ToNode {
             *reply->mutable_node() = node;
 
             // Notify clients
-            auto update = make_shared<pb::Update>();
-            update->set_op(pb::Update::Operation::Update_Operation_DELETED);
+            auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
             *update->mutable_node() = node;
             owner_.publish(update);
 
