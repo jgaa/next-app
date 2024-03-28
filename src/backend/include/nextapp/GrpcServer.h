@@ -16,69 +16,20 @@
 #include "nextapp.grpc.pb.h"
 #include "nextapp/logging.h"
 #include "nextapp/errors.h"
+#include "nextapp/UserContext.h"
 #include "util.h"
 
 namespace nextapp::grpc {
 
-class UserContext {
-public:
-    UserContext() = default;
-
-    UserContext( const std::string& tenantUuid, const std::string& userUuid, const std::string_view timeZone,
-                bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions)
-        : user_uuid_{userUuid},
-          tenant_uuid_{tenantUuid},
-          sunday_is_first_weekday_{sundayIsFirstWeekday},
-          db_options_{dbOptions} {
-        if (timeZone.empty()) {
-            tz_ = std::chrono::current_zone();
-        } else {
-            tz_ = std::chrono::locate_zone(timeZone);
-            if (tz_ == nullptr) {
-                LOG_DEBUG << "UserContext: Invalid timezone: " << timeZone;
-                throw std::invalid_argument("Invalid timezone: " + std::string{timeZone});
-            }
-        }
-    }
-
-    ~UserContext() = default;
-
-    const std::string& userUuid() const noexcept {
-        return user_uuid_;
-    }
-
-    const std::string& tenantUuid() const noexcept {
-        return tenant_uuid_;
-    }
-
-    const std::chrono::time_zone& tz() const noexcept {
-        assert(tz_ != nullptr);
-        return *tz_;
-    }
-
-    bool sundayIsFirstWeekday() const noexcept {
-        return sunday_is_first_weekday_;
-    }
-
-    const jgaa::mysqlpool::Options& dbOptions() const noexcept {
-        return db_options_;
-    }
-
-    const boost::uuids::uuid& sessionId() const noexcept {
-        return sessionid_;
-    }
-
-private:
-    std::string user_uuid_;
-    std::string tenant_uuid_;
-    const std::chrono::time_zone* tz_{};
-    bool sunday_is_first_weekday_{true};
-    jgaa::mysqlpool::Options db_options_;
-    const boost::uuids::uuid sessionid_ = newUuid();
-};
-
 class GrpcServer {
 public:
+
+    template <ProtoMessage T>
+    std::string toJsonForLog(const T& obj) {
+        return toJson(obj, server().config().options.log_protobuf_messages);
+    }
+
+
     template <typename T>
     class ReqBase {
     public:
@@ -165,20 +116,24 @@ public:
         ::grpc::ServerUnaryReactor *MarkActionAsFavorite(::grpc::CallbackServerContext *ctx, const pb::ActionFavoriteReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetFavoriteActions(::grpc::CallbackServerContext *ctx, const pb::Empty *, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *CreateWorkSession(::grpc::CallbackServerContext *ctx, const pb::CreateWorkReq *req, pb::Status *reply) override;
-        ::grpc::ServerUnaryReactor *AddWorkEvent(::grpc::CallbackServerContext *ctx, const pb::WorkEvent *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *AddWorkEvent(::grpc::CallbackServerContext *ctx, const pb::AddWorkEventReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *ListCurrentWorkSessions(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetWorkSummary(::grpc::CallbackServerContext *ctx, const pb::WorkSummaryRequest *req, pb::Status *reply) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
-        auto unaryHandler(::grpc::CallbackServerContext *ctx, const auto * req, auto *reply, auto fn) noexcept {
+        auto unaryHandler(::grpc::CallbackServerContext *ctx, const auto * req, auto *reply, auto fn, const std::string_view name = {}) noexcept {
             assert(ctx);
             assert(reply);
 
             auto* reactor = ctx->DefaultReactor();
 
-            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn]() -> boost::asio::awaitable<void> {
+            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn, name]() -> boost::asio::awaitable<void> {
 
                     try {
+                        LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
                         co_await fn(reply);
+                        LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(*reply);
                         reactor->Finish(::grpc::Status::OK);
                     } catch (const db_err& ex) {
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
@@ -225,7 +180,7 @@ public:
     boost::asio::awaitable<void> validateNode(const std::string& parentUuid, const std::string& userUuid);
     boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid);
     boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
-    boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, const UserContext& uctx, bool includeEvents = false);
+    boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, const UserContext& uctx);
     boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx);
 
     bool active() const noexcept {
@@ -260,6 +215,13 @@ public:
     boost::asio::awaitable<void> stopWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx);
     static void updateOutcome(nextapp::pb::WorkSession& work, const UserContext& uctx);
     boost::asio::awaitable<void> activateNextWorkSession(const UserContext& uctx);
+    boost::asio::awaitable<void> pauseWork(const UserContext &uctx);
+    boost::asio::awaitable<void> syncActiveWork(const UserContext &uctx);
+    boost::asio::awaitable<void> pauseWorkSession(pb::WorkSession &work, const UserContext &uctx);
+    boost::asio::awaitable<void> touchWorkSession(pb::WorkSession &work, const UserContext &uctx);
+    boost::asio::awaitable<void> resumeWorkSession(pb::WorkSession &work, const UserContext &uctx);
+    boost::asio::awaitable<std::optional<pb::WorkSession> > fetchActiveWorkSession(const UserContext &uctx);
+    boost::asio::awaitable<void> endWorkSessionForAction(const std::string_view& actionId, const UserContext &uctx);
 
 private:
     // The Server instance where we get objects in the application, like config and database

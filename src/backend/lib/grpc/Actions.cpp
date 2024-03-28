@@ -285,7 +285,7 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext&
         reply->set_message(format("Action with id={} not found for the current user.", actionId));
     }
 
-    LOG_TRACE << "Reply: " << toJson(*reply);
+    LOG_TRACE << "Reply: " << grpc.toJsonForLog(*reply);
 }
 
 } // anon ns
@@ -318,10 +318,8 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext&
                 ToAction::assign(row, *actions->add_actions(), *cutx);
             }
 
-            LOG_TRACE << toJson(*reply);
-
             co_return;
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetAction(::grpc::CallbackServerContext *ctx, const pb::GetActionReq *req, pb::Status *reply)
@@ -347,10 +345,8 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext&
                 reply->set_message(format("Action with id={} not found for the current user.", uuid));
             }
 
-            LOG_TRACE << toJson(*reply);
-
             co_return;
-        });
+        }, __func__);
 }
 
 boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::grpc::CallbackServerContext *ctx,
@@ -412,7 +408,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
             new_action.set_node(req->node());
 
             co_await addAction(new_action, owner_, ctx, reply);
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply)
@@ -463,7 +459,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated.", uuid));
             }
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteAction(::grpc::CallbackServerContext *ctx, const pb::DeleteActionReq *req, pb::Status *reply)
@@ -490,7 +486,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
             }
 
             co_return;
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply)
@@ -522,7 +518,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
             }
 
             co_return;
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsFavorite(::grpc::CallbackServerContext *ctx, const pb::ActionFavoriteReq *req, pb::Status *reply)
@@ -547,7 +543,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
             }
 
             co_return;
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetFavoriteActions(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply)
@@ -582,7 +578,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
             }
 
             co_return;
-        });
+        }, __func__);
 }
 
 boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actionId, const std::string &userUuid)
@@ -996,6 +992,8 @@ boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig
                                                           const UserContext& uctx,
                                                           ::grpc::CallbackServerContext *ctx)
 {
+    co_await endWorkSessionForAction(orig.id(), uctx);
+
     if (orig.repeatkind() == pb::Action_RepeatKind::Action_RepeatKind_NEVER) {
         co_return;
     }

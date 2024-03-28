@@ -45,9 +45,16 @@ template <typename T>
 concept ProtoMessage = std::is_base_of_v<google::protobuf::Message, T>;
 
 template <ProtoMessage T>
-std::string toJson(const T& obj) {
+std::string toJson(const T& obj, int mode = 1) {
+    if (!mode) {
+        return {};
+    }
+
     std::string str;
-    auto res = google::protobuf::util::MessageToJsonString(obj, &str);
+    google::protobuf::util::JsonOptions opts;
+    opts.always_print_primitive_fields = true;
+    opts.add_whitespace = mode == 2;
+    auto res = google::protobuf::util::MessageToJsonString(obj, &str, opts);
     if (!res.ok()) {
         LOG_DEBUG << "Failed to convert object to json: "
                   << typeid(T).name() << ": "
@@ -62,7 +69,11 @@ concept ProtoStringStringMap = std::is_same_v<std::remove_cv<T>, std::remove_cv<
 
 
 template <ProtoStringStringMap T>
-std::string toJson(const T& map) {
+std::string toJson(const T& map, int mode = 1) {
+    if (!mode) {
+        return {};
+    }
+
     boost::json::object o;
 
     for(const auto [key, value] : map) {
@@ -83,6 +94,17 @@ std::optional<std::string> toStringOrNull(const T& val) {
 
     return std::string{val};
 }
+
+struct TimePeriod {
+    time_t start = 0;
+    time_t end = 0;
+};
+
+class UserContext;
+
+TimePeriod toTimePeriodDay(time_t when, const UserContext& uctx);
+TimePeriod toTimePeriodWeek(time_t when, const UserContext& uctx);
+
 
 } // ns
 

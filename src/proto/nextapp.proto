@@ -87,24 +87,23 @@ message WorkEvent {
         STOP = 1; // Stop/End the current session
         PAUSE = 2; // Pause the current session
         RESUME = 3; // Resume a paused session
+        TOUCH = 4; // Update the touched time. Moves it to the top pf the list
 
         // Correct a session. Any or all of the optional fields can be used
         // Any correction for a value set that value absolutely at the time of the correction.
         // If there are conflicting corrections, the last one wins.
         // If start or end time is corrected, all events, except corrections, before start or after end are ignored
-        CORRECTION = 4;
+        CORRECTION = 5;
     }
 
-    string id = 1; // uuid
-    string session = 2;
-    Kind kind = 3;
-    uint64 time = 4; // time_t
+    Kind kind = 1;
+    uint64 time = 2; // time_t
 
     // For corrections
-    optional uint64 start = 5; // time_t
-    optional uint64 end = 6; // time_t
-    optional uint32 duration = 7; // minutes
-    optional uint32 paused = 8; // minutes
+    optional uint64 start = 3; // time_t
+    optional uint64 end = 4; // time_t
+    optional uint32 duration = 5; // minutes
+    optional uint32 paused = 6; // minutes
 }
 
 message WorkSession {
@@ -127,8 +126,33 @@ message WorkSession {
     repeated WorkEvent events = 11;
 }
 
+message WorkSessions {
+    repeated WorkSession sessions = 1;
+}
+
 message SavedWorkEvents {
     repeated WorkEvent events = 1;
+}
+
+enum WorkSummaryKind {
+    WSK_DAY = 0;
+    WSK_WEEK = 1;
+    WSK_MONTH = 2;
+    WSK_QUARTER = 3;
+    WSK_YEAR = 4;
+}
+
+message WorkSummary {
+    WorkSummaryKind kind = 1;
+    uint64 start = 2; // time_t
+    uint64 end = 3; // time_t
+    uint64 duration = 4; // minutes
+    uint64 paused = 5; // minutes
+}
+
+message WorkSummaryRequest {
+    uint64 start = 1; // time_t
+    WorkSummaryKind kind = 2;
 }
 
 message UpdateRequest {
@@ -443,6 +467,11 @@ message CreateWorkReq {
     string actionId = 1;
 }
 
+message AddWorkEventReq {
+    string workSessionId = 1;
+    WorkEvent event = 2;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -458,6 +487,8 @@ message Status {
         string deletedActionId = 15;
         FavoriteActions favoriteActions = 16;
         WorkSession work = 17;
+        WorkSessions workSessions = 18;
+        WorkSummary workSummary = 19;
     }
 }
 
@@ -490,6 +521,8 @@ service Nextapp {
     rpc ValidateDue(Due) returns (Status) {}
     rpc GetFavoriteActions(Empty) returns (Status) {}
     rpc CreateWorkSession(CreateWorkReq) returns (Status) {}
-    rpc AddWorkEvent(WorkEvent) returns (Status) {}
+    rpc AddWorkEvent(AddWorkEventReq) returns (Status) {}
+    rpc ListCurrentWorkSessions(Empty) returns (Status) {}
+    rpc GetWorkSummary(WorkSummaryRequest) returns (Status) {}
 }
 

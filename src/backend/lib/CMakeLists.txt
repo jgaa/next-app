@@ -10,6 +10,7 @@ add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/Server.h
     ${NEXTAPP_BACKEND}/include/nextapp/GrpcServer.h
     ${NEXTAPP_BACKEND}/include/nextapp/util.h
+    ${NEXTAPP_BACKEND}/include/nextapp/UserContext.h
     Server.cpp
     grpc/Actions.cpp
     grpc/GreenDays.cpp
@@ -20,6 +21,7 @@ add_library(${PROJECT_NAME}
     grpc/shared_grpc_server.h
     grpc/Tenants.cpp
     util.cpp
+    UserContext.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

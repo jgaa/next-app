@@ -31,12 +31,8 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
 
          boost::asio::deadline_timer timer{owner_.server().ctx()};
          timer.expires_from_now(boost::posix_time::seconds{2});
-         //co_await timer.async_wait(asio::use_awaitable);
-
-         LOG_TRACE_N << "Finish day colors lookup.";
-         LOG_TRACE << "Reply is: " << toJson(*reply);
          co_return;
-     });
+     }, __func__);
 
     LOG_TRACE_N << "Leaving the coro do do it's magic...";
     return rval;
@@ -86,7 +82,6 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 day->set_user(cuser);
             }
 
-            LOG_TRACE << "Finish day lookup: " << toJson(*reply);
             co_return;
         });
 }
@@ -124,8 +119,6 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 }
             }
 
-            LOG_TRACE_N << "Finish month lookup.";
-            LOG_TRACE << "Reply is: " << toJson(*reply);
             co_return;
         });
 }
@@ -218,10 +211,6 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                                         ? pb::Update::Operation::Update_Operation_ADDED
                                         : pb::Update::Operation::Update_Operation_UPDATED);
             *update->mutable_day() = *req;
-
-            LOG_DEBUG << "req: " << toJson(*req);
-            LOG_DEBUG << "update: " << toJson(*update);
-
             owner_.publish(update);
             co_return;
         });

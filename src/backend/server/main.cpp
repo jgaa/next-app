@@ -116,6 +116,10 @@ int main(int argc, char* argv[]) {
             ("truncate-log-file,T",
               po::bool_switch(&trunc_log),
              "Truncate the log-file if it already exists.")
+            ("log-messages",
+             po::value(&config.options.log_protobuf_messages)->default_value(config.options.log_protobuf_messages),
+             "Log data-messages to the log in Json format.\n0=disable, 1=enable, 2=enable and format in readable form.\n"
+             "This mostly applies for debug and trace level log-messages.")
             ;
 
         po::options_description bs("Bootstrap");

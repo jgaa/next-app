@@ -377,20 +377,20 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE INDEX work_session_ix1 ON work_session (user, action))",
 
-        R"(CREATE OR REPLACE TABLE work_event (
-            id UUID not NULL default UUID() PRIMARY KEY,
-            session UUID NOT NULL,
-            action UUID NOT NULL,
-            kind ENUM('start', 'stop', 'pause', 'resume', 'correction') NOT NULL,
-            event_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            start_time TIMESTAMP,
-            end_time TIMESTAMP,
-            duration INTEGER,
-            paused INTEGER,
+        // R"(CREATE OR REPLACE TABLE work_event (
+        //     id UUID not NULL default UUID() PRIMARY KEY,
+        //     session UUID NOT NULL,
+        //     action UUID NOT NULL,
+        //     kind ENUM('start', 'stop', 'pause', 'resume', 'correction') NOT NULL,
+        //     event_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        //     start_time TIMESTAMP,
+        //     end_time TIMESTAMP,
+        //     duration INTEGER,
+        //     paused INTEGER,
 
-            FOREIGN KEY(session) REFERENCES work_session(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+        //     FOREIGN KEY(session) REFERENCES work_session(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
-        R"(CREATE INDEX work_event_ix1 ON work_event (action))",
+        // R"(CREATE INDEX work_event_ix1 ON work_event (action))",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });

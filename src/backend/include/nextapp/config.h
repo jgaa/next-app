@@ -17,8 +17,11 @@ struct GrpcConfig {
 };
 
 struct ServerOptions {
-    /// Delete the work-events when a work session is marked as done.
-    bool delete_work_events_from_db = false;
+    /*! Print protobuf messages to the log as json
+     *  - 1 enable
+     *  - 2 enable and format in readable form
+     */
+    int log_protobuf_messages = 0;
 };
 
 struct Config {

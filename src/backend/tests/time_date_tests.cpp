@@ -22,8 +22,8 @@ auto toTimet(const auto& when) {
     return chrono::system_clock::to_time_t(zoned.get_sys_time());
 }
 
-static const nextapp::grpc::UserContext uctx_sunday_fdow{"", "", current_zone()->name(), true, {}};
-static const nextapp::grpc::UserContext uctx_monday_fdow{"", "", current_zone()->name(), false, {}};
+static const nextapp::UserContext uctx_sunday_fdow{"", "", current_zone()->name(), true, {}};
+static const nextapp::UserContext uctx_monday_fdow{"", "", current_zone()->name(), false, {}};
 
 TEST(processDueAtDate, setDueDate1day) {
 
