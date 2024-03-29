@@ -274,6 +274,19 @@ void ServerComm::markActionAsFavorite(const QString &actionUuid, bool favorite)
         ;
     });
 }
+void ServerComm::getActiveWorkSessions()
+{
+
+    callRpc<nextapp::pb::Status>([this]() {
+        nextapp::pb::Empty req;
+        return client_->ListCurrentWorkSessions(req);
+    } , [this](const nextapp::pb::Status& status) {
+        if (status.hasWorkSessions()) {
+            auto ws = make_shared<nextapp::pb::WorkSessions>(status.workSessions());
+            emit receivedWorkSessions(ws);
+        }
+    });
+}
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {

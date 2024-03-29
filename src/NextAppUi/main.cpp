@@ -11,6 +11,7 @@
 #include "DaysModel.h"
 #include "DayColorModel.h"
 #include "ActionsModel.h"
+#include "WorkSessionsModel.h"
 #include "nextapp.qpb.h"
 
 #include "logging.h"
@@ -106,6 +107,12 @@ int main(int argc, char *argv[])
         auto actions = engine.singletonInstance<ActionsModel*>("NextAppUi","ActionsModel");
         assert(actions);
         actions->start();
+    }
+
+    {
+        auto work_sessions = engine.singletonInstance<WorkSessionsModel*>("NextAppUi","WorkSessionsModel");
+        assert(work_sessions);
+        work_sessions->start();
     }
 
     {

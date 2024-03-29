@@ -462,7 +462,6 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext &uctx)
             break;
         case pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH:
             break;
-
         case pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION:
             if (event.has_start()) {
                 work.set_start(event.start());

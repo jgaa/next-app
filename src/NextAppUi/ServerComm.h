@@ -75,6 +75,7 @@ public:
     void deleteAction(const QString& actionUuid);
     void markActionAsDone(const QString& actionUuid, bool done);
     void markActionAsFavorite(const QString& actionUuid, bool favorite);
+    void getActiveWorkSessions();
 
 
     static QString getDefaultServerAddress() {
@@ -100,6 +101,7 @@ signals:
     void receivedDayColorDefinitions(const nextapp::pb::DayColorDefinitions& defs);
     void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions);
     void receivedAction(const nextapp::pb::Status& status);
+    void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
 
     // Triggered on all updates from the server
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);

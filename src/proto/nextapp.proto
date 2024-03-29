@@ -118,7 +118,7 @@ message WorkSession {
     string user = 3;
     uint64 start = 4; // time_t
     optional uint64 end = 5; // time_t, also flags if a session is active
-    uint64 duration = 6; // minutes
+    uint32 duration = 6; // minutes
     uint32 paused = 7; // minutes
     State state = 8;
     int32 version = 9;
@@ -127,7 +127,7 @@ message WorkSession {
 }
 
 message WorkSessions {
-    repeated WorkSession sessions = 1;
+    repeated WorkSession sessions = 1;   
 }
 
 message SavedWorkEvents {

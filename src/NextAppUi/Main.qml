@@ -143,13 +143,17 @@ ApplicationWindow {
 
             DaysInYear {}
 
-            ColumnLayout {
+            SplitView {
                 // Orange
                 Layout.fillWidth: true
+                Layout.fillHeight: true
+                orientation: Qt.Vertical
 
                 SplitView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    SplitView.fillWidth: true
+                    SplitView.fillHeight: true
+                    orientation: Qt.Horizontal
+
                     // Customized handle to drag between the Navigation and the Editor.
                     handle: Rectangle {
                         implicitWidth: 10
@@ -168,7 +172,7 @@ ApplicationWindow {
                         id: navigationView
                         color: Colors.surface1
                         SplitView.preferredWidth: 250
-                        SplitView.fillHeight: true
+                        //SplitView.fillHeight: true
                         // The stack-layout provides different views, based on the
                         // selected buttons inside the sidebar.
                         StackLayout {
@@ -197,10 +201,10 @@ ApplicationWindow {
                     Rectangle {
                         // Data
                         color: 'grey'
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.minimumWidth: 100
-                        Layout.preferredWidth: 600
+                        //SplitView.fillWidth: true
+                        SplitView.fillHeight: true
+                        SplitView.minimumWidth: 100
+                        SplitView.preferredWidth: 600
                         StackLayout {
                             id: currentData
                             anchors.fill: parent
@@ -212,14 +216,23 @@ ApplicationWindow {
                     }
                 }
 
-                Rectangle {
-                    height: 200
-                    // Details
-                    color: 'yellow'
-                    Layout.fillWidth: true
-                    //Layout.fillHeight: true
-                    Layout.minimumHeight: 30
-                    Layout.preferredHeight: 80
+                // Rectangle {
+                //     SplitView.fillWidth: true
+                //     SplitView.fillHeight: false
+                //     SplitView.preferredHeight: 220
+
+                //     // height: 200
+                //     // // Details
+                //     color: 'yellow'
+                //     // Layout.fillWidth: true
+                //     // //Layout.fillHeight: true
+                //     // Layout.minimumHeight: 80
+                //     // Layout.preferredHeight: 260
+                // }
+                WorkSessions {
+                    SplitView.fillWidth: true
+                    SplitView.fillHeight: false
+                    SplitView.preferredHeight: 220
                 }
             } // ColumnLayout for tree views
 
