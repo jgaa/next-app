@@ -124,6 +124,8 @@ message WorkSession {
     int32 version = 9;
     uint64 touched = 10; // time_t
     repeated WorkEvent events = 11;
+    string name = 12;
+    string notes = 13;
 }
 
 message WorkSessions {

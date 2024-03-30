@@ -85,6 +85,7 @@ Rectangle {
                 required property string uuid
                 required property bool done
                 required property bool favorite
+                required property bool canStartWork
 
                 implicitHeight: row.implicitHeight
                 width: listView.width
@@ -163,6 +164,22 @@ Rectangle {
 
                         onClicked: {
                             ActionsModel.markActionAsFavorite(uuid, !favorite)
+                        }
+                    }
+
+                    CheckBoxWithFontIcon {
+                        id: canWorkIcon
+                        isChecked: canStartWork
+                        checkedCode: "\uf017"
+                        uncheckedCode: "\uf017"
+                        checkedColor: "green"
+                        uncheckedColor: "lightgray"
+                        useSolidForChecked: true
+                        iconSize: 16
+                        autoToggle: false
+
+                        onClicked: {
+                            WorkSessionsModel.startWork(uuid)
                         }
                     }
                 }

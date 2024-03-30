@@ -216,19 +216,6 @@ ApplicationWindow {
                     }
                 }
 
-                // Rectangle {
-                //     SplitView.fillWidth: true
-                //     SplitView.fillHeight: false
-                //     SplitView.preferredHeight: 220
-
-                //     // height: 200
-                //     // // Details
-                //     color: 'yellow'
-                //     // Layout.fillWidth: true
-                //     // //Layout.fillHeight: true
-                //     // Layout.minimumHeight: 80
-                //     // Layout.preferredHeight: 260
-                // }
                 WorkSessions {
                     SplitView.fillWidth: true
                     SplitView.fillHeight: false
@@ -270,4 +257,5 @@ ApplicationWindow {
             aprx: ActionsModel.getAction("")
         });
     }
+
 }

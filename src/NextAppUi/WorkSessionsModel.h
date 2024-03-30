@@ -25,16 +25,19 @@ class WorkSessionsModel : public QAbstractTableModel
 
     enum Roles {
         UuidRole = Qt::UserRole + 1,
-        ActionRole,
-        StartRole,
-        EndRole,
-        DurationRole,
-        PausedRole,
-        StateRole,
-        VersionRole,
-        TouchedRole
+        IconRole,
+        ActiveRole,
+        // ActionRole,
+        // StartRole,
+        // EndRole,
+        // DurationRole,
+        // PausedRole,
+        // StateRole,
+        // VersionRole,
+        // TouchedRole
     };
 
+    Q_PROPERTY(bool canAddNew READ canAddNew NOTIFY canAddNewChanged);
 public:
     struct Session {
         Session() = default;
@@ -46,6 +49,7 @@ public:
         Session(const nextapp::pb::WorkSession& session)
             : session{session}
             , id{toQuid(session.id_proto())}
+            , action{toQuid(session.action())}
         {
         }
 
@@ -53,15 +57,18 @@ public:
         {
             this->session = session;
             this->id = toQuid(session.id_proto());
+            this->action = toQuid(session.action());
             return *this;
         }
 
         QUuid id;
+        QUuid action;
         nextapp::pb::WorkSession session;
     };
 
     struct id_tag {};
     struct ordered_tag {};
+    struct action_tag {};
     using sessions_t = boost::multi_index::multi_index_container<
         Session,
         boost::multi_index::indexed_by<
@@ -70,16 +77,42 @@ public:
             boost::multi_index::ordered_unique<
                 boost::multi_index::tag<id_tag>,
                 boost::multi_index::member<Session, QUuid, &Session::id>
+                >,
+            boost::multi_index::ordered_non_unique<
+                boost::multi_index::tag<action_tag>,
+                boost::multi_index::member<Session, QUuid, &Session::action>
                 >
             >
         >;
 
     explicit WorkSessionsModel(QObject *parent = nullptr);
 
+    Q_INVOKABLE void startWork(const QString& actionId);
+    Q_INVOKABLE bool isActive(const QString& sessionId) const;
+    Q_INVOKABLE void pause(const QString& sessionId);
+    Q_INVOKABLE void resume(const QString& sessionId);
+    Q_INVOKABLE void done(const QString& sessionId);
+    Q_INVOKABLE void touch(const QString& sessionId);
+    Q_INVOKABLE bool sessionExists(const QString& sessionId);
+
     void start();
+
+    static WorkSessionsModel& instance() noexcept {
+        assert(instance_ != nullptr);
+        return *instance_;
+    }
+
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void fetch();
     void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
+
+    bool canAddNew() const noexcept {
+        return true;
+    }
+
+    bool actionIsInSessionList(const QUuid& actionId) const;
+
+    const nextapp::pb::WorkSession *lookup(const QUuid& id) const;
 
     // QAbstractItemModel interface
 public:
@@ -90,13 +123,19 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+signals:
+    void canAddNewChanged();
+    void somethingChanged();
+
 private:
     inline auto& session_by_id() const { return sessions_.get<id_tag>(); }
     inline auto& session_by_ordered() const { return sessions_.get<ordered_tag>(); }
+    inline auto& session_by_action() const { return sessions_.get<action_tag>(); }
     inline auto& session_by_id() { return sessions_.get<id_tag>(); }
     inline auto& session_by_ordered() { return sessions_.get<ordered_tag>(); }
+    inline auto& session_by_action() { return sessions_.get<action_tag>(); }
 
 
     sessions_t sessions_;
-
+    static WorkSessionsModel* instance_;
 };

@@ -30,10 +30,11 @@ auto eventsToBlob(const pb::WorkSession& ws) {
 
 struct ToWorkSession {
     enum Cols {
-        ID, ACTION, USER, START, END, DURATION, PAUSED, STATE, VERSION, TOUCHED, EVENTS
+        ID, ACTION, USER, START, END, DURATION, PAUSED, STATE, VERSION, TOUCHED, NAME, NOTES, EVENTS
     };
 
-    static constexpr string_view selectCols = "id, action, user, start_time, end_time, duration, paused, state, version, touch_time, events";
+    static constexpr string_view selectCols = "id, action, user, start_time, end_time, duration, paused, state, version, touch_time, "
+                                              "name, note, events";
 
     static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws) {
         ws.set_id(row.at(ID).as_string());
@@ -47,6 +48,10 @@ struct ToWorkSession {
         ws.set_duration(row.at(DURATION).as_int64());
         ws.set_paused(row.at(PAUSED).as_int64() != 0);
         ws.set_version(row.at(VERSION).as_int64());
+        ws.set_name(row.at(NAME).as_string());
+        if (row.at(NOTES).is_string()) {
+            ws.set_notes(row.at(NOTES).as_string());
+        }
 
         if (!row.at(EVENTS).is_null()) {
             auto blob = row.at(EVENTS).as_blob();
@@ -84,7 +89,8 @@ struct ToWorkSession {
             auto dbopts = cutx->dbOptions();
             dbopts.reconnect_and_retry_query = false;
 
-            co_await owner_.validateAction(req->actionid(), cuser);
+            string name;
+            co_await owner_.validateAction(req->actionid(), cuser, &name);
 
             // TODO: Execute in transaction
 
@@ -96,11 +102,12 @@ struct ToWorkSession {
             const auto blob = toBlob(events);
             // Create the work session record
             const auto res = co_await owner_.server().db().exec(
-                format("INSERT INTO work_session (action, user, events) VALUES (?, ?, ?) "
+                format("INSERT INTO work_session (action, user, name, events) VALUES (?, ?, ?, ?) "
                        "RETURNING {}", ToWorkSession::selectCols),
                 dbopts,
                 req->actionid(),
                 cuser,
+                name,
                 blob);
 
             assert(res.has_value() && !res.rows().empty());

@@ -581,12 +581,19 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
         }, __func__);
 }
 
-boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actionId, const std::string &userUuid)
+boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actionId,
+                                                        const std::string &userUuid,
+                                                        string *name)
 {
-    auto res = co_await server().db().exec("SELECT id FROM action where id=? and user=?", actionId, userUuid);
+    auto res = co_await server().db().exec("SELECT id, name FROM action where id=? and user=?", actionId, userUuid);
     if (!res.has_value()) {
         throw db_err{pb::Error::INVALID_ACTION, "Action not found for the current user"};
     }
+
+    if (name) {
+        *name = res.rows().front().at(1).as_string();
+    }
+
     co_return;
 }
 

@@ -20,10 +20,56 @@ int compare (const WorkSessionsModel::Session& a, const WorkSessionsModel::Sessi
 
 } // anon ns
 
+WorkSessionsModel* WorkSessionsModel::instance_;
+
 WorkSessionsModel::WorkSessionsModel(QObject *parent)
 {
-
+    assert(instance_ == nullptr);
+    instance_ = this;
 }
+
+void WorkSessionsModel::startWork(const QString &actionId)
+{
+    ServerComm::instance().startWork(actionId);
+}
+
+bool WorkSessionsModel::isActive(const QString &actionId) const
+{
+    if (auto session = lookup(toQuid(actionId))) {
+        return session->state() == nextapp::pb::WorkSession::State::ACTIVE;
+    }
+    return false;
+}
+
+void WorkSessionsModel::pause(const QString &sessionId)
+{
+    ServerComm::instance().pauseWork(sessionId);
+}
+
+void WorkSessionsModel::resume(const QString &sessionId)
+{
+    ServerComm::instance().resumeWork(sessionId);
+}
+
+void WorkSessionsModel::done(const QString &sessionId)
+{
+    ServerComm::instance().doneWork(sessionId);
+}
+
+void WorkSessionsModel::touch(const QString &sessionId)
+{
+    ServerComm::instance().touchWork(sessionId);
+}
+
+bool WorkSessionsModel::sessionExists(const QString &sessionId)
+{
+    if (auto session = lookup(toQuid(sessionId))) {
+        return true;
+    }
+
+    return false;
+}
+
 
 void WorkSessionsModel::start()
 {
@@ -86,6 +132,20 @@ void WorkSessionsModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::
     endResetModel();
 }
 
+bool WorkSessionsModel::actionIsInSessionList(const QUuid &actionId) const
+{
+    const auto& actions = session_by_action();
+    return actions.find(actionId) != actions.end();
+}
+
+const nextapp::pb::WorkSession *WorkSessionsModel::lookup(const QUuid &id) const
+{
+    auto &sessions = session_by_id();
+    if (auto it = sessions.find(id); it != sessions.end()) {
+        return &it->session;
+    }
+}
+
 int WorkSessionsModel::rowCount(const QModelIndex &parent) const
 {
     return sessions_.size();
@@ -120,9 +180,12 @@ QVariant WorkSessionsModel::data(const QModelIndex &index, int role) const
             if (start.date() == now.date()) {
                 return start.toString("hh:mm");
             }
+            return start.toString("yyyy-MM-dd hh:mm");
             }
-            return QDateTime::fromMSecsSinceEpoch(session.session.start()).toLocalTime().toString("yyyy-MM-dd hh:mm");
         case TO: {
+            if (!session.session.hasEnd()) {
+                return QString{};
+            }
             const auto start = QDateTime::fromMSecsSinceEpoch(session.session.start()).toLocalTime();
             const auto end = QDateTime::fromMSecsSinceEpoch(session.session.end()).toLocalTime();
             if (start.date() == end.date()) {
@@ -135,11 +198,24 @@ QVariant WorkSessionsModel::data(const QModelIndex &index, int role) const
         case USED:
             return static_cast<int>(session.session.duration());
         case NAME:
-            return session.session.action();
+            return session.session.name();
         } // switch col
 
-        // case UuidRole:
-        //     return session.session.id_proto();
+        case UuidRole:
+            return session.session.id_proto();
+        case IconRole:
+            //return static_cast<int>(session.session.state());
+            switch(session.session.state()) {
+                case nextapp::pb::WorkSession::State::ACTIVE:
+                    return QString{QChar{0xf04b}};
+                case nextapp::pb::WorkSession::State::PAUSED:
+                    return QString{QChar{0xf04c}};
+                case nextapp::pb::WorkSession::State::DONE:
+                    return QString{QChar{0xf04d}};
+            }
+            break;
+        case ActiveRole:
+            return session.session.state() == nextapp::pb::WorkSession::State::ACTIVE;
         // case StartRole:
         //     return static_cast<quint64>(session.session.start());
         // case EndRole:
@@ -164,15 +240,18 @@ QVariant WorkSessionsModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> WorkSessionsModel::roleNames() const
 {
     QHash<int, QByteArray> roles;
+    roles[Qt::DisplayRole] = "display";
     roles[UuidRole] = "uuid";
-    roles[StartRole] = "start";
-    roles[EndRole] = "end";
-    roles[DurationRole] = "duration";
-    roles[PausedRole] = "paused";
-    roles[ActionRole] = "action";
-    roles[StateRole] = "state";
-    roles[VersionRole] = "version";
-    roles[TouchedRole] = "touched";
+    roles[IconRole] = "icon";
+    roles[ActiveRole] = "active";
+    // roles[StartRole] = "start";
+    // roles[EndRole] = "end";
+    // roles[DurationRole] = "duration";
+    // roles[PausedRole] = "paused";
+    // roles[ActionRole] = "action";
+    // roles[StateRole] = "state";
+    // roles[VersionRole] = "version";
+    // roles[TouchedRole] = "touched";
 
     return roles;
 }

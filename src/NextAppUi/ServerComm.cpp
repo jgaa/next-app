@@ -8,6 +8,21 @@
 
 using namespace std;
 
+namespace {
+
+auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind kind) {
+    nextapp::pb::AddWorkEventReq req;
+    nextapp::pb::WorkEvent event;
+    event.setKind(kind);
+    req.setWorkSessionId(sessionId);
+    req.setEvent(event);
+
+    return req;
+}
+
+} // anon ns
+
+
 ServerComm *ServerComm::instance_;
 
 ServerComm::ServerComm()
@@ -287,6 +302,60 @@ void ServerComm::getActiveWorkSessions()
         }
     });
 }
+
+void ServerComm::startWork(const QString &actionId)
+{
+    nextapp::pb::CreateWorkReq req;
+    req.setActionId(actionId);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->CreateWorkSession(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
+void ServerComm::pauseWork(const QString& sessionId) {
+    auto req = createWorkEventReq(sessionId, nextapp::pb::WorkEvent::Kind::PAUSE);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->AddWorkEvent(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
+void ServerComm::resumeWork(const QString& sessionId) {
+    auto req = createWorkEventReq(sessionId, nextapp::pb::WorkEvent::Kind::RESUME);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->AddWorkEvent(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
+
+void ServerComm::doneWork(const QString& sessionId) {
+    auto req = createWorkEventReq(sessionId, nextapp::pb::WorkEvent::Kind::STOP);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->AddWorkEvent(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
+void ServerComm::touchWork(const QString& sessionId) {
+    auto req = createWorkEventReq(sessionId, nextapp::pb::WorkEvent::Kind::TOUCH);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->AddWorkEvent(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {

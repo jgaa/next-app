@@ -13,6 +13,7 @@ Rectangle
     property string uncheckedCode: "\uf0c8"
     property string checkedColor: Colors.icon
     property string uncheckedColor: Colors.icon
+    property string textColor: Colors.disabledText
     property bool useSolidForChecked: false
     property bool autoToggle: true
     width: childrenRect.width
@@ -23,10 +24,12 @@ Rectangle
     RowLayout
     {
         spacing: 5
+
         // Checkbox icons
         Text {
-            font.family: (checkBox.isChecked && checkBox.useSolidForChecked) ? fontAwesomeSolid.name : fontAwesome.name
-            font.styleName: (checkBox.isChecked && checkBox.useSolidForChecked) ? fontAwesomeSolid.font.styleName : fontAwesome.font.styleName
+            id: icon
+            font.family: (checkBox.isChecked && checkBox.useSolidForChecked) ? ce.faSolidName : ce.faNormalName
+            font.styleName: (checkBox.isChecked && checkBox.useSolidForChecked) ? ce.faSolidStyle : ce.faNormalStyle
             font.pixelSize: checkBox.iconSize
             text: checkBox.isChecked ? checkBox.checkedCode : checkBox.uncheckedCode
             color: checkBox.isChecked ? checkBox.checkedColor : checkBox.uncheckedColor
@@ -38,7 +41,8 @@ Rectangle
         Text
         {
             id: label
-            color: Colors.disabledText
+            visible: text !== ""
+            color: checkBox.textColor
             //font.family: "Lato"
             font.pixelSize: 12
             Layout.alignment: Qt.AlignBottom
@@ -47,6 +51,16 @@ Rectangle
 
     MouseArea {
         anchors.fill: parent
+        hoverEnabled: true
+
+        onEntered: {
+            checkBox.color = Colors.iconIndicator
+        }
+
+        onExited: {
+            checkBox.color = "transparent"
+        }
+
         onClicked: {
             console.log("Toggeling checkbox")
             if (checkBox.autoToggle) {
@@ -56,6 +70,10 @@ Rectangle
         }
     }
 
-    FontLoader { id: fontAwesome; source: "../fonts/Font Awesome 6 Free-Regular-400.otf" }
-    FontLoader { id: fontAwesomeSolid; source: "../fonts/Font Awesome 6 Free-Solid-900.otf" }
+    CommonElements {
+        id: ce
+    }
+
+    // FontLoader { id: fonts.normal; source: "../fonts/Font Awesome 6 Free-Regular-400.otf" }
+    // FontLoader { id: fonts.solid; source: "../fonts/Font Awesome 6 Free-Solid-900.otf" }
 }

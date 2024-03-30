@@ -16,7 +16,7 @@ QtObject {
     readonly property color active: "#292828"
     readonly property color inactive: "#383737"
     readonly property color folder: "#383737"
-    readonly property color icon: "#383737"
+    readonly property color icon: "lightgray"
     readonly property color iconIndicator: "#D5B35D"
     readonly property color color1: "#A7B464"
     readonly property color color2: "#D3869B"

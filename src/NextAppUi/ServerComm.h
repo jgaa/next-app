@@ -76,6 +76,12 @@ public:
     void markActionAsDone(const QString& actionUuid, bool done);
     void markActionAsFavorite(const QString& actionUuid, bool favorite);
     void getActiveWorkSessions();
+    void startWork(const QString& actionId);
+    void pauseWork(const QString& sessionId);
+    void resumeWork(const QString& sessionId);
+    void doneWork(const QString& sessionId);
+    void touchWork(const QString& sessionId);
+
 
 
     static QString getDefaultServerAddress() {
@@ -105,7 +111,6 @@ signals:
 
     // Triggered on all updates from the server
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
-
 
 private:
     void errorOccurred(const QGrpcStatus &status);

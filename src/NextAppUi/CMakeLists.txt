@@ -30,9 +30,16 @@ qt_policy(
     SET QTP0001 NEW
 )
 
-include(cmake/3rdparty.cmake)
+#include(cmake/3rdparty.cmake)
+# Use logfault from git submodule in stead of adding it
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/logfault/include)
+add_library(logfault INTERFACE)
 
 qt_standard_project_setup()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-D_DEBUG)
+endif()
 
 set (protofile "${CMAKE_CURRENT_SOURCE_DIR}/../proto/nextapp.proto")
 
@@ -141,6 +148,7 @@ qt_add_qml_module(appNextAppUi
         WorkSessionsModel.h
         util.cpp
         util.h
+        QML_FILES qml/CommonElements.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

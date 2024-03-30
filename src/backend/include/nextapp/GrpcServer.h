@@ -142,15 +142,15 @@ public:
                             reply->set_message(ex.what());
                             reactor->Finish(::grpc::Status::OK);
                         } else {
-                            LOG_WARN_N << "Caught db_err exception while handling grpc request coro: " << ex.what();
+                            LOG_WARN << "Request [" << name << "] Caught db_err exception while handling grpc request coro: " << ex.what();
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
                     } catch (const std::exception& ex) {
-                        LOG_WARN_N << "Caught exception while handling grpc request coro: " << ex.what();
+                        LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
                         reactor->Finish(::grpc::Status::CANCELLED);
                     }
 
-                    LOG_TRACE_N << "Exiting unary handler.";
+                    LOG_TRACE << "Request [" << name << "] Exiting unary handler.";
 
                 }, boost::asio::detached);
 
@@ -178,7 +178,7 @@ public:
     void removePublisher(const boost::uuids::uuid& uuid);
     void publish(const std::shared_ptr<pb::Update>& update);
     boost::asio::awaitable<void> validateNode(const std::string& parentUuid, const std::string& userUuid);
-    boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid);
+    boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid, std::string *name = {});
     boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
     boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, const UserContext& uctx);
     boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx);

@@ -66,6 +66,7 @@ class ActionsModel : public QAbstractListModel
         SectionNameRole,
         DueRole,
         FavoriteRole,
+        CanStartWorkRole
     };
 
     enum Shortcuts {

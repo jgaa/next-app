@@ -371,6 +371,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             end_time TIMESTAMP,
             duration INTEGER NOT NULL DEFAULT 0,
             paused INTEGER NOT NULL DEFAULT 0,
+            name VARCHAR(256) NOT NULL DEFAULT '',
+            note TEXT,
             events BLOB, -- The events for the session saved as a protobuf message
             FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",

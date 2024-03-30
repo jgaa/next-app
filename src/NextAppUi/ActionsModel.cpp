@@ -8,8 +8,10 @@
 #include "ActionsModel.h"
 #include "ServerComm.h"
 #include "MainTreeModel.h"
+#include "WorkSessionsModel.h"
 
 #include "logging.h"
+#include "util.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -743,7 +745,10 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return {};
     case FavoriteRole:
         return action.favorite();
-    }    
+    case CanStartWorkRole:
+        return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
+               && !WorkSessionsModel::instance().actionIsInSessionList(toQuid(action.id_proto()));
+    }
 
     return {};
 }
@@ -801,6 +806,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[SectionNameRole] = "sname";
     roles[DueRole] = "due";
     roles[FavoriteRole] = "favorite";
+    roles[CanStartWorkRole] = "canStartWork";
     return roles;
 }
 
