@@ -26,8 +26,8 @@ namespace nextapp::grpc {
 
 time_t toTimeT(const boost::mysql::datetime& from) {
     if (from.valid()) {
-        uint64_t when = from.as_time_point().time_since_epoch().count();
-        when /= 1000000LL;
+        auto tp = from.as_time_point();
+        std::time_t when = chrono::system_clock::to_time_t(tp);
         return when;
     }
 

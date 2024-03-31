@@ -10,7 +10,7 @@
 #include <QAbstractTableModel>
 #include <QStringListModel>
 #include <QUuid>
-
+#include <QTimer>
 
 #include "util.h"
 #include "nextapp.qpb.h"
@@ -123,11 +123,14 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+
 signals:
     void canAddNewChanged();
     void somethingChanged();
 
 private:
+    void onTimer();
+    void updateSessionsDurations();
     inline auto& session_by_id() const { return sessions_.get<id_tag>(); }
     inline auto& session_by_ordered() const { return sessions_.get<ordered_tag>(); }
     inline auto& session_by_action() const { return sessions_.get<action_tag>(); }
@@ -138,4 +141,9 @@ private:
 
     sessions_t sessions_;
     static WorkSessionsModel* instance_;
+
+    // QAbstractItemModel interface
+public:
+    QVariant headerData(int section, Qt::Orientation orientation, int role) const;
+    QTimer *timer_ = {};
 };

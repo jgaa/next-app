@@ -33,7 +33,15 @@ Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: colwidths.reduce((accumulator, currentValue) => accumulator + currentValue, 0);
 
-            color: "yellow" //Colors.background
+            color: Colors.background
+
+            HorizontalHeaderView {
+                id: horizontalHeader
+                anchors.left: tableView.left
+                anchors.top: parent.top
+                syncView: tableView
+                clip: true
+            }
 
             TableView {
                 id: tableView
@@ -41,9 +49,12 @@ Rectangle {
                 boundsBehavior: Flickable.StopAtBounds
                 boundsMovement: Flickable.StopAtBounds
                 clip: true
-                anchors.fill: parent
-                selectionMode: TableView.SingleSelection
-                selectionBehavior: TableView.SelectRows
+                anchors.top: horizontalHeader.bottom
+                anchors.left: horizontalHeader.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                // selectionMode: TableView.SingleSelection
+                // selectionBehavior: TableView.SelectRows
 
                 Component.onCompleted: {
                     console.log("Component.onCompleted")

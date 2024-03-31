@@ -323,7 +323,7 @@ boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, 
 
         co_await server().db().exec(
             "UPDATE work_session SET start_time=?, end_time=?, state='done', "
-            "duration=?, paused=?, events=?, version=version+1, touch_time=CURRENT_TIMESTAMP "
+            "duration=?, paused=?, events=?, version=version+1, touch_time=UTC_TIMESTAMP "
             "WHERE id=? AND user=?",
             dbo,
             toAnsiTime(work.start(), uctx.tz()), toAnsiTime(work.end(), uctx.tz()),
@@ -332,7 +332,7 @@ boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, 
         // active or paused
         co_await server().db().exec(
             "UPDATE work_session SET start_time = ?, duration = ?, paused = ?, events=?, state=?, "
-            "version=version+1, touch_time=CURRENT_TIMESTAMP "
+            "version=version+1, touch_time=UTC_TIMESTAMP "
             "WHERE id=? AND user=?",
             dbo,
             toAnsiTime(work.start(), uctx.tz()), work.duration(), work.paused(), blob,

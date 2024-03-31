@@ -329,7 +329,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             favorite BOOLEAN NOT NULL DEFAULT FALSE,
             name VARCHAR(128) NOT NULL,
             descr TEXT,
-            created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_date TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
             due_kind ENUM('datetime', 'date', 'week', 'month', 'quarter', 'year', 'unset') NOT NULL DEFAULT 'unset',
             start_time DATETIME,
             due_by_time DATETIME,
@@ -366,8 +366,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             user UUID NOT NULL,
             state ENUM('active', 'paused', 'done') NOT NULL DEFAULT 'active',
             version INT NOT NULL DEFAULT 1,
-            touch_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            start_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            touch_time TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
+            start_time TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
             end_time TIMESTAMP,
             duration INTEGER NOT NULL DEFAULT 0,
             paused INTEGER NOT NULL DEFAULT 0,
@@ -377,23 +377,10 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
-        R"(CREATE INDEX work_session_ix1 ON work_session (user, action))",
-
-        // R"(CREATE OR REPLACE TABLE work_event (
-        //     id UUID not NULL default UUID() PRIMARY KEY,
-        //     session UUID NOT NULL,
-        //     action UUID NOT NULL,
-        //     kind ENUM('start', 'stop', 'pause', 'resume', 'correction') NOT NULL,
-        //     event_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        //     start_time TIMESTAMP,
-        //     end_time TIMESTAMP,
-        //     duration INTEGER,
-        //     paused INTEGER,
-
-        //     FOREIGN KEY(session) REFERENCES work_session(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
-
-        // R"(CREATE INDEX work_event_ix1 ON work_event (action))",
-
+        R"(CREATE INDEX work_session_ix1 ON work_session (user, action, state, start_time))",
+        R"(CREATE INDEX work_session_ix2 ON work_session (user, start_time, end_time))",
+        R"(CREATE INDEX work_session_ix3 ON work_session (user, state, start_time, end_time))",
+        R"(CREATE INDEX work_session_ix4 ON work_session (user, state, touch_time))",
         "SET FOREIGN_KEY_CHECKS=1"
     });
 

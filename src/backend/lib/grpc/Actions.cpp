@@ -139,6 +139,8 @@ struct ToAction {
             }
         }
 
+        LOG_TRACE << "Assigning action*: " << toJson(obj, 2);
+
         if (obj.status() == pb::ActionStatus::DONE) {
             obj.set_kind(pb::ActionKind::AC_DONE);
         } else {
@@ -146,7 +148,7 @@ struct ToAction {
             // We need to convert the time from the database and the time right now to the time-zone used by the client to get it right.
             if (row.at(START_TIME).is_datetime()) {
                 const auto due = row.at(DUE_BY_TIME).as_datetime();
-                const auto zt = std::chrono::zoned_time(&uctx.tz(), due.as_time_point());
+                const auto zt = std::chrono::zoned_time(&uctx.tz(), due.as_time_point()  - chrono::seconds(1));
                 const auto due_when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
 
                 optional<chrono::year_month_day> start;
