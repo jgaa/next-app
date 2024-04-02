@@ -1,6 +1,9 @@
 
 #include "shared_grpc_server.h"
 
+using namespace std;
+using namespace std::string_view_literals;
+
 namespace nextapp::grpc {
 
 namespace {
@@ -36,14 +39,14 @@ struct ToWorkSession {
     static constexpr string_view selectCols = "id, action, user, start_time, end_time, duration, paused, state, version, touch_time, "
                                               "name, note, events";
 
-    static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws) {
+    static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws, const UserContext& uctx) {
         ws.set_id(row.at(ID).as_string());
         ws.set_action(row.at(ACTION).as_string());
         ws.set_user(row.at(USER).as_string());
-        ws.set_start(toTimeT(row.at(START).as_datetime()));
-        ws.set_touched(toTimeT(row.at(TOUCHED).as_datetime()));
+        ws.set_start(toTimeT(row.at(START).as_datetime(), uctx.tz()));
+        ws.set_touched(toTimeT(row.at(TOUCHED).as_datetime(), uctx.tz()));
         if (row.at(END).is_datetime()) {
-            ws.set_end(toTimeT(row.at(END).as_datetime()));
+            ws.set_end(toTimeT(row.at(END).as_datetime(), uctx.tz()));
         }
         ws.set_duration(row.at(DURATION).as_int64());
         ws.set_paused(row.at(PAUSED).as_int64() != 0);
@@ -84,9 +87,9 @@ struct ToWorkSession {
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
-            auto dbopts = cutx->dbOptions();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+            auto dbopts = uctx->dbOptions();
             dbopts.reconnect_and_retry_query = false;
 
             string name;
@@ -95,16 +98,19 @@ struct ToWorkSession {
             // TODO: Execute in transaction
 
             // Pause any active work session
-            co_await owner_.pauseWork(*cutx);
+            co_await owner_.pauseWork(*uctx);
 
             pb::SavedWorkEvents events;
             events.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_START));
+            const auto start_time = toAnsiTime(events.events(0).time(), uctx->tz());
             const auto blob = toBlob(events);
             // Create the work session record
             const auto res = co_await owner_.server().db().exec(
-                format("INSERT INTO work_session (action, user, name, events) VALUES (?, ?, ?, ?) "
+                format("INSERT INTO work_session (start_time, touch_time, action, user, name, events) VALUES (?, ?, ?, ?, ?, ?) "
                        "RETURNING {}", ToWorkSession::selectCols),
                 dbopts,
+                start_time,
+                start_time,
                 req->actionid(),
                 cuser,
                 name,
@@ -113,7 +119,7 @@ struct ToWorkSession {
             assert(res.has_value() && !res.rows().empty());
 
             pb::WorkSession session;
-            ToWorkSession::assign(res.rows().front(), session);
+            ToWorkSession::assign(res.rows().front(), session, *uctx);
 
             auto& final_session = *reply->mutable_work();
             final_session = std::move(session);
@@ -130,12 +136,12 @@ struct ToWorkSession {
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
-            auto dbopts = cutx->dbOptions();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+            auto dbopts = uctx->dbOptions();
             dbopts.reconnect_and_retry_query = false;
 
-            auto work = co_await owner_.fetchWorkSession(req->worksessionid(), *cutx);
+            auto work = co_await owner_.fetchWorkSession(req->worksessionid(), *uctx);
             const auto& event = req->event();
 
             // Here we do the logic. When the sitch exits, `work` is assumed to be updated
@@ -146,25 +152,25 @@ struct ToWorkSession {
                 if (work.has_end()) {
                     throw db_err{pb::Error::INVALID_REQUEST, "Session is already stopped"};
                 }
-                co_await owner_.stopWorkSession(work, *cutx);
-                co_await owner_.activateNextWorkSession(*cutx);
+                co_await owner_.stopWorkSession(work, *uctx);
+                co_await owner_.activateNextWorkSession(*uctx);
                 break;
             case pb::WorkEvent::Kind::WorkEvent_Kind_PAUSE:
                 if (work.state() != pb::WorkSession_State::WorkSession_State_ACTIVE) {
                     throw db_err{pb::Error::INVALID_REQUEST, "Session must be active to pause"};
                 }
-                co_await owner_.pauseWorkSession(work, *cutx);
+                co_await owner_.pauseWorkSession(work, *uctx);
                 break;
             case pb::WorkEvent::Kind::WorkEvent_Kind_RESUME:
                 if (work.state() != pb::WorkSession_State::WorkSession_State_PAUSED) {
                     throw db_err{pb::Error::INVALID_REQUEST, "Session must be paused to resume"};
                 }
-                co_await owner_.resumeWorkSession(work, *cutx);
+                co_await owner_.resumeWorkSession(work, *uctx);
                 break;
             case pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH: {
                     auto ne = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH);
                     work.add_events()->Swap(&ne);
-                    co_await owner_.saveWorkSession(work, *cutx);
+                    co_await owner_.saveWorkSession(work, *uctx);
                     auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
                     *update->mutable_work() = work;
                     owner_.publish(update);
@@ -183,8 +189,15 @@ struct ToWorkSession {
                 if (event.has_paused()) {
                     ne.set_paused(event.paused());
                 }
+                if (event.has_notes()) {
+                    ne.set_notes(event.notes());
+                }
+                if (event.has_name()) {
+                    ne.set_name(event.name());
+                }
                 work.add_events()->Swap(&ne);
-                co_await owner_.saveWorkSession(work, *cutx);
+                updateOutcome(work, *uctx);
+                co_await owner_.saveWorkSession(work, *uctx, false);
                 auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
                 *update->mutable_work() = work;
                 owner_.publish(update);
@@ -203,8 +216,8 @@ struct ToWorkSession {
 {
     return unaryHandler(ctx, req, reply,
         [this, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             // TODO: Handle overlap between days
             auto res = co_await owner_.server().db().exec(
@@ -213,7 +226,7 @@ struct ToWorkSession {
             if (res.has_value()) {
                 auto sessions = reply->mutable_worksessions()->mutable_sessions();
                 for(const auto& row : res.rows()) {
-                    ToWorkSession::assign(row, *sessions->Add());
+                    ToWorkSession::assign(row, *sessions->Add(), *uctx);
                 }
             }
 
@@ -225,20 +238,20 @@ struct ToWorkSession {
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             // Update the active work session to calculate the current duration and pause
-            co_await owner_.syncActiveWork(*cutx);
+            co_await owner_.syncActiveWork(*uctx);
 
             // Calculate the start and end timestamps
             TimePeriod period;
             switch(req->kind()) {
             case pb::WorkSummaryKind::WSK_DAY:
-                period = toTimePeriodDay(time(nullptr), *cutx);
+                period = toTimePeriodDay(time(nullptr), *uctx);
                 break;
             case pb::WorkSummaryKind::WSK_WEEK:
-                period = toTimePeriodWeek(time(nullptr), *cutx);
+                period = toTimePeriodWeek(time(nullptr), *uctx);
                 break;
             default:
                 throw db_err{pb::Error::INVALID_REQUEST, "Invalid WorkSummaryRequest.Kind"};
@@ -247,7 +260,7 @@ struct ToWorkSession {
             // Query for the sum of duration and paused for that period
             auto res = co_await owner_.server().db().exec(
                 "SELECT SUM(duration), SUM(paused) FROM work_session WHERE user=? AND start_time >= ? AND start_time < ? ",
-                cuser, toAnsiTime(period.start, cutx->tz()), toAnsiTime(period.end, cutx->tz()));
+                cuser, toAnsiTime(period.start, uctx->tz()), toAnsiTime(period.end, uctx->tz()));
 
             enum Cols { DURATION, PAUSED };
             if (res.has_value() && !res.rows().empty()) {
@@ -272,7 +285,7 @@ boost::asio::awaitable<pb::WorkSession> GrpcServer::fetchWorkSession(const std::
     }
 
     pb::WorkSession rval;
-    ToWorkSession::assign(res.rows().front(), rval);
+    ToWorkSession::assign(res.rows().front(), rval, uctx);
 
     co_return rval;
 }
@@ -288,7 +301,7 @@ boost::asio::awaitable<std::optional<pb::WorkSession> > GrpcServer::fetchActiveW
     }
 
     rval.emplace();
-    ToWorkSession::assign(res.rows().front(), *rval);
+    ToWorkSession::assign(res.rows().front(), *rval, uctx);
     co_return rval;
 }
 
@@ -299,7 +312,7 @@ boost::asio::awaitable<void> GrpcServer::endWorkSessionForAction(const std::stri
     if (res.has_value()) {
         for(const auto &row : res.rows()) {
             pb::WorkSession ws;
-            ToWorkSession::assign(row, ws);
+            ToWorkSession::assign(row, ws, uctx);
 
             // TODO: This should be made optional per users global settings
             const auto need_start_next = ws.state() == pb::WorkSession_State::WorkSession_State_ACTIVE;
@@ -309,36 +322,46 @@ boost::asio::awaitable<void> GrpcServer::endWorkSessionForAction(const std::stri
             }
         }
     }
+    co_return; // Make QT Creator happy
 }
 
-boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, const UserContext &uctx)
+boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, const UserContext &uctx, bool touch)
 {
     const auto& dbo = uctx.dbOptions();
 
     const auto blob = eventsToBlob(work);
+
+    const auto now = time(nullptr);
+    const string touched = touch ? format(", touch_time='{}'", *toAnsiTime(now, uctx.tz())) : ""s;
 
     if (work.has_end()) {
         // Is done
         assert(work.state() == pb::WorkSession::State::WorkSession_State_DONE);
 
         co_await server().db().exec(
-            "UPDATE work_session SET start_time=?, end_time=?, state='done', "
-            "duration=?, paused=?, events=?, version=version+1, touch_time=UTC_TIMESTAMP "
-            "WHERE id=? AND user=?",
+            format("UPDATE work_session SET name=?, note=?, start_time=?, end_time=?, state='done', "
+                "duration=?, paused=?, events=?, version=version+1 {} "
+                "WHERE id=? AND user=?", touched),
             dbo,
+            work.name(), work.notes(),
             toAnsiTime(work.start(), uctx.tz()), toAnsiTime(work.end(), uctx.tz()),
             work.duration(), work.paused(), blob, work.id(), uctx.userUuid());
     } else {
         // active or paused
         co_await server().db().exec(
-            "UPDATE work_session SET start_time = ?, duration = ?, paused = ?, events=?, state=?, "
-            "version=version+1, touch_time=UTC_TIMESTAMP "
-            "WHERE id=? AND user=?",
+            format("UPDATE work_session SET name=?, note=?, start_time = ?, duration = ?, paused = ?, events=?, state=?, "
+                "version=version+1 {} "
+                "WHERE id=? AND user=?", touched),
             dbo,
+            work.name(), work.notes(),
             toAnsiTime(work.start(), uctx.tz()), work.duration(), work.paused(), blob,
             pb::WorkSession_State_Name(work.state()), work.id(),
             uctx.userUuid());
             }
+
+    if (touch) {
+        work.set_touched(now);
+    }
 }
 
 /* This function is called when a work session is maked as done.
@@ -489,6 +512,12 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext &uctx)
                     pause_from = event.time();
                 }
             }
+            if (event.has_name()) {
+                work.set_name(event.name());
+            }
+            if (event.has_notes()) {
+                work.set_notes(event.notes());
+            }
             break;
         default:
             assert(false);
@@ -530,7 +559,7 @@ boost::asio::awaitable<void> GrpcServer::activateNextWorkSession(const UserConte
     }
 
     pb::WorkSession work;
-    ToWorkSession::assign(next.rows().front(), work);
+    ToWorkSession::assign(next.rows().front(), work, uctx);
     work.set_state(pb::WorkSession_State::WorkSession_State_ACTIVE);
 
     work.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_RESUME));
@@ -559,7 +588,7 @@ boost::asio::awaitable<void> GrpcServer::pauseWork(const UserContext &uctx)
     // There is only one active work session if things works as supposed.
     for(const auto& row : next.rows()) {
         pb::WorkSession work;
-        ToWorkSession::assign(row, work);
+        ToWorkSession::assign(row, work, uctx);
         co_await pauseWorkSession(work, uctx);
     }
 }
@@ -578,7 +607,7 @@ boost::asio::awaitable<void> GrpcServer::syncActiveWork(const UserContext &uctx)
 
     for(const auto& row : next.rows()) {
         pb::WorkSession work;
-        ToWorkSession::assign(row, work);
+        ToWorkSession::assign(row, work, uctx);
         updateOutcome(work, uctx);
         co_await saveWorkSession(work, uctx);
     }

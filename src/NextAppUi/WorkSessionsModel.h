@@ -122,7 +122,13 @@ public:
     }
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
-
+    QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
+    bool setData(const QModelIndex &index, const QVariant &value, int role) override;
+    Qt::ItemFlags flags(const QModelIndex &index) const override
+    {
+        Q_UNUSED(index)
+        return Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsEditable;
+    }
 
 signals:
     void canAddNewChanged();
@@ -141,9 +147,5 @@ private:
 
     sessions_t sessions_;
     static WorkSessionsModel* instance_;
-
-    // QAbstractItemModel interface
-public:
-    QVariant headerData(int section, Qt::Orientation orientation, int role) const;
     QTimer *timer_ = {};
 };

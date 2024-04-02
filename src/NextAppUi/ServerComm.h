@@ -81,6 +81,7 @@ public:
     void resumeWork(const QString& sessionId);
     void doneWork(const QString& sessionId);
     void touchWork(const QString& sessionId);
+    void sendWorkEvent(const QString& sessionId, const nextapp::pb::WorkEvent& event);
 
 
 

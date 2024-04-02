@@ -181,7 +181,7 @@ public:
     boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid, std::string *name = {});
     boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
     boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, const UserContext& uctx);
-    boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx);
+    boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx, bool touch = true);
 
     bool active() const noexcept {
         return active_;

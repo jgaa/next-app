@@ -24,11 +24,13 @@ namespace nextapp::grpc {
     return date;
 }
 
-time_t toTimeT(const boost::mysql::datetime& from) {
+time_t toTimeT(const boost::mysql::datetime& from, const chrono::time_zone& tz) {
     if (from.valid()) {
         auto tp = from.as_time_point();
-        std::time_t when = chrono::system_clock::to_time_t(tp);
-        return when;
+        chrono::seconds seconds{chrono::system_clock::to_time_t(tp)};
+        chrono::zoned_time ztime{&tz, chrono::local_seconds{seconds}};
+        auto when = ztime.get_sys_time();
+        return chrono::system_clock::to_time_t(when);
     }
 
     return {};

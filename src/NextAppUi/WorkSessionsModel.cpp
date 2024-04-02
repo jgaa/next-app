@@ -1,9 +1,12 @@
+#include <regex>
+
 #include "WorkSessionsModel.h"
 #include "ServerComm.h"
 //#include "MainTreeModel.h"
 #include "logging.h"
 #include <algorithm>
 #include <iterator>
+#include "util.h"
 
 #include "QDateTime"
 
@@ -15,7 +18,7 @@ int compare (const WorkSessionsModel::Session& a, const WorkSessionsModel::Sessi
         return a.session.state() < b.session.state(); // order active first
     }
 
-    return a.session.start() > b.session.start(); // order newest first
+    return a.session.touched() > b.session.touched(); // order newest first
 }
 
 // Flags for what was changed in updateOutcome
@@ -25,9 +28,10 @@ struct Outcome {
     bool paused = false;
     bool end = false;
     bool start = false;
+    bool name = false;
 
     bool changed() const noexcept {
-        return duration || paused || end || start;
+        return duration || paused || end || start || name;
     }
 };
 
@@ -54,6 +58,8 @@ Outcome updateOutcome(nextapp::pb::WorkSession &work)
     const auto orig_duration = work.duration() / 60;
     const auto orig_paused = work.paused() / 60;
     const auto orig_state = work.state() / 60;
+    const auto orig_name = work.name();
+    const auto full_orig_duration = work.duration();
 
     work.setPaused(0);
     work.setDuration(0);
@@ -115,11 +121,24 @@ Outcome updateOutcome(nextapp::pb::WorkSession &work)
                     pause_from = event.time();
                 }
             }
+            if (event.hasName()) {
+                work.setName(event.name());
+            }
+            if (event.hasNotes()) {
+                work.setNotes(event.notes());
+            }
             break;
         default:
             assert(false);
             throw runtime_error{"Invalid work event kind"s + to_string(event.kind())};
         }
+    }
+
+    if (pause_from) {
+        // If we are paused, we need to account for the time between the last pause and now
+        pb::WorkEvent event;
+        event.setTime(time({}));
+        end_pause(event);
     }
 
     // Now set the duration. That is, the duration from start to end - paused
@@ -134,6 +153,11 @@ Outcome updateOutcome(nextapp::pb::WorkSession &work)
     outcome.end = orig_end != work.hasEnd() ? work.end() / 60 : 0;
     outcome.duration = orig_duration != work.duration() / 60;
     outcome.paused= orig_paused != work.paused() / 60;
+    outcome.name = orig_name != work.name();
+
+    LOG_DEBUG << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
+              << work.duration()
+              << " outcome.duration= " << outcome.duration;
 
     return outcome;
 }
@@ -215,30 +239,35 @@ void WorkSessionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &upd
     if (update->hasWork()) {
         // TODO: Set fine-grained update signals
         beginResetModel();
-        const auto& work = update->work();
-        if (update->op() == nextapp::pb::Update::Operation::ADDED) {
-            session_by_ordered().emplace_back(work);
-        } else if (update->op() == nextapp::pb::Update::Operation::UPDATED) {
-            auto &session = session_by_id();
-            auto it = session.find(toQuid(work.id_proto()));
-            if (it != session.end()) {
-                if(work.state() == nextapp::pb::WorkSession::State::DONE) {
-                    session.erase(it);
+        ScopedExit scoped{[this] { endResetModel(); }};
+
+        try {
+            const auto& work = update->work();
+            if (update->op() == nextapp::pb::Update::Operation::ADDED) {
+                session_by_ordered().emplace_back(work);
+            } else if (update->op() == nextapp::pb::Update::Operation::UPDATED) {
+                auto &session = session_by_id();
+                auto it = session.find(toQuid(work.id_proto()));
+                if (it != session.end()) {
+                    if(work.state() == nextapp::pb::WorkSession::State::DONE) {
+                        session.erase(it);
+                    } else {
+                        session.modify(it, [&work](auto& v) {
+                            v.session = work;
+                        });
+                    }
                 } else {
-                    session.modify(it, [&work](auto& v) {
-                        v.session = work;
-                    });
-                }
-            } else {
-                LOG_WARN << "Got update for work session " << work.id_proto() << " which I know nothing about...";
-                if (work.state() != nextapp::pb::WorkSession::State::DONE) {
-                    session_by_ordered().emplace_back(work);
+                    LOG_WARN << "Got update for work session " << work.id_proto() << " which I know nothing about...";
+                    if (work.state() != nextapp::pb::WorkSession::State::DONE) {
+                        session_by_ordered().emplace_back(work);
+                    }
                 }
             }
-        }
 
-        session_by_ordered().sort(compare);
-        endResetModel();
+            session_by_ordered().sort(compare);
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Error updating work sessions: " << e.what();
+        }
     }
 }
 
@@ -250,12 +279,17 @@ void WorkSessionsModel::fetch()
 void WorkSessionsModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions)
 {
     beginResetModel();
-    sessions_.clear();
-    for (auto session : sessions->sessions()) {
-        updateOutcome(session);
-        session_by_ordered().emplace_back(session);
+    ScopedExit scoped{[this] { endResetModel(); }};
+
+    try {
+        sessions_.clear();
+        for (auto session : sessions->sessions()) {
+            updateOutcome(session);
+            session_by_ordered().emplace_back(session);
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Error parsing work sessions: " << e.what();
     }
-    endResetModel();
 }
 
 bool WorkSessionsModel::actionIsInSessionList(const QUuid &actionId) const
@@ -387,19 +421,27 @@ void WorkSessionsModel::updateSessionsDurations()
     int row = 0;
     for(auto it = sessions.begin(); it != sessions.end(); ++it, ++row ){
         sessions.modify(it, [this, row](auto& v ) {
-            auto outcome = updateOutcome(v.session);
+            const auto outcome = updateOutcome(v.session);
             if (outcome.changed()) {
                 if (outcome.start) {
-                    dataChanged(index(row, FROM), {});
+                    const auto ix = index(row, FROM);
+                    dataChanged(ix, ix);
                 }
                 if (outcome.end) {
-                    dataChanged(index(row, TO), {});
+                    const auto ix = index(row, TO);
+                    dataChanged(ix, ix);
                 }
                 if (outcome.duration) {
-                    dataChanged(index(row, USED), {});
+                    const auto ix = index(row, USED);
+                    dataChanged(ix, ix, {});
                 }
                 if (outcome.paused) {
-                    dataChanged(index(row, PAUSE), {});
+                    const auto ix = index(row, PAUSE);
+                    dataChanged(ix, ix);
+                }
+                if (outcome.name) {
+                    const auto ix = index(row, NAME);
+                    dataChanged(ix, ix);
                 }
             }
         });
@@ -410,18 +452,98 @@ QVariant WorkSessionsModel::headerData(int section, Qt::Orientation orientation,
 {
     if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
         switch(section) {
-        case 0:
+        case FROM:
             return tr("From");
-        case 1:
+        case TO:
             return tr("To");
-        case 2:
+        case PAUSE:
             return tr("Pause");
-        case 3:
+        case USED:
             return tr("Used");
-        case 4:
+        case NAME:
             return tr("Name");
         }
     }
 
     return {};
+}
+
+time_t parseDateOrTime(const QString& str)
+{
+    if (str.isEmpty()) {
+        return 0;
+    }
+
+    regex pattern(R"((\d{4}-\d{2}-\d{2} )?(\d{2}:\d{2}))");
+
+    std::smatch match;
+    const auto nstr = str.toStdString();
+    if (std::regex_match(nstr, match, pattern)) {
+        if (match[1].matched) {
+            // The input is an ANSI date + time
+            auto when = QDateTime::fromString(str, "yyyy-MM-dd hh:mm").toSecsSinceEpoch();
+            return when;
+        } else {
+            // The input is just a time
+            auto time = static_cast<time_t>(parseDuration(str));
+            auto timedate = QDateTime{QDate::currentDate(), QTime::fromMSecsSinceStartOfDay(time * 1000)};
+            auto when = timedate.toSecsSinceEpoch();
+            return when;
+        }
+    } else {
+        // The input does not match either format
+        LOG_WARN << "Could not parse time/date: " << str;
+    }
+
+    throw std::runtime_error{"Invalid date/time format"};
+}
+
+bool WorkSessionsModel::setData(const QModelIndex &index, const QVariant &value, int role)
+{
+    if (!index.isValid()) {
+        return false;
+    }
+
+    if (auto work = lookup(toQuid(data(index, UuidRole).toString()))) {
+
+        if (role == Qt::DisplayRole) {
+            switch(index.column()) {
+            case FROM:
+                try {
+                    auto seconds = parseDateOrTime(value.toString());
+                    nextapp::pb::WorkEvent event;
+                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+                    event.setStart(seconds);
+                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
+                } catch (const std::runtime_error&) {
+                    ;
+                }
+                break;
+            case PAUSE:
+                try {
+                    auto seconds = parseDuration(value.toString());
+                    nextapp::pb::WorkEvent event;
+                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+                    event.setPaused(seconds);
+                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
+                } catch (const std::runtime_error&) {
+                    ; // TODO: Tell the user
+                }
+                break;
+
+            case NAME:
+                try {
+                    nextapp::pb::WorkEvent event;
+                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+                    event.setName(value.toString());
+                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
+                } catch (const std::runtime_error&) {
+                    ; // TODO: Tell the user
+                }
+                break;
+            }
+        }
+    }
+
+    return false;
 }

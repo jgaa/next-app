@@ -104,6 +104,10 @@ message WorkEvent {
     optional uint64 end = 4; // time_t
     optional uint32 duration = 5; // minutes
     optional uint32 paused = 6; // minutes
+
+    // These are used to change the properties of a session.
+    optional string name = 7;
+    optional string notes = 8;
 }
 
 message WorkSession {

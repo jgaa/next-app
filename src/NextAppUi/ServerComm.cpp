@@ -356,6 +356,19 @@ void ServerComm::touchWork(const QString& sessionId) {
     });
 }
 
+void ServerComm::sendWorkEvent(const QString &sessionId, const nextapp::pb::WorkEvent &event)
+{
+    nextapp::pb::AddWorkEventReq req;
+    req.setEvent(event);
+    req.setWorkSessionId(sessionId);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->AddWorkEvent(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {

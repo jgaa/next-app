@@ -42,9 +42,9 @@ struct ToNode {
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
 
 
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
-            auto dbopts = cutx->dbOptions();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+            auto dbopts = uctx->dbOptions();
 
             optional<string> parent = req->node().parent();
             if (parent->empty()) {
@@ -106,9 +106,9 @@ struct ToNode {
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             // Get the existing node
 
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
-            const auto& dbopts = cutx->dbOptions();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+            const auto& dbopts = uctx->dbOptions();
 
             bool moved = false;
             bool data_changed = false;
@@ -181,8 +181,8 @@ struct ToNode {
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             // Get the existing node
 
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             for(auto retry = 0;; ++retry) {
 
@@ -255,8 +255,8 @@ struct ToNode {
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
             // Get the existing node
 
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             const auto node = co_await owner_.fetcNode(req->uuid(), cuser);
 
@@ -285,9 +285,9 @@ struct ToNode {
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::NodeTree *reply) -> boost::asio::awaitable<void> {
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
-            const auto& dbopts = cutx->dbOptions();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+            const auto& dbopts = uctx->dbOptions();
 
             const auto res = co_await owner_.server().db().exec(format(R"(
                 WITH RECURSIVE tree AS (

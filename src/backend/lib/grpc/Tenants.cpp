@@ -34,8 +34,8 @@ namespace {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
 
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             pb::Tenant tenant{req->tenant()};
 

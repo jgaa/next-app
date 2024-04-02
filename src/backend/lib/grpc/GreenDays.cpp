@@ -46,12 +46,12 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::CompleteDay *reply) -> boost::asio::awaitable<void> {
 
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
                 "SELECT date, user, color, notes, report FROM day WHERE user=? AND date=? ORDER BY date",
-                cutx->dbOptions(), cuser, toAnsiDate(*req));
+                uctx->dbOptions(), cuser, toAnsiDate(*req));
 
             enum Cols {
                 DATE, USER, COLOR, NOTES, REPORT
@@ -91,12 +91,12 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Month *reply) -> boost::asio::awaitable<void> {
 
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
                 "SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? ORDER BY date",
-                cutx->dbOptions(), cuser, req->year(), req->month() + 1);
+                uctx->dbOptions(), cuser, req->year(), req->month() + 1);
 
             enum Cols {
                 DATE, USER, COLOR, NOTES, REPORT
@@ -128,8 +128,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
 
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             optional<string> color;
             if (!req->color().empty()) {
@@ -139,7 +139,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
             auto res = co_await owner_.server().db().exec(
                 R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?)
-                   ON DUPLICATE KEY UPDATE color=?)", cutx->dbOptions(),
+                   ON DUPLICATE KEY UPDATE color=?)", uctx->dbOptions(),
                 // insert
                 toAnsiDate(req->date()),
                 cuser,
@@ -170,8 +170,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
-            const auto cutx = owner_.userContext(ctx);
-            const auto& cuser = cutx->userUuid();
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
 
             optional<string> color;
             if (!req->day().color().empty()) {
@@ -192,7 +192,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
             auto res = co_await owner_.server().db().exec(
                 R"(INSERT INTO day (date, user, color, notes, report) VALUES (?, ?, ?, ?, ?)
-                   ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)", cutx->dbOptions(),
+                   ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)", uctx->dbOptions(),
                 // insert
                 toAnsiDate(req->day().date()),
                 cuser,

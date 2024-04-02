@@ -55,6 +55,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 // selectionMode: TableView.SingleSelection
                 // selectionBehavior: TableView.SelectRows
+                editTriggers: TableView.OnDoubleClicked | TableView.editTriggersOnEditKeyPressed | TableView.OnEnterPressed | TableView.OnF2Pressed
 
                 Component.onCompleted: {
                     console.log("Component.onCompleted")
@@ -72,14 +73,19 @@ Rectangle {
                     return root.colwidths[column]
                 }
 
+                selectionModel: ItemSelectionModel {}
+
                 delegate : Rectangle {
+                    id: delegate
                     required property int row
                     required property int column
                     required property var display
                     required property string uuid
                     required property string icon
                     required property bool active
+                    required property var index
                     property bool selected : root.selectedItem == uuid
+                    //TableView.onEditRole: "display"
 
                     implicitHeight: 30
 
@@ -100,6 +106,8 @@ Rectangle {
                             font.family: ce.faSolidName
                             font.styleName: ce.faSolidStyle
                             font.pixelSize: 20
+                            Layout.fillHeight: true
+                            verticalAlignment: Text.AlignVCenter
                         }
 
                         Text {
@@ -107,6 +115,7 @@ Rectangle {
                             verticalAlignment: Text.AlignVCenter
                             text: display
                             color: Colors.text
+                            Layout.fillHeight: true
                         }
                     }
 
@@ -115,6 +124,29 @@ Rectangle {
                         onClicked: {
                             root.selectedItem = uuid
                             somethingChanged()
+                        }
+                        onDoubleClicked: {
+                            console.log("index: ", tableView.index, ", row ", row, ", column ", column)
+
+                            if (column === 1 /* to */ || column === 3 /* used */) {
+                                return;
+                            }
+
+                            var ix = tableView.index(row, column, 0)
+                            tableView.edit(ix);
+                        }
+                    }
+
+                    TableView.editDelegate: TextField {
+                        anchors.fill: parent
+                        text: display
+                        horizontalAlignment: TextInput.AlignHCenter
+                        verticalAlignment: TextInput.AlignVCenter
+                        Component.onCompleted: selectAll()
+
+                        TableView.onCommit: {
+                            console.log("Committing: ", text)
+                            display = text
                         }
                     }
                 }
