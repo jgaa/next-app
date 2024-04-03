@@ -473,6 +473,10 @@ message CreateWorkReq {
     string actionId = 1;
 }
 
+message DeleteWorkReq {
+    string workSessionId = 1;
+}
+
 message AddWorkEventReq {
     string workSessionId = 1;
     WorkEvent event = 2;
@@ -530,5 +534,6 @@ service Nextapp {
     rpc AddWorkEvent(AddWorkEventReq) returns (Status) {}
     rpc ListCurrentWorkSessions(Empty) returns (Status) {}
     rpc GetWorkSummary(WorkSummaryRequest) returns (Status) {}
+    rpc DeleteWorkSession(DeleteWorkReq) returns (Status) {}
 }
 

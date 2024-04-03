@@ -88,6 +88,7 @@ public:
     explicit WorkSessionsModel(QObject *parent = nullptr);
 
     Q_INVOKABLE void startWork(const QString& actionId);
+    Q_INVOKABLE void deleteWork(const QString& actionId);
     Q_INVOKABLE bool isActive(const QString& sessionId) const;
     Q_INVOKABLE void pause(const QString& sessionId);
     Q_INVOKABLE void resume(const QString& sessionId);

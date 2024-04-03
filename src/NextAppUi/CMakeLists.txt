@@ -97,6 +97,7 @@ qt_add_qml_module(appNextAppUi
         qml/common.js
         qml/CheckBoxWithFontIcon.qml
         qml/WorkSessions.qml
+        qml/CommonElements.qml
     RESOURCES
         icons/folder.svg
         icons/folder_closed.svg
@@ -111,6 +112,7 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/trash-can.svg
+        icons/fontawsome/clock.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg
@@ -148,7 +150,7 @@ qt_add_qml_module(appNextAppUi
         WorkSessionsModel.h
         util.cpp
         util.h
-        QML_FILES qml/CommonElements.qml
+        QML_FILES
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

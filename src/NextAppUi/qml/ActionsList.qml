@@ -85,7 +85,7 @@ Rectangle {
                 required property string uuid
                 required property bool done
                 required property bool favorite
-                required property bool canStartWork
+                required property bool hasWorkSession
 
                 implicitHeight: row.implicitHeight
                 width: listView.width
@@ -169,11 +169,11 @@ Rectangle {
 
                     CheckBoxWithFontIcon {
                         id: canWorkIcon
-                        isChecked: canStartWork
+                        isChecked: hasWorkSession
                         checkedCode: "\uf017"
                         uncheckedCode: "\uf017"
                         checkedColor: "green"
-                        uncheckedColor: "lightgray"
+                        uncheckedColor: "lightblue"
                         useSolidForChecked: true
                         iconSize: 16
                         autoToggle: false
@@ -197,6 +197,13 @@ Rectangle {
             icon.source: "../icons/fontawsome/pen-to-square.svg"
             onTriggered: {
                 openActionDlg(contextMenu.uuid)
+            }
+        }
+        Action {
+            text: qsTr("Start Work Session")
+            icon.source: "../icons/fontawsome/clock.svg"
+            onTriggered: {
+                WorkSessionsModel.startWork(contextMenu.uuid)
             }
         }
         Action {

@@ -224,6 +224,11 @@ void ActionsModel::start()
             &ServerComm::onUpdate,
             this,
             &ActionsModel::onUpdate);
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::receivedWorkSessions,
+            this,
+            &ActionsModel::receivedWorkSessions);
 }
 
 void ActionsModel::fetch(nextapp::pb::GetActionsReq &filter)
@@ -259,13 +264,24 @@ int findCurrentRow(const QList<T>& list, QString id) {
 
 void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 {
-    if (!update->hasAction()) {
-        return;
-    }
-
-    const auto& action = update->action();
     const auto op = update->op();
+    if (update->hasWork()) {
+        return doUpdate(update->work(), op);
+    } else if (update->hasAction()) {
+        return doUpdate(update->action(), op);
+    }
+}
 
+void ActionsModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions)
+{
+    worked_on_.clear();
+    for(const auto& session: sessions->sessions()) {
+        worked_on_.insert(toQuid(session.action()));
+    }
+}
+
+void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Update::Operation op)
+{
     if (op == pb::Update::Operation::ADDED || op == pb::Update::Operation::UPDATED) {
         if (action.node() != MainTreeModel::instance()->selected()) {
             return; // Irrelevant
@@ -276,7 +292,7 @@ void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 
     switch(op) {
     case pb::Update::Operation::ADDED: {
-insert_as_new:
+    insert_as_new:
         auto row = findInsertRow(action, actions_->actions());
         beginInsertRows({}, row, row);
         insertAction(actions_->actions(), action, row);
@@ -331,6 +347,26 @@ insert_as_new:
         }
     }
     break;
+    }
+}
+
+// Send a data changed event for the action referenced in the work session.
+void ActionsModel::doUpdate(const nextapp::pb::WorkSession &work, nextapp::pb::Update::Operation op)
+{
+    static const QList<int> roles = {HasWorkSessionRole};
+
+    const auto& action_id = work.action();
+    if (const auto currentRow = findCurrentRow(actions_->actions(), action_id) ; currentRow >=0 ) {
+        const auto cix = index(currentRow);
+        LOG_TRACE << "Emitting data change on " << action_id << " for work session update on row " << currentRow;
+
+        if (op == nextapp::pb::Update::Operation::DELETED || work.hasEnd()) {
+            worked_on_.erase(toQuid(action_id));
+        } else {
+            worked_on_.insert(toQuid(action_id));
+        }
+
+        emit dataChanged(cix, cix, roles);
     }
 }
 
@@ -745,9 +781,8 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return {};
     case FavoriteRole:
         return action.favorite();
-    case CanStartWorkRole:
-        return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
-               && !WorkSessionsModel::instance().actionIsInSessionList(toQuid(action.id_proto()));
+    case HasWorkSessionRole:
+        return worked_on_.contains(toQuid(action.id_proto()));
     }
 
     return {};
@@ -806,7 +841,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[SectionNameRole] = "sname";
     roles[DueRole] = "due";
     roles[FavoriteRole] = "favorite";
-    roles[CanStartWorkRole] = "canStartWork";
+    roles[HasWorkSessionRole] = "hasWorkSession";
     return roles;
 }
 

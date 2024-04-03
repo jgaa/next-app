@@ -119,15 +119,23 @@ Rectangle {
                         }
                     }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            root.selectedItem = uuid
-                            somethingChanged()
-                        }
-                        onDoubleClicked: {
-                            console.log("index: ", tableView.index, ", row ", row, ", column ", column)
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
 
+                        onSingleTapped: (eventPoint, button) => {
+                            switch (button) {
+                                case Qt.LeftButton:
+                                    root.selectedItem = uuid
+                                    somethingChanged()
+                                    break;
+                                case Qt.RightButton:
+                                    contextMenu.uuid = uuid
+                                    contextMenu.name = display
+                                    contextMenu.popup();
+                            }
+                        }
+
+                        onDoubleTapped: (eventPoint, button) => {
                             if (column === 1 /* to */ || column === 3 /* used */) {
                                 return;
                             }
@@ -135,6 +143,28 @@ Rectangle {
                             var ix = tableView.index(row, column, 0)
                             tableView.edit(ix);
                         }
+
+                        onLongPressed: (eventPoint, button) => {
+                            contextMenu.uuid = uuid
+                            contextMenu.name = display
+                            contextMenu.popup();
+                        }
+
+
+                        // onClicked: {
+                        //     root.selectedItem = uuid
+                        //     somethingChanged()
+                        // }
+                        // onDoubleClicked: {
+                        //     console.log("index: ", tableView.index, ", row ", row, ", column ", column)
+
+                        //     if (column === 1 /* to */ || column === 3 /* used */) {
+                        //         return;
+                        //     }
+
+                        //     var ix = tableView.index(row, column, 0)
+                        //     tableView.edit(ix);
+                        // }
                     }
 
                     TableView.editDelegate: TextField {
@@ -220,5 +250,47 @@ Rectangle {
 
     CommonElements {
         id: ce
+    }
+
+    MessageDialog {
+        id: confirmDelete
+
+        property string uuid;
+        property string name;
+
+        title: qsTr("Do you really want to delete the Work Session \"%1\" ?").arg(name)
+        text: qsTr("Note that any worked time, etc. for this session will also be deleted! This action can not be undone.")
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        onAccepted: {
+           WorkSessionsModel.deleteWork(uuid)
+           confirmDelete.close()
+        }
+
+        onRejected: {
+            confirmDelete.close()
+        }
+    }
+
+    MyMenu {
+        id: contextMenu
+        property string uuid
+        property string name
+
+        Action {
+            text: qsTr("Edit")
+            icon.source: "../icons/fontawsome/pen-to-square.svg"
+            onTriggered: {
+                openActionDlg(contextMenu.uuid)
+            }
+        }
+        Action {
+            icon.source: "../icons/fontawsome/trash-can.svg"
+            text: qsTr("Delete")
+            onTriggered: {
+                confirmDelete.uuid = contextMenu.uuid
+                confirmDelete.name = contextMenu.name
+                confirmDelete.open()
+            }
+        }
     }
 }

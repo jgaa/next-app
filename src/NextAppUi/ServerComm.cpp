@@ -369,6 +369,18 @@ void ServerComm::sendWorkEvent(const QString &sessionId, const nextapp::pb::Work
     });
 }
 
+void ServerComm::deleteWork(const QString &sessionId)
+{
+    nextapp::pb::DeleteWorkReq req;
+    req.setWorkSessionId(sessionId);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->DeleteWorkSession(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {

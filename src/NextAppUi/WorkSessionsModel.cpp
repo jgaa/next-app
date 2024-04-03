@@ -177,6 +177,11 @@ void WorkSessionsModel::startWork(const QString &actionId)
     ServerComm::instance().startWork(actionId);
 }
 
+void WorkSessionsModel::deleteWork(const QString &actionId)
+{
+    ServerComm::instance().deleteWork(actionId);
+}
+
 bool WorkSessionsModel::isActive(const QString &actionId) const
 {
     if (auto session = lookup(toQuid(actionId))) {
@@ -242,26 +247,34 @@ void WorkSessionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &upd
         ScopedExit scoped{[this] { endResetModel(); }};
 
         try {
+            const auto op = update->op();
             const auto& work = update->work();
-            if (update->op() == nextapp::pb::Update::Operation::ADDED) {
-                session_by_ordered().emplace_back(work);
-            } else if (update->op() == nextapp::pb::Update::Operation::UPDATED) {
-                auto &session = session_by_id();
-                auto it = session.find(toQuid(work.id_proto()));
-                if (it != session.end()) {
-                    if(work.state() == nextapp::pb::WorkSession::State::DONE) {
-                        session.erase(it);
+            switch(op) {
+                case nextapp::pb::Update::Operation::ADDED:
+                    session_by_ordered().emplace_back(work);
+                    break;
+                case nextapp::pb::Update::Operation::UPDATED: {
+                    auto &session = session_by_id();
+                    auto it = session.find(toQuid(work.id_proto()));
+                    if (it != session.end()) {
+                        if(work.state() == nextapp::pb::WorkSession::State::DONE) {
+                            session.erase(it);
+                        } else {
+                            session.modify(it, [&work](auto& v) {
+                                v.session = work;
+                            });
+                        }
                     } else {
-                        session.modify(it, [&work](auto& v) {
-                            v.session = work;
-                        });
+                        LOG_WARN << "Got update for work session " << work.id_proto() << " which I know nothing about...";
+                        if (work.state() != nextapp::pb::WorkSession::State::DONE) {
+                            session_by_ordered().emplace_back(work);
+                        }
                     }
-                } else {
-                    LOG_WARN << "Got update for work session " << work.id_proto() << " which I know nothing about...";
-                    if (work.state() != nextapp::pb::WorkSession::State::DONE) {
-                        session_by_ordered().emplace_back(work);
-                    }
-                }
+                } break;
+                case nextapp::pb::Update::Operation::DELETED:
+                    auto &session = session_by_id();
+                    session.erase(toQuid(work.id_proto()));
+                    break;
             }
 
             session_by_ordered().sort(compare);

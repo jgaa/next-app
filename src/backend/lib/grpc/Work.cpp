@@ -275,6 +275,32 @@ struct ToWorkSession {
         }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteWorkSession(::grpc::CallbackServerContext *ctx, const pb::DeleteWorkReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, ctx, req] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+            auto dbopts = uctx->dbOptions();
+            dbopts.reconnect_and_retry_query = false;
+
+            auto res = co_await owner_.server().db().exec(
+                "DELETE FROM work_session WHERE id=? AND user=?", req->worksessionid(), cuser);
+
+            if (res.affected_rows()) {
+                pb::WorkSession ws;
+                ws.set_id(req->worksessionid());
+                auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
+                *update->mutable_work() = ws;
+                owner_.publish(update);
+
+                *reply->mutable_work() = ws;
+            }
+
+            co_return;
+        }, __func__);
+}
+
 boost::asio::awaitable<pb::WorkSession> GrpcServer::fetchWorkSession(const std::string &uuid, const UserContext &uctx)
 {
     auto res = co_await server().db().exec(

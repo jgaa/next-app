@@ -1,5 +1,7 @@
 #pragma once
 
+#include <set>
+
 #include <QAbstractListModel>
 #include <QStringListModel>
 
@@ -66,7 +68,7 @@ class ActionsModel : public QAbstractListModel
         SectionNameRole,
         DueRole,
         FavoriteRole,
-        CanStartWorkRole
+        HasWorkSessionRole
     };
 
     enum Shortcuts {
@@ -110,6 +112,9 @@ public:
     void fetch(nextapp::pb::GetActionsReq& filter);
     void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions);
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
+    void doUpdate(const nextapp::pb::Action& action, nextapp::pb::Update::Operation op);
+    void doUpdate(const nextapp::pb::WorkSession& work, nextapp::pb::Update::Operation op);
 
     // QAbstractItemModel interface
 public:
@@ -120,4 +125,5 @@ public:
 
 private:
     std::shared_ptr<nextapp::pb::Actions> actions_;
+    std::set<QUuid> worked_on_;
 };
