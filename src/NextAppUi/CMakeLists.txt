@@ -76,7 +76,11 @@ qt_add_qml_module(appNextAppUi
         Main.qml
         qml/About.qml
         qml/ActionsList.qml
+        qml/CheckBoxWithFontIcon.qml
         qml/Colors.qml # x
+        qml/CommonElements.qml
+        qml/CurrentWorkSessionsView.qml
+        qml/DatePicker.qml
         qml/DayDialog.qml
         qml/DaysInYear.qml
         qml/DlgInputField.qml
@@ -93,12 +97,13 @@ qt_add_qml_module(appNextAppUi
         qml/StyledCheckBox.qml
         qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
-        qml/DatePicker.qml
+        qml/WorkSessionList.qml
+        qml/WorkSessionsView.qml
         qml/common.js
-        qml/CheckBoxWithFontIcon.qml
-        qml/WorkSessions.qml
-        qml/CommonElements.qml
     RESOURCES
+        "fonts/Font Awesome 6 Brands-Regular-400.otf"
+        "fonts/Font Awesome 6 Free-Regular-400.otf"
+        "fonts/Font Awesome 6 Free-Solid-900.otf"
         icons/folder.svg
         icons/folder_closed.svg
         icons/folder_open.svg
@@ -107,12 +112,12 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/calendar-days.svg
         icons/fontawsome/calendar.svg
         icons/fontawsome/circle.svg
+        icons/fontawsome/clock.svg
         icons/fontawsome/folder.svg
         icons/fontawsome/pen-to-square.svg
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/trash-can.svg
-        icons/fontawsome/clock.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg
@@ -126,9 +131,6 @@ qt_add_qml_module(appNextAppUi
         icons/square-checked.svg
         icons/square-unchecked.svg
         icons/task.svg
-        "fonts/Font Awesome 6 Free-Regular-400.otf"
-        "fonts/Font Awesome 6 Free-Solid-900.otf"
-        "fonts/Font Awesome 6 Brands-Regular-400.otf"
     SOURCES
         ActionsModel.cpp
         ActionsModel.h
@@ -146,11 +148,12 @@ qt_add_qml_module(appNextAppUi
         NextAppCore.h
         ServerComm.cpp
         ServerComm.h
+        WorkModel.cpp
+        WorkModel.h
         WorkSessionsModel.cpp
         WorkSessionsModel.h
         util.cpp
         util.h
-        QML_FILES
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

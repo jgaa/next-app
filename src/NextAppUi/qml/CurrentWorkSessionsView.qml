@@ -149,22 +149,6 @@ Rectangle {
                             contextMenu.name = display
                             contextMenu.popup();
                         }
-
-
-                        // onClicked: {
-                        //     root.selectedItem = uuid
-                        //     somethingChanged()
-                        // }
-                        // onDoubleClicked: {
-                        //     console.log("index: ", tableView.index, ", row ", row, ", column ", column)
-
-                        //     if (column === 1 /* to */ || column === 3 /* used */) {
-                        //         return;
-                        //     }
-
-                        //     var ix = tableView.index(row, column, 0)
-                        //     tableView.edit(ix);
-                        // }
                     }
 
                     TableView.editDelegate: TextField {
@@ -188,15 +172,6 @@ Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: 200
             Layout.margins: 6
-
-            Button {
-                implicitHeight: 22 // Adjust as needed
-                text: "New"
-            }
-
-            Item {
-                Layout.fillHeight: true
-            }
 
             Button {
                 implicitHeight: 22 // Adjust as needed
@@ -236,6 +211,10 @@ Rectangle {
                 onClicked: {
                     WorkSessionsModel.done(root.selectedItem)
                 }
+            }
+
+            Item {
+                Layout.fillHeight: true
             }
         }
 

@@ -1,5 +1,8 @@
 #include "NextAppCore.h"
 #include <QDateTime>
+#include <QQmlEngine>
+
+using namespace std;
 
 NextAppCore::NextAppCore() {}
 
@@ -21,4 +24,11 @@ int NextAppCore::weekFromDate(const QDateTime &date)
         return week;
     }
     return week - 1;
+}
+
+WorkModel *NextAppCore::createWorkModel()
+{
+    auto model = make_unique<WorkModel>();
+    QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
+    return model.release();
 }

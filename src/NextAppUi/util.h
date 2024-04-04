@@ -2,11 +2,15 @@
 
 #include <QString>
 #include <QUuid>
+#include <QDate>
 
 [[nodiscard]] QString toValidQuid(const QString& str);
 [[nodiscard]] QUuid toQuid(const QString& str);
 [[nodiscard]] QString toHourMin(const int duration);
 [[nodiscard]] int parseDuration(const QString& value);
+[[nodiscard]] time_t parseDateOrTime(const QString& str);
+
+QDate getFirstDayOfWeek(const QDate& when = QDate::currentDate());
 
 // BOOST_SCOPE_EXIT confuses Clang-Tidy :/
 template <typename T>

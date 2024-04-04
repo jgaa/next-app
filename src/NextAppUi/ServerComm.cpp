@@ -54,7 +54,6 @@ void ServerComm::start()
             // assert(se.properties().front().key() == "version");
             server_version_ = se.properties().front().value();
             LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
-            emit versionChanged();
             updates_ = client_->streamSubscribeToUpdates({});
             connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
             onGrpcReady();
@@ -71,6 +70,11 @@ QString ServerComm::version()
 {
     //emit errorRecieved({});
     return server_version_;
+}
+
+bool ServerComm::connected()
+{
+    return grpc_is_ready_;
 }
 
 void ServerComm::reloadSettings()
@@ -298,7 +302,7 @@ void ServerComm::getActiveWorkSessions()
     } , [this](const nextapp::pb::Status& status) {
         if (status.hasWorkSessions()) {
             auto ws = make_shared<nextapp::pb::WorkSessions>(status.workSessions());
-            emit receivedWorkSessions(ws);
+            emit receivedCurrentWorkSessions(ws);
         }
     });
 }
@@ -381,6 +385,22 @@ void ServerComm::deleteWork(const QString &sessionId)
     });
 }
 
+void ServerComm::getWorkSessions(const nextapp::pb::GetWorkSessionsReq &req, const QUuid &requester)
+{
+    callRpc<nextapp::pb::Status>([this, req, requester]() {
+        return client_->GetWorkSessions(req);
+    }, [this, requester](const nextapp::pb::Status& status) {
+        if (status.hasWorkSessions()) {
+            auto ws = make_shared<nextapp::pb::WorkSessions>(status.workSessions());
+            MetaData m;
+            m.requester = requester;
+            if (status.hasHasMore()) {
+                m.more = status.hasMore();
+            }
+            emit receivedWorkSessions(ws, m);
+        }
+    });
+}
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
@@ -392,6 +412,8 @@ void ServerComm::errorOccurred(const QGrpcStatus &status)
 void ServerComm::onGrpcReady()
 {
     grpc_is_ready_ = true;
+    emit versionChanged();
+    emit connectedChanged();
     for(; !grpc_queue_.empty(); grpc_queue_.pop()) {
         grpc_queue_.front()();
     }

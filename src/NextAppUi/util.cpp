@@ -1,8 +1,15 @@
 #include <QString>
 #include <QUuid>
+#include <QDateTime>
+#include <QLocale>
+
+#include <regex>
 
 #include "util.h"
+#include "logging.h"
 
+
+using namespace std;
 
 QString toValidQuid(const QString &str) {
     QUuid uuid{str};
@@ -54,4 +61,51 @@ int parseDuration(const QString &value)
     }
 
     return (minutes * 60) + hours;
+}
+
+time_t parseDateOrTime(const QString& str)
+{
+    if (str.isEmpty()) {
+        return 0;
+    }
+
+    regex pattern(R"((\d{4}-\d{2}-\d{2} )?(\d{2}:\d{2}))");
+
+    std::smatch match;
+    const auto nstr = str.toStdString();
+    if (std::regex_match(nstr, match, pattern)) {
+        if (match[1].matched) {
+            // The input is an ANSI date + time
+            auto when = QDateTime::fromString(str, "yyyy-MM-dd hh:mm").toSecsSinceEpoch();
+            return when;
+        } else {
+            // The input is just a time
+            auto time = static_cast<time_t>(parseDuration(str));
+            auto timedate = QDateTime{QDate::currentDate(), QTime::fromMSecsSinceStartOfDay(time * 1000)};
+            auto when = timedate.toSecsSinceEpoch();
+            return when;
+        }
+    } else {
+        // The input does not match either format
+        LOG_WARN << "Could not parse time/date: " << str;
+    }
+
+    throw std::runtime_error{"Invalid date/time format"};
+}
+
+QDate getFirstDayOfWeek(const QDate &when)
+{
+
+    int dayOfWeek = when.dayOfWeek();
+
+    QLocale locale;
+    int firstDayOfWeek = locale.firstDayOfWeek();
+
+    int daysToFirstDayOfWeek = firstDayOfWeek - dayOfWeek;
+    if (daysToFirstDayOfWeek > 0) {
+        daysToFirstDayOfWeek -= 7;
+    }
+
+    auto startOfWeek = when.addDays(daysToFirstDayOfWeek);
+    return startOfWeek;
 }

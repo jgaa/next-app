@@ -133,7 +133,7 @@ ApplicationWindow {
         Sidebar {
             id: sidebar
             dragWindow: root
-            Layout.preferredWidth: 50
+            Layout.preferredWidth: 100
             Layout.fillHeight: true
         }
 
@@ -172,24 +172,11 @@ ApplicationWindow {
                         id: navigationView
                         color: Colors.surface1
                         SplitView.preferredWidth: 250
-                        //SplitView.fillHeight: true
-                        // The stack-layout provides different views, based on the
-                        // selected buttons inside the sidebar.
+
                         StackLayout {
                             anchors.fill: parent
-                            currentIndex: sidebar.currentTabIndex
+                            //currentIndex: sidebar.currentTabIndex
 
-                            // // Shows the help text.
-                            // Text {
-                            //     text: qsTr("This example shows how to use and visualize the file system.\n\n"
-                            //              + "Customized Qt Quick Components have been used to achieve this look.\n\n"
-                            //              + "You can edit the files but they won't be changed on the file system.\n\n"
-                            //              + "Click on the folder icon to the left to get started.")
-                            //     wrapMode: TextArea.Wrap
-                            //     color: Colors.text
-                            // }
-
-                            // Shows the files on the file system.
                             MainTree {
                                 id: mainTree
                                 color: Colors.surface1
@@ -207,16 +194,17 @@ ApplicationWindow {
                         SplitView.preferredWidth: 600
                         StackLayout {
                             id: currentData
+                            currentIndex: sidebar.currentTabIndex
                             anchors.fill: parent
 
-                            ActionsList {
+                            ActionsList {}
 
-                            }
+                            WorkSessionsView {}
                         }
                     }
                 }
 
-                WorkSessions {
+                CurrentWorkSessionsView {
                     SplitView.fillWidth: true
                     SplitView.fillHeight: false
                     SplitView.preferredHeight: 220

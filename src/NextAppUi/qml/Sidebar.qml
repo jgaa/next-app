@@ -82,7 +82,6 @@ Rectangle {
             id: topBar
 
             spacing: root.tabBarSpacing
-            // Shows help text when clicked.
             SidebarEntry {
                 id: dayInYear
                 icon.source: "../icons/fontawsome/calendar-days.svg"
@@ -97,7 +96,6 @@ Rectangle {
                 }
             }
 
-            // Shows the file system when clicked.
             SidebarEntry {
                 id: lists
 
@@ -108,6 +106,20 @@ Rectangle {
                     if (checked) {
                         root.currentMainItem = 1
                         root.currentTabIndex = 0
+                    }
+                }
+            }
+
+            SidebarEntry {
+                id: workHours
+
+                icon.source: "../icons/fontawsome/clock.svg"
+                checkable: true
+
+                onCheckedChanged: {
+                    if (checked) {
+                        root.currentMainItem = 1
+                        root.currentTabIndex = 1
                     }
                 }
             }
@@ -145,10 +157,53 @@ Rectangle {
                 onClicked: aboutQtWindow.visible = !aboutQtWindow.visible
             }
         }
+
+        Rectangle {
+            height: 2
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignHCenter
+            color: Colors.text
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 40
+
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
+                Text {
+                    id: cloudIcon
+                    //height: 32
+                    text: "\uf0c2"
+                    font.family: ce.faSolidName
+                    font.styleName: ce.faSolidStyle
+                    font.pixelSize: 18
+                    color: ServerComm.connected ? "green" : "lightgray"
+                }
+                Text {
+                    //leftPadding: 5
+                    text: ServerComm.connected ? qsTr("Online") : qsTr("Offline")
+                    color: Colors.text
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: ServerComm.connected
+                text: qsTr("Server") + " v" + ServerComm.version
+                color: Colors.text
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
     }
 
     About {
         id: aboutQtWindow
         visible: false
+    }
+
+    CommonElements {
+        id: ce
     }
 }

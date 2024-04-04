@@ -9,6 +9,7 @@
 #include "nextapp_client.grpc.qpb.h"
 
 #include <QObject>
+#include <QUuid>
 #include "logging.h"
 
 template <typename T, typename... Y>
@@ -25,8 +26,15 @@ class ServerComm : public QObject
                    NOTIFY versionChanged)
 
     Q_PROPERTY(QString defaultServerAddress READ getDefaultServerAddress CONSTANT)
+    Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
+    Q_PROPERTY(QString version READ version NOTIFY versionChanged)
 public:
     using colors_in_months_t = std::shared_ptr<QList<QUuid>>;
+
+    struct MetaData {
+        std::optional<bool> more;
+        QUuid requester;
+    };
 
     explicit ServerComm();
     ~ServerComm();
@@ -35,6 +43,7 @@ public:
     void stop();
 
     [[nodiscard]] QString version();
+    [[nodiscard]] bool connected();
 
     // Called when the servers app settings may have changed
     Q_INVOKABLE void reloadSettings();
@@ -83,7 +92,7 @@ public:
     void touchWork(const QString& sessionId);
     void sendWorkEvent(const QString& sessionId, const nextapp::pb::WorkEvent& event);
     void deleteWork(const QString& sessionId);
-
+    void getWorkSessions(const nextapp::pb::GetWorkSessionsReq& req, const QUuid& requester);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
@@ -91,6 +100,7 @@ public:
 
 signals:
     void versionChanged();
+    void connectedChanged();
     void dayColorDefinitionsChanged();
     void errorRecieved(const QString &value);
 
@@ -108,7 +118,8 @@ signals:
     void receivedDayColorDefinitions(const nextapp::pb::DayColorDefinitions& defs);
     void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions);
     void receivedAction(const nextapp::pb::Status& status);
-    void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
+    void receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
+    void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions, const MetaData meta);
 
     // Triggered on all updates from the server
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);

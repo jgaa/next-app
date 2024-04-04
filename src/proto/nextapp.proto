@@ -18,6 +18,7 @@ enum Error {
     GENERIC_ERROR = 12;
     INVALID_ACTION = 13;
     INVALID_REQUEST = 14;
+    PAGE_SIZE_TOO_SMALL = 15;
 }
 
 message KeyValue {
@@ -482,10 +483,46 @@ message AddWorkEventReq {
     WorkEvent event = 2;
 }
 
+
+message Page {
+    uint32 pageSize = 2;
+
+    oneof key {
+        string prevKey = 3;
+
+        // We may (almost certainly) get the same row again, but that is better than missing rows with the same time_t
+        uint64 prevTime = 4; // time_t
+    }
+}
+
+message TimeSpan {
+    uint64 start = 1; // time_t
+    uint64 end = 2; // time_t
+}
+
+enum SortOrder {
+    ASCENDING = 0; // Default
+    DESCENDING = 1;
+}
+
+
+message GetWorkSessionsReq {
+
+    Page page = 1;
+    SortOrder sort = 2;
+    optional TimeSpan timeSpan = 13;
+
+    oneof filter {
+        string actionId = 10;
+        string nodeId = 11;
+    }
+}
+
 message Status {
     Error error = 1;
     string message = 2;
     optional string uuid = 3;
+    optional bool hasMore = 4; // Hint while receiving paginated data that there is more data
 
     // Set for some objects when they are created
     oneof what {
@@ -535,5 +572,6 @@ service Nextapp {
     rpc ListCurrentWorkSessions(Empty) returns (Status) {}
     rpc GetWorkSummary(WorkSummaryRequest) returns (Status) {}
     rpc DeleteWorkSession(DeleteWorkReq) returns (Status) {}
+    rpc GetWorkSessions(GetWorkSessionsReq) returns (Status) {}
 }
 

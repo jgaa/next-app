@@ -226,7 +226,7 @@ void ActionsModel::start()
             &ActionsModel::onUpdate);
 
     connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedWorkSessions,
+            &ServerComm::receivedCurrentWorkSessions,
             this,
             &ActionsModel::receivedWorkSessions);
 }
@@ -238,7 +238,7 @@ void ActionsModel::fetch(nextapp::pb::GetActionsReq &filter)
 
 void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &actions)
 {
-    LOG_DEBUG << "Action model reset with " << actions->actions().size() << " items";
+    LOG_TRACE << "Action model reset with " << actions->actions().size() << " items";
     beginResetModel();
     actions_ = actions;
     std::ranges::sort(actions_->actions(), [](const auto& left, const auto& right) {

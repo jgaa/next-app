@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QQmlEngine>
 
+#include "WorkModel.h"
+
 class NextAppCore : public QObject
 {
     Q_OBJECT
@@ -22,6 +24,7 @@ public:
 
     static Q_INVOKABLE QDateTime dateFromWeek(int year, int week);
     static Q_INVOKABLE int weekFromDate(const QDateTime& date);
+    static Q_INVOKABLE WorkModel *createWorkModel();
 
     static constexpr bool isDevelBuild() {
 #if defined(DEVEL_SETTINGS) && DEVEL_SETTINGS

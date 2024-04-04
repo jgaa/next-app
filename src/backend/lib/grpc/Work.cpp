@@ -301,6 +301,79 @@ struct ToWorkSession {
         }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetWorkSessions(::grpc::CallbackServerContext *ctx, const pb::GetWorkSessionsReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, ctx, req] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+            const auto &dbopts = uctx->dbOptions();
+
+        uint32_t limit = 250;
+        if (auto page_size = req->page().pagesize(); page_size > 0) {
+            limit = min(page_size, limit);
+        }
+
+        boost::mysql::results res;
+        const string_view sort = req->sort() == pb::SortOrder::ASCENDING ? "ASC" : "DESC";
+
+        string page_clause;
+        if (req->page().has_prevtime()) {
+            const auto ptime = toAnsiTime(req->page().prevtime(), uctx->tz());
+            if (!ptime) {
+                throw runtime_error{"Invalid timestamp: "s + to_string(req->page().prevtime())};
+            }
+            page_clause = format(" AND start_time {} {} ",
+                                 req->sort() == pb::SortOrder::ASCENDING ? ">=" : "<=",
+                                 *ptime);
+        }
+
+        // TODO: Add node-filter
+        // TODO: Add time-span filter
+        if (req->has_actionid()) {
+            res = co_await owner_.server().db().exec(
+                format("SELECT {} from work_session where user=? AND action=? {} ORDER BY start_time {} LIMIT {}",
+                       ToWorkSession::selectCols, page_clause, sort, limit + 1),
+                cuser,
+                req->actionid());
+        } else {
+            // Default - no filter.
+            res = co_await owner_.server().db().exec(
+                format("SELECT {} from work_session where user=? {} ORDER BY start_time {} LIMIT {}",
+                       ToWorkSession::selectCols, page_clause, sort, limit + 1),
+                cuser);
+        }
+
+        if (res.has_value()) {
+            size_t rows = 0;
+            reply->set_hasmore(false);
+            auto sessions = reply->mutable_worksessions()->mutable_sessions();
+            for(const auto& row : res.rows()) {
+                if (++rows > limit) {
+                    reply->set_hasmore(true);
+
+                    if (!page_clause.empty()) {
+                        pb::WorkSession ws;
+                        ToWorkSession::assign(row, ws, *uctx);
+
+                        if (ws.start() == req->page().prevtime()) {
+                            // Avoid an endless request-loop over the same timestamp, if the user has re-used it for more sessions than the page size!
+                            throw db_err{pb::Error::PAGE_SIZE_TOO_SMALL, "There are more rows with the same start_time than the page size"};
+                            continue;
+                        }
+                    }
+
+                    break;
+                }
+                ToWorkSession::assign(row, *sessions->Add(), *uctx);
+            }
+        }
+
+        co_return;
+
+    }, __func__);
+}
+
 boost::asio::awaitable<pb::WorkSession> GrpcServer::fetchWorkSession(const std::string &uuid, const UserContext &uctx)
 {
     auto res = co_await server().db().exec(
