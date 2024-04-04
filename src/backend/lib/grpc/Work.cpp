@@ -407,7 +407,7 @@ boost::asio::awaitable<std::optional<pb::WorkSession> > GrpcServer::fetchActiveW
 boost::asio::awaitable<void> GrpcServer::endWorkSessionForAction(const std::string_view &actionId, const UserContext &uctx)
 {
     auto res = co_await server().db().exec(
-        format("SELECT {} from work_session where action = ? and user = ? and state in ('active', paused') ", ToWorkSession::selectCols), actionId, uctx.userUuid());
+        format("SELECT {} from work_session where action = ? and user = ? and state in ('active', 'paused') ", ToWorkSession::selectCols), actionId, uctx.userUuid());
     if (res.has_value()) {
         for(const auto &row : res.rows()) {
             pb::WorkSession ws;
