@@ -626,10 +626,20 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext &uctx)
 
     // Now set the duration. That is, the duration from start to end - paused
     if (work.has_end()) {
-        work.set_duration(work.end() - work.start() - work.paused());
+        if (work.end() < work.start()) {
+            work.set_duration(0);
+        } else {
+            auto duration = work.end() - work.start();
+            work.set_duration(std::max<long>(0, duration - work.paused()));
+        }
     } else {
         assert(work.state() != pb::WorkSession_State::WorkSession_State_DONE);
-        work.set_duration(time({}) - work.start() - work.paused());
+        const auto now = time({});
+        if (now < work.start()) {
+            work.set_duration(0);
+        } else {
+            work.set_duration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));
+        }
     }
 }
 

@@ -210,7 +210,7 @@ void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
 {
     scoped_lock lock{mutex_};
 
-    LOG_DEBUG_N << "Publishing "
+    LOG_TRACE_N << "Publishing "
                 << pb::Update::Operation_Name(update->op())
                 << " update to " << publishers_.size() << " subscribers, Json: "
                 << toJsonForLog(*update);

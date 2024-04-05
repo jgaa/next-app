@@ -18,6 +18,27 @@
 
 namespace nextapp {
 
+// BOOST_SCOPE_EXIT confuses Clang-Tidy :/
+template <typename T>
+struct ScopedExit {
+    explicit ScopedExit(T&& fn)
+        : fn_{std::move(fn)} {}
+
+    ScopedExit(const ScopedExit&) = delete;
+    ScopedExit(ScopedExit&&) = delete;
+
+    ~ScopedExit() {
+        fn_();
+    }
+
+    ScopedExit& operator =(const ScopedExit&) = delete;
+    ScopedExit& operator =(ScopedExit&&) = delete;
+
+private:
+    T fn_;
+};
+
+
 template <class T, class V>
 concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
 

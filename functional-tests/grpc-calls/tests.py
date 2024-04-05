@@ -1,8 +1,9 @@
 import json
 import pytest
-# import time
+import time
+from datetime import datetime, timedelta
 import os
-# import uuid
+import random
 
 import grpc
 import nextapp_pb2
@@ -203,3 +204,55 @@ def test_stopped_work_activates_most_recent_paused_work_session(gd):
     status = gd['stub'].AddWorkEvent(req)
     assert status.error == nextapp_pb2.Error.OK
     assert status.work.state == nextapp_pb2.WorkSession.State.DONE
+
+def test_add_2500_work_sessions(gd):
+    parent_node_id = ""
+    start_time = datetime.now() - timedelta(days=10)
+
+    for n in range(5):
+        # create nodes
+        node = nextapp_pb2.Node(kind=nextapp_pb2.Node.Kind.FOLDER, name='work-node {}'.format(n), parent=parent_node_id)
+        req = nextapp_pb2.CreateNodeReq(node=node)
+        status = gd['stub'].CreateNode(req)
+        assert status.error == nextapp_pb2.Error.OK
+        parent_node_id = status.node.uuid
+        node_id = status.node.uuid
+
+        for a in range(10):
+            # create actions
+            req = nextapp_pb2.Action(name='TestAction-{}-{}'.format(n, a), 
+                                     node=node_id, priority=nextapp_pb2.ActionPriority.PRI_NORMAL, 
+                                     difficulty=nextapp_pb2.ActionDifficulty.NORMAL)
+            status = gd['stub'].CreateAction(req)
+            assert status.error == nextapp_pb2.Error.OK
+            action_id = status.action.id
+
+            for w in range((a + 1) * 5):
+                # create work sessions
+                req = nextapp_pb2.CreateWorkReq(actionId=action_id)
+                status = gd['stub'].CreateWorkSession(req)
+                assert status.error == nextapp_pb2.Error.OK
+                work_id = status.work.id
+
+                # create an work-event to correct the start time
+                event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.CORRECTION, start=int(time.mktime(start_time.timetuple())))
+                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event)
+                status = gd['stub'].AddWorkEvent(req)
+                assert status.error == nextapp_pb2.Error.OK
+
+                # create an work-event to stop the work
+                event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
+                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event)
+                status = gd['stub'].AddWorkEvent(req)
+                assert status.error == nextapp_pb2.Error.OK
+
+                # Create a work-event to correct the end time
+                end_time = start_time + timedelta(seconds = random.randint(60, 2400))
+                event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.CORRECTION, end=int(time.mktime(end_time.timetuple())))
+                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event) 
+                status = gd['stub'].AddWorkEvent(req)
+                assert status.error == nextapp_pb2.Error.OK
+
+                # set start-time at a random number of seconds into the future
+                start_time = end_time + timedelta(seconds = random.randint(60, 1000))
+    
