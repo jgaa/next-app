@@ -8,7 +8,7 @@
 #include "ActionsModel.h"
 #include "ServerComm.h"
 #include "MainTreeModel.h"
-#include "WorkSessionsModel.h"
+//#include "WorkSessionsModel.h"
 
 #include "logging.h"
 #include "util.h"
@@ -88,6 +88,7 @@ int64_t compare(const T& left, const U& right) {
         return left.name().compare(right.name(), Qt::CaseInsensitive);
     }
 
+    return 0;
 }
 
 template <ActionType T, ActionType U>
