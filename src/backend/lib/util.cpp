@@ -177,6 +177,22 @@ string sha256(const std::span<uint8_t> in, bool encodeToBase64)
     throw runtime_error{"sha256 failed!"};
 }
 
+string prefixNames(const std::string_view cols, const std::string_view prefix) {
+    std::ostringstream os;
+
+    size_t col = 0;
+    for (auto word : std::views::split(cols, ',')) {
+        os << (++col == 1 ? "" : ", ");
+        auto w = std::string_view{word.data(), word.size()};
+        if (!w.empty() && w.front() == ' ') {
+            w = w.substr(1);
+        }
+        os << prefix << w;
+    }
+    auto rval = os.str();
+    return rval;
+}
+
 
 
 } // ns

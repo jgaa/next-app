@@ -1,6 +1,6 @@
 #include "WorkModel.h"
 #include "ServerComm.h"
-//#include "MainTreeModel.h"
+#include "MainTreeModel.h"
 #include "logging.h"
 #include <algorithm>
 #include <iterator>
@@ -8,6 +8,7 @@
 #include "util.h"
 
 #include "QDateTime"
+
 
 using namespace std;
 
@@ -53,17 +54,58 @@ void WorkModel::fetchAll()
     ServerComm::instance().getWorkSessions(req, uuid());
 }
 
-void WorkModel::fetchSome(int what)
+void WorkModel::fetchSome(FetchWhat what)
 {
     LOG_DEBUG << "WorkModel::fetchSome() called, what=" << what << ", uuid=" << uuid().toString();
     nextapp::pb::GetWorkSessionsReq req;
+    currentTreeNode_.clear();
+    fetch_what_ = what;
 
     switch(what) {
+    case TODAY: {
+        auto date = QDate::currentDate();
+        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addDays(1);
+        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    } break;
+    case YESTERDAY: {
+        auto date = QDate::currentDate().addDays(-1);
+        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addDays(1);
+        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    } break;
     case CURRENT_WEEK: {
         auto date = getFirstDayOfWeek();
         req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
         date = date.addDays(7);
         req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    } break;
+    case LAST_WEEK: {
+        auto date = getFirstDayOfWeek().addDays(-7);
+        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addDays(7);
+        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    } break;
+    case CURRENT_MONTH: {
+        auto date = QDate::currentDate();
+        date.setDate(date.year(), date.month(), 1);
+        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addMonths(1);
+        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    } break;
+    case LAST_MONTH: {
+        auto date = QDate::currentDate();
+        date.setDate(date.year(), date.month(), 1);
+        date = date.addMonths(-1);
+        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addMonths(1);
+        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    } break;
+    case SELECTED_LIST: {
+        if (auto nodeid = MainTreeModel::instance()->selected(); !nodeid.isEmpty()) {
+            req.setNodeId(nodeid);
+            currentTreeNode_ = nodeid;
+        }
     } break;
     default:
         LOG_ERROR << "Unknown what: " << what;
@@ -95,6 +137,7 @@ void WorkModel::start()
         LOG_DEBUG << "WorkModel::start() exceuting" << uuid().toString();
         connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &WorkModel::onUpdate);
         connect(&ServerComm::instance(), &ServerComm::receivedWorkSessions, this, &WorkModel::receivedWorkSessions);
+        connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &WorkModel::selectedChanged);
     });
 }
 
@@ -108,6 +151,19 @@ void WorkModel::start()
 void WorkModel::doStart() {
     LOG_DEBUG << "WorkModel::doStart() " << uuid().toString();
     start();
+}
+
+void WorkModel::setIsVisible(bool isVisible) {
+    if (is_visible_ != isVisible) {
+        is_visible_ = isVisible;
+        emit isVisibleChanged();
+
+        LOG_DEBUG << "WorkModel::setIsVisible() called, isVisible=" << isVisible << ", uuid=" << uuid().toString();
+
+        if (isVisible && skipped_node_fetch_ && fetch_what_ == SELECTED_LIST) {
+            fetchSome(FetchWhat::SELECTED_LIST);
+        }
+    }
 }
 
 void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
@@ -443,6 +499,20 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
     //           << " outcome.duration= " << outcome.duration;
 
     return outcome;
+}
+
+void WorkModel::selectedChanged()
+{
+    LOG_DEBUG << "Tree selection changed...";
+    if (fetch_what_ == SELECTED_LIST) {
+        // TODO: Handle race condition when we select a node wile we are still fetching some other nodes data
+        if (!is_visible_) {
+            LOG_DEBUG << "Skipped fetching selected node, as the model is not visible";
+            skipped_node_fetch_ = true;
+        } else {
+            fetchSome(SELECTED_LIST);
+        }
+    }
 }
 
 void WorkModel::replace(const nextapp::pb::WorkSessions &sessions)

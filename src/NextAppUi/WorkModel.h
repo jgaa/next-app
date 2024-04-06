@@ -27,6 +27,7 @@ class WorkModel: public QAbstractTableModel
     Q_OBJECT
     QML_ELEMENT
 
+    Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
 public:
     enum Roles {
         UuidRole = Qt::UserRole + 1,
@@ -43,6 +44,8 @@ public:
     };
 
     enum FetchWhat {
+        TODAY,
+        YESTERDAY,
         CURRENT_WEEK,
         LAST_WEEK,
         CURRENT_MONTH,
@@ -117,13 +120,17 @@ public:
 
     // Fetch all work sessions for the current user.
     Q_INVOKABLE void fetchAll();
-    Q_INVOKABLE void fetchSome(int what);
+    Q_INVOKABLE void fetchSome(FetchWhat what);
     Q_INVOKABLE void setDebug(bool enable) { enable_debug_ = enable;}
     Q_INVOKABLE void setSorting(Sorting sorting);
 
 
     // If we need to start the model from QML
     Q_INVOKABLE void doStart();
+
+    bool isVisible() const { return is_visible_; }
+    void setIsVisible(bool isVisible);
+
 
     explicit WorkModel(QObject *parent = nullptr);
 
@@ -159,9 +166,11 @@ public:
 
 signals:
     void somethingChanged();
+    void isVisibleChanged();
 
 
 protected:
+    void selectedChanged();
     void replace(const nextapp::pb::WorkSessions& sessions);
     void sort();
 
@@ -177,4 +186,8 @@ protected:
     std::once_flag start_once_;
     Sorting sorting_ = SORT_TOUCHED;
     bool enable_debug_ = false;
+    QString currentTreeNode_;
+    bool is_visible_ = false;
+    bool skipped_node_fetch_ = false;
+    FetchWhat fetch_what_ = TODAY;
 };

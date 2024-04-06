@@ -25,13 +25,18 @@ Rectangle {
                 root.ready = true
                 //workSessions.model = WorkSessionsModel
                 workSessions.model = NextAppCore.createWorkModel()
-                workSessions.model.setDebug(true)
+                //workSessions.model.setDebug(true)
                 workSessions.model.doStart()
+                workSessions.model.isVisible = true
                 workSessions.model.setSorting(sortCtl.currentIndex)
                 workSessions.model.fetchSome(selectionCtl.currentIndex)
             }
         } else {
             console.log("Component is now hidden");
+        }
+
+        if (root.ready) {
+            workSessions.model.isVisible = root.visible
         }
     }
 
@@ -51,6 +56,8 @@ Rectangle {
                 ComboBox {
                     id: selectionCtl
                     model: ListModel {
+                        ListElement { text: qsTr("Today") }
+                        ListElement { text: qsTr("Yesterday") }
                         ListElement { text: qsTr("Current Week") }
                         ListElement { text: qsTr("Last Week") }
                         ListElement { text: qsTr("Current Month") }
@@ -89,10 +96,16 @@ Rectangle {
             }
         }
 
-        WorkSessionList {
-            Layout.fillHeight: true
-            Layout.fillWidth: true
-            id: workSessions
+        RowLayout {
+            WorkSessionList {
+                Layout.fillHeight: true
+                //Layout.fillWidth: true
+                id: workSessions
+            }
+
+            Item {
+                Layout.fillWidth: true;
+            }
         }
     }
 }

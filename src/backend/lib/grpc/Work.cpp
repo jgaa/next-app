@@ -1,4 +1,7 @@
 
+#include <ranges>
+
+
 #include "shared_grpc_server.h"
 
 using namespace std;
@@ -38,6 +41,7 @@ struct ToWorkSession {
 
     static constexpr string_view selectCols = "id, action, user, start_time, end_time, duration, paused, state, version, touch_time, "
                                               "name, note, events";
+
 
     static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws, const UserContext& uctx) {
         ws.set_id(row.at(ID).as_string());
@@ -314,35 +318,86 @@ struct ToWorkSession {
             limit = min(page_size, limit);
         }
 
-        boost::mysql::results res;
-        const string_view sort = req->sort() == pb::SortOrder::ASCENDING ? "ASC" : "DESC";
+        // We are building a dynamic query.
+        // We need to add the arguments in the same order as we add '?' to the query
+        // as boost.mysql lacks the ability to bind by name.
+        std::vector<boost::mysql::field_view> args;
+        std::string query;
 
-        string page_clause;
-        if (req->page().has_prevtime()) {
-            const auto ptime = toAnsiTime(req->page().prevtime(), uctx->tz());
-            if (!ptime) {
-                throw runtime_error{"Invalid timestamp: "s + to_string(req->page().prevtime())};
-            }
-            page_clause = format(" AND start_time {} {} ",
-                                 req->sort() == pb::SortOrder::ASCENDING ? ">=" : "<=",
-                                 *ptime);
-        }
-
-        // TODO: Add node-filter
-        // TODO: Add time-span filter
-        if (req->has_actionid()) {
-            res = co_await owner_.server().db().exec(
-                format("SELECT {} from work_session where user=? AND action=? {} ORDER BY start_time {} LIMIT {}",
-                       ToWorkSession::selectCols, page_clause, sort, limit + 1),
-                cuser,
-                req->actionid());
+        if (req->has_nodeid()) {
+            query = format(R"(WITH RECURSIVE node_tree AS (
+            SELECT id FROM node WHERE id=? and user=?
+                UNION ALL
+                SELECT n.id FROM node n INNER JOIN node_tree nt ON n.parent = nt.id
+            )
+            SELECT {}, UNIX_TIMESTAMP(ws.start_time) AS sort_ts
+            FROM work_session ws
+            INNER JOIN action a ON ws.action = a.id
+            INNER JOIN node_tree nt ON a.node = nt.id)",
+                           prefixNames(ToWorkSession::selectCols, "ws."));
+            args.emplace_back(req->nodeid());
+            args.emplace_back(cuser);
         } else {
-            // Default - no filter.
-            res = co_await owner_.server().db().exec(
-                format("SELECT {} from work_session where user=? {} ORDER BY start_time {} LIMIT {}",
-                       ToWorkSession::selectCols, page_clause, sort, limit + 1),
-                cuser);
+            query = format("SELECT {}, UNIX_TIMESTAMP(ws.start_time) AS sort_ts FROM work_session ws WHERE user=? ",
+                           prefixNames(ToWorkSession::selectCols, "ws."));
+            args.emplace_back(cuser);
         }
+
+        if (req->has_actionid()) {
+            query += " AND ws.action=? ";
+            args.emplace_back(req->actionid());
+        }
+
+        // args are views, so we need real buffers for all the arguments
+        auto start_time = req->page().has_prevtime() ? toAnsiTime(req->page().prevtime(), uctx->tz()) : std::nullopt;
+        if (start_time) {
+            query += " AND ws.start_time <= ? ";
+            args.emplace_back(*start_time);
+        }
+
+        optional<string> span_start, span_end;
+        if (req->has_timespan()) {
+            span_start = toAnsiTime(req->timespan().start(), uctx->tz());
+            span_end = toAnsiTime(req->timespan().end(), uctx->tz());
+            query += " AND ws.start_time >= ? AND ws.start_time < ? ";
+            args.emplace_back(*span_start);
+            args.emplace_back(*span_end);
+        }
+
+        query += format(" ORDER BY sort_ts DESC, ws.id LIMIT ?");
+        args.emplace_back(limit);
+
+        const auto res = co_await owner_.server().db().exec(query, dbopts, args);
+
+        // boost::mysql::results res;
+        // const string_view sort = req->sort() == pb::SortOrder::ASCENDING ? "ASC" : "DESC";
+
+        // string page_clause;
+        // if (req->page().has_prevtime()) {
+        //     const auto ptime = toAnsiTime(req->page().prevtime(), uctx->tz());
+        //     if (!ptime) {
+        //         throw runtime_error{"Invalid timestamp: "s + to_string(req->page().prevtime())};
+        //     }
+        //     page_clause = format(" AND start_time {} {} ",
+        //                          req->sort() == pb::SortOrder::ASCENDING ? ">=" : "<=",
+        //                          *ptime);
+        // }
+
+        // // TODO: Add node-filter
+        // // TODO: Add time-span filter
+        // if (req->has_actionid()) {
+        //     res = co_await owner_.server().db().exec(
+        //         format("SELECT {} from work_session where user=? AND action=? {} ORDER BY start_time {} LIMIT {}",
+        //                ToWorkSession::selectCols, page_clause, sort, limit + 1),
+        //         cuser,
+        //         req->actionid());
+        // } else {
+        //     // Default - no filter.
+        //     res = co_await owner_.server().db().exec(
+        //         format("SELECT {} from work_session where user=? {} ORDER BY start_time {} LIMIT {}",
+        //                ToWorkSession::selectCols, page_clause, sort, limit + 1),
+        //         cuser);
+        // }
 
         if (res.has_value()) {
             size_t rows = 0;
@@ -352,16 +407,16 @@ struct ToWorkSession {
                 if (++rows > limit) {
                     reply->set_hasmore(true);
 
-                    if (!page_clause.empty()) {
-                        pb::WorkSession ws;
-                        ToWorkSession::assign(row, ws, *uctx);
+                    // if (!page_clause.empty()) {
+                    //     pb::WorkSession ws;
+                    //     ToWorkSession::assign(row, ws, *uctx);
 
-                        if (ws.start() == req->page().prevtime()) {
-                            // Avoid an endless request-loop over the same timestamp, if the user has re-used it for more sessions than the page size!
-                            throw db_err{pb::Error::PAGE_SIZE_TOO_SMALL, "There are more rows with the same start_time than the page size"};
-                            continue;
-                        }
-                    }
+                    //     if (ws.start() == req->page().prevtime()) {
+                    //         // Avoid an endless request-loop over the same timestamp, if the user has re-used it for more sessions than the page size!
+                    //         throw db_err{pb::Error::PAGE_SIZE_TOO_SMALL, "There are more rows with the same start_time than the page size"};
+                    //         continue;
+                    //     }
+                    // }
 
                     break;
                 }

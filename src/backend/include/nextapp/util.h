@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <locale>
 #include <optional>
+#include <ranges>
 
 #include <boost/json.hpp>
 #include <boost/uuid/random_generator.hpp>
@@ -125,6 +126,8 @@ class UserContext;
 
 TimePeriod toTimePeriodDay(time_t when, const UserContext& uctx);
 TimePeriod toTimePeriodWeek(time_t when, const UserContext& uctx);
+
+std::string prefixNames(const std::string_view cols, const std::string_view prefix);
 
 
 } // ns
