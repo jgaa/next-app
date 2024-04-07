@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.0.3)
+    set(NEXTAPP_VERSION 0.0.4)
 endif()
 
 project(next-app
@@ -14,6 +14,14 @@ set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(NEXTAPP_WITH_TESTS "Enable Tests" ON)
+option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" OFF)
+
+if (NEXTAPP_BOOST_USE_STATIC_LIBS)
+    message("Using static boost libraries")
+    set(Boost_USE_STATIC_LIBS ON CACHE INTERNAL "")
+else()
+    set(Boost_USE_STATIC_LIBS OFF CACHE INTERNAL "")
+endif()
 
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
