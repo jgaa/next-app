@@ -103,22 +103,10 @@ struct ToWorkSession {
 
             // Pause any active work session
             co_await owner_.pauseWork(*uctx);
-
-            pb::SavedWorkEvents events;
-            events.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_START));
-            const auto start_time = toAnsiTime(events.events(0).time(), uctx->tz());
-            const auto blob = toBlob(events);
-            // Create the work session record
-            const auto res = co_await owner_.server().db().exec(
-                format("INSERT INTO work_session (start_time, touch_time, action, user, name, events) VALUES (?, ?, ?, ?, ?, ?) "
-                       "RETURNING {}", ToWorkSession::selectCols),
-                dbopts,
-                start_time,
-                start_time,
-                req->actionid(),
-                cuser,
-                name,
-                blob);
+            pb::WorkSession init;
+            init.set_name(name);
+            init.set_action(req->actionid());
+            auto res = co_await owner_.insertWork(init, *uctx, true);
 
             assert(res.has_value() && !res.rows().empty());
 
@@ -323,6 +311,20 @@ struct ToWorkSession {
         // as boost.mysql lacks the ability to bind by name.
         std::vector<boost::mysql::field_view> args;
         std::string query;
+        std::string_view sortcol;
+        static const string prefixed_cols = prefixNames(ToWorkSession::selectCols, "ws.");
+        bool first_page = true;
+
+        switch(req->sortcols()) {
+            case pb::GetWorkSessionsReq_SortCols::GetWorkSessionsReq_SortCols_FROM_TIME:
+                sortcol = "UNIX_TIMESTAMP(ws.start_time)";
+                break;
+            case pb::GetWorkSessionsReq_SortCols::GetWorkSessionsReq_SortCols_CHANGE_TIME:
+                sortcol = "UNIX_TIMESTAMP(ws.touch_time)";
+                break;
+            default:
+                throw db_err{pb::Error::INVALID_REQUEST, "Invalid sort column: #"s + to_string(req->sortcols())};
+        }
 
         if (req->has_nodeid()) {
             query = format(R"(WITH RECURSIVE node_tree AS (
@@ -330,16 +332,16 @@ struct ToWorkSession {
                 UNION ALL
                 SELECT n.id FROM node n INNER JOIN node_tree nt ON n.parent = nt.id
             )
-            SELECT {}, UNIX_TIMESTAMP(ws.start_time) AS sort_ts
+            SELECT {}, {} AS sort_ts
             FROM work_session ws
             INNER JOIN action a ON ws.action = a.id
             INNER JOIN node_tree nt ON a.node = nt.id)",
-                           prefixNames(ToWorkSession::selectCols, "ws."));
+                           prefixed_cols, sortcol);
             args.emplace_back(req->nodeid());
             args.emplace_back(cuser);
         } else {
-            query = format("SELECT {}, UNIX_TIMESTAMP(ws.start_time) AS sort_ts FROM work_session ws WHERE user=? ",
-                           prefixNames(ToWorkSession::selectCols, "ws."));
+            query = format("SELECT {}, {} AS sort_ts FROM work_session ws WHERE user=? ",
+                           prefixed_cols, sortcol);
             args.emplace_back(cuser);
         }
 
@@ -348,10 +350,10 @@ struct ToWorkSession {
             args.emplace_back(req->actionid());
         }
 
-        // args are views, so we need real buffers for all the arguments
         auto start_time = req->page().has_prevtime() ? toAnsiTime(req->page().prevtime(), uctx->tz()) : std::nullopt;
         if (start_time) {
-            query += " AND ws.start_time <= ? ";
+            query += format(" AND ws.start_time {} ? ",
+                            req->sortorder() == pb::SortOrder::ASCENDING ? ">=" : "<=");
             args.emplace_back(*start_time);
         }
 
@@ -364,59 +366,32 @@ struct ToWorkSession {
             args.emplace_back(*span_end);
         }
 
-        query += format(" ORDER BY sort_ts DESC, ws.id LIMIT ?");
+        query += format(" ORDER BY sort_ts {}, ws.id LIMIT ?",
+                        // ASC/DESC cannot be a bind argument.
+                        req->sortorder() == pb::SortOrder::ASCENDING ? "ASC" : "DESC");
         args.emplace_back(limit);
 
         const auto res = co_await owner_.server().db().exec(query, dbopts, args);
 
-        // boost::mysql::results res;
-        // const string_view sort = req->sort() == pb::SortOrder::ASCENDING ? "ASC" : "DESC";
-
-        // string page_clause;
-        // if (req->page().has_prevtime()) {
-        //     const auto ptime = toAnsiTime(req->page().prevtime(), uctx->tz());
-        //     if (!ptime) {
-        //         throw runtime_error{"Invalid timestamp: "s + to_string(req->page().prevtime())};
-        //     }
-        //     page_clause = format(" AND start_time {} {} ",
-        //                          req->sort() == pb::SortOrder::ASCENDING ? ">=" : "<=",
-        //                          *ptime);
-        // }
-
-        // // TODO: Add node-filter
-        // // TODO: Add time-span filter
-        // if (req->has_actionid()) {
-        //     res = co_await owner_.server().db().exec(
-        //         format("SELECT {} from work_session where user=? AND action=? {} ORDER BY start_time {} LIMIT {}",
-        //                ToWorkSession::selectCols, page_clause, sort, limit + 1),
-        //         cuser,
-        //         req->actionid());
-        // } else {
-        //     // Default - no filter.
-        //     res = co_await owner_.server().db().exec(
-        //         format("SELECT {} from work_session where user=? {} ORDER BY start_time {} LIMIT {}",
-        //                ToWorkSession::selectCols, page_clause, sort, limit + 1),
-        //         cuser);
-        // }
-
         if (res.has_value()) {
+            const auto rows_count = res.rows().size();
+            const auto has_more = rows_count >= limit;
             size_t rows = 0;
-            reply->set_hasmore(false);
+            reply->set_hasmore(has_more);
             auto sessions = reply->mutable_worksessions()->mutable_sessions();
             for(const auto& row : res.rows()) {
                 if (++rows > limit) {
-                    reply->set_hasmore(true);
+                    assert(has_more && reply->has_hasmore());
 
-                    // if (!page_clause.empty()) {
-                    //     pb::WorkSession ws;
-                    //     ToWorkSession::assign(row, ws, *uctx);
+                    if (req->page().has_prevtime()) {
+                        pb::WorkSession ws;
+                        ToWorkSession::assign(row, ws, *uctx);
 
-                    //     if (ws.start() == req->page().prevtime()) {
-                    //         // Avoid an endless request-loop over the same timestamp, if the user has re-used it for more sessions than the page size!
-                    //         throw db_err{pb::Error::PAGE_SIZE_TOO_SMALL, "There are more rows with the same start_time than the page size"};
-                    //         continue;
-                    //     }
-                    // }
+                        if (ws.start() == req->page().prevtime()) {
+                            // Avoid an endless request-loop over the same timestamp, if the user has re-used it for more sessions than the page size!
+                            throw db_err{pb::Error::PAGE_SIZE_TOO_SMALL, "There are more rows with the same start_time than the page size"};
+                        }
+                    }
 
                     break;
                 }
@@ -427,6 +402,68 @@ struct ToWorkSession {
         co_return;
 
     }, __func__);
+}
+boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::WorkSession &work, const UserContext &uctx, bool addStartEvent)
+{
+    const auto& cuser = uctx.userUuid();
+    auto dbopts = uctx.dbOptions();
+    dbopts.reconnect_and_retry_query = false;
+
+    auto start_t = work.start();
+    pb::SavedWorkEvents events;
+    if (addStartEvent) {
+        events.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_START));
+        start_t = events.events(0).time();
+    }
+
+    const auto start_time = toAnsiTime(start_t, uctx.tz());
+    const auto blob = toBlob(events);
+    // Create the work session record
+    const auto res = co_await server().db().exec(
+        format("INSERT INTO work_session (start_time, touch_time, action, user, name, events) VALUES (?, ?, ?, ?, ?, ?) "
+               "RETURNING {}", ToWorkSession::selectCols),
+        dbopts,
+        start_time,
+        start_time,
+        work.action(),
+        cuser,
+        work.name(),
+        blob);
+
+    co_return std::move(res);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::AddWork(::grpc::CallbackServerContext *ctx, const pb::AddWorkReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+
+            auto work = req->work();
+            string action_name;
+            co_await owner_.validateAction(work.action(), cuser, &action_name);
+            if (!work.user().empty() && work.user() != cuser) {
+                throw db_err{pb::Error::INVALID_REQUEST, "Invalid user"};
+            }
+            work.set_user(cuser);
+            if (work.name().empty()) {
+                work.set_name(action_name);
+            }
+
+            // Re-use our method to add a work-session to the database.
+            auto res = co_await owner_.insertWork(work, *uctx, false /* don't add start event */);
+
+            // Save the work session again to get all the columns saved.
+            co_await owner_.saveWorkSession(work, *uctx);
+
+            auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
+            *update->mutable_work() = work;
+            owner_.publish(update);
+
+            *reply->mutable_work() = std::move(work);
+            co_return;
+        }, __func__);
 }
 
 boost::asio::awaitable<pb::WorkSession> GrpcServer::fetchWorkSession(const std::string &uuid, const UserContext &uctx)
@@ -681,7 +718,7 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext &uctx)
 
     // Now set the duration. That is, the duration from start to end - paused
     if (work.has_end()) {
-        if (work.end() < work.start()) {
+        if (work.end() <= work.start()) {
             work.set_duration(0);
         } else {
             auto duration = work.end() - work.start();
@@ -690,7 +727,7 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext &uctx)
     } else {
         assert(work.state() != pb::WorkSession_State::WorkSession_State_DONE);
         const auto now = time({});
-        if (now < work.start()) {
+        if (now <= work.start()) {
             work.set_duration(0);
         } else {
             work.set_duration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));

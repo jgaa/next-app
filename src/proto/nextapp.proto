@@ -474,6 +474,10 @@ message CreateWorkReq {
     string actionId = 1;
 }
 
+message AddWorkReq {
+    WorkSession work = 1;
+}
+
 message DeleteWorkReq {
     string workSessionId = 1;
 }
@@ -507,9 +511,14 @@ enum SortOrder {
 
 
 message GetWorkSessionsReq {
+    enum SortCols {
+        FROM_TIME = 0;
+        CHANGE_TIME = 1;
+    }
 
     Page page = 1;
-    SortOrder sort = 2;
+    SortCols sortCols = 2;
+    SortOrder sortOrder = 3;
     optional TimeSpan timeSpan = 13;
 
     oneof filter {
@@ -568,6 +577,7 @@ service Nextapp {
     rpc ValidateDue(Due) returns (Status) {}
     rpc GetFavoriteActions(Empty) returns (Status) {}
     rpc CreateWorkSession(CreateWorkReq) returns (Status) {}
+    rpc AddWork(AddWorkReq) returns (Status) {}
     rpc AddWorkEvent(AddWorkEventReq) returns (Status) {}
     rpc ListCurrentWorkSessions(Empty) returns (Status) {}
     rpc GetWorkSummary(WorkSummaryRequest) returns (Status) {}

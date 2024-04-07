@@ -11,6 +11,7 @@
 #include <QStringListModel>
 #include <QUuid>
 #include <QTimer>
+#include <QSettings>
 
 #include "ServerComm.h"
 #include "util.h"
@@ -28,6 +29,38 @@ class WorkModel: public QAbstractTableModel
     QML_ELEMENT
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
+
+    struct Pagination {
+        int page_size = 0;
+        time_t prev = 0;
+        size_t page = first_page_val_;
+        bool more = false;
+
+        void reset() {
+            page_size = QSettings{}.value("pagination/page_size", 100).toInt();
+            prev = 0;
+            page = first_page_val_;
+            more = false;
+        }
+
+        int pageSize() const noexcept {
+            return std::max(page_size, 20);
+        }
+
+        void increment() noexcept {
+            ++page;
+        };
+
+        bool isFirstPage() const noexcept {
+            return page == first_page_val_;
+        }
+
+        bool hasMore() const noexcept {
+            return more;
+        }
+    private:
+        static constexpr int first_page_val_  = 1;
+    };
 public:
     enum Roles {
         UuidRole = Qt::UserRole + 1,
@@ -124,6 +157,8 @@ public:
     Q_INVOKABLE void setDebug(bool enable) { enable_debug_ = enable;}
     Q_INVOKABLE void setSorting(Sorting sorting);
 
+    void doFetchSome(FetchWhat what, bool firstPage = true);
+
 
     // If we need to start the model from QML
     Q_INVOKABLE void doStart();
@@ -160,6 +195,9 @@ public:
         Q_UNUSED(index)
         return Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsEditable;
     }
+    void fetchMore(const QModelIndex &parent) override;
+    bool canFetchMore(const QModelIndex &parent) const override;
+
     Outcome updateOutcome(nextapp::pb::WorkSession &work);
 
     const QUuid& uuid() const noexcept { return uuid_; }
@@ -190,4 +228,6 @@ protected:
     bool is_visible_ = false;
     bool skipped_node_fetch_ = false;
     FetchWhat fetch_what_ = TODAY;
+    Pagination pagination_;
+
 };

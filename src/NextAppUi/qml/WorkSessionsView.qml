@@ -23,7 +23,6 @@ Rectangle {
             if (!root.ready) {
                 console.log("WorkSessionsView is now becoming ready.")
                 root.ready = true
-                //workSessions.model = WorkSessionsModel
                 workSessions.model = NextAppCore.createWorkModel()
                 //workSessions.model.setDebug(true)
                 workSessions.model.doStart()

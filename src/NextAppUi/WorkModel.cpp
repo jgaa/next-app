@@ -56,10 +56,25 @@ void WorkModel::fetchAll()
 
 void WorkModel::fetchSome(FetchWhat what)
 {
-    LOG_DEBUG << "WorkModel::fetchSome() called, what=" << what << ", uuid=" << uuid().toString();
+    doFetchSome(what, true);
+}
+
+void WorkModel::doFetchSome(FetchWhat what, bool firstPage)
+{
+    LOG_DEBUG << "WorkModel::fetchSome() called, what=" << what << ", uuid=" << uuid().toString()
+              << ", firstPage=" << firstPage;
+
     nextapp::pb::GetWorkSessionsReq req;
     currentTreeNode_.clear();
     fetch_what_ = what;
+
+    if (firstPage) {
+        pagination_.reset();
+    } else {
+        req.page().setPrevTime(pagination_.prev);
+    }
+
+    req.page().setPageSize(pagination_.pageSize());
 
     switch(what) {
     case TODAY: {
@@ -120,6 +135,14 @@ void WorkModel::setSorting(Sorting sorting)
     LOG_DEBUG << "WorkModel::setSorting() called, sorting=" << sorting << ", uuid=" << uuid().toString();
     sorting_ = sorting;
     beginResetModel();
+
+    if (pagination_.hasMore()) {
+        // We can't re-sort locally unless we have all the data.
+        // So let's start over fetching from the server.
+        doFetchSome(fetch_what_, true);
+        return;
+    }
+
     ScopedExit scoped{[this] { endResetModel(); }};
     sort();
 }
@@ -161,7 +184,7 @@ void WorkModel::setIsVisible(bool isVisible) {
         LOG_DEBUG << "WorkModel::setIsVisible() called, isVisible=" << isVisible << ", uuid=" << uuid().toString();
 
         if (isVisible && skipped_node_fetch_ && fetch_what_ == SELECTED_LIST) {
-            fetchSome(FetchWhat::SELECTED_LIST);
+            doFetchSome(FetchWhat::SELECTED_LIST);
         }
     }
 }
@@ -382,6 +405,26 @@ bool WorkModel::setData(const QModelIndex &index, const QVariant &value, int rol
     return false;
 }
 
+void WorkModel::fetchMore(const QModelIndex &parent)
+{
+
+    LOG_DEBUG << "WorkModel::fetchMore() called " << uuid().toString()
+              << ", more=" << pagination_.more << ", prev=" << pagination_.prev
+              << ", page = " << pagination_.page;
+
+    if (pagination_.hasMore()) {
+        doFetchSome(fetch_what_, false);
+    }
+}
+
+bool WorkModel::canFetchMore(const QModelIndex &parent) const
+{
+    LOG_DEBUG << "WorkModel::canFetchMore() called " << uuid().toString()
+              << ", more=" << pagination_.more << ", prev=" << pagination_.prev
+              << ", page = " << pagination_.page;
+    return pagination_.hasMore();
+}
+
 WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
 {
     Outcome outcome;
@@ -480,12 +523,20 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
         end_pause(event);
     }
 
-    // Now set the duration. That is, the duration from start to end - paused
     if (work.hasEnd()) {
-        work.setDuration(std::max<time_t>(work.end() - work.start() - work.paused(), 0));
+        if (work.end() <= work.start()) {
+            work.setDuration(0);
+        } else {
+            auto duration = work.end() - work.start();
+            work.setDuration(std::max<long>(0, duration - work.paused()));
+        }
     } else {
-        assert(work.state() != pb::WorkSession::State::DONE);
-        work.setDuration(std::max<time_t>(time({}) - work.start() - work.paused(), 0));
+        const auto now = time({});
+        if (now <= work.start()) {
+            work.setDuration(0);
+        } else {
+            work.setDuration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));
+        }
     }
 
     outcome.start = orig_start != work.start() / 60;
@@ -510,25 +561,49 @@ void WorkModel::selectedChanged()
             LOG_DEBUG << "Skipped fetching selected node, as the model is not visible";
             skipped_node_fetch_ = true;
         } else {
-            fetchSome(SELECTED_LIST);
+            doFetchSome(SELECTED_LIST);
         }
     }
 }
 
 void WorkModel::replace(const nextapp::pb::WorkSessions &sessions)
 {
-    beginResetModel();
-    ScopedExit scoped{[this] { endResetModel(); }};
-
-    try {
-        sessions_.clear();
-        for (auto session : sessions.sessions()) {
-            updateOutcome(session);
-            session_by_ordered().emplace_back(session);
+    auto add_sessions = [this, &sessions]() {
+        size_t new_rows = 0;
+        try {
+            for (auto session : sessions.sessions()) {
+                updateOutcome(session);
+                const auto [_, inserted] = session_by_ordered().emplace_back(session);
+                if (inserted) {
+                    ++new_rows;
+                }
+            }
+            sort();
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Error parsing work sessions: " << e.what();
         }
+
+        return new_rows;
+    };
+
+    if (pagination_.isFirstPage()) {
+        beginResetModel();
+        ScopedExit scoped{[this] { endResetModel(); }};
+        sessions_.clear();
+        add_sessions();
+    } else {
+        // Find out how many new rows we have
+        // We will almost certainly have one duplicate, a the last row from the previous
+        const auto& ses_by_id = session_by_id();
+        const auto new_rows = std::ranges::count_if(sessions.sessions(), [&ses_by_id](const auto& s) {
+            return !ses_by_id.contains(toQuid((s.id_proto())));
+        });
+
+        beginInsertRows(QModelIndex(), sessions_.size(), sessions_.size() + new_rows -1);
+        ScopedExit scoped{[this] { endInsertRows(); }};
+        const auto addes_rows = add_sessions();
+        assert(addes_rows == new_rows);
         sort();
-    } catch (const std::exception& e) {
-        LOG_ERROR << "Error parsing work sessions: " << e.what();
     }
 
     LOG_TRACE << "WorkModel::replace(): I now have " << sessions_.size() << " work-sessions cached.";
@@ -548,8 +623,24 @@ void WorkModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSess
 {
     if (meta.requester == uuid()) {
         replace(*sessions);
+        pagination_.increment();
 
-        // TODO: If `meta.more` is true, we need to fetch teh next load,
-        // or be ready to do it when the user scrolls near the end of the data we have.
+        if (meta.more) {
+            pagination_.more = *meta.more;
+            if (*meta.more) {
+                assert(!sessions->sessions().empty());
+                if (sorting_ == Sorting::SORT_TOUCHED) {
+                    pagination_.prev = sessions->sessions().back().touched();
+                } else {
+                    pagination_.prev = sessions->sessions().back().start();
+                }
+            }
+        } else {
+            pagination_.more = false;
+        }
+
+        LOG_TRACE << "WorkModel::receivedWorkSessions() called, uuid=" << uuid().toString()
+                  << ", more=" << pagination_.more << ", prev=" << pagination_.prev
+                  << ", page = " << pagination_.page;
     }
 }
