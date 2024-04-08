@@ -7,7 +7,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q --no-install-recommends \
         libssl3 libprotobuf32 libicu72 liblz4-1 libz3-4 libsnappy1v5 libgrpc++1.51 \
-        libcurl4
+        libcurl4 tzdata
 
 COPY bin/* /usr/local/bin/
 # COPY lib/* /usr/local/lib/
