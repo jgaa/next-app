@@ -20,7 +20,7 @@ class ServerComm : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_SINGLETON
+
     Q_PROPERTY(QString version
                    READ version
                    NOTIFY versionChanged)
@@ -93,6 +93,7 @@ public:
     void sendWorkEvent(const QString& sessionId, const nextapp::pb::WorkEvent& event);
     void deleteWork(const QString& sessionId);
     void getWorkSessions(const nextapp::pb::GetWorkSessionsReq& req, const QUuid& requester);
+    void getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRequest& req, const QUuid& requester);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
@@ -120,6 +121,7 @@ signals:
     void receivedAction(const nextapp::pb::Status& status);
     void receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
     void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions, const MetaData meta);
+    void receivedDetailedWorkSummary(const nextapp::pb::DetailedWorkSummary& summary, const MetaData& meta);
 
     // Triggered on all updates from the server
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);

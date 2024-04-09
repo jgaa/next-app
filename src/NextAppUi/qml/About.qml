@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NextAppUi
+import Nextapp.Models
 
 ApplicationWindow {
     id: root
@@ -65,7 +66,7 @@ ApplicationWindow {
                        + "This build of Nextapp use QT version %4 (GPL versioning).<br/>"
                        + "The nextapp-server is version %5."
                        + "")
-                       .arg(Application.version).arg("https://github.com/jgaa/next-app/blob/main/src/NextAppUi/LICENSE").arg("2024").arg(NextAppCore.qtVersion).arg(ServerComm.version);
+                       .arg(Application.version).arg("https://github.com/jgaa/next-app/blob/main/src/NextAppUi/LICENSE").arg("2024").arg(NaCore.qtVersion).arg(NaComm.version);
               color: Colors.textFile
               wrapMode: Text.WordWrap
               readOnly: true

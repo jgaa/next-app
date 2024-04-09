@@ -6,6 +6,8 @@
 #include <QGrpcHttp2Channel>
 #include <QtConcurrent/QtConcurrent>
 
+#include "NextAppCore.h"
+
 using namespace std;
 
 namespace {
@@ -33,6 +35,9 @@ ServerComm::ServerComm()
     connect(client_.get(), &nextapp::pb::Nextapp::Client::errorOccurred,
             this, &ServerComm::errorOccurred);
 
+    // TODO: Make it configurable if the comm starts immediately.
+    //       For example, the user may need to select a server first.
+    start();
 }
 
 ServerComm::~ServerComm()
@@ -402,6 +407,20 @@ void ServerComm::getWorkSessions(const nextapp::pb::GetWorkSessionsReq &req, con
     });
 }
 
+void ServerComm::getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRequest &req, const QUuid &requester)
+{
+    callRpc<nextapp::pb::Status>([this, req, requester]() {
+        return client_->GetDetailedWorkSummary(req);
+    }, [this, requester](const nextapp::pb::Status& status) {
+        if (status.hasDetailedWorkSummary()) {
+            auto summary = make_shared<nextapp::pb::DetailedWorkSummary>(status.detailedWorkSummary());
+            MetaData m;
+            m.requester = requester;
+            emit receivedDetailedWorkSummary(*summary, m);
+        }
+    });
+}
+
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Call to gRPC server failed: " << status.message();
@@ -417,6 +436,8 @@ void ServerComm::onGrpcReady()
     for(; !grpc_queue_.empty(); grpc_queue_.pop()) {
         grpc_queue_.front()();
     }
+
+    NextAppCore::instance()->setOnline(true);
 }
 
 void ServerComm::onUpdateMessage()

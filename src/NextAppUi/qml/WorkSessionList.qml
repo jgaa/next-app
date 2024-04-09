@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPB
+import Nextapp.Models
 
 Rectangle {
     id: root
@@ -43,7 +44,7 @@ Rectangle {
         TableView {
             id: tableView
             anchors.fill: parent
-            //model: NextAppCore.createWorkModel()
+            //model: NaCore.createWorkModel()
             boundsBehavior: Flickable.StopAtBounds
             boundsMovement: Flickable.StopAtBounds
             clip: true
@@ -85,7 +86,7 @@ Rectangle {
                 implicitHeight: 30
 
                 border {
-                    color: selected ? Colors.icon: Colors.inactive
+                    color: selected ? Colors.icon: Colors.border
                     width: 1
                 }
 

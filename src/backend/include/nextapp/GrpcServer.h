@@ -122,6 +122,7 @@ public:
         ::grpc::ServerUnaryReactor *DeleteWorkSession(::grpc::CallbackServerContext *ctx, const pb::DeleteWorkReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetWorkSessions(::grpc::CallbackServerContext *ctx, const pb::GetWorkSessionsReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *AddWork(::grpc::CallbackServerContext *ctx, const pb::AddWorkReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetDetailedWorkSummary(::grpc::CallbackServerContext *ctx, const pb::DetailedWorkSummaryRequest *req, pb::Status *reply) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback

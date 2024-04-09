@@ -162,6 +162,23 @@ message WorkSummaryRequest {
     WorkSummaryKind kind = 2;
 }
 
+message DetailedWorkSummaryItem {
+    string node = 1;
+    string action = 2;
+    uint32 duration = 3; // minutes
+    Date date = 4;
+}
+
+message DetailedWorkSummary {
+    repeated DetailedWorkSummaryItem items = 1;
+}
+
+message DetailedWorkSummaryRequest {
+    uint64 start = 1; // time_t
+    WorkSummaryKind kind = 2;
+    //string node = 3;
+}
+
 message UpdateRequest {
     enum Kind {
         REFRESH = 0;
@@ -545,6 +562,7 @@ message Status {
         WorkSession work = 17;
         WorkSessions workSessions = 18;
         WorkSummary workSummary = 19;
+        DetailedWorkSummary detailedWorkSummary = 20;
     }
 }
 
@@ -581,7 +599,9 @@ service Nextapp {
     rpc AddWorkEvent(AddWorkEventReq) returns (Status) {}
     rpc ListCurrentWorkSessions(Empty) returns (Status) {}
     rpc GetWorkSummary(WorkSummaryRequest) returns (Status) {}
+    rpc GetDetailedWorkSummary(DetailedWorkSummaryRequest) returns (Status) {}
     rpc DeleteWorkSession(DeleteWorkReq) returns (Status) {}
     rpc GetWorkSessions(GetWorkSessionsReq) returns (Status) {}
 }
+
 

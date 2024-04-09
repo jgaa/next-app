@@ -617,6 +617,27 @@ QModelIndex MainTreeModel::indexFromUuid(const QString &uuid)
     return {};
 }
 
+QString MainTreeModel::nodeNameFromQuuid(const QUuid &uuid, bool fullPath)
+{
+    if (auto it = uuid_index_.find(uuid); it != uuid_index_.end()) {
+        if (fullPath) {
+            QString name;
+            for(auto *p = it.value(); p; p = p->parent()) {
+                if (!name.isEmpty()) {
+                    name.prepend('/');
+                }
+                name.prepend(p->node().name());
+            }
+
+            return name;
+        }
+
+        return it.value()->node().name();
+    }
+
+    return {};
+}
+
 void MainTreeModel::addNode(QVariantMap args)
 {
     nextapp::pb::Node node = toNode(args);

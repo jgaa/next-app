@@ -124,6 +124,7 @@ struct TimePeriod {
 
 class UserContext;
 
+TimePeriod toTimePeriod(time_t when, const UserContext& uctx, nextapp::pb::WorkSummaryKind kind);
 TimePeriod toTimePeriodDay(time_t when, const UserContext& uctx);
 TimePeriod toTimePeriodWeek(time_t when, const UserContext& uctx);
 

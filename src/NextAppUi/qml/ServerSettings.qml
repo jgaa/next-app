@@ -10,12 +10,12 @@ Item {
 
     Settings {
         id: settings
-        property string serverAddress : ServerComm.defaultServerAddress
+        property string serverAddress : NaComm.defaultServerAddress
     }
 
     function commit() {
         settings.serverAddress = address.text
-        ServerComm.reloadSettings()
+        NaComm.reloadSettings()
     }
 
     GridLayout {

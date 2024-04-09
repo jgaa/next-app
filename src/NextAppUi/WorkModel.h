@@ -220,7 +220,7 @@ protected:
     inline auto& session_by_action() { return sessions_.get<action_tag>(); }
 
     sessions_t sessions_;
-    QUuid uuid_ = QUuid::createUuid();
+    const QUuid uuid_ = QUuid::createUuid();
     std::once_flag start_once_;
     Sorting sorting_ = SORT_TOUCHED;
     bool enable_debug_ = false;

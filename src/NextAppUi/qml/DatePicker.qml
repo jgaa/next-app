@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import NextAppUi
 import nextapp.pb as NextappPB
 import "common.js" as Common
+import Nextapp.Models
 
 /* Selects a time.
   The selected time is the start of the unit, based on the ActionDueKind.
@@ -190,7 +191,7 @@ Popup {
                         height: weekCtl.height
 
                         required property int weekNumber
-                        property bool selectedWeek: weekNumber === NextAppCore.weekFromDate(popup.date)
+                        property bool selectedWeek: weekNumber === NaCore.weekFromDate(popup.date)
                                                     //Common.getISOWeekNumber(popup.date)
                         property bool sameYear: {
                             if (popup.currentMonth === Calendar.January) {
@@ -224,7 +225,7 @@ Popup {
                             enabled: canSelect
                             anchors.fill: weekCtl
                             onClicked: {
-                                popup.date = NextAppCore.dateFromWeek(popup.currentYear, weekNumber)
+                                popup.date = NaCore.dateFromWeek(popup.currentYear, weekNumber)
                                         //Common.getDateFromISOWeekNumber(popup.currentYear, weekNumber)
                                 if (popup.closeOnSelect) {
                                     popup.accepted = true

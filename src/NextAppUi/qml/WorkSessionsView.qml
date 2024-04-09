@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPB
-
+import Nextapp.Models
 
 Rectangle {
     id: root
@@ -15,6 +15,7 @@ Rectangle {
 
     Component.onCompleted: {
         console.log("WorkSessionsView is now completed");
+        console.log("Gakke is a ", Gakke)
     }
 
     onVisibleChanged: {
@@ -23,7 +24,7 @@ Rectangle {
             if (!root.ready) {
                 console.log("WorkSessionsView is now becoming ready.")
                 root.ready = true
-                workSessions.model = NextAppCore.createWorkModel()
+                workSessions.model = NaCore.createWorkModel()
                 //workSessions.model.setDebug(true)
                 workSessions.model.doStart()
                 workSessions.model.isVisible = true

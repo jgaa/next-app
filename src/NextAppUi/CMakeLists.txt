@@ -90,11 +90,13 @@ qt_add_qml_module(appNextAppUi
         qml/MainTree.qml
         qml/MyMenu.qml # x
         qml/MyMenuBar.qml # x
+        qml/ReportsView.qml
         qml/ResizeButton.qml # x
         qml/ServerSettings.qml
         qml/SettingsDlg.qml
         qml/Sidebar.qml
         qml/StyledCheckBox.qml
+        qml/WeeklyHoursView.qml
         qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml
@@ -118,6 +120,7 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/trash-can.svg
+        icons/fontawsome/chart-line.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg
@@ -148,6 +151,8 @@ qt_add_qml_module(appNextAppUi
         NextAppCore.h
         ServerComm.cpp
         ServerComm.h
+        WeeklyWorkReportModel.cpp
+        WeeklyWorkReportModel.h
         WorkModel.cpp
         WorkModel.h
         WorkSessionsModel.cpp

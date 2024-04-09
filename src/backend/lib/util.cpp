@@ -193,6 +193,17 @@ string prefixNames(const std::string_view cols, const std::string_view prefix) {
     return rval;
 }
 
-
+TimePeriod toTimePeriod(time_t when, const UserContext &uctx, pb::WorkSummaryKind kind)
+{
+    switch (kind) {
+    case pb::WorkSummaryKind::WSK_DAY:
+        return toTimePeriodDay(when, uctx);
+    case pb::WorkSummaryKind::WSK_WEEK:
+        return toTimePeriodWeek(when, uctx);
+        break;
+    default:
+        throw std::runtime_error{"Invalid WorkSummaryRequest.Kind"};
+    }
+}
 
 } // ns

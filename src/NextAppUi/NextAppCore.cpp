@@ -2,9 +2,16 @@
 #include <QDateTime>
 #include <QQmlEngine>
 
+#include "WeeklyWorkReportModel.h"
+
 using namespace std;
 
-NextAppCore::NextAppCore() {}
+NextAppCore *NextAppCore::instance_;
+
+NextAppCore::NextAppCore() {
+    assert(instance_ == nullptr);
+    instance_ = this;
+}
 
 QDateTime NextAppCore::dateFromWeek(int year, int week)
 {
@@ -31,4 +38,12 @@ WorkModel *NextAppCore::createWorkModel()
     auto model = make_unique<WorkModel>();
     QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
     return model.release();
+}
+
+WeeklyWorkReportModel *NextAppCore::createWeeklyWorkReportModel()
+{
+    LOG_DEBUG_N << "Creating WeeklyWorkReportModel";
+    auto model = new WeeklyWorkReportModel(instance());
+    //QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
+    return model;
 }

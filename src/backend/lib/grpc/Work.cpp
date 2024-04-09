@@ -237,17 +237,7 @@ struct ToWorkSession {
             co_await owner_.syncActiveWork(*uctx);
 
             // Calculate the start and end timestamps
-            TimePeriod period;
-            switch(req->kind()) {
-            case pb::WorkSummaryKind::WSK_DAY:
-                period = toTimePeriodDay(time(nullptr), *uctx);
-                break;
-            case pb::WorkSummaryKind::WSK_WEEK:
-                period = toTimePeriodWeek(time(nullptr), *uctx);
-                break;
-            default:
-                throw db_err{pb::Error::INVALID_REQUEST, "Invalid WorkSummaryRequest.Kind"};
-            }
+            TimePeriod period = toTimePeriod(time({}), *uctx, req->kind());
 
             // Query for the sum of duration and paused for that period
             auto res = co_await owner_.server().db().exec(
@@ -462,6 +452,46 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
             owner_.publish(update);
 
             *reply->mutable_work() = std::move(work);
+            co_return;
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetDetailedWorkSummary(::grpc::CallbackServerContext *ctx, const pb::DetailedWorkSummaryRequest *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+            const auto &dbopts = uctx->dbOptions();
+
+            // Update the active work session to calculate the current duration
+            co_await owner_.syncActiveWork(*uctx);
+
+            TimePeriod period = toTimePeriod(time({}), *uctx, req->kind());
+
+            // SUM() returns a DECIMAL type, so we need to cast it to an INTEGER for simplicity.
+            // boost.mysql returns a string if we don't cast it.
+            auto query = R"(SELECT CAST(SUM(ws.duration) AS INTEGER), DATE(ws.start_time) AS date, a.id, n.id FROM work_session ws
+                INNER JOIN action a ON a.id = ws.action
+                INNER JOIN node as n ON n.id = a.node
+                WHERE ws.user = ? AND ws.start_time >= ? AND ws.start_time < ?
+                GROUP BY date, a.id, n.id;)";
+
+            auto res = co_await owner_.server().db().exec(query, dbopts,
+                cuser, toAnsiTime(period.start, uctx->tz()), toAnsiTime(period.end, uctx->tz()));
+
+            enum Cols { DURATION, DATE, ACTION, NODE };
+            if (res.has_value() && !res.rows().empty()) {
+                auto& result = *reply->mutable_detailedworksummary();
+                for(const auto &row : res.rows()) {
+                    auto& item = *result.add_items();
+                    item.set_duration(row.at(DURATION).as_int64());
+                    *item.mutable_date() = toDate(row.at(DATE).as_date());
+                    item.set_action(row.at(ACTION).as_string());
+                    item.set_node(row.at(NODE).as_string());
+                }
+            }
+
             co_return;
         }, __func__);
 }

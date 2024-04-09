@@ -2,13 +2,14 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NextAppUi
+import Nextapp.Models
 
 ApplicationWindow {
     id: root
     width: 1700
     height: 900
     visible: true
-    title: NextAppCore.develBuild ? "nextapp --Developer Edition--" : qsTr("nextapp - Your Personal Organizer")
+    title: NaCore.develBuild ? "nextapp --Developer Edition--" : qsTr("nextapp - Your Personal Organizer")
     color: Colors.background
     flags: Qt.Window //| Qt.FramelessWindowHint
 
@@ -200,6 +201,8 @@ ApplicationWindow {
                             ActionsList {}
 
                             WorkSessionsView {}
+
+                            ReportsView {}
                         }
                     }
                 }

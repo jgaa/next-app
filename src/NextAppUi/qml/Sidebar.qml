@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import NextAppUi
+import Nextapp.Models 1.0
 
 Rectangle {
     id: root
@@ -31,7 +32,12 @@ Rectangle {
         rightPadding: 0
         bottomPadding: 0
         leftPadding: 0
-        background: null
+        background: Rectangle {
+            color: Colors.hover
+            opacity: sidebarButton.hovered ? 1 : 0
+        }
+
+        hoverEnabled: true
 
         Rectangle {
             id: indicator
@@ -123,6 +129,20 @@ Rectangle {
                     }
                 }
             }
+
+            SidebarEntry {
+                id: reports
+
+                icon.source: "../icons/fontawsome/chart-line.svg"
+                checkable: true
+
+                onCheckedChanged: {
+                    if (checked) {
+                        root.currentMainItem = 1
+                        root.currentTabIndex = 2
+                    }
+                }
+            }
         }
 
         // This item acts as a spacer to expand between the checkable and non-checkable buttons.
@@ -179,19 +199,19 @@ Rectangle {
                     font.family: ce.faSolidName
                     font.styleName: ce.faSolidStyle
                     font.pixelSize: 18
-                    color: ServerComm.connected ? "green" : "lightgray"
+                    color: NaComm.connected ? "green" : "lightgray"
                 }
                 Text {
                     //leftPadding: 5
-                    text: ServerComm.connected ? qsTr("Online") : qsTr("Offline")
+                    text: NaComm.connected ? qsTr("Online") : qsTr("Offline")
                     color: Colors.text
                 }
             }
 
             Text {
                 Layout.fillWidth: true
-                visible: ServerComm.connected
-                text: qsTr("Server") + " v" + ServerComm.version
+                visible: NaComm.connected
+                text: qsTr("Server") + " v" + NaComm.version
                 color: Colors.text
                 horizontalAlignment: Text.AlignHCenter
             }

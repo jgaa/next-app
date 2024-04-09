@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import NextAppUi
+import Nextapp.Models
 
 // The MenuBar also serves as a controller for our window as we don't use any decorations.
 MenuBar {
@@ -169,7 +170,7 @@ MenuBar {
     }
 
     background: Rectangle {
-        color: NextAppCore.develBuild ? "darkred" : Colors.surface2
+        color: NaCore.develBuild ? "darkred" : Colors.surface2
         // Make the empty space drag the specified root window.
         WindowDragHandler {
             dragWindow: root.dragWindow

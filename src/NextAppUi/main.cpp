@@ -12,6 +12,7 @@
 #include "DayColorModel.h"
 #include "ActionsModel.h"
 #include "WorkSessionsModel.h"
+#include "NextAppCore.h"
 #include "nextapp.qpb.h"
 
 #include "logging.h"
@@ -94,18 +95,18 @@ int main(int argc, char *argv[])
     nextapp::pb::Nextapp::Client cli{&app};
     auto info = cli.GetServerInfo({});
 
+    NextAppCore core;
+    ServerComm comms;
+
     QQmlApplicationEngine engine;
+
+    qmlRegisterSingletonInstance<NextAppCore>("Nextapp.Models", 1, 0, "NaCore", &core);
+    qmlRegisterSingletonInstance<ServerComm>("Nextapp.Models", 1, 0, "NaComm", &comms);
+
     engine.loadFromModule("NextAppUi", "Main");
     if (engine.rootObjects().isEmpty()) {
         qWarning() << "Failed to initialize engine!";
         return -1;
-    }
-
-    {
-        auto server_comm =  engine.singletonInstance<ServerComm*>(
-            "NextAppUi","ServerComm");
-        assert(server_comm);
-        server_comm->start();
     }
 
     {
@@ -150,8 +151,9 @@ int main(int argc, char *argv[])
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
 
-    auto ret = app.exec();
+    NextAppCore::instance()->modelsAreCreated();
 
+    auto ret = app.exec();
 
     if (auto server_comm =  engine.singletonInstance<ServerComm*>(
             "NextAppUi","ServerComm")) {

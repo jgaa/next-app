@@ -119,6 +119,10 @@ public:
     Q_INVOKABLE nextapp::pb::Node *emptyNode() {
         return node({});
     }
+    Q_INVOKABLE QString nodeNameFromUuid(const QString& uuid, bool fullPath = false) {
+        return nodeNameFromQuuid(QUuid{uuid}, fullPath);
+    }
+    QString nodeNameFromQuuid(const QUuid& uuid, bool fullPath = false);
 
     Q_INVOKABLE QModelIndex *emptyQModelIndex() {
         return new QModelIndex{};

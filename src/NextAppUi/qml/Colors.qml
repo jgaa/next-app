@@ -7,6 +7,7 @@ pragma Singleton
 
 QtObject {
     readonly property color background: "#292828"
+    readonly property color background2: "#2A3641"
     readonly property color surface1: "#171819"
     readonly property color surface2: "#090A0C"
     readonly property color text: "#D4BE98"
@@ -20,4 +21,7 @@ QtObject {
     readonly property color iconIndicator: "#D5B35D"
     readonly property color color1: "#A7B464"
     readonly property color color2: "#D3869B"
+    readonly property color hover: "#2C313A"
+    readonly property color border: "#4e4646"
+    readonly property color totals: "yellow"
 }
