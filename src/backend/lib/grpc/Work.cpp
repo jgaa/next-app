@@ -531,14 +531,19 @@ boost::asio::awaitable<void> GrpcServer::endWorkSessionForAction(const std::stri
     auto res = co_await server().db().exec(
         format("SELECT {} from work_session where action = ? and user = ? and state in ('active', 'paused') ", ToWorkSession::selectCols), actionId, uctx.userUuid());
     if (res.has_value()) {
+        bool was_active = false;
         for(const auto &row : res.rows()) {
             pb::WorkSession ws;
             ToWorkSession::assign(row, ws, uctx);
-
-            // TODO: This should be made optional per users global settings
-            const auto need_start_next = ws.state() == pb::WorkSession_State::WorkSession_State_ACTIVE;
+            if (ws.state() == pb::WorkSession_State::WorkSession_State_ACTIVE) {
+                was_active = true;
+            }
             co_await stopWorkSession(ws, uctx);
-            if (need_start_next) {
+        }
+
+        if (was_active) {
+            // TODO: This should be made optional per users global settings
+            if (was_active) {
                 co_await activateNextWorkSession(uctx);
             }
         }

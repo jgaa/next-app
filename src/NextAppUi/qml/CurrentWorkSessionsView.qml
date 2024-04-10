@@ -213,6 +213,16 @@ Rectangle {
                 }
             }
 
+            Button {
+                implicitHeight: 22 // Adjust as needed
+                text: "Action Completed"
+                enabled: root.selectedItem !== ""
+
+                onClicked: {
+                    WorkSessionsModel.finishAction(root.selectedItem)
+                }
+            }
+
             Item {
                 Layout.fillHeight: true
             }

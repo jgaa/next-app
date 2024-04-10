@@ -540,7 +540,7 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
     }
 
     outcome.start = orig_start != work.start() / 60;
-    outcome.end = orig_end != work.hasEnd() ? work.end() / 60 : 0;
+    outcome.end = orig_end != (work.hasEnd() ? work.end() / 60 : 0);
     outcome.duration = orig_duration != work.duration() / 60;
     outcome.paused= orig_paused != work.paused() / 60;
     outcome.name = orig_name != work.name();

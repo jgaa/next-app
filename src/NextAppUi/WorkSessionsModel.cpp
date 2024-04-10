@@ -1,6 +1,7 @@
 #include <regex>
 
 #include "WorkSessionsModel.h"
+#include "ActionsModel.h"
 #include "ServerComm.h"
 #include "logging.h"
 #include <algorithm>
@@ -68,6 +69,17 @@ bool WorkSessionsModel::sessionExists(const QString &sessionId)
     }
 
     return false;
+}
+
+void WorkSessionsModel::finishAction(const QString &sessionId)
+{
+    done(sessionId);
+
+    if (!sessionId.isEmpty()) {
+        if (auto session = lookup(toQuid(sessionId))) {
+            ServerComm::instance().markActionAsDone(session->action(), true);
+        }
+    }
 }
 
 void WorkSessionsModel::start()

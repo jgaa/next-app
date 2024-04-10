@@ -15,7 +15,6 @@ Rectangle {
 
     Component.onCompleted: {
         console.log("WorkSessionsView is now completed");
-        console.log("Gakke is a ", Gakke)
     }
 
     onVisibleChanged: {

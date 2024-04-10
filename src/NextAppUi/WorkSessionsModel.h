@@ -55,6 +55,7 @@ public:
     Q_INVOKABLE void done(const QString& sessionId);
     Q_INVOKABLE void touch(const QString& sessionId);
     Q_INVOKABLE bool sessionExists(const QString& sessionId);
+    Q_INVOKABLE void finishAction(const QString& sessionId);
 
     void start() override;
 
