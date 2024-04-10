@@ -6,13 +6,23 @@
 #include "util.h"
 #include "nextapp.qpb.h"
 
+
 class WeeklyWorkReportModel : public QAbstractTableModel
 {
     Q_OBJECT
     QML_ELEMENT
 
+public:
+    enum WeekSelection {
+        THIS_WEEK,
+        LAST_WEEK,
+        SELECTED_WEEK
+    };
+
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged) // Set by the view
-    Q_PROPERTY(bool isAvailable READ isAvailable NOTIFY isAvailableChanged)
+    Q_PROPERTY(bool isAvailable READ isAvailable NOTIFY isAvailableChanged); // Set by the model
+    Q_PROPERTY(time_t startTime READ startTime WRITE setStartTime NOTIFY startTimeChanged);
+    Q_PROPERTY(WeekSelection weekSelection READ weekSelection WRITE setWeekSelection NOTIFY weekSelectionChanged FINAL)
 public:
     enum Roles {
         SummaryRole = Qt::UserRole + 1,
@@ -22,6 +32,11 @@ public:
         QString name;
         std::array<uint32_t , 7> duration = {};
     };
+
+    void setStartTime(time_t when);
+    time_t startTime() {
+        return startTime_;
+    }
 
     WeeklyWorkReportModel(QObject *parent = nullptr);
 
@@ -49,9 +64,15 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    WeekSelection weekSelection() const;
+    void setWeekSelection(WeekSelection when);
+
 signals:
     void isVisibleChanged();
     void isAvailableChanged();
+    void startTimeChanged();
+
+    void weekSelectionChanged();
 
 private:
     bool initialized_ = false;
@@ -60,4 +81,6 @@ private:
     std::map<QUuid, NodeSummary> nodes_;
     std::vector<QUuid> sorted_nodes_;
     const QUuid uuid_ = QUuid::createUuid();
+    WeekSelection week_selection_ = THIS_WEEK;
+    time_t startTime_ = time({});
 };

@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <ranges>
 
+#include <QDateTime>
+
 #include "WeeklyWorkReportModel.h"
 #include "NextAppCore.h"
 #include "ServerComm.h"
@@ -9,6 +11,19 @@
 
 #include "util.h"
 #include "logging.h"
+
+void WeeklyWorkReportModel::setStartTime(time_t when)
+{
+    if (startTime_ != when) {
+        startTime_ = when;
+
+        const auto st = QDateTime::fromSecsSinceEpoch(when);
+        LOG_DEBUG_N << "Setting start time to " << st.toString();
+
+        emit startTimeChanged();
+        fetch();
+    }
+}
 
 WeeklyWorkReportModel::WeeklyWorkReportModel(QObject *parent)
     : QAbstractTableModel(parent)
@@ -62,7 +77,7 @@ void WeeklyWorkReportModel::fetch()
         return;
     }
     nextapp::pb::DetailedWorkSummaryRequest request;
-    request.setStart(time({}));
+    request.setStart(startTime_);
     request.setKind(nextapp::pb::WorkSummaryKindGadget::WSK_WEEK);
 
     ServerComm::instance().getDetailedWorkSummary(request, uuid_);
@@ -210,4 +225,26 @@ QHash<int, QByteArray> WeeklyWorkReportModel::roleNames() const
         {Qt::DisplayRole, "display"},
         {SummaryRole, "summary"}
     };
+}
+
+WeeklyWorkReportModel::WeekSelection WeeklyWorkReportModel::weekSelection() const
+{
+    return week_selection_;
+}
+
+void WeeklyWorkReportModel::setWeekSelection(WeekSelection when)
+{
+    LOG_DEBUG << "Setting week selection to " << when;
+    if (week_selection_ == when) {
+        return;
+    }
+    week_selection_ = when;
+    if (week_selection_ == THIS_WEEK) {
+        setStartTime(time({}));
+    } else if (week_selection_ == LAST_WEEK) {
+        setStartTime(time({}) - 7 * 24 * 60 * 60);
+    } else {
+        return ; // Assume that the model has set a specific time
+    }
+    emit weekSelectionChanged();
 }

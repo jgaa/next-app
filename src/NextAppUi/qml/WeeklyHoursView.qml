@@ -14,6 +14,7 @@ Rectangle {
     color: Colors.background
 
     property int cellwidth: 70
+    property string prevLabel: ""
 
     ColumnLayout {
         anchors.fill: parent
@@ -29,17 +30,24 @@ Rectangle {
                 spacing: 6
                 ComboBox {
                     id: selectionCtl
+                    // Don't work!
+                    //currentIndex: tableView.model.weekSelection
                     model: ListModel {
                         ListElement { text: qsTr("This week") }
                         ListElement { text: qsTr("Last week") }
                         ListElement { text: qsTr("Select week") }
                     }
 
-                    onActivated: (ix) => {
-                        // if (prev_selection !== ix) {
-                        //     workSessions.model.fetchSome(ix)
-                        // }
-                        // prev_selection = ix
+                    onCurrentIndexChanged: () => {
+                        prevLabel = displayText
+                        tableView.model.weekSelection = currentIndex
+
+                        if (currentIndex === 2) {
+                            datePicker.open()
+                            currentIndex = -1
+                        } else {
+                            displayText = textAt(currentIndex)
+                        }
                     }
                 }
 
@@ -111,6 +119,24 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    DatePicker {
+        id: datePicker
+        mode: NextappPB.ActionDueKind.WEEK
+        modal: true
+
+        onSelectedWeekClosed: (date, accepted, week) => {
+            console.log("Selected week: " + date + ", accepted = " + accepted + ", week: " + week)
+            if (accepted) {
+                tableView.model.startTime = date.getTime() / 1000
+                selectionCtl.displayText = qsTr("Week #%1/%2").arg(week).arg(datePicker.currentYear)
+            } else {
+                selectionCtl.displayText = prevLabel
+            }
+
+            datePicker.close()
         }
     }
 }

@@ -112,14 +112,24 @@ TimePeriod toTimePeriodWeek(time_t when, const UserContext& uctx)
     const auto ymd = year_month_day{l_day};
     const auto ymw = year_month_weekday{l_day};
 
-    const auto start_day = l_day + (days{ymw.weekday().c_encoding()} * -1) + days{6} + start_of_week_offset;
+    const auto start_day = l_day + (days{ymw.weekday().c_encoding()} * -1) + start_of_week_offset;
     const auto end_day = start_day + days{7};
 
     const auto local_start = zoned_time{&tz, start_day};
     const auto local_end = zoned_time{&tz, end_day};
 
-    return {system_clock::to_time_t(local_start.get_sys_time()),
-            system_clock::to_time_t(local_end.get_sys_time())};
+    LOG_DEBUG_N << format("local_when = {} local_start = {}, local_end = {}",
+                          zoned_ref, local_start, local_end);
+
+    const auto res_start = system_clock::to_time_t(local_start.get_sys_time());
+    const auto res_end = system_clock::to_time_t(local_end.get_sys_time());
+
+    LOG_DEBUG_N << format("start = {}, end = {}",
+                          chrono::system_clock::from_time_t(res_start),
+                          chrono::system_clock::from_time_t(res_end));
+
+
+    return {res_start, res_end};
 }
 
 // Modified from ChatGPT generated code

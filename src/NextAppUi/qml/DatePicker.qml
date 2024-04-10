@@ -30,6 +30,7 @@ Popup {
     property alias currentYear: grid.year
     property alias currentMonth: grid.month
     property int currentDay
+    property int currentWeek: 0
 
     property bool closeOnSelect: mode === NextappPB.ActionDueKind.DATE
                                  || mode === NextappPB.ActionDueKind.WEEK
@@ -37,6 +38,7 @@ Popup {
                                   || mode === NextappPB.ActionDueKind.DATETIME
 
     signal selectedDateClosed(var date, var accepted)
+    signal selectedWeekClosed(var date, var accepted, var week)
 
     onDateChanged: {
         console.log("DatePicker.onDateChanged: date=", date.toISOString())
@@ -226,6 +228,7 @@ Popup {
                             anchors.fill: weekCtl
                             onClicked: {
                                 popup.date = NaCore.dateFromWeek(popup.currentYear, weekNumber)
+                                popup.currentWeek = weekNumber
                                         //Common.getDateFromISOWeekNumber(popup.currentYear, weekNumber)
                                 if (popup.closeOnSelect) {
                                     popup.accepted = true
@@ -394,5 +397,9 @@ Popup {
         }
 
         selectedDateClosed(date, accepted)
+
+        if (mode === NextappPB.ActionDueKind.WEEK) {
+            selectedWeekClosed(date, accepted, currentWeek)
+        }
     }
 }

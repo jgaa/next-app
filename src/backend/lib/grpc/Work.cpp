@@ -467,7 +467,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
             // Update the active work session to calculate the current duration
             co_await owner_.syncActiveWork(*uctx);
 
-            TimePeriod period = toTimePeriod(time({}), *uctx, req->kind());
+            TimePeriod period = toTimePeriod(req->start(), *uctx, req->kind());
 
             // SUM() returns a DECIMAL type, so we need to cast it to an INTEGER for simplicity.
             // boost.mysql returns a string if we don't cast it.
@@ -481,7 +481,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
                 cuser, toAnsiTime(period.start, uctx->tz()), toAnsiTime(period.end, uctx->tz()));
 
             enum Cols { DURATION, DATE, ACTION, NODE };
-            if (res.has_value() && !res.rows().empty()) {
+            if (res.has_value()) {
                 auto& result = *reply->mutable_detailedworksummary();
                 for(const auto &row : res.rows()) {
                     auto& item = *result.add_items();

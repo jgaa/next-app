@@ -11,6 +11,7 @@
 #include "nextapp/Server.h"
 #include "nextapp/errors.h"
 #include "nextapp/GrpcServer.h"
+#include "nextapp/util.h"
 
 using namespace std;
 using namespace nextapp;
@@ -1408,6 +1409,77 @@ TEST(processDueAtDayspec, setLastDayInYear) {
     EXPECT_EQ(due.start(), valid);
 }
 
+UserContext createUserContext(bool sundayIsFirstWeekday = false, string_view timeZoneName = chrono::current_zone()->name()) {
+    static jgaa::mysqlpool::Options dbo;
+    UserContext uctx{{}, {}, chrono::current_zone()->name(), sundayIsFirstWeekday, dbo};
+    return uctx;
+}
+
+TEST(TimePeriod, someWeekMonday) {
+
+    const auto when = toTimet(2024_y/April/10);
+
+    auto uctx = createUserContext(false);
+    auto tp = toTimePeriodWeek(when, uctx);
+
+    EXPECT_EQ(tp.start, toTimet(2024_y/April/8));
+    EXPECT_EQ(tp.end, toTimet(2024_y/April/15)); // 7 days
+}
+
+TEST(TimePeriod, someWeekMondayFromMonday) {
+
+    const auto when = toTimet(2024_y/April/8);
+
+    auto uctx = createUserContext(false);
+    auto tp = toTimePeriodWeek(when, uctx);
+
+    EXPECT_EQ(tp.start, toTimet(2024_y/April/8));
+    EXPECT_EQ(tp.end, toTimet(2024_y/April/15)); // 7 days
+}
+
+TEST(TimePeriod, someWeekMondayFromSunday) {
+
+    const auto when = toTimet(2024_y/April/14);
+
+    auto uctx = createUserContext(false);
+    auto tp = toTimePeriodWeek(when, uctx);
+
+    EXPECT_EQ(tp.start, toTimet(2024_y/April/8));
+    EXPECT_EQ(tp.end, toTimet(2024_y/April/15)); // 7 days
+}
+
+TEST(TimePeriod, someWeekSunday) {
+
+    const auto when = toTimet(2024_y/April/10);
+
+    auto uctx = createUserContext(true);
+    auto tp = toTimePeriodWeek(when, uctx);
+
+    EXPECT_EQ(tp.start, toTimet(2024_y/April/7));
+    EXPECT_EQ(tp.end, toTimet(2024_y/April/14)); // 7 days
+}
+
+TEST(TimePeriod, someWeekSundayFromMonday) {
+
+    const auto when = toTimet(2024_y/April/8);
+
+    auto uctx = createUserContext(true);
+    auto tp = toTimePeriodWeek(when, uctx);
+
+    EXPECT_EQ(tp.start, toTimet(2024_y/April/7));
+    EXPECT_EQ(tp.end, toTimet(2024_y/April/14)); // 7 days
+}
+
+TEST(TimePeriod, someWeekSundayFromSunday) {
+
+    const auto when = toTimet(2024_y/April/7);
+
+    auto uctx = createUserContext(true);
+    auto tp = toTimePeriodWeek(when, uctx);
+
+    EXPECT_EQ(tp.start, toTimet(2024_y/April/7));
+    EXPECT_EQ(tp.end, toTimet(2024_y/April/14)); // 7 days
+}
 
 
 int main(int argc, char **argv) {
