@@ -25,6 +25,11 @@ struct ServerOptions {
 };
 
 struct Config {
+    Config() {
+        db.timer_interval_ms = 30000;
+        db.max_connections = 64;
+    }
+
     ServerConfig svr;
     jgaa::mysqlpool::DbConfig db;
     GrpcConfig grpc;

@@ -200,7 +200,7 @@ int main(int argc, char* argv[]) {
                       << "Boost " << BOOST_LIB_VERSION << endl
                       << "Platform " << BOOST_PLATFORM << endl
                       << "Compiler " << BOOST_COMPILER << endl
-                      << "Build date " <<__DATE__ << endl;
+                      << "Build date " << __DATE__ << endl;
             return -3;
         }
 
@@ -242,7 +242,7 @@ int main(int argc, char* argv[]) {
         return -5;
     } catch (const exception& ex) {
         LOG_ERROR << "Caught exception: " << ex.what() << endl;
-        return -5;
+        return -6;
     }
 
     LOG_INFO << appname << " done! ";
