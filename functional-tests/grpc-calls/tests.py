@@ -205,7 +205,7 @@ def test_stopped_work_activates_most_recent_paused_work_session(gd):
     assert status.error == nextapp_pb2.Error.OK
     assert status.work.state == nextapp_pb2.WorkSession.State.DONE
 
-def test_add_2500_work_sessions(gd):
+def test_add_many_work_sessions(gd):
     parent_node_id = ""
     start_time = datetime.now() - timedelta(days=10)
 

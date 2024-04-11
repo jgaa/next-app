@@ -144,7 +144,7 @@ struct ToWorkSession {
                 if (work.has_end()) {
                     throw db_err{pb::Error::INVALID_REQUEST, "Session is already stopped"};
                 }
-                co_await owner_.stopWorkSession(work, *uctx);
+                co_await owner_.stopWorkSession(work, *uctx, &event);
                 co_await owner_.activateNextWorkSession(*uctx);
                 break;
             case pb::WorkEvent::Kind::WorkEvent_Kind_PAUSE:
@@ -173,6 +173,9 @@ struct ToWorkSession {
                     ne.set_start(event.start());
                 }
                 if (event.has_end()) {
+                    if (work.state() != pb::WorkSession_State::WorkSession_State_DONE) {
+                        throw db_err{pb::Error::INVALID_REQUEST, "Can not correct end time on an active session"};
+                    }
                     ne.set_end(event.end());
                 }
                 if (event.has_duration()) {
@@ -597,13 +600,19 @@ boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, 
     - It adds the events to the work_session `events column.
     - It sets the state to done
 */
-boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work, const UserContext &uctx)
+boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work,
+                                                         const UserContext &uctx,
+                                                         const pb::WorkEvent *event)
 {
     auto dbopts = uctx.dbOptions();
     dbopts.reconnect_and_retry_query = false;
 
     // Add the final event to the list of events before we calculate the outcome
-    work.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_STOP));
+    auto stopevent = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_STOP);
+    if (event && event->has_end()) {
+        stopevent.set_end(event->end());
+    }
+    work.mutable_events()->Add(std::move(stopevent));
 
     updateOutcome(work, uctx);
     assert(work.state() == pb::WorkSession_State::WorkSession_State_DONE);
@@ -703,7 +712,11 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext &uctx)
             break;
         case pb::WorkEvent::Kind::WorkEvent_Kind_STOP:
             end_pause(event);
-            work.set_end(event.time());
+            if (event.has_end()) {
+                work.set_end(event.end());
+            } else {
+                work.set_end(event.time());
+            }
             work.set_state(pb::WorkSession_State::WorkSession_State_DONE);
             break;
         case pb::WorkEvent::Kind::WorkEvent_Kind_PAUSE:

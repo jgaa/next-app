@@ -109,3 +109,50 @@ QDate getFirstDayOfWeek(const QDate &when)
     auto startOfWeek = when.addDays(daysToFirstDayOfWeek);
     return startOfWeek;
 }
+
+bool isToday(time_t when)
+{
+    auto today = QDateTime::currentDateTime().date();
+    auto date = QDate::currentDate();
+    return date == today;
+}
+
+bool isYesterday(time_t when)
+{
+    auto yesterday = QDate::currentDate().addDays(-1);
+    auto date = QDateTime::fromSecsSinceEpoch(when).date();
+    return date == yesterday;
+}
+
+bool isCurrentWeek(time_t when)
+{
+    auto start_of_week = getFirstDayOfWeek();
+    auto next_week = start_of_week.addDays(7);
+    auto date = QDateTime::fromSecsSinceEpoch(when).date();
+    return date >= start_of_week && date < next_week;
+}
+
+bool isLastWeek(time_t when)
+{
+    auto start_of_week = getFirstDayOfWeek();
+    auto date = QDateTime::fromSecsSinceEpoch(when).date();
+    return date >= start_of_week.addDays(-7) && date < start_of_week;
+}
+
+bool isCurrentMonth(time_t when)
+{
+    auto date = QDateTime::fromSecsSinceEpoch(when).date();
+    auto month = date.month();
+    auto year = date.year();
+    auto today = QDate::currentDate();
+    return month == today.month() && year == today.year();
+}
+
+bool isLastMonth(time_t when)
+{
+    auto date = QDateTime::fromSecsSinceEpoch(when).date();
+    auto month = date.month();
+    auto year = date.year();
+    auto today = QDate::currentDate();
+    return month == today.addMonths(-1).month() && year == today.addMonths(-1).year();
+}

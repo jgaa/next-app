@@ -75,6 +75,10 @@ signals:
     void weekSelectionChanged();
 
 private:
+    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    void onUpdatedDuration();
+    void needRefresh();
+
     bool initialized_ = false;
     bool online_ = false;
     bool visible_ = false;
@@ -83,4 +87,5 @@ private:
     const QUuid uuid_ = QUuid::createUuid();
     WeekSelection week_selection_ = THIS_WEEK;
     time_t startTime_ = time({});
+    bool refresh_when_activated_ = false;
 };

@@ -20,6 +20,7 @@ WorkSessionsModel::WorkSessionsModel(QObject *parent)
 {
     assert(instance_ == nullptr);
     instance_ = this;
+    exclude_done_ = true;
 }
 
 void WorkSessionsModel::startWork(const QString &actionId)
@@ -58,17 +59,6 @@ void WorkSessionsModel::done(const QString &sessionId)
 void WorkSessionsModel::touch(const QString &sessionId)
 {
     ServerComm::instance().touchWork(sessionId);
-}
-
-bool WorkSessionsModel::sessionExists(const QString &sessionId)
-{
-    if (!sessionId.isEmpty()) {
-        if (auto session = lookup(toQuid(sessionId))) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 void WorkSessionsModel::finishAction(const QString &sessionId)
@@ -119,32 +109,42 @@ void WorkSessionsModel::updateSessionsDurations()
 {
     auto& sessions = session_by_ordered();
     int row = 0;
+    bool changed = false;
     for(auto it = sessions.begin(); it != sessions.end(); ++it, ++row ){
-        sessions.modify(it, [this, row](auto& v ) {
+        sessions.modify(it, [this, row, &changed](auto& v ) {
             const auto outcome = updateOutcome(v.session);
             if (outcome.changed()) {
                 if (outcome.start) {
                     const auto ix = index(row, FROM);
                     dataChanged(ix, ix);
+                    changed = true;
                 }
                 if (outcome.end) {
                     const auto ix = index(row, TO);
                     dataChanged(ix, ix);
+                    changed = true;
                 }
                 if (outcome.duration) {
                     const auto ix = index(row, USED);
                     dataChanged(ix, ix, {});
+                    changed = true;
                 }
                 if (outcome.paused) {
                     const auto ix = index(row, PAUSE);
                     dataChanged(ix, ix);
+                    changed = true;
                 }
                 if (outcome.name) {
                     const auto ix = index(row, NAME);
                     dataChanged(ix, ix);
+                    changed = true;
                 }
             }
         });
+    }
+
+    if (changed) {
+        emit updatedDuration();
     }
 }
 

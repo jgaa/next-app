@@ -207,7 +207,7 @@ void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
                 auto &session = session_by_id();
                 auto it = session.find(toQuid(work.id_proto()));
                 if (it != session.end()) {
-                    if(work.state() == nextapp::pb::WorkSession::State::DONE) {
+                    if(exclude_done_ && work.state() == nextapp::pb::WorkSession::State::DONE) {
                         session.erase(it);
                     } else {
                         session.modify(it, [&work](auto& v) {
@@ -216,9 +216,29 @@ void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
                     }
                 } else {
                     LOG_WARN << "Got update for work session " << work.id_proto() << " which I know nothing about...";
-                    if (work.state() != nextapp::pb::WorkSession::State::DONE) {
-                        session_by_ordered().emplace_back(work);
+                    if (exclude_done_) {
+                        if (work.state() != nextapp::pb::WorkSession::State::DONE) {
+                            session_by_ordered().emplace_back(work);
+                        }
+                    } else {
+                        // TODO: Add filters to check if it should be added depending on the current selection
+                        if (fetch_what_ == TODAY && isToday(work.start())) {
+                            session_by_ordered().emplace_back(work);
+                        } else if (fetch_what_ == YESTERDAY && isYesterday(work.start())) {
+                            session_by_ordered().emplace_back(work);
+                        } else if (fetch_what_ == CURRENT_WEEK && isCurrentWeek(work.start())) {
+                            session_by_ordered().emplace_back(work);
+                        } else if (fetch_what_ == LAST_WEEK && isLastWeek(work.start())) {
+                            session_by_ordered().emplace_back(work);
+                        } else if (fetch_what_ == CURRENT_MONTH && isCurrentMonth(work.start())) {
+                            session_by_ordered().emplace_back(work);
+                        } else if (fetch_what_ == LAST_MONTH && isLastMonth(work.start())) {
+                            session_by_ordered().emplace_back(work);
+                        }
+                        // TODO: Add filter to check if the current node is the parent of the current node or its children
                     }
+
+                    sort();
                 }
             } break;
             case nextapp::pb::Update::Operation::DELETED:
@@ -376,6 +396,26 @@ bool WorkModel::setData(const QModelIndex &index, const QVariant &value, int rol
                     ;
                 }
                 break;
+            case TO:
+                try {
+                    auto seconds = parseDateOrTime(value.toString());
+                    if (seconds < work->start()) {
+                        throw std::runtime_error{"End time must be after start time"};
+                    }
+
+                    nextapp::pb::WorkEvent event;
+                    if (work->state() != nextapp::pb::WorkSession::State::DONE) {
+                        // We have to stop the work.
+                        event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::STOP);
+                    } else {
+                        event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+                    }
+                    event.setEnd(seconds);
+                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
+                } catch (const std::runtime_error&) {
+                    ;
+                }
+                break;
             case PAUSE:
                 try {
                     auto seconds = parseDuration(value.toString());
@@ -468,7 +508,11 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
             break;
         case pb::WorkEvent_QtProtobufNested::STOP:
             end_pause(event);
-            work.setEnd(event.time());
+            if (event.hasEnd()) {
+                work.setEnd(event.end());
+            } else {
+                work.setEnd(event.time());
+            }
             work.setState(pb::WorkSession::State::DONE);
             break;
         case pb::WorkEvent_QtProtobufNested::PAUSE:
@@ -643,4 +687,15 @@ void WorkModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSess
                   << ", more=" << pagination_.more << ", prev=" << pagination_.prev
                   << ", page = " << pagination_.page;
     }
+}
+
+bool WorkModel::sessionExists(const QString &sessionId)
+{
+    if (!sessionId.isEmpty()) {
+        if (auto session = lookup(toQuid(sessionId))) {
+            return true;
+        }
+    }
+
+    return false;
 }

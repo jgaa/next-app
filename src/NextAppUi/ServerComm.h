@@ -143,6 +143,13 @@ private:
             auto rpc_method = call(args...);
             rpc_method->subscribe(this, [this, rpc_method, done=std::move(done)] () {
                 respT rval = rpc_method-> template read<respT>();
+                if constexpr (std::is_same_v<nextapp::pb::Status, respT>) {
+                    if (rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
+                        LOG_ERROR << "RPC request failed with error #" <<
+                            rval.error() << " : " << rval.message();
+                        return;
+                    }
+                }
                 if constexpr (IsValidFunctor<doneT, respT>) {
                     done(rval);
                 } else {
@@ -152,7 +159,7 @@ private:
                 }
             },
             [this](QGrpcStatus status) {
-                LOG_ERROR_N << "Comm error: " << status.message();
+                LOG_ERROR << "Comm error: " << status.message();
             });
         };
 

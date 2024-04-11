@@ -5,6 +5,7 @@
 #include <QDateTime>
 
 #include "WeeklyWorkReportModel.h"
+#include "WorkSessionsModel.h"
 #include "NextAppCore.h"
 #include "ServerComm.h"
 #include "MainTreeModel.h"
@@ -41,8 +42,12 @@ void WeeklyWorkReportModel::setIsVisible(bool visible) {
         visible_ = visible;
         emit isVisibleChanged();
 
-        if (visible && ! initialized_) {
-            start();
+        if (visible) {
+            if (!initialized_) {
+                start();
+            } else if (online_ && refresh_when_activated_) {
+                fetch();
+            }
         }
     }
 }
@@ -63,6 +68,10 @@ void WeeklyWorkReportModel::start()
 
     connect(&ServerComm::instance(), &ServerComm::receivedDetailedWorkSummary,
             this, &WeeklyWorkReportModel::receivedDetailedWorkSummary);
+    connect(&ServerComm::instance(), &ServerComm::onUpdate,
+            this, &WeeklyWorkReportModel::onUpdate);
+    connect(&WorkSessionsModel::instance(), &WorkSessionsModel::updatedDuration,
+            this, &WeeklyWorkReportModel::onUpdatedDuration);
 
     if (online_) {
         fetch();
@@ -100,7 +109,7 @@ void WeeklyWorkReportModel::receivedDetailedWorkSummary(const nextapp::pb::Detai
     for(const auto& item : summary.items()) {
         auto& ns = nodes_[toQuid(item.node())];
         auto &date = item.date();
-        QDate qdate{date.year(), date.month(), date.mday()};
+        QDate qdate{date.year(), date.month() + 1, date.mday()};
         const int day = qdate.dayOfWeek() -1;
         if (day >= 0) {
             ns.duration[day] += item.duration();
@@ -134,6 +143,28 @@ int WeeklyWorkReportModel::rowCount(const QModelIndex &parent) const
 int WeeklyWorkReportModel::columnCount(const QModelIndex &parent) const
 {
     return 9;
+}
+
+void WeeklyWorkReportModel::onUpdate(const std::shared_ptr<nextapp::pb::Update>& update) {
+    if (update->hasWork()) {
+
+        // TODO: Optimize so we can use the update logic in the WorkSessionsModel
+        needRefresh();
+    }
+}
+
+void WeeklyWorkReportModel::onUpdatedDuration()
+{
+    needRefresh();
+}
+
+void WeeklyWorkReportModel::needRefresh()
+{
+    if (isVisible()) {
+        fetch();
+    } else {
+        refresh_when_activated_ = true;
+    }
 }
 
 QVariant WeeklyWorkReportModel::data(const QModelIndex &index, int role) const
@@ -248,3 +279,4 @@ void WeeklyWorkReportModel::setWeekSelection(WeekSelection when)
     }
     emit weekSelectionChanged();
 }
+

@@ -141,6 +141,7 @@ public:
                         reactor->Finish(::grpc::Status::OK);
                     } catch (const db_err& ex) {
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
+                            LOG_DEBUG << "Request [" << name << "] Caught db_err exception while handling grpc request: " << ex.what();
                             reply->Clear();
                             reply->set_error(ex.error());
                             reply->set_message(ex.what());
@@ -217,7 +218,8 @@ public:
     /*! Set the due.duie time based ion the due.start time and repeat config */
     static nextapp::pb::Due adjustDueTime(const nextapp::pb::Due& due, const UserContext& uctx);
 
-    boost::asio::awaitable<void> stopWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx);
+    boost::asio::awaitable<void> stopWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx,
+                                                 const nextapp::pb::WorkEvent *event = {});
     static void updateOutcome(nextapp::pb::WorkSession& work, const UserContext& uctx);
     boost::asio::awaitable<void> activateNextWorkSession(const UserContext& uctx);
     boost::asio::awaitable<void> pauseWork(const UserContext &uctx);

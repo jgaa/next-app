@@ -132,11 +132,11 @@ Rectangle {
                     }
 
                     onDoubleTapped: (eventPoint, button) => {
-                        if (column === 1 /* to */ || column === 3 /* used */) {
+                        if (column === 3 /* used */) {
                             return;
                         }
 
-                        var ix = tableView.index(row, column, 0)
+                        var ix = tableView.index(row, column)
                         tableView.edit(ix);
                     }
 

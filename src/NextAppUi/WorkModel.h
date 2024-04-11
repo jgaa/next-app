@@ -156,6 +156,7 @@ public:
     Q_INVOKABLE void fetchSome(FetchWhat what);
     Q_INVOKABLE void setDebug(bool enable) { enable_debug_ = enable;}
     Q_INVOKABLE void setSorting(Sorting sorting);
+    Q_INVOKABLE bool sessionExists(const QString& sessionId);
 
     void doFetchSome(FetchWhat what, bool firstPage = true);
 
@@ -229,5 +230,5 @@ protected:
     bool skipped_node_fetch_ = false;
     FetchWhat fetch_what_ = TODAY;
     Pagination pagination_;
-
+    bool exclude_done_ = false; // Needed id we show the current work session list
 };

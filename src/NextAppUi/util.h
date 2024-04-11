@@ -27,7 +27,14 @@ struct ScopedExit {
 
     ScopedExit& operator =(const ScopedExit&) = delete;
     ScopedExit& operator =(ScopedExit&&) = delete;
-
 private:
     T fn_;
 };
+
+bool isToday(time_t when);
+bool isYesterday(time_t when);
+bool isCurrentWeek(time_t when);
+bool isLastWeek(time_t when);
+bool isCurrentMonth(time_t when);
+bool isLastMonth(time_t when);
+bool isLastYear(time_t when);
