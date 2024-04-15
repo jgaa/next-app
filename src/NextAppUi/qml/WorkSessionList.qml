@@ -195,17 +195,24 @@ Rectangle {
             text: qsTr("Edit")
             icon.source: "../icons/fontawsome/pen-to-square.svg"
             onTriggered: {
-                openActionDlg(contextMenu.uuid)
+                openWorkSessionDlg(contextMenu.uuid)
             }
         }
         Action {
             icon.source: "../icons/fontawsome/trash-can.svg"
             text: qsTr("Delete")
             onTriggered: {
-                confirmDelete.uuid = contextMenu.uuid
+                confirmDelete.uuid = contextMenu.uuidws = {}
                 confirmDelete.name = contextMenu.name
                 confirmDelete.open()
             }
         }
+    }
+
+    function openWorkSessionDlg(uuid) {
+        openDialog("EditWorkSession.qml", {
+            title: qsTr("Edit Work Session"),
+            ws: tableView.model.getSession(uuid)
+        });
     }
 }

@@ -29,6 +29,9 @@ public:
     static Q_INVOKABLE int weekFromDate(const QDateTime& date);
     static Q_INVOKABLE WorkModel *createWorkModel();
     static Q_INVOKABLE WeeklyWorkReportModel *createWeeklyWorkReportModel();
+    static Q_INVOKABLE QString toHourMin(int duration);
+    static Q_INVOKABLE time_t parseDateOrTime(const QString& str);
+    static Q_INVOKABLE QString toDateAndTime(time_t when);
 
     static constexpr bool isDevelBuild() {
 #if defined(DEVEL_SETTINGS) && DEVEL_SETTINGS

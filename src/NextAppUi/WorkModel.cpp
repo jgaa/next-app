@@ -1,6 +1,7 @@
 #include "WorkModel.h"
 #include "ServerComm.h"
 #include "MainTreeModel.h"
+#include "ActionsModel.h"
 #include "logging.h"
 #include <algorithm>
 #include <iterator>
@@ -698,4 +699,30 @@ bool WorkModel::sessionExists(const QString &sessionId)
     }
 
     return false;
+}
+
+nextapp::pb::WorkSession WorkModel::getSession(const QString &sessionId)
+{
+    if (!sessionId.isEmpty()) {
+        if (auto session = lookup(toQuid(sessionId))) {
+            LOG_DEBUG_N << "Returning session " << sessionId << " from cache";
+            return *session;
+        }
+    }
+
+    return {};
+}
+
+nextapp::pb::WorkSession WorkModel::createSession(const QString &actionId)
+{
+    nextapp::pb::WorkSession session;
+
+    // TODO: Get action name if it's available
+
+    session.setAction(actionId);
+    session.setStart(time({}));
+    session.setEnd(time({}));
+    session.setState(nextapp::pb::WorkSession::State::DONE);
+
+    return session;
 }

@@ -3,6 +3,7 @@
 #include <QQmlEngine>
 
 #include "WeeklyWorkReportModel.h"
+#include "util.h"
 
 using namespace std;
 
@@ -46,4 +47,19 @@ WeeklyWorkReportModel *NextAppCore::createWeeklyWorkReportModel()
     auto model = new WeeklyWorkReportModel(instance());
     //QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
     return model;
+}
+
+QString NextAppCore::toHourMin(int duration)
+{
+    return ::toHourMin(duration);
+}
+
+time_t NextAppCore::parseDateOrTime(const QString &str)
+{
+    return ::parseDateOrTime(str);
+}
+
+QString NextAppCore::toDateAndTime(time_t when)
+{
+    return QDateTime::fromSecsSinceEpoch(when).toString("yyyy-MM-dd hh:mm");
 }
