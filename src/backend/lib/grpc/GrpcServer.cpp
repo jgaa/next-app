@@ -224,6 +224,12 @@ void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
     }
 }
 
+boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actionId, const std::string &userUuid, std::string *name) {
+    auto handle = co_await server().db().getConnection();
+    co_await validateAction(handle , actionId, userUuid, name);
+    co_return;
+}
+
 const std::shared_ptr<UserContext> GrpcServer::userContext(::grpc::CallbackServerContext *ctx) const
 {
     static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";

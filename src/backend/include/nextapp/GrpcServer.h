@@ -19,7 +19,24 @@
 #include "nextapp/UserContext.h"
 #include "util.h"
 
+#include "mysqlpool/mysqlpool.h"
+
 namespace nextapp::grpc {
+
+struct RequestCtx {
+    std::optional<jgaa::mysqlpool::Mysqlpool::Handle> dbh;
+    std::shared_ptr<UserContext> uctx;
+};
+
+template <typename T, typename Arg>
+concept UnaryFnWithoutContext = requires (T fn, Arg *reply) {
+    { fn(reply) } ;
+};
+
+template <typename T, typename Arg>
+concept UnaryFnWithContext = requires (T fn, Arg *reply, RequestCtx& rctx) {
+    { fn(reply, rctx) } ;
+};
 
 class GrpcServer {
 public:
@@ -126,7 +143,8 @@ public:
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
-        auto unaryHandler(::grpc::CallbackServerContext *ctx, const auto * req, auto *reply, auto fn, const std::string_view name = {}) noexcept {
+        template <typename ReqT, typename ReplyT, typename FnT>
+        auto unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn, const std::string_view name = {}) noexcept {
             assert(ctx);
             assert(reply);
 
@@ -136,7 +154,17 @@ public:
 
                     try {
                         LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
-                        co_await fn(reply);
+
+                        if constexpr (UnaryFnWithoutContext<FnT, ReplyT>) {
+                            co_await fn(reply);
+                        } else if constexpr (UnaryFnWithContext<FnT, ReplyT>) {
+                            RequestCtx rctx;
+                            rctx.uctx = owner_.userContext(ctx);
+                            rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
+                            co_await fn(reply, rctx);
+                        } else if constexpr (!UnaryFnWithoutContext<FnT, ReplyT *> && !UnaryFnWithContext<FnT, ReplyT *>) {
+                            static_assert(false, "Invalid unary handler function");
+                        }
                         LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(*reply);
                         reactor->Finish(::grpc::Status::OK);
                     } catch (const db_err& ex) {
@@ -184,10 +212,11 @@ public:
     void publish(const std::shared_ptr<pb::Update>& update);
     boost::asio::awaitable<void> validateNode(const std::string& parentUuid, const std::string& userUuid);
     boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid, std::string *name = {});
+    boost::asio::awaitable<void> validateAction(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string &actionId, const std::string &userUuid, std::string *name = {});
     boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
-    boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, const UserContext& uctx);
-    boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx, bool touch = true);
-    boost::asio::awaitable<boost::mysql::results> insertWork(const pb::WorkSession& work, const UserContext& uctx, bool addStartEvent = true);
+    boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, RequestCtx& rctx);
+    boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, RequestCtx& rctx, bool touch = true);
+    boost::asio::awaitable<boost::mysql::results> insertWork(const pb::WorkSession& work, RequestCtx& rctx, bool addStartEvent = true);
 
     bool active() const noexcept {
         return active_;
@@ -218,17 +247,17 @@ public:
     /*! Set the due.duie time based ion the due.start time and repeat config */
     static nextapp::pb::Due adjustDueTime(const nextapp::pb::Due& due, const UserContext& uctx);
 
-    boost::asio::awaitable<void> stopWorkSession(nextapp::pb::WorkSession& work, const UserContext& uctx,
+    boost::asio::awaitable<void> stopWorkSession(nextapp::pb::WorkSession& work, RequestCtx& rctx,
                                                  const nextapp::pb::WorkEvent *event = {});
-    static void updateOutcome(nextapp::pb::WorkSession& work, const UserContext& uctx);
-    boost::asio::awaitable<void> activateNextWorkSession(const UserContext& uctx);
-    boost::asio::awaitable<void> pauseWork(const UserContext &uctx);
-    boost::asio::awaitable<void> syncActiveWork(const UserContext &uctx);
-    boost::asio::awaitable<void> pauseWorkSession(pb::WorkSession &work, const UserContext &uctx);
-    boost::asio::awaitable<void> touchWorkSession(pb::WorkSession &work, const UserContext &uctx);
-    boost::asio::awaitable<void> resumeWorkSession(pb::WorkSession &work, const UserContext &uctx);
-    boost::asio::awaitable<std::optional<pb::WorkSession> > fetchActiveWorkSession(const UserContext &uctx);
-    boost::asio::awaitable<void> endWorkSessionForAction(const std::string_view& actionId, const UserContext &uctx);
+    static void updateOutcome(nextapp::pb::WorkSession& work, const UserContext& rctx);
+    boost::asio::awaitable<void> activateNextWorkSession(RequestCtx& rctx);
+    boost::asio::awaitable<void> pauseWork(RequestCtx& rctx);
+    boost::asio::awaitable<void> syncActiveWork(RequestCtx& rctx);
+    boost::asio::awaitable<void> pauseWorkSession(pb::WorkSession &work, RequestCtx& rctx);
+    boost::asio::awaitable<void> touchWorkSession(pb::WorkSession &work, RequestCtx& rctx);
+    boost::asio::awaitable<void> resumeWorkSession(pb::WorkSession &work, RequestCtx& rctx);
+    boost::asio::awaitable<std::optional<pb::WorkSession> > fetchActiveWorkSession(RequestCtx& rctx);
+    boost::asio::awaitable<void> endWorkSessionForAction(const std::string_view& actionId, RequestCtx& rctx);
 
 private:
     // The Server instance where we get objects in the application, like config and database
