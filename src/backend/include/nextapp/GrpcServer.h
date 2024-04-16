@@ -211,6 +211,7 @@ public:
     void removePublisher(const boost::uuids::uuid& uuid);
     void publish(const std::shared_ptr<pb::Update>& update);
     boost::asio::awaitable<void> validateNode(const std::string& parentUuid, const std::string& userUuid);
+    boost::asio::awaitable<void> validateNode(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string& parentUuid, const std::string& userUuid);
     boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid, std::string *name = {});
     boost::asio::awaitable<void> validateAction(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string &actionId, const std::string &userUuid, std::string *name = {});
     boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
@@ -226,12 +227,12 @@ public:
 
     // Called when an action change status to done
     boost::asio::awaitable<void> handleActionDone(const pb::Action& orig,
-                                                  const UserContext& uctx,
+                                                  RequestCtx& rctx,
                                                   ::grpc::CallbackServerContext *ctx);
 
     // Called when an action change status to active
     boost::asio::awaitable<void> handleActionActive(const pb::Action& orig,
-                                                    const UserContext& uctx,
+                                                    RequestCtx& rctx,
                                                     ::grpc::CallbackServerContext *ctx);
 
     static nextapp::pb::Due

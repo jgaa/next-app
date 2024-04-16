@@ -249,21 +249,21 @@ enum class DoneChanged {
 };
 
 boost::asio::awaitable<void>
-replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext& uctx,
+replyWithAction(GrpcServer& grpc, const std::string actionId, RequestCtx& rctx,
                 ::grpc::CallbackServerContext *ctx, pb::Status *reply,
                 DoneChanged done = DoneChanged::NO_CHANGE, bool publish = true) {
 
-    const auto dbopts = uctx.dbOptions();
+    const auto dbopts = rctx.uctx->dbOptions();
 
     auto res = co_await grpc.server().db().exec(
         format(R"(SELECT {} from action WHERE id=? AND user=? )",
-               ToAction::allSelectCols()), dbopts, actionId, uctx.userUuid());
+               ToAction::allSelectCols()), dbopts, actionId, rctx.uctx->userUuid());
 
     assert(res.has_value());
     if (!res.rows().empty()) {
         const auto& row = res.rows().front();
         auto *action = reply->mutable_action();
-        ToAction::assign(row, *action, uctx);
+        ToAction::assign(row, *action, *rctx.uctx);
         if (publish) {
             // Copy the new Action to an update and publish it
             auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
@@ -273,10 +273,10 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext&
 
         switch (done) {
         case DoneChanged::MARKED_DONE:
-            co_await grpc.handleActionDone(*action, uctx, ctx);
+            co_await grpc.handleActionDone(*action, rctx, ctx);
             break;
         case DoneChanged::MARKED_UNDONE:
-            co_await grpc.handleActionActive(*action, uctx, ctx);
+            co_await grpc.handleActionActive(*action, rctx, ctx);
             break;
         default:
             break;
@@ -351,18 +351,17 @@ replyWithAction(GrpcServer& grpc, const std::string actionId, const UserContext&
         }, __func__);
 }
 
-boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::grpc::CallbackServerContext *ctx,
+boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, RequestCtx& rctx,
                                        pb::Status *reply = {}) {
-    const auto uctx = owner.userContext(ctx);
-    const auto& cuser = uctx->userUuid();
-    auto dbopts = uctx->dbOptions();
+    const auto& cuser = rctx.uctx->userUuid();
+    auto dbopts = rctx.uctx->dbOptions();
 
 
     if (action.node().empty()) {
         throw runtime_error{"Missing node"};
     }
 
-    co_await owner.validateNode(action.node(), cuser);
+    co_await owner.validateNode(*rctx.dbh, action.node(), cuser);
 
     if (action.id().empty()) {
         action.set_id(newUuidStr());
@@ -374,13 +373,13 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
     // Not an idempotent query
     dbopts.reconnect_and_retry_query = false;
 
-    const auto res = co_await owner.server().db().exec(
+    const auto res = co_await rctx.dbh->exec(
         format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
                ToAction::insertCols(),
                ToAction::statementBindingStr(),
                ToAction::allSelectCols()),
         dbopts,
-        ToAction::prepareBindingArgs(action, *uctx, action.id(), action.node(), cuser));
+        ToAction::prepareBindingArgs(action, *rctx.uctx, action.id(), action.node(), cuser));
 
     assert(!res.empty());
     // Set the reply data
@@ -388,11 +387,11 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
     auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
     if (reply) {
         auto *reply_action = reply->mutable_action();
-        ToAction::assign(res.rows().front(), *reply_action, *uctx);
+        ToAction::assign(res.rows().front(), *reply_action, *rctx.uctx);
         *update->mutable_action() = *reply_action;
     } else {
         action.Clear();
-        ToAction::assign(res.rows().front(), action, *uctx);
+        ToAction::assign(res.rows().front(), action, *rctx.uctx);
         *update->mutable_action() = action;
     }
 
@@ -404,30 +403,33 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             pb::Action new_action{*req};
             new_action.set_node(req->node());
 
-            co_await addAction(new_action, owner_, ctx, reply);
+            auto trx = co_await rctx.dbh->transaction();
+
+            co_await addAction(new_action, owner_, rctx, reply);
+
+            co_await trx.commit();
         }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
-            const auto& cuser = uctx->userUuid();
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
             const auto& uuid = validatedUuid(req->id());
-            const auto& dbopts = uctx->dbOptions();
+            const auto& dbopts = rctx.uctx->dbOptions();
             DoneChanged done = DoneChanged::NO_CHANGE;
 
             if (req->node().empty()) {
                 throw runtime_error{"Missing node"};
             }
 
-            auto existing_res = co_await owner_.server().db().exec("SELECT node FROM action WHERE id=? AND user=?", uuid, cuser);
+            auto existing_res = co_await rctx.dbh->exec("SELECT node FROM action WHERE id=? AND user=?", uuid, cuser);
             if (existing_res.empty() || existing_res.rows().empty()) {
                 throw db_err{pb::Error::NOT_FOUND, "Action does not exist"};
             }
@@ -437,7 +439,9 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
                 throw db_err(pb::Error::CONSTRAINT_FAILED, "UpdateAction cannot change the node. Use MoveAction for that.");
             }
 
-            co_await owner_.validateNode(req->node(), cuser);
+            co_await owner_.validateNode(*rctx.dbh, req->node(), cuser);
+
+            auto trx = co_await rctx.dbh->transaction();
 
             pb::Action new_action{*req};
             assert(new_action.id() == uuid);
@@ -449,18 +453,21 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
                 done = DoneChanged::MARKED_UNDONE;
             }
 
-            auto res = co_await owner_.server().db().exec(format("UPDATE action SET {}, version=version+1 WHERE id=? AND user=? ",
-                                                                 ToAction::updateStatementBindingStr()), dbopts,
-                                                          ToAction::prepareBindingArgs<false>(new_action, *uctx, uuid, cuser));
+            auto res = co_await rctx.dbh->exec(format("UPDATE action SET {}, version=version+1 WHERE id=? AND user=? ",
+                                                      ToAction::updateStatementBindingStr()), dbopts,
+                                               ToAction::prepareBindingArgs<false>(new_action, *rctx.uctx, uuid, cuser));
 
             assert(!res.empty());
 
             if (res.affected_rows() == 1) {
-                co_await replyWithAction(owner_, uuid, *uctx, ctx, reply, done);
+                co_await replyWithAction(owner_, uuid, rctx, ctx, reply, done);
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated.", uuid));
             }
+
+            co_await trx.commit();
+
         }, __func__);
 }
 
@@ -494,56 +501,64 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
-            const auto& cuser = uctx->userUuid();
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
             const auto& uuid = validatedUuid(req->uuid());
-            const auto dbopts = uctx->dbOptions();
+            const auto dbopts = rctx.uctx->dbOptions();
             DoneChanged done = DoneChanged::MARKED_UNDONE;
 
             optional<string> when;
             if (req->done()) {
-                when = toAnsiTime(time({}), uctx->tz());
+                when = toAnsiTime(time({}), rctx.uctx->tz());
                 done = DoneChanged::MARKED_DONE;
             }
 
-            auto res = co_await owner_.server().db().exec(
+            auto trx = co_await rctx.dbh->transaction();
+
+            auto res = co_await rctx.dbh->exec(
                 "UPDATE action SET status=?, completed_time=?, version=version+1 WHERE id=? AND user=?",
                 dbopts, (req->done() ? "done" : "active"), when, uuid, cuser);
 
             assert(res.has_value());
             if (res.affected_rows() == 1) {
-                co_await replyWithAction(owner_, uuid, *uctx, ctx, reply, done);
+                co_await replyWithAction(owner_, uuid, rctx, ctx, reply, done);
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated.", uuid));
             }
+
+            co_await trx.commit();
 
             co_return;
         }, __func__);
 }
 
-::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsFavorite(::grpc::CallbackServerContext *ctx, const pb::ActionFavoriteReq *req, pb::Status *reply)
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsFavorite(::grpc::CallbackServerContext *ctx,
+                                                                          const pb::ActionFavoriteReq *req,
+                                                                          pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = owner_.userContext(ctx);
             const auto& cuser = uctx->userUuid();
             const auto& uuid = validatedUuid(req->uuid());
             const auto dbopts = uctx->dbOptions();
 
-            auto res = co_await owner_.server().db().exec(
+            auto trx = co_await rctx.dbh->transaction();
+
+            auto res = co_await rctx.dbh->exec(
                 "UPDATE action SET favorite=?, version=version+1 WHERE id=? AND user=?",
                 dbopts, req->favorite(), uuid, cuser);
 
             assert(res.has_value());
             if (res.affected_rows() == 1) {
-                co_await replyWithAction(owner_, uuid, *uctx, ctx, reply);
+                co_await replyWithAction(owner_, uuid, rctx, ctx, reply);
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated.", uuid));
             }
 
+            co_await trx.commit();
             co_return;
         }, __func__);
 }
@@ -583,11 +598,14 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, ::g
         }, __func__);
 }
 
-boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actionId,
-                                                        const std::string &userUuid,
-                                                        string *name)
+boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actionId, const std::string &userUuid, std::string *name) {
+    auto handle = co_await server().db().getConnection();
+    co_await validateAction(handle , actionId, userUuid, name);
+}
+
+boost::asio::awaitable<void> GrpcServer::validateAction(jgaa::mysqlpool::Mysqlpool::Handle &handle, const std::string &actionId, const std::string &userUuid, std::string *name)
 {
-    auto res = co_await server().db().exec("SELECT id, name FROM action where id=? and user=?", actionId, userUuid);
+    auto res = co_await handle.exec("SELECT id, name FROM action where id=? and user=?", actionId, userUuid);
     if (!res.has_value()) {
         throw db_err{pb::Error::INVALID_ACTION, "Action not found for the current user"};
     }
@@ -598,6 +616,7 @@ boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actio
 
     co_return;
 }
+
 
 pb::Due GrpcServer::processDueAtDate(time_t from_timepoint, const pb::Action_RepeatUnit &units,
                                      pb::ActionDueKind kind, int repeatAfter,
@@ -998,10 +1017,10 @@ nextapp::pb::Due GrpcServer::adjustDueTime(const pb::Due &fromDue, const UserCon
 }
 
 boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig,
-                                                          const UserContext& uctx,
+                                                          RequestCtx& rctx,
                                                           ::grpc::CallbackServerContext *ctx)
 {
-    co_await endWorkSessionForAction(orig.id(), uctx);
+    co_await endWorkSessionForAction(orig.id(), rctx);
 
     if (orig.repeatkind() == pb::Action_RepeatKind::Action_RepeatKind_NEVER) {
         co_return;
@@ -1042,14 +1061,14 @@ boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig
                                cloned.repeatunits(),
                                cloned.due().kind(),
                                cloned.repeatafter(),
-                               uctx);
+                               *rctx.uctx);
         break;
     case pb::Action_RepeatWhen::Action_RepeatWhen_AT_DAYSPEC:
         due = processDueAtDayspec(from_timepoint,
                                   cloned.repeatunits(),
                                   cloned.due().kind(),
                                   cloned.repeatafter(),
-                                  uctx);
+                                  *rctx.uctx);
         break;
     default:
         assert(false);
@@ -1058,29 +1077,29 @@ boost::asio::awaitable<void> GrpcServer::handleActionDone(const pb::Action &orig
 
     LOG_TRACE << "handleActionDone before adj. due: " << toJson(due);
 
-    due = adjustDueTime(due, uctx);
+    due = adjustDueTime(due, *rctx.uctx);
     *cloned.mutable_due() = due;
 
     LOG_TRACE << "handleActionDone due: " << toJson(due);
-    co_await addAction(cloned, *this, ctx);
+    co_await addAction(cloned, *this, rctx);
 
     co_return;
 }
 
-boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &orig, const UserContext &uctx, ::grpc::CallbackServerContext *ctx)
+boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &orig, RequestCtx& rctx, ::grpc::CallbackServerContext *ctx)
 {
     LOG_TRACE << "handleActionActive Action.done changed. Now it is active. Will delete its child (created if it was marked as done and recuirring) if exist, is not a parent and version is 1.";
 
     // We have to get the list of items to delete manually, as the database does not return that information.
     // We need the id's to notify the clients.
-    const auto dres = co_await server().db().exec(
+    const auto dres = co_await rctx.dbh->exec(
         "select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?",
-        orig.id(), uctx.userUuid());
+        orig.id(), rctx.uctx->userUuid());
 
     // Do the actual delete. There is a potential race-condition here, but it is not a big deal, as it only affect notifications
-    const auto res = co_await server().db().exec(
+    const auto res = co_await rctx.dbh->exec(
         "DELETE FROM action WHERE id IN (select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?)",
-        orig.id(), uctx.userUuid());
+        orig.id(), rctx.uctx->userUuid());
 
     if (res.affected_rows() && dres.has_value()) {
         for(const auto drow : dres.rows()) {

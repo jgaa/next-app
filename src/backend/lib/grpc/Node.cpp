@@ -359,7 +359,13 @@ boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, c
 
 boost::asio::awaitable<void> GrpcServer::validateNode(const std::string &parentUuid, const std::string &userUuid)
 {
-    auto res = co_await server().db().exec("SELECT id FROM node where id=? and user=?", parentUuid, userUuid);
+    auto handle = co_await server().db().getConnection();
+    co_await validateNode(handle, parentUuid, userUuid);
+}
+
+boost::asio::awaitable<void> GrpcServer::validateNode(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string &parentUuid, const std::string &userUuid)
+{
+    auto res = co_await handle.exec("SELECT id FROM node where id=? and user=?", parentUuid, userUuid);
     if (!res.has_value()) {
         throw db_err{pb::Error::INVALID_PARENT, "Node id must exist and be owned by the user"};
     }
