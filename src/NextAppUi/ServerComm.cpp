@@ -421,6 +421,17 @@ void ServerComm::getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRe
     });
 }
 
+void ServerComm::addWork(const nextapp::pb::WorkSession &ws)
+{
+    nextapp::pb::AddWorkReq req;
+    req.setWork(ws);
+    callRpc<nextapp::pb::Status>([this, req=std::move(req)]() {
+        return client_->AddWork(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Call to gRPC server failed: " << status.message();

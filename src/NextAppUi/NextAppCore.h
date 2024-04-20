@@ -30,8 +30,13 @@ public:
     static Q_INVOKABLE WorkModel *createWorkModel();
     static Q_INVOKABLE WeeklyWorkReportModel *createWeeklyWorkReportModel();
     static Q_INVOKABLE QString toHourMin(int duration);
-    static Q_INVOKABLE time_t parseDateOrTime(const QString& str);
-    static Q_INVOKABLE QString toDateAndTime(time_t when);
+
+    // returns -1 on error
+    static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
+    static Q_INVOKABLE QString toDateAndTime(time_t when, time_t defaultDate = 0);
+
+    // returns -1 on error
+    static Q_INVOKABLE time_t parseHourMin(const QString& str);
 
     static constexpr bool isDevelBuild() {
 #if defined(DEVEL_SETTINGS) && DEVEL_SETTINGS

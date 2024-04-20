@@ -63,8 +63,8 @@ Rectangle {
 
             HorizontalHeaderView {
                 id: horizontalHeader
-                anchors.left: root.left
-                anchors.top: root.top
+                anchors.left: parent.left
+                anchors.top: parent.top
                 syncView: tableView
                 clip: true
             }

@@ -12,6 +12,7 @@ Rectangle {
     property var colwidths: [140, 120, 80, 80, 800]
     property alias model: tableView.model
     property string selectedItem: ""
+    property bool selectedIsActive: false
     color: Colors.background
 
     Layout.fillHeight: true
@@ -21,15 +22,17 @@ Rectangle {
         if (selectedItem !== "") {
             if(!model.sessionExists(selectedItem)) {
                 selectedItem = ""
+                selectedIsActive = false
+            } else {
+                selectedIsActive = WorkSessionsModel.isActive(selectedItem)
             }
         }
     }
 
-
     HorizontalHeaderView {
         id: horizontalHeader
         anchors.left: tableView.left
-        anchors.top: parent.top
+        anchors.top: root.top
         syncView: tableView
         clip: true
     }
@@ -39,7 +42,6 @@ Rectangle {
         anchors.left: horizontalHeader.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-
 
         TableView {
             id: tableView
@@ -112,6 +114,15 @@ Rectangle {
                         text: display
                         color: Colors.text
                         Layout.fillHeight: true
+                    }
+
+                    Text {
+                        leftPadding: 4
+                        visible: column === 4 && hasNotes
+                        font.family: ce.faSolidName
+                        font.styleName: ce.faSolidStyle
+                        text: "\uf304"
+                        color: "lightblue"
                     }
                 }
 
@@ -212,7 +223,8 @@ Rectangle {
     function openWorkSessionDlg(uuid) {
         openDialog("EditWorkSession.qml", {
             title: qsTr("Edit Work Session"),
-            ws: tableView.model.getSession(uuid)
+            ws: tableView.model.getSession(uuid),
+            model: tableView.model
         });
     }
 }

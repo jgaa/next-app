@@ -197,17 +197,14 @@ void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
         beginResetModel();
         ScopedExit scoped{[this] { endResetModel(); }};
 
+         auto &session = session_by_id();
+
         try {
             const auto op = update->op();
             const auto& work = update->work();
             switch(op) {
-            case nextapp::pb::Update::Operation::ADDED:
-                session_by_ordered().emplace_back(work);
-                break;
-            case nextapp::pb::Update::Operation::UPDATED: {
-                auto &session = session_by_id();
-                auto it = session.find(toQuid(work.id_proto()));
-                if (it != session.end()) {
+            case nextapp::pb::Update::Operation::UPDATED:
+                if (auto it =  session.find(toQuid(work.id_proto())); it != session.end()) {
                     if(exclude_done_ && work.state() == nextapp::pb::WorkSession::State::DONE) {
                         session.erase(it);
                     } else {
@@ -215,8 +212,11 @@ void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
                             v.session = work;
                         });
                     }
-                } else {
-                    LOG_WARN << "Got update for work session " << work.id_proto() << " which I know nothing about...";
+                    break;
+                } // if we found the session in the cache
+                LOG_WARN << "Got update for work session " << work.id_proto() << " which I know nothing about...";
+                // fall through
+            case nextapp::pb::Update::Operation::ADDED: {
                     if (exclude_done_) {
                         if (work.state() != nextapp::pb::WorkSession::State::DONE) {
                             session_by_ordered().emplace_back(work);
@@ -238,10 +238,7 @@ void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
                         }
                         // TODO: Add filter to check if the current node is the parent of the current node or its children
                     }
-
-                    sort();
-                }
-            } break;
+                } break;
             case nextapp::pb::Update::Operation::DELETED:
                 auto &session = session_by_id();
                 session.erase(toQuid(work.id_proto()));
@@ -340,6 +337,8 @@ QVariant WorkModel::data(const QModelIndex &index, int role) const
         break;
     case ActiveRole:
         return session.session.state() == nextapp::pb::WorkSession::State::ACTIVE;
+    case HasNotesRole:
+        return !session.session.notes().isEmpty();
     }
 
     return {};
@@ -352,6 +351,7 @@ QHash<int, QByteArray> WorkModel::roleNames() const
     roles[UuidRole] = "uuid";
     roles[IconRole] = "icon";
     roles[ActiveRole] = "active";
+    roles[HasNotesRole] = "hasNotes";
 
     return roles;
 }
@@ -480,13 +480,16 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
     const auto orig_end = work.hasEnd() ? work.end() / 60 : 0;
     const auto orig_duration = work.duration() / 60;
     const auto orig_paused = work.paused() / 60;
-    const auto orig_state = work.state() / 60;
+    const auto orig_state = work.state();
     const auto orig_name = work.name();
     const auto full_orig_duration = work.duration();
 
     work.setPaused(0);
     work.setDuration(0);
-    work.clearEnd();
+
+    if (work.state() != pb::WorkSession::State::DONE) {
+        work.clearEnd();
+    }
 
     time_t pause_from = 0;
 
@@ -582,6 +585,10 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
         } else {
             work.setDuration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));
         }
+    }
+
+    if (orig_state == pb::WorkSession::State::DONE) {
+        work.setState(orig_state);
     }
 
     outcome.start = orig_start != work.start() / 60;
@@ -713,16 +720,91 @@ nextapp::pb::WorkSession WorkModel::getSession(const QString &sessionId)
     return {};
 }
 
-nextapp::pb::WorkSession WorkModel::createSession(const QString &actionId)
+nextapp::pb::WorkSession WorkModel::createSession(const QString &actionId, const QString& name)
 {
     nextapp::pb::WorkSession session;
 
-    // TODO: Get action name if it's available
-
     session.setAction(actionId);
-    session.setStart(time({}));
-    session.setEnd(time({}));
+    session.setStart((time({}) / (60 * 5)) * (60 * 5));
+    session.setEnd(session.start() + (60 * 60));
     session.setState(nextapp::pb::WorkSession::State::DONE);
+    session.setName(name);
 
     return session;
+}
+
+bool WorkModel::update(const nextapp::pb::WorkSession &session)
+{
+    if (session.action().isEmpty()) {
+        LOG_ERROR << "Cannot update a work-session without an action";
+        return false;
+    }
+
+    if (session.id_proto().isEmpty()) {
+        // This is a new session
+        ServerComm::instance().addWork(session);
+        return true;
+    }
+
+    // Deduce changes
+    auto curr = lookup(toQuid(session.id_proto()));
+    if (!curr) {
+        LOG_ERROR << "Cannot update a work-session that I don't know about";
+        return false;
+    }
+
+    nextapp::pb::WorkEvent ev;
+    ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+
+    if (curr->start() != session.start()) {
+        ev.setStart(session.start());
+    }
+
+    if (session.paused() != curr->paused()) {
+        ev.setPaused(session.paused());
+    }
+
+    if (session.name() != curr->name()) {
+        ev.setName(session.name());
+    }
+
+    if (session.notes() != curr->notes()) {
+        ev.setNotes(session.notes());
+    }
+
+    if (session.hasEnd() && curr->hasEnd()) {
+        // Just correct it. Ending an active session is handled below
+        assert(curr->state() == nextapp::pb::WorkSession::State::DONE);
+        ev.setEnd(session.end());
+    }
+
+    ServerComm::instance().sendWorkEvent(session.id_proto(), ev);
+
+    if (session.state() != curr->state() && curr->state() != nextapp::pb::WorkSession::State::DONE) {
+
+        switch(session.state()) {
+        case nextapp::pb::WorkSession::State::ACTIVE:
+            assert(!curr->hasEnd());
+            assert(!session.hasEnd());
+            ServerComm::instance().resumeWork(session.id_proto());
+            break;
+        case nextapp::pb::WorkSession::State::PAUSED:
+            assert(!curr->hasEnd());
+            assert(!session.hasEnd());
+            ServerComm::instance().pauseWork(session.id_proto());
+            break;
+        default:
+            ; // ignore. Setting end-time will set the session state to DONE
+        }
+
+        if (session.hasEnd()) {
+            assert(!curr->hasEnd());
+            nextapp::pb::WorkEvent event;
+            event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::STOP);
+            event.setEnd(session.end());
+            ServerComm::instance().sendWorkEvent(session.id_proto(), event);
+        }
+    }
+
+    return true;
 }

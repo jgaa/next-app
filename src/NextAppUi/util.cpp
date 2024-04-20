@@ -63,7 +63,7 @@ int parseDuration(const QString &value)
     return (minutes * 60) + hours;
 }
 
-time_t parseDateOrTime(const QString& str)
+time_t parseDateOrTime(const QString& str, const QDate& defaultDate)
 {
     if (str.isEmpty()) {
         return 0;
@@ -72,7 +72,7 @@ time_t parseDateOrTime(const QString& str)
     regex pattern(R"((\d{4}-\d{2}-\d{2} )?(\d{2}:\d{2}))");
 
     std::smatch match;
-    const auto nstr = str.toStdString();
+    const auto nstr = str.trimmed().toStdString();
     if (std::regex_match(nstr, match, pattern)) {
         if (match[1].matched) {
             // The input is an ANSI date + time
@@ -81,7 +81,7 @@ time_t parseDateOrTime(const QString& str)
         } else {
             // The input is just a time
             auto time = static_cast<time_t>(parseDuration(str));
-            auto timedate = QDateTime{QDate::currentDate(), QTime::fromMSecsSinceStartOfDay(time * 1000)};
+            auto timedate = QDateTime{defaultDate, QTime::fromMSecsSinceStartOfDay(time * 1000)};
             auto when = timedate.toSecsSinceEpoch();
             return when;
         }

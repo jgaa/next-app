@@ -14,6 +14,7 @@ Rectangle {
     Layout.preferredWidth: pwidth
     Layout.alignment: Qt.AlignLeft
     color: input.focus ? "lightblue" : "lightgray"
+    signal changed()
     TextInput {
         id: input
         topPadding: 4
@@ -21,5 +22,9 @@ Rectangle {
         anchors.fill: parent
         Layout.alignment: Qt.AlignBottom
         color: "black"
+
+        onTextChanged: {
+            parent.changed()
+        }
     }
 }

@@ -94,6 +94,7 @@ public:
     void deleteWork(const QString& sessionId);
     void getWorkSessions(const nextapp::pb::GetWorkSessionsReq& req, const QUuid& requester);
     void getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRequest& req, const QUuid& requester);
+    void addWork(const nextapp::pb::WorkSession& ws);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

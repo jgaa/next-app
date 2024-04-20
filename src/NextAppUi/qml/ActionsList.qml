@@ -207,6 +207,13 @@ Rectangle {
             }
         }
         Action {
+            text: qsTr("Add completed Work Session")
+            icon.source: "../icons/fontawsome/clock.svg"
+            onTriggered: {
+                openAddWorkDialog(contextMenu.uuid, contextMenu.name)
+            }
+        }
+        Action {
             icon.source: "../icons/fontawsome/trash-can.svg"
             text: qsTr("Delete")
             onTriggered: {
@@ -241,6 +248,14 @@ Rectangle {
             node: mainTree.selectedItemUuid,
             title: qsTr("Edit Action"),
             aprx: ActionsModel.getAction(uuid)
+        });
+    }
+
+    function openAddWorkDialog(uuid, name) {
+        openDialog("EditWorkSession.qml", {
+            ws: WorkSessionsModel.createSession(uuid, name),
+            title: qsTr("Add Work Session"),
+            model: WorkSessionsModel
         });
     }
 }

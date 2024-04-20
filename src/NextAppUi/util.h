@@ -8,7 +8,7 @@
 [[nodiscard]] QUuid toQuid(const QString& str);
 [[nodiscard]] QString toHourMin(const int duration);
 [[nodiscard]] int parseDuration(const QString& value);
-[[nodiscard]] time_t parseDateOrTime(const QString& str);
+[[nodiscard]] time_t parseDateOrTime(const QString& str, const QDate& defaultDate = QDate::currentDate());
 
 QDate getFirstDayOfWeek(const QDate& when = QDate::currentDate());
 

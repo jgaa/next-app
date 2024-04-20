@@ -32,14 +32,6 @@ class WorkSessionsModel : public WorkModel
         UuidRole = Qt::UserRole + 1,
         IconRole,
         ActiveRole,
-        // ActionRole,
-        // StartRole,
-        // EndRole,
-        // DurationRole,
-        // PausedRole,
-        // StateRole,
-        // VersionRole,
-        // TouchedRole
     };
 
     Q_PROPERTY(bool canAddNew READ canAddNew NOTIFY canAddNewChanged);

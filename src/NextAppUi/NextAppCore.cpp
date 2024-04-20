@@ -7,6 +7,15 @@
 
 using namespace std;
 
+namespace {
+QDate getDefaultDate(time_t when) {
+    if (when > 0) {
+        return QDateTime::fromSecsSinceEpoch(when).date();
+    }
+    return QDate::currentDate();
+}
+} // anon ns
+
 NextAppCore *NextAppCore::instance_;
 
 NextAppCore::NextAppCore() {
@@ -54,12 +63,36 @@ QString NextAppCore::toHourMin(int duration)
     return ::toHourMin(duration);
 }
 
-time_t NextAppCore::parseDateOrTime(const QString &str)
+time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)
 {
-    return ::parseDateOrTime(str);
+    try {
+        return ::parseDateOrTime(str, getDefaultDate(defaultDate));
+    } catch (const std::exception &e) {
+        LOG_DEBUG << "Could not parse time/date: " << str;
+    }
+    return -1;
 }
 
-QString NextAppCore::toDateAndTime(time_t when)
+QString NextAppCore::toDateAndTime(time_t when, time_t defaultDate)
 {
+    auto dd = getDefaultDate(defaultDate);
+    auto actualTime = QDateTime::fromSecsSinceEpoch(when);
+
+    if (dd == actualTime.date()) {
+        return actualTime.time().toString("hh:mm");
+    }
+
     return QDateTime::fromSecsSinceEpoch(when).toString("yyyy-MM-dd hh:mm");
 }
+
+time_t NextAppCore::parseHourMin(const QString &str)
+{
+    try {
+        return ::parseDuration(str);
+    } catch (const std::exception &e) {
+        LOG_DEBUG << "Could not parse hour/min: " << str;
+    }
+
+    return -1;
+}
+

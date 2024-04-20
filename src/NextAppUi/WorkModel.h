@@ -66,6 +66,7 @@ public:
         UuidRole = Qt::UserRole + 1,
         IconRole,
         ActiveRole,
+        HasNotesRole
     };
 
     enum Cols {
@@ -158,8 +159,8 @@ public:
     Q_INVOKABLE void setSorting(Sorting sorting);
     Q_INVOKABLE bool sessionExists(const QString& sessionId);
     Q_INVOKABLE nextapp::pb::WorkSession getSession(const QString& sessionId);
-    Q_INVOKABLE nextapp::pb::WorkSession createSession(const QString& actionId);
-
+    Q_INVOKABLE nextapp::pb::WorkSession createSession(const QString& actionId, const QString& name);
+    Q_INVOKABLE bool update(const nextapp::pb::WorkSession& session);
     void doFetchSome(FetchWhat what, bool firstPage = true);
 
 
@@ -232,5 +233,5 @@ protected:
     bool skipped_node_fetch_ = false;
     FetchWhat fetch_what_ = TODAY;
     Pagination pagination_;
-    bool exclude_done_ = false; // Needed id we show the current work session list
+    bool exclude_done_ = false; // Needed if we show the current work session list
 };

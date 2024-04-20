@@ -451,6 +451,8 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
+            auto trx = co_await rctx.dbh->transaction();
+
             auto work = req->work();
             string action_name;
             co_await owner_.validateAction(*rctx.dbh, work.action(), cuser, &action_name);
@@ -464,9 +466,27 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
 
             // Re-use our method to add a work-session to the database.
             auto res = co_await owner_.insertWork(work, rctx, false /* don't add start event */);
+            if (!res.has_value() || res.rows().empty()) {
+                throw db_err{pb::Error::GENERIC_ERROR, "Failed to fetch inserted work session"};
+            }
+
+            // Pause in a "fixed" session without a series of events must be added as a correction
+            if (const auto duration = work.paused()) {
+                auto ev = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION);
+                ev.set_paused(duration);
+                work.add_events()->Swap(&ev);
+            }
+
+
+            updateOutcome(work, *rctx.uctx);
+
+            const auto id = res.rows().front().at(ToWorkSession::ID).as_string();
+            work.set_id(id);
 
             // Save the work session again to get all the columns saved.
             co_await owner_.saveWorkSession(work, rctx);
+
+            co_await trx.commit();
 
             auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
             *update->mutable_work() = work;
@@ -699,15 +719,13 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)
         return; // Nothing to do
     }
 
-    if (work.events(0).kind() != pb::WorkEvent::Kind::WorkEvent_Kind_START) {
-        LOG_WARN << "First event in a work-session must be a start event. In work-session " << work.id()
-                 << " The first event is a " << pb::WorkEvent::Kind_Name(work.events(0).kind());
-        throw db_err{pb::Error::CONSTRAINT_FAILED, "First event in a work-session must be a start event"};
-    }
-
     work.set_paused(0);
     work.set_duration(0);
-    work.clear_end();
+
+    if (work.state() != pb::WorkSession_State::WorkSession_State_DONE) {
+        work.clear_end();
+    }
+    const auto orig_state = work.state();
 
     time_t pause_from = 0;
 
@@ -798,6 +816,10 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)
         } else {
             work.set_duration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));
         }
+    }
+
+    if (orig_state == pb::WorkSession_State::WorkSession_State_DONE) {
+        work.set_state(orig_state);
     }
 }
 
