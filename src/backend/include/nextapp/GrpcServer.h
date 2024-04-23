@@ -262,6 +262,7 @@ public:
     boost::asio::awaitable<std::optional<pb::WorkSession> > fetchActiveWorkSession(RequestCtx& rctx);
     boost::asio::awaitable<void> endWorkSessionForAction(const std::string_view& actionId, RequestCtx& rctx);
 
+    void updateSessionSettings(const pb::UserGlobalSettings& settings, ::grpc::CallbackServerContext *ctx);
 private:
     // The Server instance where we get objects in the application, like config and database
     Server& server_;

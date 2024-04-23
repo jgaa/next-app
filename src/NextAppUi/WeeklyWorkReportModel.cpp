@@ -13,6 +13,8 @@
 #include "util.h"
 #include "logging.h"
 
+using namespace std;
+
 void WeeklyWorkReportModel::setStartTime(time_t when)
 {
     if (startTime_ != when) {
@@ -94,6 +96,15 @@ void WeeklyWorkReportModel::fetch()
 
 void WeeklyWorkReportModel::receivedDetailedWorkSummary(const nextapp::pb::DetailedWorkSummary &summary, const ServerComm::MetaData &meta)
 {
+    // Days are 1 - 7 where Monday is 1
+    // We map them so we get the index into our array of day values
+    // The leftmost entries in the arrays below are supposed to never be used, as Qt::Monday=1
+    // is the lowest valid value.
+    static constexpr auto monday_first = std::to_array<char>({0, 0, 1, 2, 3, 4, 5, 6});
+    static constexpr auto sunday_first = std::to_array<char>({0, 1, 2, 3, 4, 5, 6, 0});
+
+    const auto days_of_week = ServerComm::instance().getGlobalSettings().firstDayOfWeekIsMonday() ? monday_first : sunday_first;
+
     if (meta.requester != uuid_) {
         return;
     }
@@ -110,9 +121,12 @@ void WeeklyWorkReportModel::receivedDetailedWorkSummary(const nextapp::pb::Detai
         auto& ns = nodes_[toQuid(item.node())];
         auto &date = item.date();
         QDate qdate{date.year(), date.month() + 1, date.mday()};
-        const int day = qdate.dayOfWeek() -1;
-        if (day >= 0) {
-            ns.duration[day] += item.duration();
+        const int day = qdate.dayOfWeek();
+        if (day > 0) {
+            assert(day <= Qt::Sunday);
+            assert(day >= Qt::Monday);
+            const auto wday = days_of_week[day];
+            ns.duration[wday] += item.duration();
         }
     }
 
@@ -146,7 +160,7 @@ int WeeklyWorkReportModel::columnCount(const QModelIndex &parent) const
 }
 
 void WeeklyWorkReportModel::onUpdate(const std::shared_ptr<nextapp::pb::Update>& update) {
-    if (update->hasWork()) {
+    if (update->hasWork() || update->hasUserGlobalSettings()) {
 
         // TODO: Optimize so we can use the update logic in the WorkSessionsModel
         needRefresh();
@@ -234,16 +248,30 @@ QVariant WeeklyWorkReportModel::headerData(int section, Qt::Orientation orientat
 {
     if (role == Qt::DisplayRole) {
         if (orientation == Qt::Horizontal) {
-            switch (section) {
-            case 0: return tr("List");
-            case 1: return tr("Mon");
-            case 2: return tr("Tue");
-            case 3: return tr("Wed");
-            case 4: return tr("Thu");
-            case 5: return tr("Fri");
-            case 6: return tr("Sat");
-            case 7: return tr("Sun");
-            case 8: return tr("SUM");
+            if (ServerComm::instance().getGlobalSettings().firstDayOfWeekIsMonday()) {
+                switch (section) {
+                case 0: return tr("List");
+                case 1: return tr("Mon");
+                case 2: return tr("Tue");
+                case 3: return tr("Wed");
+                case 4: return tr("Thu");
+                case 5: return tr("Fri");
+                case 6: return tr("Sat");
+                case 7: return tr("Sun");
+                case 8: return tr("SUM");
+                }
+            } else  { // sunday is the first day of the week
+                switch (section) {
+                case 0: return tr("List");
+                case 1: return tr("Sun");
+                case 2: return tr("Mon");
+                case 3: return tr("Tue");
+                case 4: return tr("Wed");
+                case 5: return tr("Thu");
+                case 6: return tr("Fri");
+                case 7: return tr("Sat");
+                case 8: return tr("SUM");
+                }
             }
         }
     }

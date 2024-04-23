@@ -10,6 +10,12 @@ namespace asio = boost::asio;
 
 namespace nextapp::grpc {
 
+namespace {
+    static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";
+    static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
+
+} // anon ns
+
 ::grpc::ServerUnaryReactor *
 GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                                        const pb::Empty *,
@@ -227,24 +233,49 @@ void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
 
 const std::shared_ptr<UserContext> GrpcServer::userContext(::grpc::CallbackServerContext *ctx) const
 {
-    static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";
-    static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
-
-    jgaa::mysqlpool::Options dbo;
-    dbo.reconnect_and_retry_query = true;
-
     // TODO: Implement sessions and authentication
     lock_guard lock{mutex_};
     if (sessions_.empty()) {
-        const auto zone_name = chrono::current_zone()->name();
-        dbo.time_zone = zone_name;
-        auto ux = make_shared<UserContext>(system_tenant, system_user, zone_name, true, dbo);
+
+        pb::UserGlobalSettings settings;
+        settings.set_timezone(string{chrono::current_zone()->name()});
+
+        // TODO: Remove this when we have proper authentication.
+        boost::asio::co_spawn(server_.ctx(), [&]() -> boost::asio::awaitable<void> {
+                auto res = co_await server_.db().exec(
+                    "SELECT settings FROM user_settings WHERE user = ?",
+                    system_user);
+
+                enum Cols { SETTINGS };
+                if (!res.rows().empty()) {
+                    const auto& row = res.rows().front();
+                    auto blob = row.at(SETTINGS).as_blob();
+                    pb::UserGlobalSettings tmp_settings;
+                    if (tmp_settings.ParseFromArray(blob.data(), blob.size())) {
+                        LOG_DEBUG_N << "Loaded UserGlobalSettings for user " << system_user;
+                        settings = tmp_settings;
+                    } else {
+                        LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << system_user;
+                        throw runtime_error{"Failed to parse UserGlobalSettings"};
+                    }
+                }
+                co_return;
+        }, boost::asio::use_future).get();
+
+        auto ux = make_shared<UserContext>(system_tenant, system_user, settings);
         sessions_[ux->sessionId()] = ux;
         return ux;
     }
 
     // For now we have only one session
     return sessions_.begin()->second;
+}
+
+void GrpcServer::updateSessionSettings(const pb::UserGlobalSettings &settings, ::grpc::CallbackServerContext */*ctx*/)
+{
+    lock_guard lock{mutex_};
+    auto ux = make_shared<UserContext>(system_tenant, system_user, settings);
+    sessions_[ux->sessionId()] = ux;
 }
 
 } // ns

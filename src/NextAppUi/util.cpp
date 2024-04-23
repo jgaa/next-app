@@ -7,6 +7,7 @@
 
 #include "util.h"
 #include "logging.h"
+#include "ServerComm.h"
 
 
 using namespace std;
@@ -95,11 +96,10 @@ time_t parseDateOrTime(const QString& str, const QDate& defaultDate)
 
 QDate getFirstDayOfWeek(const QDate &when)
 {
-
+    const auto gs = ServerComm::instance().getGlobalSettings();
     int dayOfWeek = when.dayOfWeek();
 
-    QLocale locale;
-    int firstDayOfWeek = locale.firstDayOfWeek();
+    int firstDayOfWeek = gs.firstDayOfWeekIsMonday() ? 1 : 7;
 
     int daysToFirstDayOfWeek = firstDayOfWeek - dayOfWeek;
     if (daysToFirstDayOfWeek > 0) {

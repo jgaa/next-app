@@ -505,27 +505,32 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
 {
     pb::Due due;
     due.setKind(kind);
-    const auto zone = QTimeZone::systemTimeZone();
+    const auto gs = ServerComm::instance().getGlobalSettings();
 
     time_t start = 0;
     time_t end = 0;
 
     QLocale locale = QLocale::system();
-    const Qt::DayOfWeek firstDayOfWeek = locale.firstDayOfWeek();
+    const Qt::DayOfWeek firstDayOfWeek = gs.firstDayOfWeekIsMonday() ? Qt::Monday : Qt::Sunday;
 
     // How many days to subtract from any weekday to get to the start of the week
     static constexpr auto sunday_first = to_array<int8_t>({1, 2, 3, 4, 5, 6, 0});
     static constexpr auto monday_first = to_array<int8_t>({0, 1, 2, 3, 4, 5, 6});
     const auto days_offset = firstDayOfWeek == Qt::Sunday ? sunday_first : monday_first;
 
+    auto ts = QTimeZone{gs.timeZone().toLocal8Bit()};
+    if (ts.isValid()) {
+        LOG_TRACE << "Timezone " << ts.id() << " is valid.";
+    } else {
+        LOG_WARN << "Timezone " << gs.timeZone() << " is invalid. Using system timezone.";
+        ts = QTimeZone::systemTimeZone();
+    }
     auto qt_start = QDateTime::fromSecsSinceEpoch(when);
-    qt_start.setTimeZone(zone);
+    qt_start.setTimeZone(ts);
     qt_start.setTimeSpec(Qt::LocalTime);
     const auto tz_name = qt_start.timeZoneAbbreviation();
     due.setTimezone(tz_name.toUtf8().constData());
     auto d_start = qt_start.date().startOfDay();
-    //qt_start.setTimeZone(zone);
-    //qt_start.setTimeSpec(Qt::LocalTime);
 
     switch(kind) {
     case pb::ActionDueKindGadget::ActionDueKind::DATETIME:

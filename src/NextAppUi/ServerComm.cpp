@@ -470,7 +470,7 @@ void ServerComm::initGlobalSettings()
         return client_->GetUserGlobalSettings({});
     }, [this](const nextapp::pb::Status& status) {
         if (status.hasUserGlobalSettings()) {
-            const auto& gs = status.userGlobalSettings();
+            userGlobalSettings_ = status.userGlobalSettings();
             LOG_DEBUG_N << "Received global user-settings";
             emit globalSettingsChanged();
         } else if (status.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
@@ -533,7 +533,7 @@ void ServerComm::setDefaulValuesInUserSettings()
 
     userGlobalSettings_.setDefaultWorkHours(wh);
 
-    userGlobalSettings_.setTimeZone(QDateTime::currentDateTime().timeZoneAbbreviation());
+    userGlobalSettings_.setTimeZone(QString::fromUtf8(chrono::current_zone()->name()));
 
     const auto territory = QTimeZone::systemTimeZone().territory();
     if (territory != QLocale::AnyCountry) {

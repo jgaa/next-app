@@ -147,6 +147,8 @@ namespace {
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
+            // TODO: Validate the settings
+
             const auto blob = toBlob(*req);
 
             auto res = co_await rctx.dbh->exec(
@@ -162,6 +164,10 @@ namespace {
             owner_.publish(update);
 
             *reply->mutable_userglobalsettings() = *req;
+
+            // TODO: Signal other servers that the settings has changed
+            owner_.updateSessionSettings(*req, ctx);
+
             co_return;
         }, __func__);
 }

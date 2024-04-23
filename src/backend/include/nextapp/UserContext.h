@@ -5,6 +5,8 @@
 #include <chrono>
 
 #include "mysqlpool/mysqlpool.h"
+#include "nextapp.pb.h"
+#include "nextapp/logging.h"
 
 namespace nextapp {
 
@@ -12,8 +14,11 @@ class UserContext {
 public:
     UserContext() = default;
 
-    UserContext( const std::string& tenantUuid, const std::string& userUuid, const std::string_view timeZone,
+    UserContext(const std::string& tenantUuid, const std::string& userUuid, const std::string_view timeZone,
                 bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions);
+
+    UserContext(const std::string& tenantUuid, const std::string& userUuid,
+                const pb::UserGlobalSettings& settings);
 
     ~UserContext() = default;
 
@@ -31,7 +36,7 @@ public:
     }
 
     bool sundayIsFirstWeekday() const noexcept {
-        return sunday_is_first_weekday_;
+        return !settings_.firstdayofweekismonday();
     }
 
     const jgaa::mysqlpool::Options& dbOptions() const noexcept {
@@ -42,15 +47,19 @@ public:
         return sessionid_;
     }
 
+    const pb::UserGlobalSettings& settings() const noexcept {
+        return settings_;
+    }
+
 private:
     static boost::uuids::uuid newUuid();
 
     std::string user_uuid_;
     std::string tenant_uuid_;
     const std::chrono::time_zone* tz_{};
-    bool sunday_is_first_weekday_{true};
     jgaa::mysqlpool::Options db_options_;
     const boost::uuids::uuid sessionid_ = newUuid();
+    pb::UserGlobalSettings settings_;
 };
 
 

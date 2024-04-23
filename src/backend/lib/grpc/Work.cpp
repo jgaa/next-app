@@ -584,6 +584,7 @@ boost::asio::awaitable<void> GrpcServer::endWorkSessionForAction(const std::stri
     co_return; // Make QT Creator happy
 }
 
+
 boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, RequestCtx&  rctx, bool touch)
 {
     const auto& dbo = rctx.uctx->dbOptions();
