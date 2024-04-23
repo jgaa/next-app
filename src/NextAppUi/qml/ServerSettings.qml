@@ -4,7 +4,8 @@ import QtQuick.Controls
 import QtQuick.Effects
 import QtCore
 import NextAppUi
-
+import Nextapp.Models 1.0
+import nextapp.pb as NextappPb
 Item {
     anchors.fill: parent
 

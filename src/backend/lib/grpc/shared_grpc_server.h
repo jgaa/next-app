@@ -95,5 +95,14 @@ private:
     std::string where_;
 };
 
+template <ProtoMessage T>
+auto toBlob(const T& msg) {
+    boost::mysql::blob blob;
+    blob.resize(msg.ByteSizeLong());
+    if (!msg.SerializeToArray(blob.data(), blob.size())) {
+        throw runtime_error{"Failed to serialize protobuf message"};
+    }
+    return std::move(blob);
+}
 
 } // ns

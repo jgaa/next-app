@@ -26,7 +26,7 @@ Dialog {
             }
 
             TabButton {
-                text: qsTr("Logging")
+                text: qsTr("Global")
                 width: implicitWidth
             }
         }
@@ -39,11 +39,16 @@ Dialog {
                 id: serverTab
                 ServerSettings {id: server}
             }
+            Item {
+                id: globalTab
+                GlobalSettings {id: global}
+            }
         }
     }
 
     onAccepted: {
         server.commit()
+        global.commit()
         close()
     }
 

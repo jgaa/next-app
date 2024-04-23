@@ -18,16 +18,6 @@ auto createWorkEvent(pb::WorkEvent::Kind kind) {
     return we;
 }
 
-template <ProtoMessage T>
-auto toBlob(const T& msg) {
-    boost::mysql::blob blob;
-    blob.resize(msg.ByteSizeLong());
-    if (!msg.SerializeToArray(blob.data(), blob.size())) {
-        throw runtime_error{"Failed to serialize protobuf message"};
-    }
-    return blob;
-}
-
 auto eventsToBlob(const pb::WorkSession& ws) {
     pb::SavedWorkEvents events;
     *events.mutable_events() = ws.events();

@@ -37,6 +37,9 @@ ServerComm::ServerComm()
 
     // TODO: Make it configurable if the comm starts immediately.
     //       For example, the user may need to select a server first.
+
+    setDefaulValuesInUserSettings();
+
     start();
 }
 
@@ -61,7 +64,7 @@ void ServerComm::start()
             LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
             updates_ = client_->streamSubscribeToUpdates({});
             connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
-            onGrpcReady();
+            initGlobalSettings();
         }
     }, GrpcCallOptions{false});
 }
@@ -432,11 +435,54 @@ void ServerComm::addWork(const nextapp::pb::WorkSession &ws)
     });
 }
 
+nextapp::pb::UserGlobalSettings ServerComm::getGlobalSettings() const
+{
+    return userGlobalSettings_;
+}
+
+void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings)
+{
+    LOG_DEBUG_N << "Saving global user-settings";
+    callRpc<nextapp::pb::Status>([this, settings]() {
+        return client_->SetUserGlobalSettings(settings);
+    }, [this](const nextapp::pb::Status& status) {
+        // if (status.hasUserGlobalSettings()) {
+        //     userGlobalSettings_ = status.userGlobalSettings();
+        //     emit globalSettingsChanged();
+        // }
+    });
+}
+
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Call to gRPC server failed: " << status.message();
 
     emit errorRecieved(tr("Call to gRPC server failed: %1").arg(status.message()));
+}
+
+void ServerComm::initGlobalSettings()
+{
+    // This is done before onGrpcReady is called and the RPC interface is opened for all components.
+    GrpcCallOptions opts;
+    opts.enable_queue = false;
+    opts.ignore_errors = true;
+    callRpc<nextapp::pb::Status>([this]() {
+        return client_->GetUserGlobalSettings({});
+    }, [this](const nextapp::pb::Status& status) {
+        if (status.hasUserGlobalSettings()) {
+            const auto& gs = status.userGlobalSettings();
+            LOG_DEBUG_N << "Received global user-settings";
+            emit globalSettingsChanged();
+        } else if (status.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
+            LOG_INFO_N << "initializing global settings...";
+            saveGlobalSettings(userGlobalSettings_);
+        } else {
+            LOG_ERROR << "Failed to get global user-settings: " << status.message();
+            stop();
+            return;
+        }
+        onGrpcReady();
+    }, opts);
 }
 
 void ServerComm::onGrpcReady()
@@ -457,6 +503,12 @@ void ServerComm::onUpdateMessage()
     try {
         auto msg = make_shared<nextapp::pb::Update>(updates_->read<nextapp::pb::Update>());
         LOG_TRACE << "Got update: " << msg->when().seconds();
+
+        if (msg->hasUserGlobalSettings()) {
+            LOG_DEBUG << "Received global user-settings";
+            userGlobalSettings_ = msg->userGlobalSettings();
+            emit globalSettingsChanged();
+        }
         if (msg->hasDayColor()) {
             LOG_DEBUG << "Day color is " << msg->dayColor().color();
             QUuid color;
@@ -471,4 +523,27 @@ void ServerComm::onUpdateMessage()
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();
     }
+}
+
+void ServerComm::setDefaulValuesInUserSettings()
+{
+    nextapp::pb::WorkHours wh;
+    wh.setStart(NextAppCore::parseHourMin("08:00"));
+    wh.setEnd(NextAppCore::parseHourMin("16:00"));
+
+    userGlobalSettings_.setDefaultWorkHours(wh);
+
+    userGlobalSettings_.setTimeZone(QDateTime::currentDateTime().timeZoneAbbreviation());
+
+    const auto territory = QTimeZone::systemTimeZone().territory();
+    if (territory != QLocale::AnyCountry) {
+        QString territory_name;
+        territory_name = QLocale::territoryToString(territory);
+        userGlobalSettings_.setRegion(territory_name);
+    }
+
+    userGlobalSettings_.setLanguage("en");
+
+    const bool monday_is_first_dow = QLocale::system().firstDayOfWeek() == Qt::Monday;
+    userGlobalSettings_.setFirstDayOfWeekIsMonday(monday_is_first_dow);
 }

@@ -28,6 +28,9 @@ class ServerComm : public QObject
     Q_PROPERTY(QString defaultServerAddress READ getDefaultServerAddress CONSTANT)
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
     Q_PROPERTY(QString version READ version NOTIFY versionChanged)
+    Q_PROPERTY(nextapp::pb::UserGlobalSettings globalSettings
+                READ getGlobalSettings
+                NOTIFY globalSettingsChanged)
 public:
     using colors_in_months_t = std::shared_ptr<QList<QUuid>>;
 
@@ -47,6 +50,8 @@ public:
 
     // Called when the servers app settings may have changed
     Q_INVOKABLE void reloadSettings();
+    Q_INVOKABLE void saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings);
+    Q_INVOKABLE nextapp::pb::UserGlobalSettings getGlobalSettings() const;
 
     static ServerComm& instance() noexcept {
         assert(instance_);
@@ -105,6 +110,7 @@ signals:
     void connectedChanged();
     void dayColorDefinitionsChanged();
     void errorRecieved(const QString &value);
+    void globalSettingsChanged();
 
     // When the server has replied to our request fo the colors for this month
     void monthColorsChanged(unsigned year, unsigned month, colors_in_months_t colors);
@@ -130,22 +136,25 @@ signals:
 private:
     void errorOccurred(const QGrpcStatus &status);
     void onServerInfo(nextapp::pb::ServerInfo info);
+    void initGlobalSettings();
     void onGrpcReady();
     void onUpdateMessage();
+    void setDefaulValuesInUserSettings();
 
     struct GrpcCallOptions {
         bool enable_queue = true;
+        bool ignore_errors = false;
     };
 
     template <typename respT, typename callT, typename doneT, typename ...Args>
     void callRpc_(callT&& call, doneT && done, const GrpcCallOptions& opts, Args... args) {
 
-        auto exec = [this, call=std::move(call), done=std::move(done), args...]() {
+        auto exec = [this, call=std::move(call), done=std::move(done), opts, args...]() {
             auto rpc_method = call(args...);
-            rpc_method->subscribe(this, [this, rpc_method, done=std::move(done)] () {
+            rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
                 respT rval = rpc_method-> template read<respT>();
                 if constexpr (std::is_same_v<nextapp::pb::Status, respT>) {
-                    if (rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
+                    if (!opts.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
                         LOG_ERROR << "RPC request failed with error #" <<
                             rval.error() << " : " << rval.message();
                         return;
@@ -203,4 +212,5 @@ private:
     static ServerComm *instance_;
     std::shared_ptr<QGrpcServerStream> updates_;
     QString current_server_address_;
+    nextapp::pb::UserGlobalSettings userGlobalSettings_;
 };

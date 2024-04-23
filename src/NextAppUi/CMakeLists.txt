@@ -88,6 +88,7 @@ qt_add_qml_module(appNextAppUi
         qml/EditActionDlg.qml
         qml/EditNodeDlg.qml
         qml/EditWorkSession.qml
+        qml/GlobalSettings.qml
         qml/MainTree.qml
         qml/MyMenu.qml # x
         qml/MyMenuBar.qml # x

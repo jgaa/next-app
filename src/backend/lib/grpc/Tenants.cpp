@@ -105,7 +105,65 @@ namespace {
             *reply->mutable_tenant() = tenant;
 
             co_return;
-        });
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetUserGlobalSettings(::grpc::CallbackServerContext *ctx,
+                                                                           const pb::Empty *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+
+            auto res = co_await rctx.dbh->exec(
+                "SELECT settings FROM user_settings WHERE user = ?",
+                cuser);
+
+            enum Cols { SETTINGS };
+            if (!res.rows().empty()) {
+                const auto& row = res.rows().front();
+                auto blob = row.at(SETTINGS).as_blob();
+                pb::UserGlobalSettings settings;
+                if (settings.ParseFromArray(blob.data(), blob.size())) {
+                    reply->mutable_userglobalsettings()->CopyFrom(settings);
+                } else {
+                    LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << cuser;
+                    throw runtime_error{"Failed to parse UserGlobalSettings"};
+                }
+            } else {
+                reply->set_error(pb::NOT_FOUND);
+                reply->set_message("User settings not found");
+            }
+
+            co_return;
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetUserGlobalSettings(::grpc::CallbackServerContext *ctx,
+                                                                           const pb::UserGlobalSettings *req,
+                                                                           pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+
+            const auto blob = toBlob(*req);
+
+            auto res = co_await rctx.dbh->exec(
+                "INSERT INTO user_settings (user, settings) VALUES (?, ?) "
+                "ON DUPLICATE KEY UPDATE settings = ?",
+                rctx.uctx->dbOptions(), cuser, blob, blob);
+
+            auto update = newUpdate(res.affected_rows() == 1 /* inserted, 2 == updated */
+                                        ? pb::Update::Operation::Update_Operation_ADDED
+                                        : pb::Update::Operation::Update_Operation_UPDATED);
+
+            *update->mutable_userglobalsettings() = *req;
+            owner_.publish(update);
+
+            *reply->mutable_userglobalsettings() = *req;
+            co_return;
+        }, __func__);
 }
 
 } // ns

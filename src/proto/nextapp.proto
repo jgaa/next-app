@@ -63,6 +63,19 @@ message User {
     map<string, string> properties = 8;
 }
 
+message WorkHours {
+    uint32 start = 1; // minutes since midnight
+    uint32 end = 2; // minutes since midnight
+}
+
+message UserGlobalSettings {
+    WorkHours defaultWorkHours = 1;
+    string timeZone = 2;
+    string region = 3;
+    string language = 4;
+    bool firstDayOfWeekIsMonday = 5;
+}
+
 message Node {
     enum Kind {
         FOLDER = 0;
@@ -426,6 +439,7 @@ message Update {
         Node node = 15;
         Action action = 16;
         WorkSession work = 17;
+        UserGlobalSettings userGlobalSettings = 18;
     }
 }
 
@@ -563,6 +577,7 @@ message Status {
         WorkSessions workSessions = 18;
         WorkSummary workSummary = 19;
         DetailedWorkSummary detailedWorkSummary = 20;
+        UserGlobalSettings userGlobalSettings = 21;
     }
 }
 
@@ -602,6 +617,8 @@ service Nextapp {
     rpc GetDetailedWorkSummary(DetailedWorkSummaryRequest) returns (Status) {}
     rpc DeleteWorkSession(DeleteWorkReq) returns (Status) {}
     rpc GetWorkSessions(GetWorkSessionsReq) returns (Status) {}
+    rpc GetUserGlobalSettings(Empty) returns (Status) {}
+    rpc SetUserGlobalSettings(UserGlobalSettings) returns (Status) {}
 }
 
 

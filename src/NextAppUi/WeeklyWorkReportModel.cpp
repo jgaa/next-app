@@ -242,7 +242,7 @@ QVariant WeeklyWorkReportModel::headerData(int section, Qt::Orientation orientat
             case 4: return tr("Thu");
             case 5: return tr("Fri");
             case 6: return tr("Sat");
-            case 7: return tr("Sat");
+            case 7: return tr("Sun");
             case 8: return tr("SUM");
             }
         }

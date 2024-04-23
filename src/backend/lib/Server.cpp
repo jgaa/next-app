@@ -384,11 +384,19 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v5_upgrade = to_array<string_view>({
+        R"(CREATE OR REPLACE TABLE user_settings (
+            user UUID not NULL default UUID() PRIMARY KEY,
+            settings BLOB, -- The settings saved as a protobuf message
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
         v3_upgrade,
         v4_upgrade,
+        v5_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
