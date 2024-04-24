@@ -128,84 +128,85 @@ struct ToWorkSession {
             auto trx = co_await rctx.dbh->transaction();
 
             auto work = co_await owner_.fetchWorkSession(req->worksessionid(), rctx);
-            const auto& event = req->event();
+            for(const auto &event : req->events()) {
 
-            // Here we do the logic. When the sitch exits, `work` is assumed to be updated
-            switch(event.kind()) {
-            case pb::WorkEvent::Kind::WorkEvent_Kind_START:
-                co_await trx.commit();
-                throw db_err{pb::Error::INVALID_REQUEST, "Use CreateWorkSession to start a new session"};
-            case pb::WorkEvent::Kind::WorkEvent_Kind_STOP:
-                if (work.has_end()) {
-                    co_await trx.commit();
-                    throw db_err{pb::Error::INVALID_REQUEST, "Session is already stopped"};
-                }
-                co_await owner_.stopWorkSession(work, rctx, &event);
-                co_await owner_.activateNextWorkSession(rctx);
-                break;
-            case pb::WorkEvent::Kind::WorkEvent_Kind_PAUSE:
-                if (work.state() != pb::WorkSession_State::WorkSession_State_ACTIVE) {
-                    throw db_err{pb::Error::INVALID_REQUEST, "Session must be active to pause"};
-                }
-                co_await owner_.pauseWorkSession(work, rctx);
-                break;
-            case pb::WorkEvent::Kind::WorkEvent_Kind_RESUME:
-                if (work.state() != pb::WorkSession_State::WorkSession_State_PAUSED) {
-                    throw db_err{pb::Error::INVALID_REQUEST, "Session must be paused to resume"};
-                }
-                co_await owner_.resumeWorkSession(work, rctx);
-                break;
-            case pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH: {
-                    auto ne = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH);
+                LOG_TRACE_N << "Event: " << owner_.toJsonForLog(event);
+
+                // Here we do the logic. When the sitch exits, `work` is assumed to be updated
+                switch(event.kind()) {
+                case pb::WorkEvent::Kind::WorkEvent_Kind_START:
+                    throw db_err{pb::Error::INVALID_REQUEST, "Use CreateWorkSession to start a new session"};
+                case pb::WorkEvent::Kind::WorkEvent_Kind_STOP:
+                    if (work.state() == pb::WorkSession_State::WorkSession_State_DONE) {
+                        throw db_err{pb::Error::INVALID_REQUEST, "Session is already stopped"};
+                    }
+                    if (work.has_end()) {
+                        LOG_ERROR << "Work-Session " << work.id() << " already has an end time, but it is not DONE.";
+                    }
+                    co_await owner_.stopWorkSession(work, rctx, &event);
+                    co_await owner_.activateNextWorkSession(rctx);
+                    break;
+                case pb::WorkEvent::Kind::WorkEvent_Kind_PAUSE:
+                    if (work.state() != pb::WorkSession_State::WorkSession_State_ACTIVE) {
+                        throw db_err{pb::Error::INVALID_REQUEST, "Session must be active to pause"};
+                    }
+                    co_await owner_.pauseWorkSession(work, rctx);
+                    break;
+                case pb::WorkEvent::Kind::WorkEvent_Kind_RESUME:
+                    if (work.state() != pb::WorkSession_State::WorkSession_State_PAUSED) {
+                        throw db_err{pb::Error::INVALID_REQUEST, "Session must be paused to resume"};
+                    }
+                    co_await owner_.resumeWorkSession(work, rctx);
+                    break;
+                case pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH: {
+                        auto ne = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH);
+                        work.add_events()->Swap(&ne);
+                        co_await owner_.saveWorkSession(work, rctx);
+                        rctx.dbh.reset();
+                        auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
+                        *update->mutable_work() = work;
+                        owner_.publish(update);
+                    } break;
+                case pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION: {
+                    auto ne = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION);
+                    if (event.has_start()) {
+                        ne.set_start(event.start());
+                    }
+                    if (event.has_end()) {
+                        if (work.state() != pb::WorkSession_State::WorkSession_State_DONE) {
+                            throw db_err{pb::Error::INVALID_REQUEST, "Can not correct end time on an active session"};
+                        }
+                        ne.set_end(event.end());
+                    }
+                    if (event.has_duration()) {
+                        ne.set_duration(event.duration());
+                    }
+                    if (event.has_paused()) {
+                        ne.set_paused(event.paused());
+                    }
+                    if (event.has_notes()) {
+                        ne.set_notes(event.notes());
+                    }
+                    if (event.has_name()) {
+                        ne.set_name(event.name());
+                    }
                     work.add_events()->Swap(&ne);
-                    co_await owner_.saveWorkSession(work, rctx);
-                    co_await trx.commit();
+                    updateOutcome(work, *rctx.uctx);
+                    co_await owner_.saveWorkSession(work, rctx, false);
                     rctx.dbh.reset();
                     auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
                     *update->mutable_work() = work;
                     owner_.publish(update);
                 } break;
-            case pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION: {
-                auto ne = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION);
-                if (event.has_start()) {
-                    ne.set_start(event.start());
+                default:
+                    assert(false);
+                    throw db_err{pb::Error::INVALID_REQUEST, "Invalid WorkEvent.Kind"};
                 }
-                if (event.has_end()) {
-                    if (work.state() != pb::WorkSession_State::WorkSession_State_DONE) {
-                        throw db_err{pb::Error::INVALID_REQUEST, "Can not correct end time on an active session"};
-                    }
-                    ne.set_end(event.end());
-                }
-                if (event.has_duration()) {
-                    ne.set_duration(event.duration());
-                }
-                if (event.has_paused()) {
-                    ne.set_paused(event.paused());
-                }
-                if (event.has_notes()) {
-                    ne.set_notes(event.notes());
-                }
-                if (event.has_name()) {
-                    ne.set_name(event.name());
-                }
-                work.add_events()->Swap(&ne);
-                updateOutcome(work, *rctx.uctx);
-                co_await owner_.saveWorkSession(work, rctx, false);
-                co_await trx.commit();
-                rctx.dbh.reset();
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-                *update->mutable_work() = work;
-                owner_.publish(update);
-            } break;
-            default:
-                assert(false);
-                throw db_err{pb::Error::INVALID_REQUEST, "Invalid WorkEvent.Kind"};
-            }
+            } // events
 
             // If it's not committed by now, commit!
-            if (!trx.empty()) {
-                co_await trx.commit();
-            }
+            assert(!trx.empty());
+            co_await trx.commit();
 
             *reply->mutable_work() = std::move(work);
             co_return;

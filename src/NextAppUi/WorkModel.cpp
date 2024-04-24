@@ -746,6 +746,9 @@ bool WorkModel::update(const nextapp::pb::WorkSession &session)
         return true;
     }
 
+    nextapp::pb::AddWorkEventReq req;
+    req.setWorkSessionId(session.id_proto());
+
     // Deduce changes
     auto curr = lookup(toQuid(session.id_proto()));
     if (!curr) {
@@ -778,7 +781,8 @@ bool WorkModel::update(const nextapp::pb::WorkSession &session)
         ev.setEnd(session.end());
     }
 
-    ServerComm::instance().sendWorkEvent(session.id_proto(), ev);
+    req.events().push_back(ev);
+    ev = {};
 
     if (session.state() != curr->state() && curr->state() != nextapp::pb::WorkSession::State::DONE) {
 
@@ -793,18 +797,28 @@ bool WorkModel::update(const nextapp::pb::WorkSession &session)
             assert(!session.hasEnd());
             ServerComm::instance().pauseWork(session.id_proto());
             break;
+        case nextapp::pb::WorkSession::State::DONE:
+            // Stop the session if the user changes the state to DONE but did not set an end time.
+            if (!session.hasEnd()) {
+                ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::STOP);
+                req.events().push_back(ev);
+                ev = {};
+            }
+            break;
         default:
             ; // ignore. Setting end-time will set the session state to DONE
         }
 
-        if (session.hasEnd()) {
+        // Stop the session if the user set a stop date but left the state as ACTIVE or PAUSED
+        if (session.hasEnd() && session.state() != nextapp::pb::WorkSession::State::DONE) {
             assert(!curr->hasEnd());
-            nextapp::pb::WorkEvent event;
-            event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::STOP);
-            event.setEnd(session.end());
-            ServerComm::instance().sendWorkEvent(session.id_proto(), event);
+            ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::STOP);
+            ev.setEnd(session.end());
+            req.events().push_back(ev);
+            ev = {};
         }
     }
 
+    ServerComm::instance().sendWorkEvents(req);
     return true;
 }

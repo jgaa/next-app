@@ -96,6 +96,7 @@ public:
     void doneWork(const QString& sessionId);
     void touchWork(const QString& sessionId);
     void sendWorkEvent(const QString& sessionId, const nextapp::pb::WorkEvent& event);
+    void sendWorkEvents(const nextapp::pb::AddWorkEventReq& reqt);
     void deleteWork(const QString& sessionId);
     void getWorkSessions(const nextapp::pb::GetWorkSessionsReq& req, const QUuid& requester);
     void getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRequest& req, const QUuid& requester);

@@ -515,7 +515,7 @@ message DeleteWorkReq {
 
 message AddWorkEventReq {
     string workSessionId = 1;
-    WorkEvent event = 2;
+    repeated WorkEvent events = 2;
 }
 
 

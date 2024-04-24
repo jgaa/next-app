@@ -17,7 +17,7 @@ auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind k
     nextapp::pb::WorkEvent event;
     event.setKind(kind);
     req.setWorkSessionId(sessionId);
-    req.setEvent(event);
+    req.events().append(event);
 
     return req;
 }
@@ -371,10 +371,15 @@ void ServerComm::touchWork(const QString& sessionId) {
 void ServerComm::sendWorkEvent(const QString &sessionId, const nextapp::pb::WorkEvent &event)
 {
     nextapp::pb::AddWorkEventReq req;
-    req.setEvent(event);
+    req.events().append(event);
     req.setWorkSessionId(sessionId);
 
-    callRpc<nextapp::pb::Status>([this, &req]() {
+    sendWorkEvents(req);
+}
+
+void ServerComm::sendWorkEvents(const nextapp::pb::AddWorkEventReq &req)
+{
+    callRpc<nextapp::pb::Status>([this, req]() {
         return client_->AddWorkEvent(req);
     }, [this](const nextapp::pb::Status& status) {
         ;
@@ -386,7 +391,7 @@ void ServerComm::deleteWork(const QString &sessionId)
     nextapp::pb::DeleteWorkReq req;
     req.setWorkSessionId(sessionId);
 
-    callRpc<nextapp::pb::Status>([this, &req]() {
+    callRpc<nextapp::pb::Status>([this, req]() {
         return client_->DeleteWorkSession(req);
     }, [this](const nextapp::pb::Status& status) {
         ;
