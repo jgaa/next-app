@@ -46,6 +46,36 @@ public:
         return toJson(obj, server().config().options.log_protobuf_messages);
     }
 
+    /*! Run a co_rotuine in constrained to only run one istance of the routine at a time.
+     *
+     *  It works like `id` was a mutex, and you could co_await for it to become ready.
+     *
+     *
+     *  @param id The id we constrain on. Often this will be a user-uuid
+     *  @param fn The function to run constrained
+     *  @return The result of the function
+     */
+    template <typename T, typename R = std::invoke_result_t<T>::value_type>
+    boost::asio::awaitable<R> asyncAsMutexed(const std::string id, T&& fn) {
+        strand_t *pstrand = {};
+        {
+            std::scoped_lock lock{mutex_};
+            if (auto it = strands_.find(id); it != strands_.end()) {
+                pstrand = &*it->second;
+            } else {
+                auto st = std::make_unique<strand_t>(server_.ctx().get_executor());
+                auto [newit, _] = strands_.emplace(id, std::move(st));
+                pstrand = &*newit->second;
+            }
+        }
+
+        boost::asio::strand<boost::asio::io_context::executor_type> strand(server_.ctx().get_executor());
+        co_return co_await boost::asio::co_spawn(strand, [&]() -> boost::asio::awaitable<R> {
+                co_return co_await fn();
+            }, boost::asio::use_awaitable);
+    }
+
+
 
     template <typename T>
     class ReqBase {
@@ -163,7 +193,9 @@ public:
                             RequestCtx rctx;
                             rctx.uctx = owner_.userContext(ctx);
                             rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
-                            co_await fn(reply, rctx);
+                            co_await owner_.asyncAsMutexed(rctx.uctx->userUuid(), [&] () -> boost::asio::awaitable<void> {
+                                co_return co_await fn(reply, rctx);
+                            });
                         } else if constexpr (!UnaryFnWithoutContext<FnT, ReplyT *> && !UnaryFnWithContext<FnT, ReplyT *>) {
                             static_assert(false, "Invalid unary handler function");
                         }
@@ -263,6 +295,9 @@ public:
     boost::asio::awaitable<void> endWorkSessionForAction(const std::string_view& actionId, RequestCtx& rctx);
 
     void updateSessionSettings(const pb::UserGlobalSettings& settings, ::grpc::CallbackServerContext *ctx);
+
+    using strand_t = boost::asio::strand<boost::asio::io_context::executor_type>;
+
 private:
     // The Server instance where we get objects in the application, like config and database
     Server& server_;
@@ -280,6 +315,7 @@ private:
     std::unique_ptr<::grpc::Server> grpc_server_;
 
     mutable std::map<boost::uuids::uuid, std::shared_ptr<UserContext>> sessions_;
+    std::map<std::string, std::unique_ptr<strand_t>> strands_;
     std::map<boost::uuids::uuid, std::weak_ptr<Publisher>> publishers_;
     mutable std::mutex mutex_;
     std::atomic_bool active_{false};

@@ -855,7 +855,7 @@ boost::asio::awaitable<void> GrpcServer::activateNextWorkSession(RequestCtx& rct
 boost::asio::awaitable<void> GrpcServer::pauseWork(RequestCtx&  rctx)
 {
 
-    auto next = co_await server().db().exec(
+    auto next = co_await rctx.dbh->exec(
         format("SELECT {} FROM work_session WHERE user=? AND state='active'",
                ToWorkSession::selectCols),
         rctx.uctx->userUuid());

@@ -249,13 +249,13 @@ enum class DoneChanged {
 };
 
 boost::asio::awaitable<void>
-replyWithAction(GrpcServer& grpc, const std::string actionId, RequestCtx& rctx,
+ replyWithAction(GrpcServer& grpc, const std::string actionId, RequestCtx& rctx,
                 ::grpc::CallbackServerContext *ctx, pb::Status *reply,
                 DoneChanged done = DoneChanged::NO_CHANGE, bool publish = true) {
 
     const auto dbopts = rctx.uctx->dbOptions();
 
-    auto res = co_await grpc.server().db().exec(
+    auto res = co_await rctx.dbh->exec(
         format(R"(SELECT {} from action WHERE id=? AND user=? )",
                ToAction::allSelectCols()), dbopts, actionId, rctx.uctx->userUuid());
 
@@ -474,12 +474,12 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteAction(::grpc::CallbackServerContext *ctx, const pb::DeleteActionReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = owner_.userContext(ctx);
             const auto& cuser = uctx->userUuid();
             const auto& uuid = validatedUuid(req->actionid());
 
-            auto res = co_await owner_.server().db().exec("DELETE FROM action WHERE id=? AND user=?",
+            auto res = co_await rctx.dbh->exec("DELETE FROM action WHERE id=? AND user=?",
                                                           uuid, cuser);
 
             assert(res.has_value());
