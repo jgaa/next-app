@@ -18,6 +18,7 @@ Item {
         tmp.timeZone = timeZone.text
         tmp.region = region.text
         tmp.firstDayOfWeekIsMonday = monday.isChecked
+        tmp.autoStartNextWorkSession = autoStartNextWs.isChecked
 
         NaComm.saveGlobalSettings(tmp)
         initialized = false
@@ -32,6 +33,7 @@ Item {
             region.text = tmp.region
             monday.isChecked = tmp.firstDayOfWeekIsMonday
             initialized = true;
+            autoStartNextWs.isChecked = tmp.autoStartNextWorkSession
         }
     }
 
@@ -86,6 +88,16 @@ Item {
         CheckBoxWithFontIcon {
             id: monday
             text: qsTr("First day of week is Monday")
+            textColor: "black"
+
+            //placeholderText: qsTr("to");
+        }
+
+        Item {}
+
+        CheckBoxWithFontIcon {
+            id: autoStartNextWs
+            text: qsTr("When a work session is completed, automatically start the next one")
             textColor: "black"
 
             //placeholderText: qsTr("to");

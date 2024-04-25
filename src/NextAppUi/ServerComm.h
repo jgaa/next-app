@@ -214,4 +214,5 @@ private:
     std::shared_ptr<QGrpcServerStream> updates_;
     QString current_server_address_;
     nextapp::pb::UserGlobalSettings userGlobalSettings_;
+    QString session_id_;
 };

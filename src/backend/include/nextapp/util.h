@@ -62,6 +62,7 @@ std::string toUpper(const T& input)
 boost::uuids::uuid newUuid();
 std::string newUuidStr();
 const std::string& validatedUuid(const std::string& uuid);
+boost::uuids::uuid toUuid(std::string_view uuid);
 
 template <typename T>
 concept ProtoMessage = std::is_base_of_v<google::protobuf::Message, T>;

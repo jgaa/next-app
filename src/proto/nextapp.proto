@@ -19,6 +19,7 @@ enum Error {
     INVALID_ACTION = 13;
     INVALID_REQUEST = 14;
     PAGE_SIZE_TOO_SMALL = 15;
+    AUTH_MISSING_SESSION_ID = 16;
 }
 
 message KeyValue {
@@ -74,6 +75,7 @@ message UserGlobalSettings {
     string region = 3;
     string language = 4;
     bool firstDayOfWeekIsMonday = 5;
+    bool autoStartNextWorkSession = 6;
 }
 
 message Node {

@@ -166,7 +166,7 @@ namespace {
             *reply->mutable_userglobalsettings() = *req;
 
             // TODO: Signal other servers that the settings has changed
-            owner_.updateSessionSettings(*req, ctx);
+            owner_.updateSessionSettingsForUser(*req, ctx);
 
             co_return;
         }, __func__);

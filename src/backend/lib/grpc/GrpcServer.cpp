@@ -233,49 +233,73 @@ void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
 
 const std::shared_ptr<UserContext> GrpcServer::userContext(::grpc::CallbackServerContext *ctx) const
 {
-    // TODO: Implement sessions and authentication
+    const auto sid = getSessionId(ctx);
+
+    // TODO: Implement real sessions and authentication
     lock_guard lock{mutex_};
-    if (sessions_.empty()) {
-
-        pb::UserGlobalSettings settings;
-        settings.set_timezone(string{chrono::current_zone()->name()});
-
-        // TODO: Remove this when we have proper authentication.
-        boost::asio::co_spawn(server_.ctx(), [&]() -> boost::asio::awaitable<void> {
-                auto res = co_await server_.db().exec(
-                    "SELECT settings FROM user_settings WHERE user = ?",
-                    system_user);
-
-                enum Cols { SETTINGS };
-                if (!res.rows().empty()) {
-                    const auto& row = res.rows().front();
-                    auto blob = row.at(SETTINGS).as_blob();
-                    pb::UserGlobalSettings tmp_settings;
-                    if (tmp_settings.ParseFromArray(blob.data(), blob.size())) {
-                        LOG_DEBUG_N << "Loaded UserGlobalSettings for user " << system_user;
-                        settings = tmp_settings;
-                    } else {
-                        LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << system_user;
-                        throw runtime_error{"Failed to parse UserGlobalSettings"};
-                    }
-                }
-                co_return;
-        }, boost::asio::use_future).get();
-
-        auto ux = make_shared<UserContext>(system_tenant, system_user, settings);
-        sessions_[ux->sessionId()] = ux;
-        return ux;
+    if (auto it = sessions_.find(sid); it != sessions_.end()) {
+        return it->second;
     }
 
-    // For now we have only one session
-    return sessions_.begin()->second;
+    pb::UserGlobalSettings settings;
+    settings.set_timezone(string{chrono::current_zone()->name()});
+
+    // TODO: Remove this when we have proper authentication.
+    boost::asio::co_spawn(server_.ctx(), [&]() -> boost::asio::awaitable<void> {
+            auto res = co_await server_.db().exec(
+                "SELECT settings FROM user_settings WHERE user = ?",
+                system_user);
+
+            enum Cols { SETTINGS };
+            if (!res.rows().empty()) {
+                const auto& row = res.rows().front();
+                auto blob = row.at(SETTINGS).as_blob();
+                pb::UserGlobalSettings tmp_settings;
+                if (tmp_settings.ParseFromArray(blob.data(), blob.size())) {
+                    LOG_DEBUG_N << "Loaded UserGlobalSettings for user " << system_user;
+                    settings = tmp_settings;
+                } else {
+                    LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << system_user;
+                    throw runtime_error{"Failed to parse UserGlobalSettings"};
+                }
+            }
+            co_return;
+    }, boost::asio::use_future).get();
+
+    auto ux = make_shared<UserContext>(system_tenant, system_user, settings, sid);
+    sessions_[sid] = ux;
+    return ux;
 }
 
-void GrpcServer::updateSessionSettings(const pb::UserGlobalSettings &settings, ::grpc::CallbackServerContext */*ctx*/)
+void GrpcServer::updateSessionSettingsForUser(const pb::UserGlobalSettings &settings, ::grpc::CallbackServerContext *ctx)
 {
+    assert(ctx);
+    const auto sid = getSessionId(ctx);
+
+    // TODO: Update the session data for all sessions from that user.
+    // TODO: Notify other servers about the change.
+
     lock_guard lock{mutex_};
-    auto ux = make_shared<UserContext>(system_tenant, system_user, settings);
-    sessions_[ux->sessionId()] = ux;
+
+    auto obsolete = std::move(sessions_);
+    sessions_.clear();
+
+    for(const auto& [id, session] : obsolete) {
+        if (session->userUuid() == system_user) {
+            sessions_[id] = make_shared<UserContext>(system_tenant, system_user, settings, id);
+        }
+    }
+}
+
+boost::uuids::uuid GrpcServer::getSessionId(::grpc::CallbackServerContext *ctx) const
+{
+    auto session_id = ctx->client_metadata().find("session-id");
+    if (session_id == ctx->client_metadata().end()) {
+        LOG_WARN_N << "No session_id in metadata from peer: " << ctx->peer();
+        throw db_err{pb::Error::AUTH_MISSING_SESSION_ID, "Missing session-id in gRPC request"};
+    }
+
+    return toUuid({session_id->second.data(), session_id->second.size()});
 }
 
 } // ns

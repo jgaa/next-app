@@ -144,7 +144,9 @@ struct ToWorkSession {
                         LOG_ERROR << "Work-Session " << work.id() << " already has an end time, but it is not DONE.";
                     }
                     co_await owner_.stopWorkSession(work, rctx, &event);
-                    co_await owner_.activateNextWorkSession(rctx);
+                    if (rctx.uctx->settings().autostartnextworksession()) {
+                        co_await owner_.activateNextWorkSession(rctx);
+                    }
                     break;
                 case pb::WorkEvent::Kind::WorkEvent_Kind_PAUSE:
                     if (work.state() != pb::WorkSession_State::WorkSession_State_ACTIVE) {
@@ -817,7 +819,6 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)
 
 boost::asio::awaitable<void> GrpcServer::activateNextWorkSession(RequestCtx& rctx)
 {
-    // TODO: Use transaction
     // Validate that no work sessions are active
     auto res = co_await rctx.dbh->exec(
         "SELECT id FROM work_session WHERE user=? AND state='active'",

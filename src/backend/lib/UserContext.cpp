@@ -25,8 +25,9 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
     }
 }
 
-UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const pb::UserGlobalSettings &settings)
-    : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings) {
+UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid,
+                         const pb::UserGlobalSettings &settings, boost::uuids::uuid sessionId)
+    : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings), sessionid_{sessionId} {
     try {
         tz_ = std::chrono::locate_zone(settings_.timezone());
     } catch (const std::exception& e) {

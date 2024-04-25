@@ -49,9 +49,16 @@ ServerComm::~ServerComm()
 }
 
 void ServerComm::start()
-{   
+{
+    session_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
     current_server_address_ = QSettings{}.value("serverAddress", getDefaultServerAddress()).toString();
-    QGrpcChannelOptions channelOptions(QUrl(current_server_address_ , QUrl::StrictMode));
+
+    QGrpcMetadata metadata;
+    metadata.emplace("session-id", session_id_.toLatin1());
+
+    auto channelOptions = QGrpcChannelOptions{QUrl(current_server_address_, QUrl::StrictMode)}
+                              .withMetadata(metadata);
+
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
     LOG_INFO << "Using server at " << current_server_address_;
 

@@ -18,7 +18,7 @@ public:
                 bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions);
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid,
-                const pb::UserGlobalSettings& settings);
+                const pb::UserGlobalSettings& settings, boost::uuids::uuid sessionId = newUuid());
 
     ~UserContext() = default;
 

@@ -216,4 +216,16 @@ TimePeriod toTimePeriod(time_t when, const UserContext &uctx, pb::WorkSummaryKin
     }
 }
 
+boost::uuids::uuid toUuid(std::string_view uuid)
+{
+    using namespace boost::uuids;
+    try {
+        return string_generator()(string{uuid});
+    } catch(const runtime_error&) {
+        ;
+    }
+
+    throw runtime_error{"invalid uuid"};
+}
+
 } // ns
