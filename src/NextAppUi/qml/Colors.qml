@@ -24,4 +24,5 @@ QtObject {
     readonly property color hover: "#2C313A"
     readonly property color border: "#4e4646"
     readonly property color totals: "yellow"
+    readonly property color nodePath: "lightgray"
 }

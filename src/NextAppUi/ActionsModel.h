@@ -68,7 +68,8 @@ class ActionsModel : public QAbstractListModel
         SectionNameRole,
         DueRole,
         FavoriteRole,
-        HasWorkSessionRole
+        HasWorkSessionRole,
+        ListNameRole,
     };
 
     enum Shortcuts {
@@ -87,10 +88,24 @@ class ActionsModel : public QAbstractListModel
         NEXT_YEAR,
     };
 
+    enum FetchWhat {
+        FW_TODAY,
+        FW_TODAY_AND_OVERDUE,
+        FW_CURRENT_WEEK,
+        FW_CURRENT_WEEK_AND_OVERDUE,
+        FW_CURRENT_MONTH,
+        FW_CURRENT_MONTH_AND_OVERDUE,
+        FW_SELECTED_NODE,
+        FW_SELECTED_NODE_AND_CHILDREN
+    };
+
+    Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
+    Q_PROPERTY(FetchWhat mode READ mode WRITE setMode NOTIFY modeChanged)
+
 public:
     ActionsModel(QObject *parent = {});
 
-    Q_INVOKABLE void populate(QString node);
+    //Q_INVOKABLE void populate(QString node, FetchWhat what);
     Q_INVOKABLE void addAction(const nextapp::pb::Action& action);
     Q_INVOKABLE void updateAction(const nextapp::pb::Action& action);
     Q_INVOKABLE void deleteAction(const QString& uuid);
@@ -115,6 +130,10 @@ public:
     void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
     void doUpdate(const nextapp::pb::Action& action, nextapp::pb::Update::Operation op);
     void doUpdate(const nextapp::pb::WorkSession& work, nextapp::pb::Update::Operation op);
+    FetchWhat mode() const noexcept { return mode_; }
+    void setMode(FetchWhat mode);
+    bool isVisible() const { return is_visible_; }
+    void setIsVisible(bool isVisible);
 
     // QAbstractItemModel interface
 public:
@@ -123,7 +142,16 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+signals:
+    void modeChanged();
+    void isVisibleChanged();
+
 private:
+    void fetchIf();
+    void selectedChanged();
+
     std::shared_ptr<nextapp::pb::Actions> actions_;
     std::set<QUuid> worked_on_;
+    FetchWhat mode_ = FW_TODAY_AND_OVERDUE;
+    bool is_visible_ = false;
 };

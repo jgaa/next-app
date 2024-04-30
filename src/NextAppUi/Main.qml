@@ -198,7 +198,7 @@ ApplicationWindow {
                             currentIndex: sidebar.currentTabIndex
                             anchors.fill: parent
 
-                            ActionsList {}
+                            ActionsListView {}
 
                             WorkSessionsView {}
 

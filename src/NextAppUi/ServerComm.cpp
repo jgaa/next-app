@@ -234,7 +234,7 @@ void ServerComm::fetchDay(int year, int month, int day)
 
 void ServerComm::getActions(nextapp::pb::GetActionsReq &filter)
 {
-    callRpc<nextapp::pb::Status>([this, &filter]() {
+    callRpc<nextapp::pb::Status>([this, filter]() {
         return client_->GetActions(filter);
     } , [this](const nextapp::pb::Status& status) {
         if (status.hasActions()) {
@@ -246,7 +246,7 @@ void ServerComm::getActions(nextapp::pb::GetActionsReq &filter)
 
 void ServerComm::getAction(nextapp::pb::GetActionReq &req)
 {
-    callRpc<nextapp::pb::Status>([this, &req]() {
+    callRpc<nextapp::pb::Status>([this, req]() {
         return client_->GetAction(req);
     }, [this](const nextapp::pb::Status& status) {
         emit receivedAction(status);
@@ -255,7 +255,7 @@ void ServerComm::getAction(nextapp::pb::GetActionReq &req)
 
 void ServerComm::addAction(const nextapp::pb::Action &action)
 {
-    callRpc<nextapp::pb::Status>([this, &action]() {
+    callRpc<nextapp::pb::Status>([this, action]() {
         return client_->CreateAction(action);
     } , [this](const nextapp::pb::Status& status) {
         ;
@@ -264,7 +264,7 @@ void ServerComm::addAction(const nextapp::pb::Action &action)
 
 void ServerComm::updateAction(const nextapp::pb::Action &action)
 {
-    callRpc<nextapp::pb::Status>([this, &action]() {
+    callRpc<nextapp::pb::Status>([this, action]() {
         return client_->UpdateAction(action);
     } , [this](const nextapp::pb::Status& status) {
         ;
@@ -276,7 +276,7 @@ void ServerComm::deleteAction(const QString &actionUuid)
     nextapp::pb::DeleteActionReq req;
     req.setActionId(actionUuid);
 
-    callRpc<nextapp::pb::Status>([this, &req]() {
+    callRpc<nextapp::pb::Status>([this, req]() {
         return client_->DeleteAction(req);
     } , [this](const nextapp::pb::Status& status) {
         ;

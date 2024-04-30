@@ -22,6 +22,9 @@ struct ServerOptions {
      *  - 2 enable and format in readable form
      */
     int log_protobuf_messages = 0;
+
+    /*! Maximum page size for paginated results */
+    size_t max_page_size = 250;
 };
 
 struct Config {

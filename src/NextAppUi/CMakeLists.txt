@@ -76,6 +76,7 @@ qt_add_qml_module(appNextAppUi
         Main.qml
         qml/About.qml
         qml/ActionsList.qml
+        qml/ActionsListView.qml
         qml/CheckBoxWithFontIcon.qml
         qml/Colors.qml # x
         qml/CommonElements.qml

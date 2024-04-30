@@ -22,6 +22,17 @@ enum Error {
     AUTH_MISSING_SESSION_ID = 16;
 }
 
+message Page {
+    uint32 pageSize = 2;
+
+    oneof key {
+        string prevKey = 3;
+
+        // We may (almost certainly) get the same row again, but that is better than missing rows with the same time_t
+        uint64 prevTime = 4; // time_t
+    }
+}
+
 message KeyValue {
     string key = 1;
     optional string value = 2;
@@ -468,9 +479,21 @@ message MoveNodeReq {
     string parentUuid = 2;
 }
 
+message PageSpan {
+    uint32 pageSize = 1;
+    uint32 offset = 2;
+}
+
 message GetActionsReq {
-    optional bool active = 1;
-    string node = 2;
+    PageSpan page = 2;
+    optional bool active = 3;
+    optional TimeSpan startSpan = 4;
+    optional TimeSpan dueSpan = 5;
+
+    oneof filter {
+        string nodeId = 11;
+        string nodeIdAndChildren = 12;
+    }
 }
 
 message GetActionReq {
@@ -518,18 +541,6 @@ message DeleteWorkReq {
 message AddWorkEventReq {
     string workSessionId = 1;
     repeated WorkEvent events = 2;
-}
-
-
-message Page {
-    uint32 pageSize = 2;
-
-    oneof key {
-        string prevKey = 3;
-
-        // We may (almost certainly) get the same row again, but that is better than missing rows with the same time_t
-        uint64 prevTime = 4; // time_t
-    }
 }
 
 message TimeSpan {

@@ -385,10 +385,45 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     });
 
     static constexpr auto v5_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
         R"(CREATE OR REPLACE TABLE user_settings (
             user UUID not NULL default UUID() PRIMARY KEY,
             settings BLOB, -- The settings saved as a protobuf message
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        // R"(ALTER TABLE action
+        //     ADD COLUMN ts_seq TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
+        //     ADD COLUMN tkey BINARY(16) NOT NULL,
+        //     ADD INDEX action_ix6 (user, status, tkey, due_by_time))",
+
+        // "DROP TRIGGER IF EXISTS tr_before_insert_action",
+        // R"(CREATE TRIGGER tr_before_insert_action
+        //     BEFORE INSERT ON action
+        //     FOR EACH ROW
+        //     BEGIN
+        //         SET NEW.tkey = CONCAT(
+        //           UNHEX(LPAD(HEX(IFNULL(UNIX_TIMESTAMP(NEW.start_time), 0)), 16, '0')),
+        //           UNHEX(LPAD(HEX(IFNULL(UNIX_TIMESTAMP(NEW.ts_seq) * 1000 + MICROSECOND(NEW.ts_seq) / 1000, 0)), 16, '0'))
+        //         );
+        //     END)",
+
+        // "DROP TRIGGER IF EXISTS tr_before_update_action",
+        // R"(CREATE TRIGGER tr_before_update_action
+        //     BEFORE UPDATE ON action
+        //     FOR EACH ROW
+        //     BEGIN
+        //         SET NEW.tkey = CONCAT(
+        //           UNHEX(LPAD(HEX(IFNULL(UNIX_TIMESTAMP(NEW.start_time), 0)), 16, '0')),
+        //           UNHEX(LPAD(HEX(IFNULL(UNIX_TIMESTAMP(NEW.ts_seq) * 1000 + MICROSECOND(NEW.ts_seq) / 1000, 0)), 16, '0'))
+        //         );
+        //       SET NEW.version = IFNULL(NEW.version, 0) + 1;
+        //     END)",
+
+        // "SET @i = 10000",
+        // R"(UPDATE action SET ts_seq = FROM_UNIXTIME(@i := @i + 1))",
+        // R"(UPDATE action SET status = status)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({
@@ -396,7 +431,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v2_upgrade,
         v3_upgrade,
         v4_upgrade,
-        v5_upgrade,
+        v5_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
@@ -409,14 +444,19 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
     co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
         co_await db.init();
+        {
+            auto handle = co_await db.getConnection();
+            auto trx = co_await handle.transaction();
 
-        // Here we will run all SQL queries for upgrading from the specified version to the current version.
-        auto relevant = ranges::drop_view(versions, version);
-        for(string_view query : relevant | std::views::join) {
-            co_await db.exec(query);
+            // Here we will run all SQL queries for upgrading from the specified version to the current version.
+            auto relevant = ranges::drop_view(versions, version);
+            for(string_view query : relevant | std::views::join) {
+                co_await handle.exec(query);
+            }
+
+            co_await handle.exec("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
+            co_await trx.commit();
         }
-
-        co_await db.exec("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
         co_await db.close();
 
     }, asio::use_awaitable);

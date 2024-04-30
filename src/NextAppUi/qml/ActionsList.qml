@@ -48,7 +48,6 @@ Rectangle {
 
         ListView {
             id: listView
-            property string currentNode: MainTreeModel.selected
 
             boundsBehavior: Flickable.StopAtBounds
             boundsMovement: Flickable.StopAtBounds
@@ -64,20 +63,6 @@ Rectangle {
 
             model: ActionsModel
 
-            onCurrentNodeChanged: {
-                console.log("Populating node ", currentNode)
-                ActionsModel.populate(currentNode)
-            }
-
-            // delegate: ItemDelegate {
-            //     //text: name
-            //     highlighted: ListView.isCurrentItem
-            //     required property int index
-            //     required property string name
-            //     onClicked: listView.currentIndex = index
-            // }
-
-
             delegate: Item {
                 property bool selected: listView.currentIndex === index
                 required property int index
@@ -86,14 +71,15 @@ Rectangle {
                 required property bool done
                 required property bool favorite
                 required property bool hasWorkSession
+                required property string listName
 
-                implicitHeight: row.implicitHeight
+                implicitHeight: row.implicitHeight + 4
                 width: listView.width
                 clip: true
 
                 Rectangle {
                     id: background
-                    color: selected ? Colors.selection : Colors.background
+                    color: selected ? Colors.selection : index % 2 ? Colors.background : Colors.background2
                     anchors.fill: parent
                 }
 
@@ -113,73 +99,79 @@ Rectangle {
                     }
                 }
 
-                RowLayout {
+                ColumnLayout {
                     id: row
-                    spacing: 6
+                    Layout.fillWidth: true
 
-                    // StyledCheckBox {
-                    //     id: doneCtl
-                    //     height: name.height
-                    //     checked: done
-                    // }
+                    RowLayout {
+                        spacing: 6
 
-                    // Rectangle {
-                    //     anchors.fill: check
-                    //     color: white
-                    // }
+                        Image {
+                            id: checkIcon
+                            Layout.topMargin: 2
+                            Layout.bottomMargin: 2
+                            source:  done ? "../icons/square-checked.svg" : "../icons/square-unchecked.svg"
+                            sourceSize.height: font.pixelSize * 1.4
+                            fillMode: Image.PreserveAspectFit
 
-                    Image {
-                        id: checkIcon
-                        Layout.topMargin: 2
-                        Layout.bottomMargin: 2
-                        source:  done ? "../icons/square-checked.svg" : "../icons/square-unchecked.svg"
-                        sourceSize.height: font.pixelSize * 1.4
-                        fillMode: Image.PreserveAspectFit
+                            MouseArea {
+                                anchors.fill: parent
 
-                        MouseArea {
-                            anchors.fill: parent
+                                onClicked: {
+                                    ActionsModel.markActionAsDone(uuid, !done)
+                                }
+                            }
+                        }
+
+                        Text {
+                            id: actionName
+                            text: name
+                            color: done ? Colors.disabledText : Colors.text
+                        }
+
+                        CheckBoxWithFontIcon {
+                            id: favoriteIcon
+                            isChecked: favorite
+                            checkedCode: "\uf005"
+                            uncheckedCode: "\uf005"
+                            checkedColor: "orange"
+                            uncheckedColor: "lightgray"
+                            useSolidForChecked: true
+                            iconSize: 16
+                            autoToggle: false
+                            text: ""
 
                             onClicked: {
-                                ActionsModel.markActionAsDone(uuid, !done)
+                                ActionsModel.markActionAsFavorite(uuid, !favorite)
+                            }
+                        }
+
+                        CheckBoxWithFontIcon {
+                            id: canWorkIcon
+                            isChecked: hasWorkSession
+                            checkedCode: "\uf017"
+                            uncheckedCode: "\uf017"
+                            checkedColor: "green"
+                            uncheckedColor: "lightblue"
+                            useSolidForChecked: true
+                            iconSize: 16
+                            autoToggle: false
+
+                            onClicked: {
+                                WorkSessionsModel.startWork(uuid)
                             }
                         }
                     }
 
-                    Text {
-                        text: name
-                        color: Colors.text
-                    }
-
-                    CheckBoxWithFontIcon {
-                        id: favoriteIcon
-                        isChecked: favorite
-                        checkedCode: "\uf005"
-                        uncheckedCode: "\uf005"
-                        checkedColor: "orange"
-                        uncheckedColor: "lightgray"
-                        useSolidForChecked: true
-                        iconSize: 16
-                        autoToggle: false
-                        text: ""
-
-                        onClicked: {
-                            ActionsModel.markActionAsFavorite(uuid, !favorite)
+                    RowLayout {
+                        Item {
+                            Layout.preferredWidth: 20
                         }
-                    }
 
-                    CheckBoxWithFontIcon {
-                        id: canWorkIcon
-                        isChecked: hasWorkSession
-                        checkedCode: "\uf017"
-                        uncheckedCode: "\uf017"
-                        checkedColor: "green"
-                        uncheckedColor: "lightblue"
-                        useSolidForChecked: true
-                        iconSize: 16
-                        autoToggle: false
-
-                        onClicked: {
-                            WorkSessionsModel.startWork(uuid)
+                        Label {
+                            color: done ? Colors.disabledText : Colors.nodePath
+                            text: listName
+                            visible: text !== ""
                         }
                     }
                 }

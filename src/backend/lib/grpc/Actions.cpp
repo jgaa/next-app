@@ -1,4 +1,4 @@
-
+﻿
 #include "shared_grpc_server.h"
 
 namespace nextapp::grpc {
@@ -300,25 +300,106 @@ boost::asio::awaitable<void>
             const auto& cuser = uctx->userUuid();
             const auto& dbopts = uctx->dbOptions();
 
-            SqlFilter filter{false};
+            auto limit = owner_.server().config().options.max_page_size;
+            if (auto page_size = req->page().pagesize(); page_size > 0) {
+                limit = min<decltype(limit)>(page_size, limit);
+            }
+
+            // We are building a dynamic query.
+            // We need to add the arguments in the same order as we add '?' to the query
+            // as boost.mysql lacks the ability to bind by name.
+            std::vector<boost::mysql::field_view> args;
+            std::string query;
+            std::string_view sortcol = "a.due_by_time";
+            static const string prefixed_cols = prefixNames(ToAction::coreSelectCols(), "a.");
+
+            if (req->has_nodeidandchildren()) {
+                query = format(R"(WITH RECURSIVE node_tree AS (
+                SELECT id FROM node WHERE id=? and user=?
+                    UNION ALL
+                    SELECT n.id FROM node n INNER JOIN node_tree nt ON n.parent = nt.id
+                )
+                SELECT {}, {} AS sort_ts
+                FROM action a
+                INNER JOIN node_tree nt ON a.node = nt.id)",
+                                   prefixed_cols, sortcol);
+                    args.emplace_back(req->nodeidandchildren());
+                    args.emplace_back(cuser);
+            } else {
+                query = format("SELECT {}, {} AS sort_ts FROM action a WHERE user=? ",
+                               prefixed_cols, sortcol);
+                args.emplace_back(cuser);
+
+                if (req->has_nodeid()) {
+                    query += " AND a.node = ? ";
+                    args.emplace_back(req->nodeid());
+                }
+            }
+
+            optional<string> startspan_start, startspan_end;
+            if (req->has_startspan()) {
+                startspan_start = toAnsiTime(req->startspan().start(), uctx->tz());
+                startspan_end = toAnsiTime(req->startspan().end(), uctx->tz());
+                query += " AND a.start_time >= ? AND a.start_time < ? ";
+                args.emplace_back(*startspan_start);
+                args.emplace_back(*startspan_end);
+            }
+
+            optional<string> duespan_start, duespan_end;
+            if (req->has_duespan()) {
+                duespan_start = toAnsiTime(req->duespan().start(), uctx->tz());
+                duespan_end = toAnsiTime(req->duespan().end(), uctx->tz());
+                query += " AND a.due_by_time >= ? AND a.due_by_time < ? ";
+                args.emplace_back(*duespan_start);
+                args.emplace_back(*duespan_end);
+            }
+
             if (req->has_active() && req->active()) {
-                filter.add("(status!='done' || DATE(completed_time) = CURDATE())");
-            }
-            if (!req->node().empty()) {
-                filter.add(format("node='{}'", req->node()));
+                query += " AND (status!='done' || DATE(completed_time) = CURDATE()) ";
             }
 
-            string order = "status DESC, priority DESC, due_by_time, created_date";
+            string_view order = "status DESC, priority DESC, sort_ts, created_date";
 
-            const auto res = co_await owner_.server().db().exec(
-                format(R"(SELECT {} from action WHERE user=? {} ORDER BY {})",
-                       ToAction::coreSelectCols(),
-                       filter.where(), order), dbopts, cuser);
-            assert(res.has_value());
-            auto *actions = reply->mutable_actions();
-            for(const auto& row : res.rows()) {
-                ToAction::assign(row, *actions->add_actions(), *uctx);
+            query += format(" ORDER BY {} LIMIT ? OFFSET ?", order);
+            args.emplace_back(limit + 1);
+            args.emplace_back(req->page().offset());
+
+            const auto res = co_await owner_.server().db().exec(query, dbopts, args);
+
+            if (res.has_value()) {
+                const auto rows_count = res.rows().size();
+                const auto has_more = rows_count >= limit;
+                size_t rows = 0;
+                reply->set_hasmore(has_more);
+                auto *actions = reply->mutable_actions();
+                for(const auto& row : res.rows()) {
+                    if (++rows > limit) {
+                        assert(has_more && reply->has_hasmore());
+                        break;
+                    }
+                    ToAction::assign(row, *actions->add_actions(), *uctx);;
+                }
             }
+
+            // SqlFilter filter{false};
+            // if (req->has_active() && req->active()) {
+            //     filter.add("(status!='done' || DATE(completed_time) = CURDATE())");
+            // }
+            // if (!req->node().empty()) {
+            //     filter.add(format("node='{}'", req->node()));
+            // }
+
+            // string order = "status DESC, priority DESC, due_by_time, created_date";
+
+            // const auto res = co_await owner_.server().db().exec(
+            //     format(R"(SELECT {} from action WHERE user=? {} ORDER BY {})",
+            //            ToAction::coreSelectCols(),
+            //            filter.where(), order), dbopts, cuser);
+            // assert(res.has_value());
+            // auto *actions = reply->mutable_actions();
+            // for(const auto& row : res.rows()) {
+            //     ToAction::assign(row, *actions->add_actions(), *uctx);
+            // }
 
             co_return;
         }, __func__);

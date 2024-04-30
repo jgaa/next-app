@@ -4,6 +4,7 @@
 #include <QUuid>
 #include <QTimeZone>
 #include <QDateTime>
+#include <QSettings>
 
 #include "ActionsModel.h"
 #include "ServerComm.h"
@@ -159,18 +160,22 @@ ActionsModel::ActionsModel(QObject *parent)
 {
 }
 
-void ActionsModel::populate(QString node)
-{
-    // We re-allocate rather than reset. Then we don't have to check if the
-    // object is valid before every use in other places.
-    actions_ = make_shared<nextapp::pb::Actions>();
+// void ActionsModel::populate(QString node)
+// {
+//     // We re-allocate rather than reset. Then we don't have to check if the
+//     // object is valid before every use in other places.
+//     actions_ = make_shared<nextapp::pb::Actions>();
 
-    nextapp::pb::GetActionsReq filter;
-    filter.setActive(true);
-    filter.setNode(node);
+//     nextapp::pb::GetActionsReq filter;
+//     filter.setActive(true);
+//     filter.setNodeId(node);
 
-    fetch(filter);
-}
+//     nextapp::pb::PageSpan page;
+//     page.setPageSize(QSettings{}.value("pagination/page_size", 100).toInt());
+//     filter.setPage(page);
+
+//     fetch(filter);
+// }
 
 void ActionsModel::addAction(const nextapp::pb::Action &action)
 {
@@ -230,6 +235,11 @@ void ActionsModel::start()
             &ServerComm::receivedCurrentWorkSessions,
             this,
             &ActionsModel::receivedWorkSessions);
+
+    connect(MainTreeModel::instance(),
+            &MainTreeModel::selectedChanged,
+            this,
+            &ActionsModel::selectedChanged);
 }
 
 void ActionsModel::fetch(nextapp::pb::GetActionsReq &filter)
@@ -368,6 +378,26 @@ void ActionsModel::doUpdate(const nextapp::pb::WorkSession &work, nextapp::pb::U
         }
 
         emit dataChanged(cix, cix, roles);
+    }
+}
+
+void ActionsModel::setMode(FetchWhat mode)
+{
+    if (mode_ != mode) {
+        LOG_DEBUG_N << "Mode changed to " << mode;
+        mode_ = mode;
+        emit modeChanged();
+        fetchIf();
+    }
+}
+
+void ActionsModel::setIsVisible(bool isVisible)
+{
+    if (is_visible_ != isVisible) {
+        LOG_DEBUG_N << "Visible changed to " << isVisible;
+        is_visible_ = isVisible;
+        emit isVisibleChanged();
+        fetchIf();
     }
 }
 
@@ -789,8 +819,12 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return action.favorite();
     case HasWorkSessionRole:
         return worked_on_.contains(toQuid(action.id_proto()));
+    case ListNameRole:
+        if (MainTreeModel::instance()->selected() == action.node()) {
+            return {};
+        }
+        return MainTreeModel::instance()->nodeNameFromUuid(action.node(), true);
     }
-
     return {};
 }
 
@@ -848,7 +882,75 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[DueRole] = "due";
     roles[FavoriteRole] = "favorite";
     roles[HasWorkSessionRole] = "hasWorkSession";
+    roles[ListNameRole] = "listName";
     return roles;
+}
+
+void ActionsModel::fetchIf()
+{
+    if (!is_visible_) {
+        return;
+    }
+
+    nextapp::pb::GetActionsReq req;
+    req.setActive(true);
+
+    switch(mode_) {
+    case FetchWhat::FW_TODAY: {
+        auto date = QDate::currentDate();
+        req.startSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+        req.startSpan().setEnd(date.addDays(1).startOfDay().toSecsSinceEpoch());
+    } break;
+    case FetchWhat::FW_TODAY_AND_OVERDUE: {
+        auto date = QDate::currentDate();
+        req.startSpan().setStart(3600);
+        req.startSpan().setEnd(date.addDays(1).startOfDay().toSecsSinceEpoch());
+    } break;
+    case FetchWhat::FW_CURRENT_WEEK: {
+        auto date = QDate::currentDate();
+        auto day_in_week = date.dayOfWeek();
+        auto w_start = date.addDays((day_in_week  -1) * -1);
+        req.startSpan().setStart(w_start.startOfDay().toSecsSinceEpoch());
+        req.startSpan().setEnd(w_start.addDays(7).startOfDay().toSecsSinceEpoch());
+    } break;
+    case FetchWhat::FW_CURRENT_WEEK_AND_OVERDUE: {
+        auto date = QDate::currentDate();
+        auto day_in_week = date.dayOfWeek();
+        auto w_start = date.addDays((day_in_week  -1) * -1);
+        req.startSpan().setStart(1);
+        req.startSpan().setEnd(w_start.addDays(7).startOfDay().toSecsSinceEpoch());
+    } break;
+    case FetchWhat::FW_CURRENT_MONTH: {
+        auto date = QDate::currentDate();
+        date.setDate(date.year(), date.month(), 1);
+        req.startSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addMonths(1);
+        req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    } break;
+    case FetchWhat::FW_CURRENT_MONTH_AND_OVERDUE: {
+        auto date = QDate::currentDate();
+        date.setDate(date.year(), date.month(), 1);
+        req.startSpan().setStart(1);
+        date = date.addMonths(1);
+        req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    } break;
+    case FW_SELECTED_NODE:
+        req.setNodeId(MainTreeModel::instance()->selected());
+        break;
+    case FW_SELECTED_NODE_AND_CHILDREN:
+        req.setNodeIdAndChildren(MainTreeModel::instance()->selected());
+        break;
+    }
+
+    // TODO: Handle pagination, visibility
+    fetch(req);
+}
+
+void ActionsModel::selectedChanged()
+{
+    if (mode_ >= FetchWhat::FW_SELECTED_NODE) {
+        fetchIf();
+    }
 }
 
 ActionPrx::ActionPrx(QString actionUuid)
