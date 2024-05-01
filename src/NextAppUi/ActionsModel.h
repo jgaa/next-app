@@ -101,6 +101,7 @@ class ActionsModel : public QAbstractListModel
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
     Q_PROPERTY(FetchWhat mode READ mode WRITE setMode NOTIFY modeChanged)
+    Q_PROPERTY(nextapp::pb::GetActionsFlags flags READ flags WRITE setFlags NOTIFY flagsChanged)
 
 public:
     ActionsModel(QObject *parent = {});
@@ -134,6 +135,8 @@ public:
     void setMode(FetchWhat mode);
     bool isVisible() const { return is_visible_; }
     void setIsVisible(bool isVisible);
+    nextapp::pb::GetActionsFlags flags() const noexcept { return flags_; }
+    void setFlags(nextapp::pb::GetActionsFlags flags);
 
     // QAbstractItemModel interface
 public:
@@ -145,6 +148,7 @@ public:
 signals:
     void modeChanged();
     void isVisibleChanged();
+    void flagsChanged();
 
 private:
     void fetchIf();
@@ -154,4 +158,5 @@ private:
     std::set<QUuid> worked_on_;
     FetchWhat mode_ = FW_TODAY_AND_OVERDUE;
     bool is_visible_ = false;
+    nextapp::pb::GetActionsFlags flags_{};
 };

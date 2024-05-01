@@ -336,29 +336,49 @@ boost::asio::awaitable<void>
                 }
             }
 
+            string unscheduled;
+            if (req->flags().unscheduled()) {
+                unscheduled = " (a.due_by_time IS NULL) ";
+            }
+
             optional<string> startspan_start, startspan_end;
             if (req->has_startspan()) {
                 startspan_start = toAnsiTime(req->startspan().start(), uctx->tz());
                 startspan_end = toAnsiTime(req->startspan().end(), uctx->tz());
-                query += " AND a.start_time >= ? AND a.start_time < ? ";
+                query += " AND (( a.start_time >= ? AND a.start_time < ? ) ";
                 args.emplace_back(*startspan_start);
                 args.emplace_back(*startspan_end);
+                if (!unscheduled.empty()) {
+                    unscheduled += " OR " + unscheduled;
+                }
+                query += ") ";
             }
 
             optional<string> duespan_start, duespan_end;
             if (req->has_duespan()) {
                 duespan_start = toAnsiTime(req->duespan().start(), uctx->tz());
                 duespan_end = toAnsiTime(req->duespan().end(), uctx->tz());
-                query += " AND a.due_by_time >= ? AND a.due_by_time < ? ";
+                query += " AND (( a.due_by_time >= ? AND a.due_by_time < ?) ";
                 args.emplace_back(*duespan_start);
                 args.emplace_back(*duespan_end);
+                if (!unscheduled.empty()) {
+                    unscheduled += " OR " + unscheduled;
+                }
+
+                query += ") ";
             }
 
-            if (req->has_active() && req->active()) {
-                query += " AND (status!='done' || DATE(completed_time) = CURDATE()) ";
+            // if (!unscheduled.empty() && !req->has_startspan() && !req->has_duespan()) {
+            //     query += " AND " + unscheduled;
+            // }
+
+            if (req->flags().active() && !req->flags().done()) {
+                query += " AND (a.status!='done' || DATE(completed_time) = CURDATE()) ";
+            } else if (req->flags().done() && !req->flags().active()) {
+                query += " AND a.status='done' ";
             }
 
-            string_view order = "status DESC, priority DESC, sort_ts, created_date";
+            string_view order = "a.status DESC, a.priority DESC, sort_ts, a.created_date";
 
             query += format(" ORDER BY {} LIMIT ? OFFSET ?", order);
             args.emplace_back(limit + 1);
@@ -380,26 +400,6 @@ boost::asio::awaitable<void>
                     ToAction::assign(row, *actions->add_actions(), *uctx);;
                 }
             }
-
-            // SqlFilter filter{false};
-            // if (req->has_active() && req->active()) {
-            //     filter.add("(status!='done' || DATE(completed_time) = CURDATE())");
-            // }
-            // if (!req->node().empty()) {
-            //     filter.add(format("node='{}'", req->node()));
-            // }
-
-            // string order = "status DESC, priority DESC, due_by_time, created_date";
-
-            // const auto res = co_await owner_.server().db().exec(
-            //     format(R"(SELECT {} from action WHERE user=? {} ORDER BY {})",
-            //            ToAction::coreSelectCols(),
-            //            filter.where(), order), dbopts, cuser);
-            // assert(res.has_value());
-            // auto *actions = reply->mutable_actions();
-            // for(const auto& row : res.rows()) {
-            //     ToAction::assign(row, *actions->add_actions(), *uctx);
-            // }
 
             co_return;
         }, __func__);

@@ -484,9 +484,16 @@ message PageSpan {
     uint32 offset = 2;
 }
 
+message GetActionsFlags {
+    bool active = 1;
+    bool upcoming = 5;
+    bool unscheduled = 6;
+    bool done = 7;
+}
+
 message GetActionsReq {
     PageSpan page = 2;
-    optional bool active = 3;
+    GetActionsFlags flags = 3;
     optional TimeSpan startSpan = 4;
     optional TimeSpan dueSpan = 5;
 

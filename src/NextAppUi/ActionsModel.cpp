@@ -158,6 +158,10 @@ void insertAction(QList<pb::ActionInfo>& list, const pb::Action& action, int row
 ActionsModel::ActionsModel(QObject *parent)
     : actions_{make_shared<nextapp::pb::Actions>()}
 {
+    flags_.setActive(true);
+    flags_.setDone(false);
+    flags_.setUnscheduled(true);
+    flags_.setUpcoming(true);
 }
 
 // void ActionsModel::populate(QString node)
@@ -397,6 +401,16 @@ void ActionsModel::setIsVisible(bool isVisible)
         LOG_DEBUG_N << "Visible changed to " << isVisible;
         is_visible_ = isVisible;
         emit isVisibleChanged();
+        fetchIf();
+    }
+}
+
+void ActionsModel::setFlags(nextapp::pb::GetActionsFlags flags)
+{
+    if (flags_ != flags) {
+        LOG_DEBUG_N << "Flags changed ";
+        flags_ = flags;
+        emit flagsChanged();
         fetchIf();
     }
 }
@@ -893,8 +907,7 @@ void ActionsModel::fetchIf()
     }
 
     nextapp::pb::GetActionsReq req;
-    req.setActive(true);
-
+    req.setFlags(flags_);
     switch(mode_) {
     case FetchWhat::FW_TODAY: {
         auto date = QDate::currentDate();

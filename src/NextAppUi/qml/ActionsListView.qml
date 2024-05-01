@@ -60,6 +60,13 @@ Rectangle {
                         ActionsModel.mode = ix
                     }
                 }
+
+                Button {
+                    text: qsTr("Filter")
+                    onClicked: {
+                        filter.open()
+                    }
+                }
             }
         }
 
@@ -71,6 +78,15 @@ Rectangle {
                 Layout.fillHeight: true
                 id: actions
             }
+        }
+    }
+
+    ActionsListFilterDlg {
+        id: filter
+
+        onApply: {
+            console.log("Filter applied")
+            ActionsModel.filter = filter.filter
         }
     }
 }
