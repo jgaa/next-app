@@ -11,11 +11,12 @@ Item {
 
     Settings {
         id: settings
-        property string serverAddress : NaComm.defaultServerAddress
+        property string serverAddress : NaComm.defaultServerAddress        
     }
 
     function commit() {
         settings.serverAddress = address.text
+        settings.setValue("pagination/page_size", pageSize.text)
         NaComm.reloadSettings()
     }
 
@@ -32,6 +33,15 @@ Item {
             id: address
             text: settings.serverAddress
             placeholderText: qsTr("https://nextapp.lastviking.eu");
+            width: 150
+        }
+
+        Label { text: qsTr("Page Size")}
+        TextField {
+            Layout.fillWidth: true
+            id: pageSize
+            text: settings.value("pagination/page_size", 100)
+            placeholderText: qsTr("20 - 200");
             width: 150
         }
     }

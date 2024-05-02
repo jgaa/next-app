@@ -583,6 +583,7 @@ message Status {
     string message = 2;
     optional string uuid = 3;
     optional bool hasMore = 4; // Hint while receiving paginated data that there is more data
+    optional bool fromStart = 5; // Hint while receiving paginated data that the data is from the start
 
     // Set for some objects when they are created
     oneof what {

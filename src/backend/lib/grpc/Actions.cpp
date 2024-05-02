@@ -388,7 +388,7 @@ boost::asio::awaitable<void>
 
             if (res.has_value()) {
                 const auto rows_count = res.rows().size();
-                const auto has_more = rows_count >= limit;
+                const auto has_more = rows_count > limit;
                 size_t rows = 0;
                 reply->set_hasmore(has_more);
                 auto *actions = reply->mutable_actions();
@@ -400,6 +400,8 @@ boost::asio::awaitable<void>
                     ToAction::assign(row, *actions->add_actions(), *uctx);;
                 }
             }
+
+            reply->set_fromstart(req->page().offset() == 0);
 
             co_return;
         }, __func__);

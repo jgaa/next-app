@@ -239,7 +239,9 @@ void ServerComm::getActions(nextapp::pb::GetActionsReq &filter)
     } , [this](const nextapp::pb::Status& status) {
         if (status.hasActions()) {
             auto actions = make_shared<nextapp::pb::Actions>(status.actions());
-            emit receivedActions(actions);
+            emit receivedActions(actions,
+                status.hasHasMore() && status.hasMore(),
+                status.hasFromStart() && status.fromStart());
         }
     });
 }

@@ -125,7 +125,7 @@ signals:
     void receivedMonth(const nextapp::pb::Month& month);
     void receivedDay(const nextapp::pb::CompleteDay& day);
     void receivedDayColorDefinitions(const nextapp::pb::DayColorDefinitions& defs);
-    void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions);
+    void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
     void receivedAction(const nextapp::pb::Status& status);
     void receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
     void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions, const MetaData meta);

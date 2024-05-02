@@ -53,6 +53,38 @@ class ActionsModel : public QAbstractListModel
     QML_ELEMENT
     QML_SINGLETON
 
+    struct Pagination {
+        unsigned next_offset{};
+        unsigned page = first_page_val_;
+        bool more = false;
+
+        void reset() {
+            next_offset = 0;
+            more = false;
+            page = first_page_val_;
+        }
+
+        bool isFirstPage() const noexcept {
+            return page == first_page_val_;
+        }
+
+        bool hasMore() const noexcept {
+            return more;
+        }
+
+        void increment(unsigned rows) noexcept {
+            ++page;
+            next_offset += rows;
+        }
+
+        unsigned nextOffset() const noexcept{
+            return next_offset;
+        }
+
+    private:
+        static constexpr int first_page_val_  = 1;
+    };
+
     enum Roles {
         NameRole = Qt::UserRole + 1,
         UuidRole,
@@ -126,7 +158,7 @@ public:
 
     void start();
     void fetch(nextapp::pb::GetActionsReq& filter);
-    void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions);
+    void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
     void doUpdate(const nextapp::pb::Action& action, nextapp::pb::Update::Operation op);
@@ -144,6 +176,8 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
+    void fetchMore(const QModelIndex &parent) override;
+    bool canFetchMore(const QModelIndex &parent) const override;
 
 signals:
     void modeChanged();
@@ -151,7 +185,7 @@ signals:
     void flagsChanged();
 
 private:
-    void fetchIf();
+    void fetchIf(bool restart = true);
     void selectedChanged();
 
     std::shared_ptr<nextapp::pb::Actions> actions_;
@@ -159,4 +193,5 @@ private:
     FetchWhat mode_ = FW_TODAY_AND_OVERDUE;
     bool is_visible_ = false;
     nextapp::pb::GetActionsFlags flags_{};
+    Pagination pagination_;
 };

@@ -251,11 +251,23 @@ void ActionsModel::fetch(nextapp::pb::GetActionsReq &filter)
     ServerComm::instance().getActions(filter);
 }
 
-void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &actions)
+void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &actions,
+                                   bool more, bool first)
 {
-    LOG_TRACE << "Action model reset with " << actions->actions().size() << " items";
+    LOG_TRACE_N << "Received " << actions->actions().size() << " actions. More=" << more << ", first=" << first;
+    if (first) {
+        pagination_.reset();
+    }
+    pagination_.increment(actions->actions().size());
+    pagination_.more = more;
+
     beginResetModel();
-    actions_ = actions;
+    if (first) {
+        actions_ = actions;
+    } else {
+        actions_->actions().append(actions->actions().begin(), actions->actions().end());
+    }
+
     std::ranges::sort(actions_->actions(), [](const auto& left, const auto& right) {
         return comparePred(left, right);
     });
@@ -900,14 +912,40 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     return roles;
 }
 
-void ActionsModel::fetchIf()
+void ActionsModel::fetchMore(const QModelIndex &parent)
 {
+    LOG_DEBUG_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
+                << ", page = " << pagination_.page;
+
+    if (pagination_.hasMore()) {
+        fetchIf(false);
+    }
+}
+
+bool ActionsModel::canFetchMore(const QModelIndex &parent) const
+{
+    LOG_DEBUG_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
+              << ", page = " << pagination_.page;
+    return pagination_.hasMore();
+}
+
+void ActionsModel::fetchIf(bool restart)
+{
+    if (restart) {
+        pagination_.reset();
+    }
+
     if (!is_visible_) {
         return;
     }
 
     nextapp::pb::GetActionsReq req;
     req.setFlags(flags_);
+    nextapp::pb::PageSpan page;
+    page.setPageSize(QSettings{}.value("pagination/page_size", 100).toInt());
+    page.setOffset(pagination_.nextOffset());
+    req.setPage(page);
+
     switch(mode_) {
     case FetchWhat::FW_TODAY: {
         auto date = QDate::currentDate();
