@@ -128,7 +128,8 @@ class ActionsModel : public QAbstractListModel
         FW_CURRENT_MONTH,
         FW_CURRENT_MONTH_AND_OVERDUE,
         FW_SELECTED_NODE,
-        FW_SELECTED_NODE_AND_CHILDREN
+        FW_SELECTED_NODE_AND_CHILDREN,
+        FW_FAVORITES
     };
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
@@ -138,7 +139,6 @@ class ActionsModel : public QAbstractListModel
 public:
     ActionsModel(QObject *parent = {});
 
-    //Q_INVOKABLE void populate(QString node, FetchWhat what);
     Q_INVOKABLE void addAction(const nextapp::pb::Action& action);
     Q_INVOKABLE void updateAction(const nextapp::pb::Action& action);
     Q_INVOKABLE void deleteAction(const QString& uuid);

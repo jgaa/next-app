@@ -985,11 +985,14 @@ void ActionsModel::fetchIf(bool restart)
         date = date.addMonths(1);
         req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
     } break;
-    case FW_SELECTED_NODE:
+    case FetchWhat::FW_SELECTED_NODE:
         req.setNodeId(MainTreeModel::instance()->selected());
         break;
     case FW_SELECTED_NODE_AND_CHILDREN:
         req.setNodeIdAndChildren(MainTreeModel::instance()->selected());
+        break;
+    case FetchWhat::FW_FAVORITES:
+        req.setFavorites(true);
         break;
     }
 

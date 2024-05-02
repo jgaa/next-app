@@ -330,6 +330,10 @@ boost::asio::awaitable<void>
                                prefixed_cols, sortcol);
                 args.emplace_back(cuser);
 
+                if (req->has_favorites() && req->favorites()) {
+                    query += " AND a.favorite = 1 ";
+                }
+
                 if (req->has_nodeid()) {
                     query += " AND a.node = ? ";
                     args.emplace_back(req->nodeid());

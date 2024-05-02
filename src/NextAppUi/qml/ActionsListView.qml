@@ -53,6 +53,7 @@ Rectangle {
                         ListElement { text: qsTr("Current Month and ocerdue") }
                         ListElement { text: qsTr("Selected list") }
                         ListElement { text: qsTr("Selected list and sublists") }
+                        ListElement { text: qsTr("Favorite Actions") }
                     }
 
                     onActivated: (ix) => {

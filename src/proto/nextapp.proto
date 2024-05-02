@@ -500,6 +500,7 @@ message GetActionsReq {
     oneof filter {
         string nodeId = 11;
         string nodeIdAndChildren = 12;
+        bool favorites = 16; // Flags that we only want favorite actions
     }
 }
 
