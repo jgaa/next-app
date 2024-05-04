@@ -4,15 +4,26 @@ import time
 from datetime import datetime, timedelta
 import os
 import random
+import uuid
 
 import grpc
 import nextapp_pb2
 import nextapp_pb2_grpc
+import header_manipulator_client_interceptor
 
 @pytest.fixture(scope = 'module')
 def gd():
+    sesid = str(uuid.uuid4())
+    header_adder_interceptor = (
+        header_manipulator_client_interceptor.header_adder_interceptor(
+            "session-id", sesid
+        )
+    )
     channel = grpc.insecure_channel(os.getenv('NA_GRPC', '127.0.0.1:10321'))
-    stub = nextapp_pb2_grpc.NextappStub(channel)
+    intercept_channel = grpc.intercept_channel(
+            channel, header_adder_interceptor
+        )
+    stub = nextapp_pb2_grpc.NextappStub(intercept_channel)
     test_node = None
     test_action = None
     return {'stub': stub}
@@ -114,7 +125,7 @@ def test_add_work(gd):
 
     # End the work
     event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
-    req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event)
+    req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, events=[event])
     status = gd['stub'].AddWorkEvent(req)
     assert status.error == nextapp_pb2.Error.OK
     assert status.work.state == nextapp_pb2.WorkSession.State.DONE
@@ -145,13 +156,13 @@ def test_activate_next_work_session(gd):
 
     # End the work
     event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
-    req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event)
+    req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, events=[event])
     status = gd['stub'].AddWorkEvent(req)
     assert status.error == nextapp_pb2.Error.OK
     assert status.work.state == nextapp_pb2.WorkSession.State.DONE
 
     event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
-    req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id2, event=event)
+    req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id2, events=[event])
     status = gd['stub'].AddWorkEvent(req)
     assert status.error == nextapp_pb2.Error.OK
     assert status.work.state == nextapp_pb2.WorkSession.State.DONE
@@ -161,49 +172,50 @@ def test_activate_next_work_session(gd):
     assert status.error == nextapp_pb2.Error.OK
     assert len(status.workSessions.sessions) == 0
     
-def test_stopped_work_activates_most_recent_paused_work_session(gd):
-    req = nextapp_pb2.CreateWorkReq(actionId=gd['test_action'])
-    status = gd['stub'].CreateWorkSession(req)
-    assert status.error == nextapp_pb2.Error.OK
-    assert status.work.action == gd['test_action']
-    assert status.work.state == nextapp_pb2.WorkSession.State.ACTIVE
-    work_id = status.work.id
+# TODO: The test needs to enable auto-start next work session
+# def test_stopped_work_activates_most_recent_paused_work_session(gd):
+#     req = nextapp_pb2.CreateWorkReq(actionId=gd['test_action'])
+#     status = gd['stub'].CreateWorkSession(req)
+#     assert status.error == nextapp_pb2.Error.OK
+#     assert status.work.action == gd['test_action']
+#     assert status.work.state == nextapp_pb2.WorkSession.State.ACTIVE
+#     work_id = status.work.id
 
-    req = nextapp_pb2.CreateWorkReq(actionId=gd['test_action'])
-    status = gd['stub'].CreateWorkSession(req)
-    assert status.error == nextapp_pb2.Error.OK
-    assert status.work.action == gd['test_action']
-    assert status.work.state == nextapp_pb2.WorkSession.State.ACTIVE
-    work_id2 = status.work.id
+#     req = nextapp_pb2.CreateWorkReq(actionId=gd['test_action'])
+#     status = gd['stub'].CreateWorkSession(req)
+#     assert status.error == nextapp_pb2.Error.OK
+#     assert status.work.action == gd['test_action']
+#     assert status.work.state == nextapp_pb2.WorkSession.State.ACTIVE
+#     work_id2 = status.work.id
 
-    req = nextapp_pb2.Empty()
-    status = gd['stub'].ListCurrentWorkSessions(req)
-    assert status.error == nextapp_pb2.Error.OK
-    assert len(status.workSessions.sessions) == 2
-    assert status.workSessions.sessions[0].id == work_id2 
-    assert status.workSessions.sessions[0].state == nextapp_pb2.WorkSession.State.ACTIVE
-    assert status.workSessions.sessions[1].id == work_id 
-    assert status.workSessions.sessions[1].state == nextapp_pb2.WorkSession.State.PAUSED
+#     req = nextapp_pb2.Empty()
+#     status = gd['stub'].ListCurrentWorkSessions(req)
+#     assert status.error == nextapp_pb2.Error.OK
+#     assert len(status.workSessions.sessions) == 2
+#     assert status.workSessions.sessions[0].id == work_id2 
+#     assert status.workSessions.sessions[0].state == nextapp_pb2.WorkSession.State.ACTIVE
+#     assert status.workSessions.sessions[1].id == work_id 
+#     assert status.workSessions.sessions[1].state == nextapp_pb2.WorkSession.State.PAUSED
 
-    # End the work
-    event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
-    req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id2, event=event)
-    status = gd['stub'].AddWorkEvent(req)
-    assert status.error == nextapp_pb2.Error.OK
-    assert status.work.state == nextapp_pb2.WorkSession.State.DONE
+#     # End the work
+#     event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
+#     req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id2, events=[event])
+#     status = gd['stub'].AddWorkEvent(req)
+#     assert status.error == nextapp_pb2.Error.OK
+#     assert status.work.state == nextapp_pb2.WorkSession.State.DONE
 
-    req = nextapp_pb2.Empty()
-    status = gd['stub'].ListCurrentWorkSessions(req)
-    assert status.error == nextapp_pb2.Error.OK
-    assert len(status.workSessions.sessions) == 1
-    assert status.workSessions.sessions[0].id == work_id 
-    assert status.workSessions.sessions[0].state == nextapp_pb2.WorkSession.State.ACTIVE
+#     req = nextapp_pb2.Empty()
+#     status = gd['stub'].ListCurrentWorkSessions(req)
+#     assert status.error == nextapp_pb2.Error.OK
+#     assert len(status.workSessions.sessions) == 1
+#     assert status.workSessions.sessions[0].id == work_id 
+#     assert status.workSessions.sessions[0].state == nextapp_pb2.WorkSession.State.ACTIVE
 
-    event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
-    req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event)
-    status = gd['stub'].AddWorkEvent(req)
-    assert status.error == nextapp_pb2.Error.OK
-    assert status.work.state == nextapp_pb2.WorkSession.State.DONE
+#     event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
+#     req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, events=[event])
+#     status = gd['stub'].AddWorkEvent(req)
+#     assert status.error == nextapp_pb2.Error.OK
+#     assert status.work.state == nextapp_pb2.WorkSession.State.DONE
 
 def test_add_many_work_sessions(gd):
     parent_node_id = ""
@@ -236,20 +248,20 @@ def test_add_many_work_sessions(gd):
 
                 # create an work-event to correct the start time
                 event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.CORRECTION, start=int(time.mktime(start_time.timetuple())))
-                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event)
+                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, events=[event])
                 status = gd['stub'].AddWorkEvent(req)
                 assert status.error == nextapp_pb2.Error.OK
 
                 # create an work-event to stop the work
                 event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.STOP)
-                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event)
+                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, events=[event])
                 status = gd['stub'].AddWorkEvent(req)
                 assert status.error == nextapp_pb2.Error.OK
 
                 # Create a work-event to correct the end time
                 end_time = start_time + timedelta(seconds = random.randint(60, 2400))
                 event = nextapp_pb2.WorkEvent(kind=nextapp_pb2.WorkEvent.Kind.CORRECTION, end=int(time.mktime(end_time.timetuple())))
-                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, event=event) 
+                req = nextapp_pb2.AddWorkEventReq(workSessionId=work_id, events=[event]) 
                 status = gd['stub'].AddWorkEvent(req)
                 assert status.error == nextapp_pb2.Error.OK
 
