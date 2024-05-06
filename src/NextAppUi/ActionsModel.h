@@ -155,6 +155,7 @@ public:
     Q_INVOKABLE QStringListModel *getDueSelections(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
     Q_INVOKABLE nextapp::pb::Due adjustDue(time_t start, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const;
     Q_INVOKABLE nextapp::pb::Due changeDue(int shortcut, const nextapp::pb::Due& fromDue) const;
+    Q_INVOKABLE bool moveToNode(const QString& actionUuid, const QString& nodeUuid);
 
     void start();
     void fetch(nextapp::pb::GetActionsReq& filter);
@@ -194,4 +195,9 @@ private:
     bool is_visible_ = false;
     nextapp::pb::GetActionsFlags flags_{};
     Pagination pagination_;
+
+    // QAbstractItemModel interface
+public:
+    QStringList mimeTypes() const override;
+    QMimeData *mimeData(const QModelIndexList &indexes) const override;
 };

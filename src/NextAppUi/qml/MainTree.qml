@@ -144,7 +144,7 @@ Rectangle {
                     Drag.dragType: Drag.Automatic
                     Drag.supportedActions: Qt.MoveAction
                     Drag.mimeData: {
-                        "text/plain": treeDelegate.uuid
+                        "text/app.nextapp.node": treeDelegate.uuid
                     }
 
                     DragHandler {
@@ -166,22 +166,65 @@ Rectangle {
                         anchors.fill: parent
 
                         onEntered: function(drag) {
-                            if (!MainTreeModel.canMove(drag.source.uuid, treeDelegate.uuid)) {
-                                console.log("We should now allow the drop here")
+                            console.log("DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+
+                            if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
+
+                                var uuid = drag.getDataAsString("text/app.nextapp.action")
+                                var currNode = drag.getDataAsString("text/app.nextapp.curr.node")
+
+                                console.log("Drag from Action: curr-node=", currNode, " action=", uuid,
+                                            ", drop node=", treeDelegate.uuid)
+
+                                if (currNode === treeDelegate.uuid) {
+                                    console.log("We should not allow the drop here. Same node.")
+                                    drag.accepted = false
+                                    return
+                                }
+                                drag.accepted = true
+
+                                return
+                            }
+
+                            if (drag.formats.indexOf("text/app.nextapp.node") !== -1) {
+                                console.log("text/app.nextapp.node: ",
+                                            drag.getDataAsString("text/app.nextapp.node"))
+
+                                var uuid = drag.getDataAsString("text/app.nextapp.node")
+                                if (!MainTreeModel.canMove(uuid, treeDelegate.uuid)) {
+                                    console.log("We should not allow the drop here")
+                                    drag.accepted = false
+                                }
+                                drag.accepted = true
+                                return
                             }
                         }
 
                         onDropped: function(drop) {
                             console.log("DropArea receiceived a drop! source=", drop.source.uuid)
 
-                            if (MainTreeModel.canMove(drop.source.uuid, treeDelegate.uuid)) {
-                                console.log("Seems OK")
-                                drop.acceptProposedAction()
-                                MainTreeModel.moveNode(drop.source.uuid, treeDelegate.uuid)
-                            } else {
-                                drop.accept(Qt.IgnoreAction)
-                                console.log("DropArea rejected ", drop.source.uuid)
+                            if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
+
+                                var uuid = drag.getDataAsString("text/app.nextapp.action")
+                                var currNode = drag.getDataAsString("text/app.nextapp.curr.node")
+                                drop.accepted = ActionsModel.moveToNode(uuid, treeDelegate.uuid)
+                                return
                             }
+
+                            if (drag.formats.indexOf("text/app.nextapp.node") !== -1) {
+                                console.log("text/app.nextapp.node: ",
+                                            drag.getDataAsString("text/app.nextapp.node"))
+
+                                var uuid = drag.getDataAsString("text/app.nextapp.node")
+                                if (MainTreeModel.canMove(drop.source.uuid, treeDelegate.uuid)) {
+                                    console.log("Seems OK")
+                                    drop.accepted = true
+                                    MainTreeModel.moveNode(drop.source.uuid, treeDelegate.uuid)
+                                    return
+                                }
+                            }
+
+                            drop.accepted = false
                         }
                     }
 

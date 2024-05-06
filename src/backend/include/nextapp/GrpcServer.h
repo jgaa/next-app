@@ -141,6 +141,7 @@ public:
         ::grpc::ServerUnaryReactor *GetDetailedWorkSummary(::grpc::CallbackServerContext *ctx, const pb::DetailedWorkSummaryRequest *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetUserGlobalSettings(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *SetUserGlobalSettings(::grpc::CallbackServerContext *ctx, const pb::UserGlobalSettings *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *MoveAction(::grpc::CallbackServerContext *ctx, const pb::MoveActionReq *req, pb::Status *reply) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback

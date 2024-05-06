@@ -295,7 +295,7 @@ boost::uuids::uuid GrpcServer::getSessionId(::grpc::CallbackServerContext *ctx) 
 {
     auto session_id = ctx->client_metadata().find("session-id");
     if (session_id == ctx->client_metadata().end()) {
-        LOG_WARN_N << "No session_id in metadata from peer: " << ctx->peer();
+        LOG_WARN_N << "No session-id in metadata from peer: " << ctx->peer();
         throw db_err{pb::Error::AUTH_MISSING_SESSION_ID, "Missing session-id in gRPC request"};
     }
 

@@ -64,6 +64,7 @@ Rectangle {
             model: ActionsModel
 
             delegate: Item {
+                id: actionItem
                 property bool selected: listView.currentIndex === index
                 required property int index
                 required property string name
@@ -72,6 +73,7 @@ Rectangle {
                 required property bool favorite
                 required property bool hasWorkSession
                 required property string listName
+                required property string node
 
                 implicitHeight: row.implicitHeight + 4
                 width: listView.width
@@ -97,6 +99,19 @@ Rectangle {
                                 contextMenu.popup();
                         }
                     }
+                }
+
+                DragHandler {
+                    id: dragHandler
+                    target: row
+                }
+
+                Drag.active: dragHandler.active
+                Drag.dragType: Drag.Automatic
+                Drag.supportedActions: Qt.MoveAction
+                Drag.mimeData: {
+                    "text/app.nextapp.action": actionItem.uuid,
+                    "text/app.nextapp.curr.node": actionItem.node
                 }
 
                 ColumnLayout {

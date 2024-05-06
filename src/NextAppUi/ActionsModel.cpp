@@ -5,6 +5,8 @@
 #include <QTimeZone>
 #include <QDateTime>
 #include <QSettings>
+#include <QMimeData>
+#include <QIODevice>
 
 #include "ActionsModel.h"
 #include "ServerComm.h"
@@ -790,6 +792,21 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
     return due;
 }
 
+bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid)
+{
+    auto row = findCurrentRow(actions_->actions(), actionUuid);
+    if (row >= 0) {
+        auto& ai= actions_->actions().at(row);
+        if (ai.node() == nodeUuid) {
+            LOG_DEBUG_N << "Cannot move to the same node";
+            return false;
+        }
+
+        return true;
+    }
+    return false;
+}
+
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
     return actions_->actions().size();
@@ -1005,6 +1022,29 @@ void ActionsModel::selectedChanged()
     if (mode_ >= FetchWhat::FW_SELECTED_NODE) {
         fetchIf();
     }
+}
+
+QStringList ActionsModel::mimeTypes() const
+{
+     return QStringList() << "application/na.action.list";
+}
+
+QMimeData *ActionsModel::mimeData(const QModelIndexList &indexes) const
+{
+    QMimeData *mimeData = new QMimeData();
+    QByteArray encodedData;
+
+    QDataStream stream(&encodedData, QIODevice::WriteOnly);
+
+    foreach (const QModelIndex &index, indexes) {
+        if (index.isValid()) {
+            QString text = data(index, UuidRole).toString();
+            stream << text;
+        }
+    }
+
+    mimeData->setData("application/vnd.text.list", encodedData);
+    return mimeData;
 }
 
 ActionPrx::ActionPrx(QString actionUuid)

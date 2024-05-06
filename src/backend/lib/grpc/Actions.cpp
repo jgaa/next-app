@@ -1201,4 +1201,10 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
     co_return;
 }
 
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MoveAction(::grpc::CallbackServerContext *ctx, const pb::MoveActionReq *req, pb::Status *reply)
+{
+    return {};
+}
+
 } // ns

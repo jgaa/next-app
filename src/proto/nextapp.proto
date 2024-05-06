@@ -479,6 +479,11 @@ message MoveNodeReq {
     string parentUuid = 2;
 }
 
+message MoveActionReq {
+    string actionId = 1;
+    string nodeId = 2;
+}
+
 message PageSpan {
     uint32 pageSize = 1;
     uint32 offset = 2;
@@ -626,6 +631,7 @@ service Nextapp {
     rpc GetAction(GetActionReq) returns (Status) {}
     rpc CreateAction(Action) returns (Status) {}
     rpc UpdateAction(Action) returns (Status) {}
+    rpc MoveAction(MoveActionReq) returns (Status) {}
     rpc DeleteAction(DeleteActionReq) returns (Status) {}
     rpc MarkActionAsDone(ActionDoneReq) returns (Status) {}
     rpc MarkActionAsFavorite(ActionFavoriteReq) returns (Status) {}
