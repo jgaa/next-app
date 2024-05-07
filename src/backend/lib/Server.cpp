@@ -426,12 +426,57 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v6_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE OR REPLACE TABLE action_category (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            user UUID NOT NULL,
+            name VARCHAR(128) NOT NULL,
+            descr TEXT,
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE INDEX action_category_ix1 ON action_category (user, name))",
+
+        R"(ALTER TABLE action
+            ADD COLUMN IF NOT EXISTS category UUID,
+            ADD CONSTRAINT action_ibfk_category
+                FOREIGN KEY IF NOT EXISTS (category) REFERENCES action_category(id) ON DELETE SET NULL ON UPDATE RESTRICT
+        )",
+
+        R"(CREATE OR REPLACE TABLE time_block (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            user UUID NOT NULL,
+            start_time DATETIME NOT NULL,
+            end_time DATETIME NOT NULL,
+            kind ENUM ('reservation', 'actions') NOT NULL DEFAULT 'reservation',
+            category UUID,
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE CASCADE ON UPDATE RESTRICT
+        ))",
+
+        R"(CREATE INDEX time_block_ix1 ON time_block (user, start_time, end_time))",
+
+        R"(CREATE OR REPLACE TABLE time_block_actions (
+            time_block UUID NOT NULL,
+            action UUID NOT NULL,
+            PRIMARY KEY (time_block, action),
+            FOREIGN KEY(time_block) REFERENCES time_block(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT
+        ))",
+
+        R"(CREATE INDEX time_block_actions_ix1 ON time_block_actions (action))",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
         v3_upgrade,
         v4_upgrade,
-        v5_upgrade
+        v5_upgrade,
+        v6_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
