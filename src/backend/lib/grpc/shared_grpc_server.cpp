@@ -24,6 +24,7 @@ namespace nextapp::grpc {
     return date;
 }
 
+// FOR TIMESTAMP
 time_t toTimeT(const boost::mysql::datetime& from, const chrono::time_zone& tz) {
     if (from.valid()) {
         auto tp = from.as_time_point();
@@ -35,6 +36,17 @@ time_t toTimeT(const boost::mysql::datetime& from, const chrono::time_zone& tz) 
 
     return {};
 }
+
+// For DATETIME
+time_t toTimeT(const boost::mysql::datetime& from) {
+    if (from.valid()) {
+        auto tp = from.as_time_point();
+        return chrono::system_clock::to_time_t(tp);
+    }
+
+    return {};
+}
+
 
 void setError(pb::Status& status, pb::Error err, const std::string& message) {
 

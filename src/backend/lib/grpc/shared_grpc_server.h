@@ -33,7 +33,12 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 
 ::nextapp::pb::Date toDate(const boost::mysql::date& from);
 ::nextapp::pb::Date toDate(const boost::mysql::datetime& from);
+
+// For TIMESTAMP
 std::time_t toTimeT(const boost::mysql::datetime& from, const chrono::time_zone& tz);
+
+// fOR Datetime
+std::time_t toTimeT(const boost::mysql::datetime& from);
 void setError(pb::Status& status, pb::Error err, const std::string& message = {});
 
 template <typename T>

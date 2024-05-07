@@ -128,10 +128,10 @@ struct ToAction {
         }
 
         if (row.at(DUE_BY_TIME).is_datetime()) {
-            obj.mutable_due()->set_due(toTimeT(row.at(DUE_BY_TIME).as_datetime(), uctx.tz()));
+            obj.mutable_due()->set_due(toTimeT(row.at(DUE_BY_TIME).as_datetime()));
 
             if (row.at(START_TIME).is_datetime()) {
-                obj.mutable_due()->set_start(toTimeT(row.at(START_TIME).as_datetime(), uctx.tz()));
+                obj.mutable_due()->set_start(toTimeT(row.at(START_TIME).as_datetime()));
             }
 
             if (row.at(DUE_TIMEZONE).is_string()) {
@@ -146,27 +146,31 @@ struct ToAction {
         } else {
             // If we have due_by_time set, we can see a) if it's expired, b) if it's today and c) it it's in the future
             // We need to convert the time from the database and the time right now to the time-zone used by the client to get it right.
-            if (row.at(START_TIME).is_datetime()) {
+            if (row.at(DUE_BY_TIME).is_datetime()) {
                 const auto due = row.at(DUE_BY_TIME).as_datetime();
-                const auto zt = std::chrono::zoned_time(&uctx.tz(), due.as_time_point()  - chrono::seconds(1));
-                const auto due_when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
+                const auto due_when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(due.as_time_point() - 1s)};
+
+                LOG_TRACE_N << format("Due due={}, due_when={}", due.as_time_point(), due_when);
 
                 optional<chrono::year_month_day> start;
                 if (row.at(START_TIME).is_datetime()) {
                     const auto start_time = row.at(START_TIME).as_datetime();
-                    const auto zt = std::chrono::zoned_time(&uctx.tz(), start_time.as_time_point());
-                    start = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(zt.get_local_time())};
+                    start = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(start_time.as_time_point())};
+
+                    LOG_TRACE_N << format("Start start_time={}, start={}", start_time.as_time_point(), *start);
                 }
 
-                const auto now_zt = std::chrono::zoned_time(&uctx.tz(), chrono::system_clock::now());
-                const auto now = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(now_zt.get_local_time())};
+                //const auto now_zt = std::chrono::zoned_time(&uctx.tz(), chrono::system_clock::now());
+                const auto now = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(chrono::system_clock::now())};
+
+                LOG_TRACE_N << format("Now now={}", now);
 
                 if (due_when.year() == now.year() && due_when.month() == now.month() && due_when.day() == now.day()) {
                     obj.set_kind(pb::ActionKind::AC_TODAY);
                 } else if (due_when < now) {
                     obj.set_kind(pb::ActionKind::AC_OVERDUE);
                 } else if (due_when > now) {
-                    if (start < now) {
+                    if (start <= now) {
                         obj.set_kind(pb::ActionKind::AC_ACTIVE);
                     } else{
                         obj.set_kind(pb::ActionKind::AC_UPCOMING);
