@@ -151,6 +151,11 @@ void WorkModel::setSorting(Sorting sorting)
 WorkModel::WorkModel(QObject *parent)
     : QAbstractTableModel{parent}
 {
+    connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
+        setActive(ServerComm::instance().connected());
+    });
+
+    setActive(ServerComm::instance().connected());
 }
 
 void WorkModel::start()
@@ -197,7 +202,7 @@ void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
         beginResetModel();
         ScopedExit scoped{[this] { endResetModel(); }};
 
-         auto &session = session_by_id();
+        auto &session = session_by_id();
 
         try {
             const auto op = update->op();
@@ -239,15 +244,26 @@ void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
                         // TODO: Add filter to check if the current node is the parent of the current node or its children
                     }
                 } break;
-            case nextapp::pb::Update::Operation::DELETED:
+            case nextapp::pb::Update::Operation::DELETED: {
                 auto &session = session_by_id();
                 session.erase(toQuid(work.id_proto()));
+            } break;
+
+            case nextapp::pb::Update::Operation::MOVED:
+                // Currently we don't implement moved work sessions
+                fetchIf();
                 break;
             }
 
             sort();
         } catch (const std::exception& e) {
             LOG_ERROR << "Error updating work sessions: " << e.what();
+        }
+    }
+
+    if (update->hasAction()) {
+        if (update->op() == nextapp::pb::Update::Operation::DELETED || update->op() == nextapp::pb::Update::Operation::MOVED) {
+            fetchIf();
         }
     }
 }
@@ -604,6 +620,15 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
     return outcome;
 }
 
+void WorkModel::setActive(bool active)
+{
+    if (active != is_active_) {
+        is_active_ = active;
+        emit activeChanged();
+        QTimer::singleShot(0, this, &WorkModel::fetchIf);
+    }
+}
+
 void WorkModel::selectedChanged()
 {
     LOG_DEBUG << "Tree selection changed...";
@@ -664,6 +689,13 @@ void WorkModel::replace(const nextapp::pb::WorkSessions &sessions)
 void WorkModel::sort()
 {
     session_by_ordered().sort(sort_fn.at(sorting_));
+}
+
+void WorkModel::fetchIf()
+{
+    if (is_visible_ && is_active_) {
+        doFetchSome(fetch_what_, true);
+    }
 }
 
 void WorkModel::receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions)

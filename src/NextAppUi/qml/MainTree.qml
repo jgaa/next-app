@@ -203,19 +203,19 @@ Rectangle {
                         onDropped: function(drop) {
                             console.log("DropArea receiceived a drop! source=", drop.source.uuid)
 
-                            if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
+                            if (drop.formats.indexOf("text/app.nextapp.action") !== -1) {
 
-                                var uuid = drag.getDataAsString("text/app.nextapp.action")
-                                var currNode = drag.getDataAsString("text/app.nextapp.curr.node")
+                                var uuid = drop.getDataAsString("text/app.nextapp.action")
+                                var currNode = drop.getDataAsString("text/app.nextapp.curr.node")
                                 drop.accepted = ActionsModel.moveToNode(uuid, treeDelegate.uuid)
                                 return
                             }
 
-                            if (drag.formats.indexOf("text/app.nextapp.node") !== -1) {
+                            if (drop.formats.indexOf("text/app.nextapp.node") !== -1) {
                                 console.log("text/app.nextapp.node: ",
-                                            drag.getDataAsString("text/app.nextapp.node"))
+                                            drop.getDataAsString("text/app.nextapp.node"))
 
-                                var uuid = drag.getDataAsString("text/app.nextapp.node")
+                                var uuid = drop.getDataAsString("text/app.nextapp.node")
                                 if (MainTreeModel.canMove(drop.source.uuid, treeDelegate.uuid)) {
                                     console.log("Seems OK")
                                     drop.accepted = true

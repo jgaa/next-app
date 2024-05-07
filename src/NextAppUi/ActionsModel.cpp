@@ -166,23 +166,6 @@ ActionsModel::ActionsModel(QObject *parent)
     flags_.setUpcoming(true);
 }
 
-// void ActionsModel::populate(QString node)
-// {
-//     // We re-allocate rather than reset. Then we don't have to check if the
-//     // object is valid before every use in other places.
-//     actions_ = make_shared<nextapp::pb::Actions>();
-
-//     nextapp::pb::GetActionsReq filter;
-//     filter.setActive(true);
-//     filter.setNodeId(node);
-
-//     nextapp::pb::PageSpan page;
-//     page.setPageSize(QSettings{}.value("pagination/page_size", 100).toInt());
-//     filter.setPage(page);
-
-//     fetch(filter);
-// }
-
 void ActionsModel::addAction(const nextapp::pb::Action &action)
 {
     ServerComm::instance().addAction(action);
@@ -317,8 +300,6 @@ void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Upda
         }
     }
 
-    // TODO: For moved, we need to handle both cases, old node and new node
-
     switch(op) {
     case pb::Update::Operation::ADDED: {
     insert_as_new:
@@ -328,6 +309,10 @@ void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Upda
         endInsertRows();
     }
     break;
+    case pb::Update::Operation::MOVED:
+        // TODO: Optimize so that we only add/remove the moved node, but adhers to the current selection
+        fetchIf(true);
+        break;
     case pb::Update::Operation::UPDATED: {
         auto row = findInsertRow(action, actions_->actions());
         if (auto currentRow = findCurrentRow(actions_->actions(), action.id_proto()) ; currentRow >=0 ) {
@@ -801,6 +786,8 @@ bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid
             LOG_DEBUG_N << "Cannot move to the same node";
             return false;
         }
+
+        ServerComm::instance().moveAction(actionUuid, nodeUuid);
 
         return true;
     }

@@ -28,6 +28,7 @@ class WorkModel: public QAbstractTableModel
     Q_OBJECT
     QML_ELEMENT
 
+    Q_PROPERTY(bool active READ active NOTIFY activeChanged)
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
 
     struct Pagination {
@@ -205,16 +206,20 @@ public:
     Outcome updateOutcome(nextapp::pb::WorkSession &work);
 
     const QUuid& uuid() const noexcept { return uuid_; }
+    bool active() const noexcept { return is_active_; }
+    void setActive(bool active);
 
 signals:
     void somethingChanged();
     void isVisibleChanged();
+    void activeChanged();
 
 
 protected:
     void selectedChanged();
     void replace(const nextapp::pb::WorkSessions& sessions);
     void sort();
+    void fetchIf();
 
     inline auto& session_by_id() const { return sessions_.get<id_tag>(); }
     inline auto& session_by_ordered() const { return sessions_.get<ordered_tag>(); }
@@ -234,4 +239,5 @@ protected:
     FetchWhat fetch_what_ = TODAY;
     Pagination pagination_;
     bool exclude_done_ = false; // Needed if we show the current work session list
+    bool is_active_ = false;
 };

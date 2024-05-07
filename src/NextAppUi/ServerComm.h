@@ -101,6 +101,7 @@ public:
     void getWorkSessions(const nextapp::pb::GetWorkSessionsReq& req, const QUuid& requester);
     void getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRequest& req, const QUuid& requester);
     void addWork(const nextapp::pb::WorkSession& ws);
+    void moveAction(const QString& actionUuid, const QString& nodeUuid);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

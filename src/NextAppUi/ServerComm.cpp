@@ -449,6 +449,19 @@ void ServerComm::addWork(const nextapp::pb::WorkSession &ws)
     });
 }
 
+void ServerComm::moveAction(const QString &actionUuid, const QString &nodeUuid)
+{
+    nextapp::pb::MoveActionReq req;
+    req.setActionId(actionUuid);
+    req.setNodeId(nodeUuid);
+
+    callRpc<nextapp::pb::Status>([this, req]() {
+        return client_->MoveAction(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 nextapp::pb::UserGlobalSettings ServerComm::getGlobalSettings() const
 {
     return userGlobalSettings_;

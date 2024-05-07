@@ -251,7 +251,8 @@ enum class DoneChanged {
 boost::asio::awaitable<void>
  replyWithAction(GrpcServer& grpc, const std::string actionId, RequestCtx& rctx,
                 ::grpc::CallbackServerContext *ctx, pb::Status *reply,
-                DoneChanged done = DoneChanged::NO_CHANGE, bool publish = true) {
+                DoneChanged done = DoneChanged::NO_CHANGE, bool publish = true,
+                pb::Update::Operation op = pb::Update::Operation::Update_Operation_UPDATED) {
 
     const auto dbopts = rctx.uctx->dbOptions();
 
@@ -266,7 +267,7 @@ boost::asio::awaitable<void>
         ToAction::assign(row, *action, *rctx.uctx);
         if (publish) {
             // Copy the new Action to an update and publish it
-            auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
+            auto update = newUpdate(op);
             *update->mutable_action() = *action;
             grpc.publish(update);
         }
@@ -1204,7 +1205,31 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MoveAction(::grpc::CallbackServerContext *ctx, const pb::MoveActionReq *req, pb::Status *reply)
 {
-    return {};
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+            const auto& action_uuid = validatedUuid(req->actionid());
+            const auto& node_uuid = validatedUuid(req->nodeid());
+            DoneChanged done = DoneChanged::NO_CHANGE;
+
+            co_await owner_.validateNode(*rctx.dbh, node_uuid, cuser);
+            co_await owner_.validateAction(*rctx.dbh, action_uuid, cuser);
+
+            auto res = co_await rctx.dbh->exec("UPDATE action SET node=?, version=version+1 WHERE id=? AND user=? and node != ?",
+                                                      rctx.uctx->dbOptions(), node_uuid, action_uuid, cuser, node_uuid);
+
+            assert(!res.empty());
+
+            if (res.affected_rows() == 1) {
+                co_await replyWithAction(owner_, action_uuid, rctx, ctx, reply, DoneChanged::NO_CHANGE,
+                                         true, pb::Update::Operation::Update_Operation_MOVED);
+
+            } else {
+                reply->set_error(pb::Error::GENERIC_ERROR);
+                reply->set_message(format("Action with id={} was not moved.", action_uuid));
+            }
+
+        }, __func__);
 }
 
 } // ns

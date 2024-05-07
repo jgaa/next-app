@@ -165,6 +165,12 @@ void WeeklyWorkReportModel::onUpdate(const std::shared_ptr<nextapp::pb::Update>&
         // TODO: Optimize so we can use the update logic in the WorkSessionsModel
         needRefresh();
     }
+
+    if (update->hasAction()) {
+        if (update->op() == nextapp::pb::Update::Operation::DELETED || update->op() == nextapp::pb::Update::Operation::MOVED) {
+            needRefresh();
+        }
+    }
 }
 
 void WeeklyWorkReportModel::onUpdatedDuration()
