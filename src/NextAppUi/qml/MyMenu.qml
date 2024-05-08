@@ -17,7 +17,8 @@ Menu {
                 anchors.leftMargin: 5
 
                 text: menuItem.text
-                color: enabled ? Colors.text : Colors.disabledText
+                color: enabled ? menuItem.highlighted ? MaterialDesignStyling.inverseOnSurface : MaterialDesignStyling.onSurface
+                    : MaterialDesignStyling.onSurfaceVariant
             }
             Rectangle {
                 id: indicator
@@ -28,18 +29,19 @@ Menu {
                 height: parent.height
 
                 visible: menuItem.highlighted
-                color: Colors.color2
+                color: MaterialDesignStyling.tertiaryFixed
             }
         }
         background: Rectangle {
             implicitWidth: 210
             implicitHeight: 35
-            color: menuItem.highlighted ? Colors.active : "transparent"
+            color: enabled ? menuItem.highlighted ? MaterialDesignStyling.inverseSurface : MaterialDesignStyling.surface
+            : MaterialDesignStyling.surfaceDim
         }
     }
     background: Rectangle {
         implicitWidth: 210
         implicitHeight: 35
-        color: Colors.surface2
+        color: MaterialDesignStyling.surfaceContainer
     }
 }

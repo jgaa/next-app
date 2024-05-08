@@ -117,6 +117,7 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/angle-right.svg
         icons/fontawsome/calendar-days.svg
         icons/fontawsome/calendar.svg
+        icons/fontawsome/chart-line.svg
         icons/fontawsome/circle.svg
         icons/fontawsome/clock.svg
         icons/fontawsome/folder.svg
@@ -124,7 +125,6 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/trash-can.svg
-        icons/fontawsome/chart-line.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg
@@ -149,6 +149,8 @@ qt_add_qml_module(appNextAppUi
         DaysModel.h
         MainTreeModel.cpp
         MainTreeModel.h
+        MaterialDesignStyling.cpp
+        MaterialDesignStyling.h
         MonthModel.cpp
         MonthModel.h
         NextAppCore.cpp

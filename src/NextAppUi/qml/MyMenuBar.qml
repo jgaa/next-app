@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// Copyright 2024 Jarle Aase and The Last Viking LTD
 
 import QtQuick
 import QtQuick.Layouts
@@ -7,7 +8,6 @@ import QtQuick.Controls.Basic
 import NextAppUi
 import Nextapp.Models
 
-// The MenuBar also serves as a controller for our window as we don't use any decorations.
 MenuBar {
     id: root
 
@@ -25,14 +25,14 @@ MenuBar {
             text: menuBarItem.text
             font: menuBarItem.font
             elide: Text.ElideRight
-            color: menuBarItem.highlighted ? Colors.textFile : Colors.text
+            color: menuBarItem.highlighted ? MaterialDesignStyling.inverseOnSurface : MaterialDesignStyling.onSurface
             opacity: enabled ? 1.0 : 0.3
         }
 
         background: Rectangle {
             id: background
 
-            color: menuBarItem.highlighted ? Colors.selection : "transparent"
+            color: menuBarItem.highlighted ? MaterialDesignStyling.inverseSurface : MaterialDesignStyling.surface
             Rectangle {
                 id: indicator
 
@@ -40,7 +40,7 @@ MenuBar {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
 
-                color: Colors.color1
+                color: MaterialDesignStyling.tertiaryFixedDim
                 states: State {
                     name: "active"
                     when: menuBarItem.highlighted
@@ -84,7 +84,7 @@ MenuBar {
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 leftPadding: windowActions.width
-                color: Colors.text
+                color: MaterialDesignStyling.onSurface
                 clip: true
             }
         }
@@ -107,7 +107,7 @@ MenuBar {
                 Layout.fillHeight: true
                 Layout.preferredWidth: height
 
-                color: hovered ? Colors.background : "transparent"
+                color: hovered ? MaterialDesignStyling.surfaceDim : "transparent"
                 HoverHandler {
                     id: hoverHandler
                 }
@@ -123,7 +123,7 @@ MenuBar {
                 onAction: root.dragWindow.showMinimized()
                 Rectangle {
                     anchors.centerIn: parent
-                    color: parent.hovered ? Colors.iconIndicator : Colors.icon
+                    color: parent.hovered ? MaterialDesignStyling.surfaceBright : MaterialDesignStyling.surfaceContainer
                     height: 2
                     width: parent.height - 14
                 }
@@ -136,7 +136,7 @@ MenuBar {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 7
-                    border.color: parent.hovered ? Colors.iconIndicator : Colors.icon
+                    border.color: parent.hovered ? MaterialDesignStyling.tertiaryContainer : MaterialDesignStyling.tertiaryFixedDim
                     border.width: 2
                     color: "transparent"
                 }
@@ -145,7 +145,7 @@ MenuBar {
             InteractionButton {
                 id: close
 
-                color: hovered ? "#ec4143" : "transparent"
+                color: hovered ? "green" : "transparent"
                 onAction: root.dragWindow.close()
                 Rectangle {
                     anchors.centerIn: parent
@@ -154,7 +154,7 @@ MenuBar {
                     rotation: 45
                     antialiasing: true
                     transformOrigin: Item.Center
-                    color: parent.hovered ? Colors.iconIndicator : Colors.icon
+                    color: parent.hovered ? "red" : "blue"
 
                     Rectangle {
                         anchors.centerIn: parent
@@ -170,8 +170,7 @@ MenuBar {
     }
 
     background: Rectangle {
-        color: NaCore.develBuild ? "darkred" : Colors.surface2
-        // Make the empty space drag the specified root window.
+        color: NaCore.develBuild ? "red" : MaterialDesignStyling.surfaceContainer
         WindowDragHandler {
             dragWindow: root.dragWindow
         }

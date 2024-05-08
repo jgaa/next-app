@@ -9,7 +9,7 @@ ApplicationWindow {
     width: 650
     height: 550
     flags: Qt.Window // | Qt.FramelessWindowHint
-    color: Colors.surface1
+    color: MaterialDesignStyling.surfaceContainerHigh
     title: "About Nextapp"
 
     menuBar: MyMenuBar {
@@ -46,8 +46,8 @@ ApplicationWindow {
             Layout.fillHeight: true
 
           TextArea {
-              selectedTextColor: Colors.textFile
-              selectionColor: Colors.selection
+              selectedTextColor: MaterialDesignStyling.onInverseSurface
+              selectionColor: MaterialDesignStyling.inverseSuface
               horizontalAlignment: Text.AlignHCenter
               textFormat: Text.RichText
 
@@ -67,7 +67,7 @@ ApplicationWindow {
                        + "The nextapp-server is version %5."
                        + "")
                        .arg(Application.version).arg("https://github.com/jgaa/next-app/blob/main/src/NextAppUi/LICENSE").arg("2024").arg(NaCore.qtVersion).arg(NaComm.version);
-              color: Colors.textFile
+              color: MaterialDesignStyling.onSurfaceContainer
               wrapMode: Text.WordWrap
               readOnly: true
               antialiasing: true
@@ -80,9 +80,26 @@ ApplicationWindow {
         }
 
         Button {
+            Layout.preferredWidth: 200
+            Layout.preferredHeight: 30
+            width: 200
             Layout.alignment: Qt.AlignHCenter
-            text: "Ok"
+            text: qsTr("Ok")
             onClicked: root.close()
+
+            contentItem: Text {
+                color: MaterialDesignStyling.onSecondaryContainer
+                text: parent.text
+                font: MaterialDesignStyling.fontButton
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            background: Rectangle {
+                anchors.fill: parent
+                color: MaterialDesignStyling.secondaryContainer
+                border.width: 1
+                border.color: MaterialDesignStyling.outline
+            }
         }
     }
 

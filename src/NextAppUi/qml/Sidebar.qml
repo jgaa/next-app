@@ -16,7 +16,7 @@ Rectangle {
     required property ApplicationWindow dragWindow
     readonly property int tabBarSpacing: 10
 
-    color: Colors.surface2
+    color: MaterialDesignStyling.surfaceContainer
 
     component SidebarEntry: Button {
         id: sidebarButton
@@ -24,7 +24,7 @@ Rectangle {
         Layout.alignment: Qt.AlignHCenter
         Layout.fillWidth: true
 
-        icon.color: down || checked ? Colors.iconIndicator : Colors.icon
+        icon.color: down || checked ? MaterialDesignStyling.onPrimaryContainer  : MaterialDesignStyling.onSurfaceVariant
         icon.width: 27
         icon.height: 27
 
@@ -33,8 +33,12 @@ Rectangle {
         bottomPadding: 0
         leftPadding: 0
         background: Rectangle {
-            color: Colors.hover
-            opacity: sidebarButton.hovered ? 1 : 0
+            height: icon.height * 1.2
+            x: 20
+            width: parent.width - 40
+            color: MaterialDesignStyling.onSurface
+            opacity: sidebarButton.hovered ? 0.5 : 0
+            radius: 5
         }
 
         hoverEnabled: true
@@ -48,7 +52,7 @@ Rectangle {
             height: sidebarButton.icon.height * 1.2
 
             visible: sidebarButton.checked
-            color: Colors.color1
+            color: MaterialDesignStyling.onPrimaryContainer
         }
     }
 
@@ -178,12 +182,12 @@ Rectangle {
             }
         }
 
-        Rectangle {
-            height: 2
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignHCenter
-            color: Colors.text
-        }
+        // Rectangle {
+        //     height: 2
+        //     Layout.fillWidth: true
+        //     Layout.alignment: Qt.AlignHCenter
+        //     color: Colors.text
+        // }
 
         ColumnLayout {
             Layout.fillWidth: true
