@@ -24,18 +24,21 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(QT6_IS_SHARED_LIBS_BUILD OFF)
+
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
 
 qt_policy(
     SET QTP0001 NEW
 )
 
+qt_standard_project_setup()
+
 #include(cmake/3rdparty.cmake)
 # Use logfault from git submodule in stead of adding it
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/logfault/include)
 add_library(logfault INTERFACE)
 
-qt_standard_project_setup()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(-D_DEBUG)
@@ -90,14 +93,11 @@ qt_add_qml_module(appNextAppUi
         qml/EditActionDlg.qml
         qml/EditNodeDlg.qml
         qml/EditWorkSession.qml
-        qml/GlobalSettings.qml
         qml/MainTree.qml
         qml/MyMenu.qml # x
         qml/MyMenuBar.qml # x
         qml/ReportsView.qml
         qml/ResizeButton.qml # x
-        qml/ServerSettings.qml
-        qml/SettingsDlg.qml
         qml/Sidebar.qml
         qml/StyledCheckBox.qml
         qml/WeeklyHoursView.qml
@@ -106,6 +106,10 @@ qt_add_qml_module(appNextAppUi
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
         qml/common.js
+        qml/settings/GlobalSettings.qml
+        qml/settings/PrefSettings.qml
+        qml/settings/ServerSettings.qml
+        qml/settings/SettingsDlg.qml
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
@@ -199,19 +203,21 @@ target_link_libraries(appNextAppUi
         NextappProtoMessageLib
 )
 
-include(GNUInstallDirs)
-install(TARGETS appNextAppUi
-    BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(NOT ANDROID)
+    include(GNUInstallDirs)
+    install(TARGETS appNextAppUi
+        BUNDLE DESTINATION .
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
 
-qt_generate_deploy_app_script(
-    TARGET appNextAppUi
-    OUTPUT_SCRIPT deploy_script
+    qt_generate_deploy_app_script(
+        TARGET appNextAppUi
+        OUTPUT_SCRIPT deploy_script
 
-)
-install(SCRIPT ${deploy_script})
+    )
+    install(SCRIPT ${deploy_script})
+endif()
 
 # if (WITH_TESTS)
 #     find_package(GTest REQUIRED)

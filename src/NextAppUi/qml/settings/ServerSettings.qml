@@ -44,5 +44,9 @@ Item {
             placeholderText: qsTr("20 - 200");
             width: 150
         }
+
+        Item {
+            Layout.fillHeight: true
+        }
     }
 }

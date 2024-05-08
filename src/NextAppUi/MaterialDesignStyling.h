@@ -119,6 +119,8 @@ class MaterialDesignStyling : public QObject
 public:
     MaterialDesignStyling();
 
+    Q_INVOKABLE void setTheme(const QString& name);
+
     QString primary() const;
     QString onPrimary() const;
     QString primaryContainer() const;
@@ -180,4 +182,5 @@ private:
     void setDarkTheme();
 
     ColorTheme theme_;
+    QString currentTheme_;
 };

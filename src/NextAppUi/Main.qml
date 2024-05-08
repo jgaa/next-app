@@ -22,7 +22,7 @@ ApplicationWindow {
             Action {
                 text: qsTr("Settings")
                 shortcut: StandardKey.ZoomIn
-                onTriggered: { openDialog("SettingsDlg.qml") }
+                onTriggered: { openDialog("settings/SettingsDlg.qml") }
             }
             // Action {
             //     text: qsTr("Decrease Font")

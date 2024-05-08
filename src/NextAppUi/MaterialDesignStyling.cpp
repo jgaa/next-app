@@ -14,6 +14,19 @@ MaterialDesignStyling::MaterialDesignStyling() {
     }
 }
 
+void MaterialDesignStyling::setTheme(const QString &name)
+{
+    if (name == currentTheme_) {
+        return;
+    }
+
+    if (name == "dark") {
+        setDarkTheme();
+    } else {
+        setLightTheme();
+    }
+    emit colorsChanged();
+}
 
 QString MaterialDesignStyling::primary() const { return theme_.primary; }
 QString MaterialDesignStyling::onPrimary() const { return theme_.onPrimary; }
@@ -123,6 +136,8 @@ void MaterialDesignStyling::setLightTheme()
     theme_.inversePrimary = "#D0BCFF";
     theme_.scrim = "#000000";
     theme_.shadow = "#000000";
+
+    currentTheme_ = "light";
 }
 
 void MaterialDesignStyling::setDarkTheme()
@@ -179,4 +194,6 @@ void MaterialDesignStyling::setDarkTheme()
     theme_.inversePrimary = "#6750A4";
     theme_.scrim = "#000000";
     theme_.shadow = "#000000";
+
+    currentTheme_ = "dark";
 }

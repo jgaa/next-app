@@ -29,6 +29,11 @@ Dialog {
                 text: qsTr("Global")
                 width: implicitWidth
             }
+
+            TabButton {
+                text: qsTr("Preferences")
+                width: implicitWidth
+            }
         }
 
         StackLayout {
@@ -43,12 +48,17 @@ Dialog {
                 id: globalTab
                 GlobalSettings {id: global}
             }
+            Item {
+                id: preferencesTab
+                PrefSettings {id: preferences}
+            }
         }
     }
 
     onAccepted: {
         server.commit()
         global.commit()
+        preferences.commit()
         close()
     }
 
