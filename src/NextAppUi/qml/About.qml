@@ -46,8 +46,6 @@ ApplicationWindow {
             Layout.fillHeight: true
 
           TextArea {
-              selectedTextColor: MaterialDesignStyling.onInverseSurface
-              selectionColor: MaterialDesignStyling.inverseSuface
               horizontalAlignment: Text.AlignHCenter
               textFormat: Text.RichText
 
@@ -67,7 +65,7 @@ ApplicationWindow {
                        + "The nextapp-server is version %5."
                        + "")
                        .arg(Application.version).arg("https://github.com/jgaa/next-app/blob/main/src/NextAppUi/LICENSE").arg("2024").arg(NaCore.qtVersion).arg(NaComm.version);
-              color: MaterialDesignStyling.onSurfaceContainer
+              color: MaterialDesignStyling.onSurface
               wrapMode: Text.WordWrap
               readOnly: true
               antialiasing: true
@@ -84,13 +82,13 @@ ApplicationWindow {
             Layout.preferredHeight: 30
             width: 200
             Layout.alignment: Qt.AlignHCenter
-            text: qsTr("Ok")
+            text: qsTr("Close")
             onClicked: root.close()
 
             contentItem: Text {
                 color: MaterialDesignStyling.onSecondaryContainer
                 text: parent.text
-                font: MaterialDesignStyling.fontButton
+                font: Button.font
                 horizontalAlignment: Text.AlignHCenter
             }
 
@@ -100,6 +98,10 @@ ApplicationWindow {
                 border.width: 1
                 border.color: MaterialDesignStyling.outline
             }
+        }
+
+        Item {
+            Layout.preferredHeight: 10
         }
     }
 

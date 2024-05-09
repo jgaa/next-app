@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import NextAppUi
 
 // https://medium.com/@eduard.metzger/how-to-make-a-quick-custom-qml-checkbox-using-icon-fonts-b2ffbd651144
 // with modifications
@@ -11,9 +12,10 @@ Rectangle
     property int iconSize: 20
     property string checkedCode: "\uf14a"
     property string uncheckedCode: "\uf0c8"
-    property string checkedColor: Colors.icon
-    property string uncheckedColor: Colors.icon
-    property string textColor: Colors.disabledText
+    property string checkedColor: MaterialDesignStyling.onSurface
+    property string uncheckedColor: MaterialDesignStyling.onSurface
+    property string textColor: MaterialDesignStyling.onSurfaceVariant
+    property string selectedBackgroundColor: MaterialDesignStyling.surfaceContainerHighest
     property bool useSolidForChecked: false
     property bool autoToggle: true
     width: childrenRect.width
@@ -54,7 +56,7 @@ Rectangle
         hoverEnabled: true
 
         onEntered: {
-            checkBox.color = Colors.iconIndicator
+            checkBox.color = checkBox.selectedBackgroundColor
         }
 
         onExited: {

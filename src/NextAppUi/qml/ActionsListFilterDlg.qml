@@ -31,16 +31,10 @@ Popup {
     }
 
     background: Rectangle {
-        color: "white"
+        color: MaterialDesignStyling.surfaceContainer
         radius: 5
-
-        Rectangle {
-            anchors.fill: parent
-            color: "#f0f0f0"
-            radius: 5
-            border.color: "#d0d0d0"
-            border.width: 1
-        }
+        border.color: MaterialDesignStyling.outline
+        border.width: 1
     }
 
     contentItem: ColumnLayout {
@@ -67,16 +61,25 @@ Popup {
         //     text: qsTr("Show upcoming actions")
         // }
 
-        Button {
-            text: qsTr("Apply")
-            onClicked: {
-                popup.flags.active = active.isChecked
-                popup.flags.done = done.isChecked
-                popup.flags.unscheduled = unscheduled.isChecked
-                //popup.flags.upcoming = upcoming.isChecked
+        RowLayout {
+            StyledButton {
+                text: qsTr("Apply")
+                onClicked: {
+                    popup.flags.active = active.isChecked
+                    popup.flags.done = done.isChecked
+                    popup.flags.unscheduled = unscheduled.isChecked
+                    //popup.flags.upcoming = upcoming.isChecked
 
-                ActionsModel.flags = flags
-                popup.close()
+                    ActionsModel.flags = flags
+                    popup.close()
+                }
+            }
+
+            StyledButton {
+                text: qsTr("Cancel")
+                onClicked: {
+                    popup.close()
+                }
             }
         }
     }

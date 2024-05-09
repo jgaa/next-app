@@ -1,5 +1,6 @@
 #include "DaysModel.h"
 #include "DayModel.h"
+#include "MaterialDesignStyling.h"
 
 #include "ServerComm.h"
 #include "logging.h"
@@ -133,7 +134,7 @@ QString DaysModel::getColorName(int year, int month, int day)
         }
     }
 
-    return {"white"};
+    return "transparent"; //MaterialDesignStyling::instance().primary();
 }
 
 bool DaysModel::hasMonth(int year, int month)

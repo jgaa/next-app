@@ -35,21 +35,37 @@ Rectangle {
         }
     }
 
-    component Quarter : Text {
+    component Quarter : Item {
+        property alias text: qtext.text
+
+        Layout.topMargin: 10
+        Layout.fillWidth: true
+        Layout.preferredHeight: 40
+
+        Rectangle {
+            anchors.fill: parent
+            color: MaterialDesignStyling.secondaryContainer
+            radius: 5
+        }
+
+        Text {
             id: qtext
-            color: Colors.text
-            Layout.alignment: Qt.AlignHCenter
+            anchors.centerIn: parent
+            color: MaterialDesignStyling.onSecondaryContainer
+        }
     }
 
     component Month : Rectangle {
         id: monthComponent
+        radius: 5
         property alias month: grid.month
         property alias year: grid.year
         property MonthModel mmodel: DaysModel.getMonth(year, month)
         property bool validColors: mmodel.validColors;
 
-        //color: validColors ? "white" : "lightgray"
-        //color: "lightgray"
+        color: MaterialDesignStyling.surface
+        border.color: MaterialDesignStyling.outline
+        border.width: 1
 
         onValidColorsChanged: {
             console.log("Month ", grid.month, " validColors changed to ", monthComponent.validColors)
@@ -71,24 +87,44 @@ Rectangle {
                 font.pixelSize: root.fontSize
                 text: grid.locale.monthName(monthComponent.month)
                       + ' ' + grid.year
+                color: MaterialDesignStyling.onSurfaceVariant
             }
 
             GridLayout {
                 columns: 2
 
                 DayOfWeekRow {
+                    id: dayOfWeekRow
                     locale: grid.locale
 
                     Layout.column: 1
                     Layout.fillWidth: true
+
+                    delegate: Label {
+                        required property string shortName
+                        text: shortName
+                        font: dayOfWeekRow.font
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        color: MaterialDesignStyling.onSurfaceVariant
+                    }
                 }
 
                 WeekNumberColumn {
+                    id: weekNumberCol
                     month: grid.month
                     year: monthComponent.year
                     locale: grid.locale
-
                     Layout.fillHeight: true
+
+                    delegate: Label {
+                        required property int weekNumber
+                        text: weekNumber
+                        font: weekNumberCol.font
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        color: MaterialDesignStyling.onSurfaceVariant
+                    }
                 }
 
                 MonthGrid {
@@ -103,8 +139,11 @@ Rectangle {
                         id: drect
                         height: dtext.height
                         width: dtext.width
+                        radius: 3
+                        property string color_name: drect.model.month === monthComponent.month ? monthComponent.validColors ? monthComponent.mmodel.getColorForDayInMonth(drect.model.day) : "lightgray" : "transparent"
                         required property var model
-                        color: drect.model.month === monthComponent.month ? monthComponent.validColors ? monthComponent.mmodel.getColorForDayInMonth(drect.model.day) : "lightgray" : "white"
+                        color: color_name
+                        //color: MaterialDesignStyling.primary
                         // TODO: Make a rounded background if the day has notes or report
                         //radius: 100
 
@@ -112,10 +151,10 @@ Rectangle {
                             id: hover_shadow
                             anchors.fill: parent
                             opacity: 0
-                            color: "black"
+                            radius: 3
+                            color: MaterialDesignStyling.scrim
                         }
 
-                        //color: "white"
                         Text {
                             id: dtext
                             horizontalAlignment: Text.AlignHCenter
@@ -123,6 +162,7 @@ Rectangle {
                             opacity: drect.model.month === grid.month ? 1 : 0
                             text: drect.model.day
                             font: grid.font
+                            color: drect.color_name === "transparent" ? MaterialDesignStyling.onSurface : "black"
 
                             MouseArea {
                                 cursorShape: Qt.PointingHandCursor

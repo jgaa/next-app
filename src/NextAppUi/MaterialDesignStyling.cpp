@@ -2,8 +2,12 @@
 
 #include "MaterialDesignStyling.h"
 
+MaterialDesignStyling *MaterialDesignStyling::instance_ = nullptr;
+
 MaterialDesignStyling::MaterialDesignStyling() {
 
+    assert(!instance_);
+    instance_ = this;
     QSettings settings;
     auto theme = QSettings{}.value("UI/theme", "light").toString();
 

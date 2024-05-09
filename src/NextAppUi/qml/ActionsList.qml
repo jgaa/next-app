@@ -9,31 +9,19 @@ import nextapp.pb as NextappPB
 Rectangle {
     id: root
     anchors.fill: parent
-
-    //property alias currentIndex : treeView.selectionModel.currentIndex
     property string selectedItemUuid: MainTreeModel.selected
 
-    color: Colors.background
+    color: MaterialDesignStyling.surface
 
     ColumnLayout {
         anchors.fill: parent
-
-        RowLayout {
-            Layout.fillWidth: true
-            height: 20
-
-            Rectangle {
-                Layout.fillWidth: true
-                color: 'lightgray'
-            }
-        }
 
         Component {
             id: sectionHeading
             Rectangle {
                 width: ListView.view.width
-                height: childrenRect.height
-                color: Colors.text
+                height: 22
+                color: MaterialDesignStyling.primary
 
                 required property string section
 
@@ -41,7 +29,8 @@ Rectangle {
                     id: label
                     text: ActionsModel.toName(parent.section)
                     font.bold: true
-                    color: Colors.background
+                    color: MaterialDesignStyling.onPrimary
+                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
         }
@@ -81,7 +70,10 @@ Rectangle {
 
                 Rectangle {
                     id: background
-                    color: selected ? Colors.selection : index % 2 ? Colors.background : Colors.background2
+                    color: selected
+                           ? MaterialDesignStyling.surfaceContainerHighest
+                           : done ? MaterialDesignStyling.surfaceContainer
+                           : index % 2 ? MaterialDesignStyling.surface : MaterialDesignStyling.surfaceContainer
                     anchors.fill: parent
                 }
 
@@ -114,6 +106,19 @@ Rectangle {
                     "text/app.nextapp.curr.node": actionItem.node
                 }
 
+                RowLayout {
+                    id: fullRow
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Rectangle {
+                        Layout.margins: 2
+                        Layout.preferredWidth: 5
+                        Layout.fillHeight: true
+                        color: selected ? MaterialDesignStyling.primary : "transparent"
+                        radius: 2
+                    }
+
                 ColumnLayout {
                     id: row
                     Layout.fillWidth: true
@@ -121,31 +126,25 @@ Rectangle {
                     RowLayout {
                         spacing: 6
 
-                        Image {
-                            id: checkIcon
+                        CheckBoxWithFontIcon {
                             Layout.topMargin: 2
                             Layout.bottomMargin: 2
-                            source:  done ? "../icons/square-checked.svg" : "../icons/square-unchecked.svg"
-                            sourceSize.height: font.pixelSize * 1.4
-                            fillMode: Image.PreserveAspectFit
+                            isChecked: done
 
-                            MouseArea {
-                                anchors.fill: parent
-
-                                onClicked: {
-                                    ActionsModel.markActionAsDone(uuid, !done)
-                                }
+                            onClicked: {
+                                ActionsModel.markActionAsDone(uuid, isChecked)
                             }
                         }
 
                         Text {
                             id: actionName
                             text: name
-                            color: done ? Colors.disabledText : Colors.text
+                            color: done ? MaterialDesignStyling.onSurfaceVariant : MaterialDesignStyling.onSurface
                         }
 
                         CheckBoxWithFontIcon {
                             id: favoriteIcon
+                            enabled: !done
                             isChecked: favorite
                             checkedCode: "\uf005"
                             uncheckedCode: "\uf005"
@@ -163,6 +162,7 @@ Rectangle {
 
                         CheckBoxWithFontIcon {
                             id: canWorkIcon
+                            enabled: !done
                             isChecked: hasWorkSession
                             checkedCode: "\uf017"
                             uncheckedCode: "\uf017"
@@ -184,11 +184,12 @@ Rectangle {
                         }
 
                         Label {
-                            color: done ? Colors.disabledText : Colors.nodePath
+                            color: done ? MaterialDesignStyling.onSurfaceVariant : MaterialDesignStyling.onSurface
                             text: listName
                             visible: text !== ""
                         }
                     }
+                }
                 }
             }
         }

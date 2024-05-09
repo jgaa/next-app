@@ -14,21 +14,10 @@ Rectangle {
     property string selectedItemUuid: MainTreeModel.selected
     property bool hasSelection: selectedItemUuid !== ""
 
-    color: Colors.background
+    color: MaterialDesignStyling.surface
 
     ColumnLayout {
         anchors.fill: parent
-
-
-        RowLayout {
-            Layout.fillWidth: true
-            height: 20
-
-            Rectangle {
-                Layout.fillWidth: true
-                color: 'lightgray'
-            }
-        }
 
         ScrollView {
             Layout.fillHeight: true
@@ -41,13 +30,8 @@ Rectangle {
                 boundsBehavior: Flickable.StopAtBounds
                 boundsMovement: Flickable.StopAtBounds
                 clip: true
-                // Layout.fillHeight: true
-                // Layout.fillWidth: true
                 anchors.fill: parent
                 model: MainTreeModel
-                //rootIndex: MainTreeModel.useRoot
-
-                //selectionModel: ItemSelectionModel { id: selection }
 
                 delegate: TreeViewDelegate {
                     id: treeDelegate
@@ -55,20 +39,15 @@ Rectangle {
                     implicitWidth: treeView.width > 0 ? treeView.width : 250
                     implicitHeight: 25
 
-                    // Since we have the 'ComponentBehavior Bound' pragma, we need to
-                    // require these properties from our model. This is a convenient way
-                    // to bind the properties provided by the model's role names.
                     required property int index
                     required property string name
                     required property string uuid
                     required property string kind
 
-                    //Drag.dragType:
-
                     indicator: Image {
                         id: treeIcon
 
-                        x: treeDelegate.leftMargin + (treeDelegate.depth * treeDelegate.indentation)
+                        x: treeDelegate.leftMargin + (treeDelegate.depth * treeDelegate.indentation) + 10
                         anchors.verticalCenter: parent.verticalCenter
                         source: treeDelegate.hasChildren ? (treeDelegate.expanded
                                     ? "../icons/fontawsome/angle-down.svg" : "../icons/fontawsome/angle-right.svg")
@@ -80,7 +59,7 @@ Rectangle {
                         smooth: true
                         antialiasing: true
                         asynchronous: true
-                        visible: treeDelegate.hasChildren
+                        //visible: treeDelegate.hasChildren
                     }
 
                     MultiEffect {
@@ -90,7 +69,7 @@ Rectangle {
                         source: treeIcon
 
                         colorizationColor: (treeDelegate.expanded && treeDelegate.hasChildren)
-                                                 ? Colors.color2 : Colors.color1
+                                                 ? MaterialDesignStyling.tertiaryFixed : MaterialDesignStyling.tertiaryFixedDim
                         colorization: 1.0
                         brightness: 1.0
                         visible: treeDelegate.hasChildren
@@ -101,8 +80,11 @@ Rectangle {
                         spacing: 2
 
                         Item {
-                            width: 20
-                            height: 16
+                            Layout.leftMargin: 10
+                            Layout.preferredHeight: 16
+                            Layout.preferredWidth: 20
+                            // width: 20
+                            // height: 16
 
                             Image {
                                 id: kindIcon
@@ -120,7 +102,7 @@ Rectangle {
                                 anchors.fill: kindIcon
                                 source: kindIcon
 
-                                colorizationColor: Colors.text
+                                colorizationColor: MaterialDesignStyling.onSurface
                                 colorization: 1.0
                                 brightness: 1.0
                             }
@@ -131,12 +113,45 @@ Rectangle {
                         }
 
                         Text {
-                            text: treeDelegate.name
-                            color: Colors.text
                             id: label
+                            text: treeDelegate.name
+                            color: MaterialDesignStyling.onSurface
                             clip: true
                             Layout.alignment: Qt.AlignLeft
                             Layout.fillWidth: true
+
+                            MouseArea {
+                                id: labelMouseArea
+                                anchors.fill: parent
+                            }
+                        }
+
+                        TapHandler {
+                            target: treeDelegate
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onSingleTapped: (eventPoint, button) => {
+                                switch (button) {
+                                    case Qt.LeftButton:
+                                        if (labelMouseArea.containsMouse) {
+                                            return
+                                        }
+                                        console.log("target: ", target)
+                                        treeView.toggleExpanded(treeDelegate.row)
+                                        treeView.lastIndex = index
+                                        setSelection(uuid)
+                                    break;
+                                    case Qt.RightButton:
+                                        contextMenu.node = MainTreeModel.nodeMapFromUuid(uuid)
+                                        contextMenu.index = treeDelegate.index
+                                        contextMenu.popup();
+                                    break;
+                                }
+                            }
+
+                            onLongPressed: {
+                                contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                                contextMenu.popup();
+                            }
                         }
                     }
 
@@ -156,9 +171,21 @@ Rectangle {
                     }
 
                     background: Rectangle {
-                        color: (MainTreeModel.selected === treeDelegate.uuid)
-                            ? Colors.selection
-                            : (hoverHandler.hovered ? Colors.active : "transparent")
+                        id: bg
+                        property bool isSelected : MainTreeModel.selected === treeDelegate.uuid
+
+                        color: (isSelected)
+                            ? MaterialDesignStyling.surfaceContainer
+                            : (hoverHandler.hovered ? MaterialDesignStyling.surfaceContainerHighest : "transparent")
+
+                        Rectangle {
+                            color: MaterialDesignStyling.primary
+                            radius: 3
+                            height: parent.height
+                            width: 5
+                            x: 2
+                            visible: bg.isSelected
+                        }
                     }
 
                     DropArea {
@@ -232,28 +259,28 @@ Rectangle {
                         id: hoverHandler
                     }
 
-                    TapHandler {
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        onSingleTapped: (eventPoint, button) => {
-                            switch (button) {
-                                case Qt.LeftButton:
-                                    treeView.toggleExpanded(treeDelegate.row)
-                                    treeView.lastIndex = treeDelegate.index
-                                    setSelection(treeDelegate.uuid)
-                                break;
-                                case Qt.RightButton:
-                                    contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
-                                    contextMenu.index = treeDelegate.index
-                                    contextMenu.popup();
-                                break;
-                            }
-                        }
+                    // TapHandler {
+                    //     acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    //     onSingleTapped: (eventPoint, button) => {
+                    //         switch (button) {
+                    //             // case Qt.LeftButton:
+                    //             //     treeView.toggleExpanded(treeDelegate.row)
+                    //             //     treeView.lastIndex = treeDelegate.index
+                    //             //     setSelection(treeDelegate.uuid)
+                    //             // break;
+                    //             case Qt.RightButton:
+                    //                 contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                    //                 contextMenu.index = treeDelegate.index
+                    //                 contextMenu.popup();
+                    //             break;
+                    //         }
+                    //     }
 
-                        onLongPressed: {
-                            contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
-                            contextMenu.popup();
-                        }
-                    }
+                    //     onLongPressed: {
+                    //         contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                    //         contextMenu.popup();
+                    //     }
+                    // }
 
                     MyMenu {
                         id: contextMenu

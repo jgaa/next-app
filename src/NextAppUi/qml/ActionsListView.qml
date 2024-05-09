@@ -10,7 +10,7 @@ import Nextapp.Models
 Rectangle {
     id: root
     anchors.fill: parent
-    color: Colors.background
+    color: MaterialDesignStyling.surface
     property bool ready: false
     property int prev_selection: 0
 
@@ -34,13 +34,13 @@ Rectangle {
             Layout.fillWidth: true
 
             background: Rectangle {
-                color: Colors.background
+                color: MaterialDesignStyling.surfaceContainer
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
-                ComboBox {
+                StyledComboBox {
                     id: selectionCtl
                     currentIndex: ActionsModel.mode
                     Layout.preferredWidth: 220
@@ -62,7 +62,8 @@ Rectangle {
                     }
                 }
 
-                Button {
+                StyledButton {
+                    width: 180
                     text: qsTr("Filter")
                     onClicked: {
                         filter.open()

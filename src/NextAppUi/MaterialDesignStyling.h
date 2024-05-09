@@ -174,6 +174,10 @@ public:
     QString scrim() const;
     QString shadow() const;
 
+    static MaterialDesignStyling& instance() noexcept {
+        return *instance_;
+    }
+
 signals:
     void colorsChanged();
 
@@ -183,4 +187,5 @@ private:
 
     ColorTheme theme_;
     QString currentTheme_;
+    static MaterialDesignStyling *instance_;
 };
