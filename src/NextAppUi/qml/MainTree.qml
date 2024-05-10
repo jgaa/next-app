@@ -120,10 +120,11 @@ Rectangle {
                             Layout.alignment: Qt.AlignLeft
                             Layout.fillWidth: true
 
-                            MouseArea {
-                                id: labelMouseArea
-                                anchors.fill: parent
-                            }
+                            // MouseArea {
+                            //     enabled: false
+                            //     id: labelMouseArea
+                            //     anchors.fill: parent
+                            // }
                         }
 
                         TapHandler {
@@ -132,11 +133,10 @@ Rectangle {
                             onSingleTapped: (eventPoint, button) => {
                                 switch (button) {
                                     case Qt.LeftButton:
-                                        if (labelMouseArea.containsMouse) {
-                                            return
+                                        console.log("Selection: ", name)
+                                        if (!label.contains(eventPoint)) {
+                                            treeView.toggleExpanded(treeDelegate.row)
                                         }
-                                        console.log("target: ", target)
-                                        treeView.toggleExpanded(treeDelegate.row)
                                         treeView.lastIndex = index
                                         setSelection(uuid)
                                     break;
@@ -146,6 +146,11 @@ Rectangle {
                                         contextMenu.popup();
                                     break;
                                 }
+                            }
+
+                            onDoubleTapped: {
+                                console.log("Double tapped: ", name, ", row=", treeDelegate.row)
+                                treeView.toggleExpanded(treeDelegate.row)
                             }
 
                             onLongPressed: {
@@ -178,13 +183,11 @@ Rectangle {
                             ? MaterialDesignStyling.surfaceContainer
                             : (hoverHandler.hovered ? MaterialDesignStyling.surfaceContainerHighest : "transparent")
 
-                        Rectangle {
-                            color: MaterialDesignStyling.primary
-                            radius: 3
-                            height: parent.height
-                            width: 5
-                            x: 2
-                            visible: bg.isSelected
+                        RowLayout {
+                            anchors.fill: parent
+                            SelectedIndicatorBar {
+                                selected: bg.isSelected
+                            }
                         }
                     }
 

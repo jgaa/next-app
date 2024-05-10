@@ -9,14 +9,12 @@ import Nextapp.Models
 
 Rectangle {
     id: root
-    property var colwidths: [140, 120, 80, 80, 800]
+    property var colwidths: [140, 120, 80, 80]
     property alias model: tableView.model
     property string selectedItem: ""
     property bool selectedIsActive: false
-    color: Colors.background
-
+    color: MaterialDesignStyling.surface
     Layout.fillHeight: true
-    Layout.preferredWidth: colwidths.reduce((accumulator, currentValue) => accumulator + currentValue, 0);
 
     function somethingChanged() {
         if (selectedItem !== "") {
@@ -29,12 +27,16 @@ Rectangle {
         }
     }
 
-    HorizontalHeaderView {
+    function remainingColWidth(availWidth) {
+        var totalWidth = colwidths.reduce((accumulator, currentValue) => accumulator + currentValue, 0);
+        return availWidth - totalWidth
+    }
+
+    StyledHeaderView {
         id: horizontalHeader
         anchors.left: tableView.left
         anchors.top: root.top
         syncView: tableView
-        clip: true
     }
 
     ScrollView {
@@ -51,8 +53,6 @@ Rectangle {
             boundsMovement: Flickable.StopAtBounds
             clip: true
 
-            // selectionMode: TableView.SingleSelection
-            // selectionBehavior: TableView.SelectRows
             editTriggers: TableView.OnDoubleClicked | TableView.editTriggersOnEditKeyPressed | TableView.OnEnterPressed | TableView.OnF2Pressed
 
             Component.onCompleted: {
@@ -67,10 +67,6 @@ Rectangle {
                 })
             }
 
-            columnWidthProvider : function (column) {
-                return root.colwidths[column]
-            }
-
             selectionModel: ItemSelectionModel {}
 
             delegate : Rectangle {
@@ -83,24 +79,32 @@ Rectangle {
                 required property bool active
                 required property var index
                 property bool selected : root.selectedItem == uuid
-                //TableView.onEditRole: "display"
 
+                implicitWidth: column == 4 ? remainingColWidth(tableView.width - 10) : root.colwidths[column]
                 implicitHeight: 30
 
                 border {
-                    color: selected ? Colors.icon: Colors.border
+                    color: MaterialDesignStyling.outlineVariant
                     width: 1
                 }
 
-                color: selected ? Colors.selection : row % 2 ?  Colors.surface1 : Colors.surface2
+                color: selected
+                       ? MaterialDesignStyling.surfaceContainerHighest
+                       : row % 2 ? MaterialDesignStyling.surface : MaterialDesignStyling.surfaceContainer
 
-                // Icon
+
                 RowLayout {
+                    implicitHeight: delegate.implicitHeight
+
+                    SelectedIndicatorBar {
+                        selected: column === 0 && delegate.selected
+                    }
+
                     Text {
-                        leftPadding: 4
+                        Layout.leftMargin: 4
                         visible: column === 0
                         text: icon
-                        color: Colors.icon
+                        color: MaterialDesignStyling.onSurfaceVariant
                         font.family: ce.faSolidName
                         font.styleName: ce.faSolidStyle
                         font.pixelSize: 20
@@ -109,20 +113,31 @@ Rectangle {
                     }
 
                     Text {
-                        leftPadding: 4
+                        Layout.leftMargin: 4
                         verticalAlignment: Text.AlignVCenter
                         text: display
-                        color: Colors.text
+                        color: MaterialDesignStyling.onSurface
                         Layout.fillHeight: true
                     }
 
+                    // Rectangle {
+                    //     Layout.preferredHeight: delegate.height - 5
+                    //     Layout.preferredWidth: delegate.height - 5
+
+                    //     anchors.centerIn: notesIcon
+                    //     visible: notesIcon.visible
+                    //     radius: 100
+                    //     color: MaterialDesignStyling.primary
+                    // }
+
                     Text {
-                        leftPadding: 4
+                        id: notesIcon
+                        Layout.margins: 4
                         visible: column === 4 && hasNotes
                         font.family: ce.faSolidName
                         font.styleName: ce.faSolidStyle
                         text: "\uf304"
-                        color: "lightblue"
+                        color: MaterialDesignStyling.onSurfaceVariant
                     }
                 }
 

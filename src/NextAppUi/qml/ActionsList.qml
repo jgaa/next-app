@@ -111,12 +111,8 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
 
-                    Rectangle {
-                        Layout.margins: 2
-                        Layout.preferredWidth: 5
-                        Layout.fillHeight: true
-                        color: selected ? MaterialDesignStyling.primary : "transparent"
-                        radius: 2
+                    SelectedIndicatorBar {
+                        selected: actionItem.selected
                     }
 
                 ColumnLayout {

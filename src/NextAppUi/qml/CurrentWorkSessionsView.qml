@@ -8,13 +8,16 @@ import nextapp.pb as NextappPB
 
 Rectangle {
     id: root
-    color: Colors.background
+    color: MaterialDesignStyling.surfaceContainer
+    Layout.fillWidth: true
 
     RowLayout {
         anchors.fill: parent
         id: rowCtl
 
         WorkSessionList {
+            Layout.preferredWidth: 800
+            Layout.minimumWidth: 300
             id: workSessionList
             model: WorkSessionsModel
         }
@@ -22,10 +25,11 @@ Rectangle {
         // Right buttons
         ColumnLayout {
             Layout.fillHeight: true
-            Layout.preferredWidth: 200
+            Layout.preferredWidth: 220
+            Layout.minimumWidth: 200
             Layout.margins: 6
 
-            Button {
+            StyledButton {
                 implicitHeight: 22 // Adjust as needed
                 text: "Pause"
                 enabled: workSessionList.selectedItem !== "" && workSessionList.selectedIsActive
@@ -35,7 +39,7 @@ Rectangle {
                 }
             }
 
-            Button {
+            StyledButton {
                 implicitHeight: 22 // Adjust as needed
                 text: "To the Top"
                 enabled: workSessionList.selectedItem !== ""
@@ -45,7 +49,7 @@ Rectangle {
                 }
             }
 
-            Button {
+            StyledButton {
                 implicitHeight: 22 // Adjust as needed
                 text: "Resume"
                 enabled: workSessionList.selectedItem !== "" && !workSessionList.selectedIsActive
@@ -55,7 +59,7 @@ Rectangle {
                 }
             }
 
-            Button {
+            StyledButton {
                 implicitHeight: 22 // Adjust as needed
                 text: "Done"
                 enabled: workSessionList.selectedItem !== ""
@@ -65,7 +69,7 @@ Rectangle {
                 }
             }
 
-            Button {
+            StyledButton {
                 implicitHeight: 22 // Adjust as needed
                 text: "Action Completed"
                 enabled: workSessionList.selectedItem !== ""

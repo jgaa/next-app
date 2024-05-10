@@ -9,7 +9,7 @@ import Nextapp.Models
 
 Rectangle {
     id: root
-    color: Colors.background
+    color: MaterialDesignStyling.surface
     property bool ready: false
     property int prev_selection: 0
 
@@ -46,13 +46,13 @@ Rectangle {
             Layout.fillWidth: true
 
             background: Rectangle {
-                color: Colors.background
+                color: MaterialDesignStyling.surfaceContainer
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
-                ComboBox {
+                StyledComboBox {
                     id: selectionCtl
                     model: ListModel {
                         ListElement { text: qsTr("Today") }
@@ -76,8 +76,7 @@ Rectangle {
                     }
                 }
 
-
-                ComboBox {
+                StyledComboBox {
                     id: sortCtl
                     currentIndex: 2
                     width: 200
@@ -98,11 +97,12 @@ Rectangle {
         RowLayout {
             WorkSessionList {
                 Layout.fillHeight: true
-                //Layout.fillWidth: true
+                Layout.preferredWidth: 1000
                 id: workSessions
             }
 
-            Item {
+            Rectangle {
+                color: "yellow"
                 Layout.fillWidth: true;
             }
         }

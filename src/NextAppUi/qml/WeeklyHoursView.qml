@@ -11,7 +11,7 @@ Rectangle {
     id: root
     Layout.fillHeight: true
     Layout.fillWidth: true
-    color: Colors.background
+    color: MaterialDesignStyling.surface
 
     property int cellwidth: 70
     property string prevLabel: ""
@@ -23,12 +23,12 @@ Rectangle {
             Layout.fillWidth: true
 
             background: Rectangle {
-                color: Colors.background
+                color: MaterialDesignStyling.surfaceContainer
             }
 
             RowLayout {
                 spacing: 6
-                ComboBox {
+                StyledComboBox {
                     id: selectionCtl
                     // Don't work!
                     //currentIndex: tableView.model.weekSelection
@@ -61,12 +61,11 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            HorizontalHeaderView {
+            StyledHeaderView {
                 id: horizontalHeader
                 anchors.left: parent.left
                 anchors.top: parent.top
                 syncView: tableView
-                clip: true
             }
 
             ScrollView {
@@ -99,11 +98,14 @@ Rectangle {
                         required property int row
                         required property int column
                         required property var display
+                        required property bool selected
                         required property bool summary // Last line
 
-                        color: row % 2 ?  Colors.surface1 : Colors.surface2
+                        color: summary
+                           ? MaterialDesignStyling.tertiaryContainer
+                           : column % 2 ? MaterialDesignStyling.surface : MaterialDesignStyling.surfaceContainer
                         border {
-                            color: Colors.border
+                            color: MaterialDesignStyling.outline
                             width: 1
                         }
 
@@ -111,7 +113,7 @@ Rectangle {
                             anchors.fill: parent
                             verticalAlignment: Text.AlignVCenter
                             horizontalAlignment: column === 0 ?  Text.AlignRight : Text.AlignHCenter
-                            color: summary ? Colors.totals : Colors.text
+                            color: summary ? MaterialDesignStyling.onTertiaryContainer : MaterialDesignStyling.onSurface
                             text: display
                             font.bold: summary
                             padding: 5

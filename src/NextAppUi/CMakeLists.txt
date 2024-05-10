@@ -98,15 +98,18 @@ qt_add_qml_module(appNextAppUi
         qml/MyMenuBar.qml # x
         qml/ReportsView.qml
         qml/ResizeButton.qml # x
+        qml/SelectedIndicatorBar.qml
         qml/Sidebar.qml
+        qml/StyledButton.qml
         qml/StyledCheckBox.qml
+        qml/StyledComboBox.qml
+        qml/StyledHeaderView.qml
         qml/WeeklyHoursView.qml
         qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
         qml/common.js
-        qml/StyledComboBox.qml
         qml/settings/GlobalSettings.qml
         qml/settings/PrefSettings.qml
         qml/settings/ServerSettings.qml
@@ -170,7 +173,7 @@ qt_add_qml_module(appNextAppUi
         WorkSessionsModel.h
         util.cpp
         util.h
-        QML_FILES qml/StyledButton.qml
+        QML_FILES qml/StyledTabButton.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

@@ -7,21 +7,26 @@ Rectangle {
     id: root
     Layout.fillWidth: true
     Layout.fillHeight: true
-    color: "orange"
+    color: MaterialDesignStyling.surface
 
     ColumnLayout {
         anchors.fill: parent
         TabBar {
             id: bar
             Layout.fillWidth: true
-            TabButton {
+            StyledTabButton {
                 text: qsTr("Week")
             }
-            TabButton {
+            StyledTabButton {
                 text: qsTr("Today")
             }
-            TabButton {
+            StyledTabButton {
                 text: qsTr("Month")
+            }
+
+            background: Rectangle {
+                implicitHeight: 40
+                color: MaterialDesignStyling.primary
             }
         }
 
