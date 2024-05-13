@@ -135,6 +135,20 @@ Rectangle {
             }
 
             SidebarEntry {
+                id: planDay
+
+                icon.source: "../icons/fontawsome/calendar-day.svg"
+                checkable: true
+
+                onCheckedChanged: {
+                    if (checked) {
+                        root.currentMainItem = 2
+                        root.currentTabIndex = -1
+                    }
+                }
+            }
+
+            SidebarEntry {
                 id: reports
 
                 icon.source: "../icons/fontawsome/chart-line.svg"

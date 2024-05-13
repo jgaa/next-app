@@ -104,16 +104,20 @@ qt_add_qml_module(appNextAppUi
         qml/StyledCheckBox.qml
         qml/StyledComboBox.qml
         qml/StyledHeaderView.qml
+        qml/StyledTabButton.qml
         qml/WeeklyHoursView.qml
         qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
+        qml/calendar/DayPlan.qml
+        qml/calendar/CalendarView.qml
         qml/common.js
         qml/settings/GlobalSettings.qml
         qml/settings/PrefSettings.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
+
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
@@ -123,6 +127,7 @@ qt_add_qml_module(appNextAppUi
         icons/folder_open.svg
         icons/fontawsome/angle-down.svg
         icons/fontawsome/angle-right.svg
+        icons/fontawsome/calendar-day.svg
         icons/fontawsome/calendar-days.svg
         icons/fontawsome/calendar.svg
         icons/fontawsome/chart-line.svg
@@ -173,7 +178,6 @@ qt_add_qml_module(appNextAppUi
         WorkSessionsModel.h
         util.cpp
         util.h
-        QML_FILES qml/StyledTabButton.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

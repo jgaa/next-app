@@ -101,6 +101,9 @@ Rectangle {
                         required property bool selected
                         required property bool summary // Last line
 
+                        implicitHeight: summary ? 32 : 24
+                        implicitWidth: root.cellwidth
+
                         color: summary
                            ? MaterialDesignStyling.tertiaryContainer
                            : column % 2 ? MaterialDesignStyling.surface : MaterialDesignStyling.surfaceContainer

@@ -153,6 +153,10 @@ ApplicationWindow {
                 }
             } // ColumnLayout for tree views
 
+            CalendarView {
+                id: calendarView
+            }
+
         } // StackLayout
     }
 

@@ -37,6 +37,7 @@ Rectangle {
         anchors.left: tableView.left
         anchors.top: root.top
         syncView: tableView
+        //visible: tableView.model && tableView.model.rowCount > 0
     }
 
     ScrollView {
