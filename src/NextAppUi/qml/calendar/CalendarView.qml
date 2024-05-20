@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import NextAppUi
 
 Rectangle {
+    id: root
     Layout.fillHeight: true
     Layout.preferredWidth: dayplan.implicitWidth
     //implicitWidth: dayplan.implicitWidth
@@ -11,6 +12,17 @@ Rectangle {
     // height: 800
     // width: 800
     color: MaterialDesignStyling.surface
+    property CalendarModel model: CalendarModel
+
+    onVisibleChanged: {
+        console.log("Visible changed")
+        if (visible) {
+            console.log("Visible. model is", model)
+            if (!model.valid) {
+                model.set(CalendarModel.CM_DAY, 2024, 5, 20)
+            }
+        }
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -26,12 +38,12 @@ Rectangle {
             ScrollBar.vertical.policy: ScrollBar.AlwaysOn
 
             Component.onCompleted: {
-                scrollView.ScrollBar.vertical.position = 0.26
+                scrollView.ScrollBar.vertical.position = 0.25
             }
 
             DayPlan {
                 id: dayplan
-
+                model: root.model.getDayModel(dayplan, 2024, 5, 20)
             }
         }
 

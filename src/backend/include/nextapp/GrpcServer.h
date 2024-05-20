@@ -142,6 +142,10 @@ public:
         ::grpc::ServerUnaryReactor *GetUserGlobalSettings(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *SetUserGlobalSettings(::grpc::CallbackServerContext *ctx, const pb::UserGlobalSettings *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *MoveAction(::grpc::CallbackServerContext *ctx, const pb::MoveActionReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *CreateTimeblock(::grpc::CallbackServerContext *ctx, const pb::TimeBlock *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *UpdateTimeblock(::grpc::CallbackServerContext *ctx, const pb::TimeBlock *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *DeleteTimeblock(::grpc::CallbackServerContext *ctx, const pb::DeleteTimeblockReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetCalendarEvents(::grpc::CallbackServerContext *ctx, const pb::TimeSpan *req, pb::Status *reply) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
@@ -217,6 +221,7 @@ public:
     boost::asio::awaitable<void> validateNode(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string& parentUuid, const std::string& userUuid);
     boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid, std::string *name = {});
     boost::asio::awaitable<void> validateAction(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string &actionId, const std::string &userUuid, std::string *name = {});
+    boost::asio::awaitable<void> validateTimeBlock(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string &timeBlockId, const std::string &userUuid);
     boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
     boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, RequestCtx& rctx);
     boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, RequestCtx& rctx, bool touch = true);
@@ -262,6 +267,10 @@ public:
     boost::asio::awaitable<void> resumeWorkSession(pb::WorkSession &work, RequestCtx& rctx);
     boost::asio::awaitable<std::optional<pb::WorkSession> > fetchActiveWorkSession(RequestCtx& rctx);
     boost::asio::awaitable<void> endWorkSessionForAction(const std::string_view& actionId, RequestCtx& rctx);
+
+    // Fetch actions that start and are due on given day, and is of due_kind 'datetime'.
+    // The matching actions are inserted in events.
+    boost::asio::awaitable<void> fetchActionsForCalendar(pb::CalendarEvents& events, RequestCtx& rctx, const time_t& day);
 
     void updateSessionSettingsForUser(const pb::UserGlobalSettings& settings, ::grpc::CallbackServerContext *ctx);
 

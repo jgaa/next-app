@@ -1,7 +1,6 @@
 
 #include <ranges>
 
-
 #include "shared_grpc_server.h"
 
 using namespace std;
@@ -586,7 +585,6 @@ boost::asio::awaitable<void> GrpcServer::endWorkSessionForAction(const std::stri
     }
     co_return; // Make QT Creator happy
 }
-
 
 boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, RequestCtx&  rctx, bool touch)
 {

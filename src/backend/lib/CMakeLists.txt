@@ -3,25 +3,26 @@ project(nalib VERSION ${NEXTAPP_VERSION} LANGUAGES CXX)
 #ADD_SUBDIRECTORY(proto)
 
 add_library(${PROJECT_NAME}
-    ${NEXTAPP_BACKEND}/include/nextapp/nextappd.h
-    ${NEXTAPP_BACKEND}/include/nextapp/logging.h
-    ${NEXTAPP_BACKEND}/include/nextapp/errors.h
-    ${NEXTAPP_BACKEND}/include/nextapp/config.h
-    ${NEXTAPP_BACKEND}/include/nextapp/Server.h
     ${NEXTAPP_BACKEND}/include/nextapp/GrpcServer.h
-    ${NEXTAPP_BACKEND}/include/nextapp/util.h
+    ${NEXTAPP_BACKEND}/include/nextapp/Server.h
     ${NEXTAPP_BACKEND}/include/nextapp/UserContext.h
+    ${NEXTAPP_BACKEND}/include/nextapp/config.h
+    ${NEXTAPP_BACKEND}/include/nextapp/errors.h
+    ${NEXTAPP_BACKEND}/include/nextapp/logging.h
+    ${NEXTAPP_BACKEND}/include/nextapp/nextappd.h
+    ${NEXTAPP_BACKEND}/include/nextapp/util.h
     Server.cpp
+    UserContext.cpp
     grpc/Actions.cpp
+    grpc/Calendar.cpp
     grpc/GreenDays.cpp
     grpc/GrpcServer.cpp
     grpc/Node.cpp
+    grpc/Tenants.cpp
     grpc/Work.cpp
     grpc/shared_grpc_server.cpp
     grpc/shared_grpc_server.h
-    grpc/Tenants.cpp
     util.cpp
-    UserContext.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

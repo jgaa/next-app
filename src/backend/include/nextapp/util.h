@@ -59,6 +59,20 @@ std::string toUpper(const T& input)
     return v;
 }
 
+template <range_of<char> T>
+std::string toLower(const T& input)
+{
+    static const std::locale loc{"C"};
+    std::string v;
+    v.reserve(input.size());
+
+    for(const auto ch : input) {
+        v.push_back(std::tolower(ch, loc));
+    }
+
+    return v;
+}
+
 boost::uuids::uuid newUuid();
 std::string newUuidStr();
 const std::string& validatedUuid(const std::string& uuid);
@@ -107,7 +121,7 @@ std::string toJson(const T& map, int mode = 1) {
 }
 
 std::optional<std::string> toAnsiDate(const nextapp::pb::Date& date);
-std::optional<std::string> toAnsiTime(std::time_t time, const std::chrono::time_zone& ts);
+std::optional<std::string> toAnsiTime(std::time_t time, const std::chrono::time_zone& ts, bool required = false);
 
 template <typename T>
 std::optional<std::string> toStringOrNull(const T& val) {

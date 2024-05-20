@@ -2,6 +2,7 @@
 #include <openssl/evp.h>
 
 #include "nextapp/util.h"
+#include "nextapp/errors.h"
 #include "nextapp/logging.h"
 #include "nextapp/UserContext.h"
 
@@ -58,10 +59,13 @@ optional<string> toAnsiDate(const nextapp::pb::Date& date) {
     return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month() + 1, date.mday());
 }
 
-optional<string> toAnsiTime(time_t time, const std::chrono::time_zone& ts) {
+optional<string> toAnsiTime(time_t time, const std::chrono::time_zone& ts, bool required) {
     using namespace std::chrono;
 
     if (time == 0) {
+        if (required) {
+            throw db_err{pb::Error::CONSTRAINT_FAILED, "datetime is required"};
+        }
         return {};
     }
 

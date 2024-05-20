@@ -462,6 +462,39 @@ void ServerComm::moveAction(const QString &actionUuid, const QString &nodeUuid)
     });
 }
 
+void ServerComm::addTimeBlock(const nextapp::pb::TimeBlock &tb)
+{
+    callRpc<nextapp::pb::Status>([this, tb]() {
+        return client_->CreateTimeblock(tb);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
+void ServerComm::fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents> && done)
+{
+    nextapp::pb::TimeSpan req;
+    req.setStart(QDateTime{start, QTime{}}.toSecsSinceEpoch());
+    req.setEnd(QDateTime{end.addDays(1), QTime{}}.toSecsSinceEpoch());
+
+    const GrpcCallOptions opts{false, true};
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->GetCalendarEvents(req);
+    }, [this, done=std::move(done)](const nextapp::pb::Status& status) {
+        if (auto err = status.error(); err != nextapp::pb::ErrorGadget::Error::OK) {
+            done(CbError{err, status.message()});
+            return;
+        }
+
+        if (status.hasCalendarEvents()) {
+            done(std::move(status.calendarEvents()));
+        } else {
+            done(CbError{nextapp::pb::ErrorGadget::GENERIC_ERROR, "Missing events"});
+        }
+    }, opts);
+}
+
 nextapp::pb::UserGlobalSettings ServerComm::getGlobalSettings() const
 {
     return userGlobalSettings_;

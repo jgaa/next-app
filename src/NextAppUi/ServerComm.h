@@ -32,6 +32,18 @@ class ServerComm : public QObject
                 READ getGlobalSettings
                 NOTIFY globalSettingsChanged)
 public:
+
+    struct CbError {
+        nextapp::pb::ErrorGadget::Error error;
+        QString message;
+    };
+
+    template <typename T>
+    using callback_arg_t = std::variant<CbError,T>;
+
+    template <typename T>
+    using callback_t = std::function<void(callback_arg_t<T>)>;
+
     using colors_in_months_t = std::shared_ptr<QList<QUuid>>;
 
     struct MetaData {
@@ -102,6 +114,9 @@ public:
     void getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRequest& req, const QUuid& requester);
     void addWork(const nextapp::pb::WorkSession& ws);
     void moveAction(const QString& actionUuid, const QString& nodeUuid);
+    void addTimeBlock(const nextapp::pb::TimeBlock& tb);
+
+    void fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents>&& done);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
@@ -159,6 +174,10 @@ private:
                     if (!opts.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
                         LOG_ERROR << "RPC request failed with error #" <<
                             rval.error() << " : " << rval.message();
+
+                        if constexpr (IsValidFunctor<doneT, CbError>) {
+                            done(CbError{rval.error(), rval.message()});
+                        }
                         return;
                     }
                 }

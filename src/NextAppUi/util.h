@@ -10,6 +10,7 @@
 [[nodiscard]] int parseDuration(const QString& value);
 [[nodiscard]] time_t parseDateOrTime(const QString& str, const QDate& defaultDate = QDate::currentDate());
 
+
 QDate getFirstDayOfWeek(const QDate& when = QDate::currentDate());
 
 // BOOST_SCOPE_EXIT confuses Clang-Tidy :/

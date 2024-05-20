@@ -110,14 +110,14 @@ qt_add_qml_module(appNextAppUi
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
-        qml/calendar/DayPlan.qml
         qml/calendar/CalendarView.qml
+        qml/calendar/DayPlan.qml
+        qml/calendar/TimeBox.qml
         qml/common.js
         qml/settings/GlobalSettings.qml
         qml/settings/PrefSettings.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
-
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
@@ -154,6 +154,10 @@ qt_add_qml_module(appNextAppUi
     SOURCES
         ActionsModel.cpp
         ActionsModel.h
+        CalendarDayModel.cpp
+        CalendarDayModel.h
+        CalendarModel.cpp
+        CalendarModel.h
         DayColorModel.cpp
         DayColorModel.h
         DayModel.cpp

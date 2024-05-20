@@ -709,7 +709,6 @@ boost::asio::awaitable<void> GrpcServer::validateAction(jgaa::mysqlpool::Mysqlpo
     co_return;
 }
 
-
 pb::Due GrpcServer::processDueAtDate(time_t from_timepoint, const pb::Action_RepeatUnit &units,
                                      pb::ActionDueKind kind, int repeatAfter,
                                      const UserContext& uctx)
@@ -1235,5 +1234,28 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
 
         }, __func__);
 }
+
+boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEvents &events, RequestCtx &rctx, const time_t &day)
+{
+    auto res = co_await rctx.dbh->exec(
+        format("SELECT {} FROM action WHERE "
+               "DATE(start_time) = DATE(FROM_UNIXTIME(?)) and DATE(due_by_time) = DATE(start_time) AND due_kind='datetime' AND user=? "
+               "ORDER BY start_time, due_by_time, id",
+               ToAction::coreSelectCols()), day, rctx.uctx->userUuid());
+
+    if (res.has_value()) {
+        for(const auto& row : res.rows()) {
+            auto *event = events.add_events();
+            auto *ai = event->mutable_action();
+            ToAction::assign(row, *ai, *rctx.uctx);
+            auto& tspan = *event->mutable_timespan();
+            tspan.set_start(ai->due().start());
+            tspan.set_end(ai->due().due());
+        }
+    }
+
+    co_return;
+}
+
 
 } // ns
