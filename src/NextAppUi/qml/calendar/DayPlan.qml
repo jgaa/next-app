@@ -9,6 +9,7 @@ import Nextapp.Models
 Rectangle {
     id: root
     property int hourHeight: 60
+    property int leftMargin: 48
     implicitWidth: 400
     implicitHeight: hourHeight * 24
     //height: hourHeight * 24
@@ -31,7 +32,7 @@ Rectangle {
     Rectangle {
         id: hourMarkers
         implicitHeight: parent.height
-        implicitWidth: 48
+        implicitWidth: parent.leftMargin
         color: MaterialDesignStyling.primaryContainer
     }
 
@@ -43,7 +44,7 @@ Rectangle {
             console.log("DayPlan: Redraing Canvas")
 
             var ctx = getContext("2d");
-             ctx.beginPath();
+            ctx.beginPath();
             ctx.strokeStyle = MaterialDesignStyling.outline;
             ctx.lineWidth = 1;
             ctx.fillStyle = MaterialDesignStyling.onPrimaryContainer
@@ -88,40 +89,8 @@ Rectangle {
             }
             ctx.stroke()
 
-            //addCalendarEvents()
-        }
-    }
-
-    // function addCalendarEvents() {
-    //     if (model == null)
-    //         return
-
-    //     for (var i = 0; i < root.model.size(); i++) {
-    //         var event = root.model.event(i)
-    //         var name = ""
-    //         if (event.hasTimeBlock) {
-    //             name = event.timeBlock.name
-    //         }
-    //         console.log("Event #", i, ", id=", event.id_proto, " is ", name)
-    //     }
-    // }
-
-    Repeater {
-        model: root.model
-
-        TimeBox {
-            id: timeBox
-            timeBlock: root.model.valid ? root.model.event(root.index).timeBlock : null
-            //height: (timeBox.timeBlock.end - timeBox.timeBlock.start) * root.hourHeight / 60
-            height: 100
-            y: timeBlock !== null ? timeToY(timeBlock.timeSpan.start) : 0
-            //y: 500
-            x: hourMarkers.width - 5
-            width: root.width - x - 5
-
-            onTimeBlockChanged: {
-                console.log("DayPlan: TimeBlockChanged ", timeBlock, " start=", timeBlock.timeSpan.start, " end=", timeBlock.timeSpan.end)
-            }
+            // Draw the events directly from C++
+            model.addCalendarEvents()
         }
     }
 
@@ -133,14 +102,23 @@ Rectangle {
         return Math.floor(y)
     }
 
-    Rectangle {
+    // We use a popup in stead of a rectangle to draw it on top of all anythign else in the calendar
+    Popup {
         id: dragRectangle
-        color: height < 10 ? MaterialDesignStyling.errorContainer : MaterialDesignStyling.tertiaryContainer
-        border.color: MaterialDesignStyling.outline
-        border.width: height < 10 ? 0 : 1
+        margins: 0
+        modal: true
         opacity: 0.6
-        radius: 10
+
+        background: Rectangle {
+            color: height < 10 ? MaterialDesignStyling.errorContainer : MaterialDesignStyling.tertiaryContainer
+            border.color: MaterialDesignStyling.outline
+            border.width: height < 10 ? 0 : 1
+            radius: 10
+        }
+
         visible: false
+        width: parent.width - (hourMarkers.width + 10) - 10
+        height: 0
     }
 
     MouseArea {
@@ -151,12 +129,10 @@ Rectangle {
         onPressed: {
             dragRectangle.x = hourMarkers.width + 10
             dragRectangle.y = mouseY
-            dragRectangle.width = parent.width - dragRectangle.x - 10
             dragRectangle.height = 0
             dragRectangle.visible = true
         }
         onPositionChanged: {
-            //dragRectangle.width = mouseX - dragRectangle.x
             dragRectangle.height = mouseY - dragRectangle.y
             console.log("dragRectangle: x=",
                         dragRectangle.x, " y=",

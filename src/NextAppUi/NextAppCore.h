@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QQmlEngine>
+#include <QQmlApplicationEngine>
 
 #include "WorkModel.h"
 #include "WeeklyWorkReportModel.h"
@@ -58,6 +59,8 @@ public:
         assert(instance_ != nullptr);
         return instance_;
     }
+
+    static QQmlApplicationEngine& engine();
 
 signals:
     void allBaseModelsCreated();

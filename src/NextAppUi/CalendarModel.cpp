@@ -18,9 +18,10 @@ CalendarModel::CalendarModel()
 }
 
 CalendarDayModel *CalendarModel::getDayModel(QObject *obj, int year, int month, int day) {
+    assert(obj != nullptr);
     auto& dm = day_models_[obj];
     if (!dm) {
-        dm = std::make_unique<CalendarDayModel>(QDate(year, month, day));
+        dm = std::make_unique<CalendarDayModel>(QDate(year, month, day), *obj);
         QQmlEngine::setObjectOwnership(dm.get(), QQmlEngine::CppOwnership);
     };
     return dm.get();

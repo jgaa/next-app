@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
     NextAppCore core;
     ServerComm comms;
 
-    QQmlApplicationEngine engine;
+    auto& engine = NextAppCore::engine();
 
     qmlRegisterSingletonInstance<NextAppCore>("Nextapp.Models", 1, 0, "NaCore", &core);
     qmlRegisterSingletonInstance<ServerComm>("Nextapp.Models", 1, 0, "NaComm", &comms);

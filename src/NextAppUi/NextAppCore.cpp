@@ -96,3 +96,9 @@ time_t NextAppCore::parseHourMin(const QString &str)
     return -1;
 }
 
+QQmlApplicationEngine &NextAppCore::engine()
+{
+    static QQmlApplicationEngine engine_;
+    return engine_;
+}
+

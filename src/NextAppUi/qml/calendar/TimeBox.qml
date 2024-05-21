@@ -12,16 +12,14 @@ Rectangle {
     border.color: MaterialDesignStyling.outline
     border.width: 1
     opacity: 0.8
-
-    //property NextappPB.TimeBlock timeBlock: null
-    property var timeBlock: null
+    property string name : "Unknown"
 
     ColumnLayout {
         anchors.fill: parent
 
         Text {
             color: MaterialDesignStyling.onPrimaryContainer
-            text: root.timeBlock === null ? "" : root.timeBlock.name
+            text: root.name
         }
     }
 

@@ -1,8 +1,9 @@
 #pragma once
-
 #include <span>
 #include <QObject>
 #include <QQmlEngine>
+#include <QQmlComponent>
+#include <QStringLiteral>
 #include "nextapp.qpb.h"
 
 class CalendarDayModel : public QObject
@@ -17,12 +18,31 @@ class CalendarDayModel : public QObject
     Q_PROPERTY(int size READ size NOTIFY validChanged)
 
 public:
+    struct Pool {
+        Pool(QString path) : path_(std::move(path)) {}
+
+        void prepare() {
+            end_ = 0;
+        }
+
+        QObject* get(QObject *parent);
+
+        void makeReady();
+
+        std::vector<QObject*> pool_;
+        size_t end_ = 0;
+        std::optional<QQmlComponent> component_factory_;
+        const QString path_;
+    };
+
+
     using events_t = std::span<const nextapp::pb::CalendarEvent>;
-    CalendarDayModel(QDate date, QObject* parent = nullptr);
+    CalendarDayModel(QDate date, QObject& component, QObject* parent = nullptr);
 
     // start and end are minuts into the day
     Q_INVOKABLE void createTimeBox(QString name, QString category, int start, int end);
     Q_INVOKABLE nextapp::pb::CalendarEvent event(int index) const noexcept;
+    Q_INVOKABLE void addCalendarEvents();
 
     int size() const noexcept;
 
@@ -64,4 +84,6 @@ private:
     const QDate date_;
     bool valid_ = false;
     events_t events_;
+    QObject& component_;
+    Pool timx_boxes_pool_{QStringLiteral("qrc:/qt/qml/NextAppUi/qml/calendar/TimeBox.qml")};
 };
