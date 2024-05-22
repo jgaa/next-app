@@ -22,6 +22,17 @@ void markOverlappingEvents(pb::CalendarEvents& events)
     }
 }
 
+auto createCalendarEventUpdate(const pb::TimeBlock& tb, pb::Update::Operation op)
+{
+    auto update = newUpdate(op);
+    auto *event = update->mutable_calendarevents()->add_events();
+    event->mutable_timeblock()->CopyFrom(tb);
+    event->mutable_timespan()->CopyFrom(tb.timespan());
+    event->set_id(tb.id());
+    return update;
+}
+
+
 namespace {
 
 struct ToTimeBlock {
@@ -68,8 +79,8 @@ struct ToTimeBlock {
                 format("INSERT INTO time_block (user, start_time, end_time, name, kind, category) VALUES (?, ?, ?, ?, ?, ?) RETURNING {} ",
                        ToTimeBlock::columns),
                 cuser,
-                toAnsiTime(req->timespan().start(), rctx.uctx->tz(), true),
-                toAnsiTime(req->timespan().end(), rctx.uctx->tz(), true),
+                toAnsiTime(req->timespan().start(), true),
+                toAnsiTime(req->timespan().end(), true),
                 req->name(),
                 toLower(pb::TimeBlock::Kind_Name(req->kind())),
                 toStringOrNull(req->category()));
@@ -78,10 +89,9 @@ struct ToTimeBlock {
             assert(!res.rows().empty());
 
             if (!res.empty() && !res.rows().empty()) [[likely]] {
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
-                auto *tb = update->mutable_timeblock();
-                ToTimeBlock::assign(res.rows().front(), *tb, *rctx.uctx);
-                owner_.publish(update);
+                pb::TimeBlock tb;
+                ToTimeBlock::assign(res.rows().front(), tb, *rctx.uctx);
+                owner_.publish(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_ADDED));
             }
 
             co_return;
@@ -114,8 +124,8 @@ struct ToTimeBlock {
             auto res = co_await rctx.dbh->exec(
                 format("UPDATE time_block SET start_time=?, end_time=?, name=?, kind=?, category=? WHERE id=? AND user=? ",
                        ToTimeBlock::columns),
-                toAnsiTime(req->timespan().start(), rctx.uctx->tz()),
-                toAnsiTime(req->timespan().end(), rctx.uctx->tz()),
+                toAnsiTime(req->timespan().start()),
+                toAnsiTime(req->timespan().end()),
                 req->name(),
                 toLower(pb::TimeBlock::Kind_Name(req->kind())),
                 toStringOrNull(req->category()), id, cuser);
@@ -123,12 +133,9 @@ struct ToTimeBlock {
             co_await trx.commit();
 
             assert(!res.empty());
-            assert(res.affected_rows() != 0);
 
-            if (!res.empty() && !res.rows().empty()) [[likely]] {
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-                update->mutable_timeblock()->CopyFrom(*req);
-                owner_.publish(update);
+            if (!res.empty()) [[likely]] {
+                owner_.publish(createCalendarEventUpdate(*req, pb::Update::Operation::Update_Operation_UPDATED));
             }
 
             co_return;
@@ -149,9 +156,9 @@ struct ToTimeBlock {
             co_await trx.commit();
 
             if (!res.empty() && !res.rows().empty()) [[likely]] {
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
-                update->mutable_timeblock()->set_id(id);
-                owner_.publish(update);
+                pb::TimeBlock tb;
+                tb.set_id(id);
+                owner_.publish(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_DELETED));
             }
 
             co_return;
@@ -180,13 +187,14 @@ struct ToTimeBlock {
                 format("SELECT {} FROM time_block tb WHERE tb.user=? AND tb.start_time >= ? AND tb.end_time <= ? "
                        "ORDER BY tb.start_time, tb.end_time, id",
                        tb_col_names),
-                cuser, toAnsiTime(req->start(), rctx.uctx->tz()), toAnsiTime(req->end(), rctx.uctx->tz()));
+                cuser, toAnsiTime(req->start()), toAnsiTime(req->end()));
 
             assert(res.has_value());
             for(const auto& row : res.rows()) {
                 auto &event = *events.add_events();
                 ToTimeBlock::assign(row, *event.mutable_timeblock(), *rctx.uctx);
                 event.mutable_timespan()->CopyFrom(event.timeblock().timespan());
+                event.set_id(event.timeblock().id());
             }
 
             auto compare = [](const auto& a, const auto& b) noexcept {

@@ -115,6 +115,7 @@ public:
     void addWork(const nextapp::pb::WorkSession& ws);
     void moveAction(const QString& actionUuid, const QString& nodeUuid);
     void addTimeBlock(const nextapp::pb::TimeBlock& tb);
+    void updateTimeBlock(const nextapp::pb::TimeBlock& tb);
 
     void fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents>&& done);
 

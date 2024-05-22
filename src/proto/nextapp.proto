@@ -488,7 +488,7 @@ message Update {
         Action action = 16;
         WorkSession work = 17;
         UserGlobalSettings userGlobalSettings = 18;
-        TimeBlock timeBlock = 19;
+        CalendarEvents calendarEvents = 19;
     }
 }
 

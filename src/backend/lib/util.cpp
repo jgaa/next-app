@@ -75,6 +75,21 @@ optional<string> toAnsiTime(time_t time, const std::chrono::time_zone& ts, bool 
     return out;
 }
 
+std::optional<string> toAnsiTime(time_t time, bool required)
+{
+    using namespace std::chrono;
+    if (time == 0) {
+        if (required) {
+            throw db_err{pb::Error::CONSTRAINT_FAILED, "datetime is required"};
+        }
+        return {};
+    }
+
+    const auto when = round<seconds>(system_clock::from_time_t(time));
+    auto out = format("{:%F %T}", when);
+    return out;
+}
+
 auto getLocalDate(time_t when, const std::chrono::time_zone &tz)
 {
     using namespace std::chrono;
@@ -231,5 +246,6 @@ boost::uuids::uuid toUuid(std::string_view uuid)
 
     throw runtime_error{"invalid uuid"};
 }
+
 
 } // ns

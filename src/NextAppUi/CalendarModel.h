@@ -52,10 +52,13 @@ signals:
     void modeChanged();
 
 private:
+    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    void onCalendarEventUpdated(const nextapp::pb::CalendarEvents& events, nextapp::pb::Update::Operation op);
     void fetchIf();
     void setOnline(bool online);
     void onReceivedCalendarData(nextapp::pb::CalendarEvents& data);
     void updateDayModels();
+    void sort();
 
 
     bool valid_ = false;

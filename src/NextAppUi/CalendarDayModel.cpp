@@ -12,7 +12,6 @@ CalendarDayModel::CalendarDayModel(QDate date, QObject& component, QObject *pare
     , date_(date)
     , component_{component}
 {
-
 }
 
 void CalendarDayModel::createTimeBox(QString name, QString category, int start, int end)
@@ -51,17 +50,7 @@ void CalendarDayModel::addCalendarEvents()
 
     const double heigth_per_minute = height / 1440.0;
 
-    vector<vector<const nextapp::pb::CalendarEvent *>> tracks;
-
-    // for (auto& event : events_) {
-    //     for(auto& track : tracks) {
-    //         if (event.timeSpan().start() > track.back()->timeSpan().end()) {
-    //             track.push_back(&event);
-    //             continue;
-    //         }
-    //     }
-    //     tracks.emplace_back().emplace_back(&event);
-    // }
+    timx_boxes_pool_.prepare();
 
     struct Overlap {
         time_t until = 0;
@@ -72,8 +61,7 @@ void CalendarDayModel::addCalendarEvents()
     std::vector<Overlap> overlaps;
 
     for (auto& event : events_) {
-
-        // Remove obsolete values
+        // Remove obsolete overlap entries
         std::erase_if(overlaps, [&event](const auto& v) {
             return v.until < static_cast<time_t>(event.timeSpan().start());
         });
@@ -103,32 +91,68 @@ void CalendarDayModel::addCalendarEvents()
             dominant = *it;
         }
 
+        const auto now = time({});
+
         if (event.hasTimeBlock()) {
             const auto& tb = event.timeBlock();
             if (auto *object = timx_boxes_pool_.get(&component_)) {
-                QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
                 object->setProperty("name", tb.name());
+                object->setProperty("uuid", tb.id_proto());
+                object->setProperty("start", NextAppCore::toDateAndTime(tb.timeSpan().start(), now));
+                object->setProperty("end", NextAppCore::toDateAndTime(tb.timeSpan().end(), now));
 
                 // Calculate the position and size of the time box
                 const auto when = QDateTime::fromSecsSinceEpoch(tb.timeSpan().start());
-                auto y = floor(heigth_per_minute * (when.time().hour() * 60 + when.time().minute()));
-                //auto x = left + (dominant.col - 1) * 10 + (dominant.col - 1) * (width - 10) / dominant.num;
                 auto x = left + ((avail_width / dominant.num) * (col - 1));
+                auto y = floor(heigth_per_minute * (when.time().hour() * 60 + when.time().minute()));
                 auto w = avail_width / dominant.num;
-
                 auto h = floor(heigth_per_minute * ((tb.timeSpan().end() - tb.timeSpan().start()) / 60));
 
                 object->setProperty("x", x);
                 object->setProperty("y", y);
                 object->setProperty("width", w);
                 object->setProperty("height", h);
+                object->setProperty("model", QVariant::fromValue(this));
                 //object->setProperty("timeBlock", QVariant::fromValue(tb));
+
+                LOG_TRACE_N << "Setting height " << h << " for " << tb.name().toStdString();
 
             }
         }
     }
 
     timx_boxes_pool_.makeReady();
+}
+
+void CalendarDayModel::moveEvent(const QString &eventId, time_t start, time_t end)
+{
+    if ((start && end && (start >= end)) || (!start && !end)) {
+        LOG_WARN_N << "Invalid timebox start/end";
+        return;
+    }
+    auto it = std::ranges::find_if(events_, [&eventId](const auto& event) {
+        return event.id_proto() == eventId;
+    });
+    if (it == events_.end()) {
+        LOG_WARN_N << "No event found with id: " << eventId;
+        return;
+    }
+
+    auto& event = *it;
+    auto ts = event.timeSpan();
+    if (start) {
+        LOG_TRACE_N << "Moving start from " << QDateTime::fromSecsSinceEpoch(ts.start()).toString() << " to " << QDateTime::fromSecsSinceEpoch(start).toString();
+        ts.setStart(start);
+    }
+    if (end) {
+        LOG_TRACE_N << "Moving end from " << QDateTime::fromSecsSinceEpoch(ts.end()).toString() << " to " << QDateTime::fromSecsSinceEpoch(end).toString();
+        ts.setEnd(end);
+    }
+
+    auto tb = event.timeBlock();
+    tb.setTimeSpan(ts);
+
+    ServerComm::instance().updateTimeBlock(tb);
 }
 
 int CalendarDayModel::size() const noexcept  {
@@ -138,9 +162,11 @@ int CalendarDayModel::size() const noexcept  {
     return events_.size();
 }
 
-void CalendarDayModel::setValid(bool valid)
+void CalendarDayModel::setValid(bool valid, bool signalAlways )
 {
-    if (valid_ == valid) return;
+    if (valid_ == valid && !signalAlways) {
+        return;
+    }
     valid_ = valid;
     emit validChanged();
 }
@@ -153,7 +179,13 @@ QObject *CalendarDayModel::Pool::get(QObject *parent)
         if (!component_factory_) {
             component_factory_.emplace(&engine, QUrl(path_));
         }
-        auto *object = component_factory_->create();
+
+        QVariantMap properties;
+        properties["visible"] = false;
+        properties["parent"] = QVariant::fromValue(parent);
+        properties["model"] = QVariant::fromValue(parent);
+
+        auto *object = component_factory_->createWithInitialProperties(properties);
         if (!object) {
             LOG_ERROR_N << "Failed to create a QML component: " << path_;
             QList<QQmlError> errors = component_factory_->errors();
@@ -163,10 +195,9 @@ QObject *CalendarDayModel::Pool::get(QObject *parent)
             return {};
         }
         object->setParent(parent);
-        object->setProperty("parent", QVariant::fromValue(parent));
+        //object->setProperty("parent", QVariant::fromValue(parent));
         pool_.emplace_back(object);
         ++end_;
-        assert(pool_.size() == end_);
         return object;
     }
 

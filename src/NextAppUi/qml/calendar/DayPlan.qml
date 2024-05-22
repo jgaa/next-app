@@ -53,7 +53,7 @@ Rectangle {
                 var y = i * hourHeight;
                 ctx.moveTo(0, y);
                 ctx.lineTo(width, y);
-                ctx.fillText(i, 5, y - hourHeight + 19);
+                ctx.fillText(i - 1, 5, y - hourHeight + 19);
             }
             ctx.stroke()
             ctx.beginPath();
@@ -61,7 +61,7 @@ Rectangle {
             ctx.strokeStyle = MaterialDesignStyling.outlineVariant;
             ctx.setLineDash([3, 3]);
             ctx.lineWidth = 0.5
-            for (i = 1; i <= 24; i++) {
+            for (i = 0; i < 24; i++) {
                 y = i * hourHeight;
                 for(var ii = 1; ii < 4; ++ii) {
                     if (ii == 2)

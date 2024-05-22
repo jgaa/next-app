@@ -471,6 +471,15 @@ void ServerComm::addTimeBlock(const nextapp::pb::TimeBlock &tb)
     });
 }
 
+void ServerComm::updateTimeBlock(const nextapp::pb::TimeBlock &tb)
+{
+    callRpc<nextapp::pb::Status>([this, tb]() {
+        return client_->UpdateTimeblock(tb);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 void ServerComm::fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents> && done)
 {
     nextapp::pb::TimeSpan req;

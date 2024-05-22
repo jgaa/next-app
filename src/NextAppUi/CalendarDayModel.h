@@ -17,6 +17,7 @@ class CalendarDayModel : public QObject
     Q_PROPERTY(int day READ day CONSTANT)
     Q_PROPERTY(int size READ size NOTIFY validChanged)
 
+
 public:
     struct Pool {
         Pool(QString path) : path_(std::move(path)) {}
@@ -43,13 +44,14 @@ public:
     Q_INVOKABLE void createTimeBox(QString name, QString category, int start, int end);
     Q_INVOKABLE nextapp::pb::CalendarEvent event(int index) const noexcept;
     Q_INVOKABLE void addCalendarEvents();
+    Q_INVOKABLE void moveEvent(const QString& eventId, time_t start, time_t end);
 
     int size() const noexcept;
 
     bool valid() const noexcept {
         return valid_;
     }
-    void setValid(bool valid);
+    void setValid(bool valid, bool signalAlways = false);
 
     const events_t& events() const noexcept {
         return events_;
