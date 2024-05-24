@@ -24,6 +24,11 @@ public:
 
         void prepare() {
             end_ = 0;
+            // for(auto& obj : pool_) {
+            //     obj->setProperty("visible", false);
+            //     obj->deleteLater();
+            // }
+            // pool_.clear();
         }
 
         QObject* get(QObject *parent);

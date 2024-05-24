@@ -454,7 +454,6 @@ message CalendarEvent {
     string id = 1;
     string user = 2;
     TimeSpan timeSpan = 3;
-    uint32 overlapWithOtherEvents = 4;  // We count in the first event that overlaps, not in the one it overlaps with
     oneof what {
         ActionInfo action = 10;
         TimeBlock timeBlock = 11;
@@ -593,8 +592,8 @@ message AddWorkEventReq {
 }
 
 message TimeSpan {
-    uint64 start = 1; // time_t
-    uint64 end = 2; // time_t
+    int64 start = 1; // time_t
+    int64 end = 2; // time_t
 }
 
 enum SortOrder {

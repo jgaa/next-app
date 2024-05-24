@@ -23,20 +23,6 @@ bool compare(const nextapp::pb::CalendarEvent& a, const nextapp::pb::CalendarEve
     return a.id_proto() < b.id_proto();
 }
 
-void markOverlappingEvents(nextapp::pb::CalendarEvents& events)
-{
-    const auto end = events.events().end();
-    for(auto it = events.events().begin(); it != end; ++it) {
-        for(auto it2 = it; ++it2 != end;) {
-            if (it->timeSpan().end() <= it2->timeSpan().start()) {
-                break; // No more overlapping events are possible for it
-            }
-
-            it->setOverlapWithOtherEvents(it->overlapWithOtherEvents() + 1);
-        }
-    }
-}
-
 } // anon ns
 
 CalendarModel::CalendarModel()
@@ -301,7 +287,6 @@ void CalendarModel::updateDayModels()
 
 void CalendarModel::sort()
 {
-    std::ranges::sort(all_events_.events(), compare);
-    markOverlappingEvents(all_events_);
+    ranges::sort(all_events_.events(), compare);
 }
 

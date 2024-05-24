@@ -8,20 +8,6 @@ using namespace std::string_view_literals;
 
 namespace nextapp::grpc {
 
-void markOverlappingEvents(pb::CalendarEvents& events)
-{
-    const auto end = events.mutable_events()->end();
-    for(auto it = events.mutable_events()->begin(); it != end; ++it) {
-        for(auto it2 = it; ++it2 != end;) {
-            if (it->timespan().end() <= it2->timespan().start()) {
-                break; // No more overlapping events are possible for it
-            }
-
-            it->set_overlapwithotherevents(it->overlapwithotherevents() + 1);
-        }
-    }
-}
-
 auto createCalendarEventUpdate(const pb::TimeBlock& tb, pb::Update::Operation op)
 {
     auto update = newUpdate(op);
@@ -215,9 +201,6 @@ struct ToTimeBlock {
 
             // We now have all the relevant items for the calendar in the list. Now, sort them.
             ranges::sort(*events.mutable_events(), compare);
-
-            markOverlappingEvents(events);
-
             co_return;
         }, __func__);
 }
