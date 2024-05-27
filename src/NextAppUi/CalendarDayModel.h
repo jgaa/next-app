@@ -6,6 +6,8 @@
 #include <QStringLiteral>
 #include "nextapp.qpb.h"
 
+class CalendarModel;
+
 class CalendarDayModel : public QObject
 {
     Q_OBJECT
@@ -16,7 +18,7 @@ class CalendarDayModel : public QObject
     Q_PROPERTY(int month READ month CONSTANT)
     Q_PROPERTY(int day READ day CONSTANT)
     Q_PROPERTY(int size READ size NOTIFY validChanged)
-
+    Q_PROPERTY(int roundToMinutes READ roundToMinutes CONSTANT)
 
 public:
     struct Pool {
@@ -24,11 +26,6 @@ public:
 
         void prepare() {
             end_ = 0;
-            // for(auto& obj : pool_) {
-            //     obj->setProperty("visible", false);
-            //     obj->deleteLater();
-            // }
-            // pool_.clear();
         }
 
         QObject* get(QObject *parent);
@@ -43,13 +40,16 @@ public:
 
 
     using events_t = std::span<const nextapp::pb::CalendarEvent>;
-    CalendarDayModel(QDate date, QObject& component, QObject* parent = nullptr);
+    CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar,  QObject* parent = nullptr);
 
     // start and end are minuts into the day
     Q_INVOKABLE void createTimeBox(QString name, QString category, int start, int end);
     Q_INVOKABLE nextapp::pb::CalendarEvent event(int index) const noexcept;
     Q_INVOKABLE void addCalendarEvents();
     Q_INVOKABLE void moveEvent(const QString& eventId, time_t start, time_t end);
+
+    // Called after a drop operation, potentially on another day
+    Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);
 
     int size() const noexcept;
 
@@ -82,6 +82,8 @@ public:
         return date_.day();
     }
 
+    int roundToMinutes() const;
+
 signals:
     void validChanged();
     void eventChanged(const QString& eventId);
@@ -93,4 +95,5 @@ private:
     events_t events_;
     QObject& component_;
     Pool timx_boxes_pool_{QStringLiteral("qrc:/qt/qml/NextAppUi/qml/calendar/TimeBox.qml")};
+    CalendarModel& calendar_;
 };

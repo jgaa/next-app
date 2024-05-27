@@ -19,7 +19,7 @@ Rectangle {
     Connections {
         target: model
 
-        onValidChanged: {
+        function onValidChanged() {
             console.log("DayPlan: Model Valid Changed ", model.valid)
             if (model.valid) {
                 // Redraw the component
@@ -176,7 +176,7 @@ Rectangle {
         }
 
         background: Rectangle {
-            color: MaterialDesignStyling.teritaryContainer
+            color: MaterialDesignStyling.tertiaryContainer
         }
         contentItem: ColumnLayout {
             spacing: 10
@@ -191,7 +191,7 @@ Rectangle {
                 id: title
                 Layout.fillWidth: true
                 placeholderText: "Title"
-                color: MaterialDesignStyling.onTeritaryContainer
+                color: MaterialDesignStyling.onTertiaryContainer
             }
 
             StyledButton {
@@ -230,9 +230,41 @@ Rectangle {
         }
     }
 
+    DropArea {
+        anchors.fill: parent
+
+        onEntered: (drag) => {
+            console.log("TimeBox/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+            if (drag.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
+                drag.accepted = true
+            }
+        }
+
+        onDropped: (drop) => {
+            if (drop.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
+                let uuid = drop.getDataAsString("text/app.nextapp.calendar.event")
+                let hour =  Math.floor(drop.y / root.hourHeight)
+                let minute = Math.floor((drop.y % root.hourHeight) / (root.hourHeight / 60))
+                console.log("Dropped calendar event ", uuid, " at x=", drop.x, ", y=", drop.y,
+                            " hour=", hour, "minute=", minute)
+
+                let new_time = new Date(root.model.year, root.model.month - 1, root.model.day)
+                new_time.setHours(hour)
+                new_time.setMinutes(getRoundedMinutes(minute))
+                root.model.moveEventToDay(uuid, new_time.getTime() / 1000)
+                drop.accepted = true
+            }
+        }
+    }
+
+    function getRoundedMinutes(minute) {
+        const rounded = Math.round(minute / model.roundToMinutes) * model.roundToMinutes
+        return rounded
+    }
+
     function toMinuteInDay(y) {
         var one_minute = root.height / (24.0 * 60.0)
 
-        return Math.floor(y / one_minute)
+        return getRoundedMinutes(Math.floor(y / one_minute))
     }
 }

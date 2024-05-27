@@ -112,6 +112,7 @@ qt_add_qml_module(appNextAppUi
         qml/WorkSessionsView.qml
         qml/calendar/CalendarView.qml
         qml/calendar/DayPlan.qml
+        qml/calendar/ExpandArea.qml
         qml/calendar/TimeBox.qml
         qml/common.js
         qml/settings/GlobalSettings.qml

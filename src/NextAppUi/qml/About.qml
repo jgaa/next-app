@@ -78,6 +78,7 @@ ApplicationWindow {
         }
 
         Button {
+            id: btn
             Layout.preferredWidth: 200
             Layout.preferredHeight: 30
             width: 200
@@ -88,7 +89,7 @@ ApplicationWindow {
             contentItem: Text {
                 color: MaterialDesignStyling.onSecondaryContainer
                 text: parent.text
-                font: Button.font
+                font: btn.font
                 horizontalAlignment: Text.AlignHCenter
             }
 

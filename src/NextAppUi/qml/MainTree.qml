@@ -326,7 +326,7 @@ Rectangle {
         property var node : null
 
         id: confirmDelete
-        title: qsTr("Do you really want to delete \"%1\" ?").arg(node.name)
+        title: node ?  qsTr("Do you really want to delete \"%1\" ?").arg(node.name) : ""
         text: qsTr("Note that any sub-items and all related information, including worked time, project information, actions etc. will also be deleted! This action can not be undone.")
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: {

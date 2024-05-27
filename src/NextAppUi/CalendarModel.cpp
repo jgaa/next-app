@@ -40,7 +40,7 @@ CalendarDayModel *CalendarModel::getDayModel(QObject *obj, int year, int month, 
     assert(obj != nullptr);
     auto& dm = day_models_[obj];
     if (!dm) {
-        dm = std::make_unique<CalendarDayModel>(QDate(year, month, day), *obj);
+        dm = std::make_unique<CalendarDayModel>(QDate(year, month, day), *obj, *this);
         QQmlEngine::setObjectOwnership(dm.get(), QQmlEngine::CppOwnership);
     };
     return dm.get();
@@ -84,6 +84,30 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
     }
 
     fetchIf();
+}
+
+void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
+{
+    auto it = std::ranges::find_if(all_events_.events(), [&eventId](const auto& event) {
+        return event.id_proto() == eventId;
+    });
+
+    if (it == all_events_.events().end()) {
+        LOG_WARN_N << "No event found with id: " << eventId;
+        return;
+    }
+
+    auto& event = *it;
+    auto ts = event.timeSpan();
+    const auto length = ts.end() - ts.start();
+
+    ts.setStart(start);
+    ts.setEnd(start + length);
+
+    auto tb = event.timeBlock();
+    tb.setTimeSpan(ts);
+
+    ServerComm::instance().updateTimeBlock(tb);
 }
 
 void CalendarModel::setValid(bool value) {

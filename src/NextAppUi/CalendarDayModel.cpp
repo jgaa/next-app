@@ -8,6 +8,7 @@
 
 #include "NextAppCore.h"
 #include "CalendarDayModel.h"
+#include "CalendarModel.h"
 #include "ServerComm.h"
 
 using namespace std;
@@ -47,7 +48,7 @@ items_t calculatePlacement(CalendarDayModel::events_t events) {
 
         // Find an available column for curr
         // First, mark used cols
-        // If the use has more than 8 overlapping things to do, well - too bad
+        // If the user has more than 8 overlapping things to do, well - too bad
         std::array<bool, 8> cols = {};
         for(const auto *c : current) {
             if (c->col < cols.size()) {
@@ -94,7 +95,7 @@ items_t calculatePlacement(CalendarDayModel::events_t events) {
         it = it2;
     }
 
-        // Try to optimize unused space by making the item span more columns
+    // Try to optimize unused space by making the item span more columns
     for(auto it = items.begin(); it != items.end(); ++it) {
         if (it->overlap < it->cols) {
             auto overlaps_with = views::filter(items, [it](const Item& item) {
@@ -133,10 +134,11 @@ items_t calculatePlacement(CalendarDayModel::events_t events) {
 
 } //anon ns
 
-CalendarDayModel::CalendarDayModel(QDate date, QObject& component, QObject *parent)
+CalendarDayModel::CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, QObject *parent)
     : QObject(parent)    
     , date_(date)
     , component_{component}
+    , calendar_{calendar}
 {
 }
 
@@ -247,6 +249,12 @@ void CalendarDayModel::moveEvent(const QString &eventId, time_t start, time_t en
     ServerComm::instance().updateTimeBlock(tb);
 }
 
+void CalendarDayModel::moveEventToDay(const QString &eventId, time_t start)
+{
+    // Delegate to the main calendar model
+    calendar_.moveEventToDay(eventId, start);
+}
+
 int CalendarDayModel::size() const noexcept  {
     if (!valid_) {
         return 0;
@@ -261,6 +269,10 @@ void CalendarDayModel::setValid(bool valid, bool signalAlways )
     }
     valid_ = valid;
     emit validChanged();
+}
+
+int CalendarDayModel::roundToMinutes() const noexcept {
+    return 5;
 }
 
 QObject *CalendarDayModel::Pool::get(QObject *parent)
