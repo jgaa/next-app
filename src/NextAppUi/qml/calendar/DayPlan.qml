@@ -15,6 +15,7 @@ Rectangle {
     //height: hourHeight * 24
     color: MaterialDesignStyling.surface
     property var model: null
+    anchors.fill: parent
 
     Connections {
         target: model

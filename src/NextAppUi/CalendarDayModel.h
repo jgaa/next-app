@@ -82,7 +82,7 @@ public:
         return date_.day();
     }
 
-    int roundToMinutes() const;
+    int roundToMinutes() const noexcept;
 
 signals:
     void validChanged();

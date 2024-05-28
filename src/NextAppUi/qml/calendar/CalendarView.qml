@@ -6,7 +6,8 @@ import NextAppUi
 Rectangle {
     id: root
     Layout.fillHeight: true
-    Layout.preferredWidth: dayplan.implicitWidth
+    Layout.fillWidth: true
+    //Layout.preferredWidth: dayplan.implicitWidth
     //implicitWidth: dayplan.implicitWidth
     //Layout.fillWidth: true
     // height: 800
@@ -31,8 +32,9 @@ Rectangle {
         ScrollView {
             id: scrollView
             Layout.fillHeight: true
-            Layout.preferredWidth: dayplan.implicitWidth + 10
-            contentWidth: dayplan.implicitWidth
+            Layout.fillWidth: true
+            //Layout.preferredWidth: dayplan.implicitWidth + 10
+            contentWidth: width - 10//dayplan.implicitWidth
             contentHeight: dayplan.implicitHeight
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ScrollBar.vertical.policy: ScrollBar.AlwaysOn
