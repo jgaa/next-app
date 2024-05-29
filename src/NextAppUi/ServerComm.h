@@ -116,6 +116,7 @@ public:
     void moveAction(const QString& actionUuid, const QString& nodeUuid);
     void addTimeBlock(const nextapp::pb::TimeBlock& tb);
     void updateTimeBlock(const nextapp::pb::TimeBlock& tb);
+    void deleteTimeBlock(const QString& timeBlockUuid);
 
     void fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents>&& done);
 

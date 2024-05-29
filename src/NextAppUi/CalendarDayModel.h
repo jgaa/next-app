@@ -47,6 +47,7 @@ public:
     Q_INVOKABLE nextapp::pb::CalendarEvent event(int index) const noexcept;
     Q_INVOKABLE void addCalendarEvents();
     Q_INVOKABLE void moveEvent(const QString& eventId, time_t start, time_t end);
+    Q_INVOKABLE void deleteEvent(const QString& eventId);
 
     // Called after a drop operation, potentially on another day
     Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);

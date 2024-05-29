@@ -13,7 +13,9 @@ auto createCalendarEventUpdate(const pb::TimeBlock& tb, pb::Update::Operation op
     auto update = newUpdate(op);
     auto *event = update->mutable_calendarevents()->add_events();
     event->mutable_timeblock()->CopyFrom(tb);
-    event->mutable_timespan()->CopyFrom(tb.timespan());
+    if (tb.has_timespan()) {
+        event->mutable_timespan()->CopyFrom(tb.timespan());
+    }
     event->set_id(tb.id());
     return update;
 }
@@ -141,7 +143,7 @@ struct ToTimeBlock {
 
             co_await trx.commit();
 
-            if (!res.empty() && !res.rows().empty()) [[likely]] {
+            if (!res.empty() && res.affected_rows() > 0) [[likely]] {
                 pb::TimeBlock tb;
                 tb.set_id(id);
                 owner_.publish(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_DELETED));

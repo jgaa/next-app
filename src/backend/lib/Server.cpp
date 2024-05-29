@@ -481,11 +481,20 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             end_time DATETIME NOT NULL,
             kind ENUM ('reservation', 'actions') NOT NULL DEFAULT 'reservation',
             category UUID,
+            version INT NOT NULL DEFAULT 1,
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
             FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE SET NULL ON UPDATE RESTRICT
         ))",
 
         R"(CREATE INDEX time_block_ix1 ON time_block (user, start_time, end_time))",
+
+        "DROP TRIGGER IF EXISTS tr_before_update_time_block",
+        R"(CREATE TRIGGER tr_before_update_time_block
+          BEFORE UPDATE ON time_block
+          FOR EACH ROW
+          BEGIN
+            SET NEW.version = OLD.version + 1;
+          END)",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });

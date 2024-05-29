@@ -37,6 +37,11 @@ items_t calculatePlacement(CalendarDayModel::events_t events) {
     vector<Item *> current;
 
     for(auto& event : events) {
+        if (!event.hasTimeBlock()) {
+            LOG_WARN_N << "Event " << event.id_proto() << " has no time-block";
+            continue;
+        }
+
         auto& curr = items.emplace_back(event,
                                         static_cast<time_t>(event.timeSpan().start()),
                                         static_cast<time_t>(event.timeSpan().end()));
@@ -247,6 +252,26 @@ void CalendarDayModel::moveEvent(const QString &eventId, time_t start, time_t en
     tb.setTimeSpan(ts);
 
     ServerComm::instance().updateTimeBlock(tb);
+}
+
+void CalendarDayModel::deleteEvent(const QString &eventId)
+{
+    // Find the event
+    auto it = std::ranges::find_if(events_, [&eventId](const auto& event) {
+        return event.id_proto() == eventId;
+    });
+
+    if (it == events_.end()) {
+        LOG_WARN_N << "No event found with id: " << eventId;
+        return;
+    }
+
+    if (it->hasTimeBlock()) {
+        calendar_.deleteTimeBlock(eventId);
+    } else {
+        LOG_WARN_N << "I don't know how to delete this event";
+        assert(false);
+    }
 }
 
 void CalendarDayModel::moveEventToDay(const QString &eventId, time_t start)

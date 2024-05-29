@@ -110,6 +110,11 @@ void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
     ServerComm::instance().updateTimeBlock(tb);
 }
 
+void CalendarModel::deleteTimeBlock(const QString &eventId)
+{
+    ServerComm::instance().deleteTimeBlock(eventId);
+}
+
 void CalendarModel::setValid(bool value) {
     LOG_TRACE_N << "valid_=" << valid_ << " value=" << value;
     if (valid_ != value) {
@@ -285,6 +290,12 @@ void CalendarModel::updateDayModels()
     auto get_date = [](const auto& it) {
         return QDateTime::fromSecsSinceEpoch(it->timeSpan().start()).date();
     };
+
+    // Clear the data in all the day-models, since our data probably has changed
+    // If events are deleted or moved, we may not visit a day in the loop below.
+    for (auto& [_, dm] : day_models_) {
+        dm->events() = {};
+    }
 
     auto events = span(all_events_.events());
     auto start_of_day = events.begin();

@@ -43,6 +43,7 @@ public:
     Q_INVOKABLE CalendarDayModel* getDayModel(QObject *obj, int year, int month, int day);
     Q_INVOKABLE void set(CalendarMode mode, int year, int month, int day);
     Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);
+    Q_INVOKABLE void deleteTimeBlock(const QString& eventId);
 
     void setValid(bool value);
 

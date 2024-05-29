@@ -21,24 +21,6 @@ Rectangle {
     property bool haveDragIcons: true // height > 20 && width > 50
     property real minuteHight: parent.hourHeight / 60.0
 
-    // MouseArea {
-    //     id: mouseCtl
-    //     drag.target: parent
-    //     anchors.fill: parent
-    //     property var origX: root.x
-    //     property var origY: root.y
-
-    //     onEntered: {
-    //         mouseCtl.origX = root.x
-    //         mouseCtl.origY = root.y
-    //     }
-
-    //     onReleased: {
-    //         root.x = mouseCtl.origX
-    //         root.y = mouseCtl.origY
-    //     }
-    // }
-
     DragHandler {
         id: dragHandler
         target: root
@@ -61,6 +43,16 @@ Rectangle {
                 parent.Drag.active = false
             }
         }
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: contextMenu.popup()
+
+    }
+
+    TapHandler {
+        onLongPressed: contextMenu.popup()
     }
 
     //Drag.active: dragHandler.active
@@ -103,5 +95,16 @@ Rectangle {
 
     CommonElements {
         id: ce
+    }
+
+    MyMenu {
+        id: contextMenu
+
+        Action {
+            text: qsTr("Delete")
+            onTriggered: {
+                root.model.deleteEvent(root.uuid)
+            }
+        }
     }
 }

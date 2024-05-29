@@ -480,6 +480,18 @@ void ServerComm::updateTimeBlock(const nextapp::pb::TimeBlock &tb)
     });
 }
 
+void ServerComm::deleteTimeBlock(const QString &timeBlockUuid)
+{
+    nextapp::pb::DeleteTimeblockReq req;
+    req.setId_proto(timeBlockUuid);
+
+    callRpc<nextapp::pb::Status>([this, req]() {
+        return client_->DeleteTimeblock(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 void ServerComm::fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents> && done)
 {
     nextapp::pb::TimeSpan req;
