@@ -46,6 +46,28 @@ struct ToTimeBlock {
     }
 };
 
+
+void validate(const pb::TimeBlock& tb, const UserContext& uctx)
+{
+    if (!tb.has_timespan()) {
+        throw db_err(pb::Error::CONSTRAINT_FAILED, "TimeBlock must have a time-span");
+    }
+
+    // check if the start-time is before the end-time
+    if (tb.timespan().start() >= tb.timespan().end()) {
+        throw db_err(pb::Error::CONSTRAINT_FAILED, "Start time must be before end time");
+    }
+
+    // Check that the start-time and the end-time are ate the same date, using the users timezone in uctx
+    if (toYearMonthDay(tb.timespan().start(), uctx.tz()) != toYearMonthDay(tb.timespan().end(), uctx.tz())) {
+        throw db_err(pb::Error::CONSTRAINT_FAILED, "Start and end time must be on the same day");
+    }
+
+    if (tb.timespan().start() >= tb.timespan().end()) {
+        throw db_err(pb::Error::CONSTRAINT_FAILED, "Start time must be before end time");
+    }
+}
+
 } // anon ns
 
 
@@ -54,6 +76,8 @@ struct ToTimeBlock {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
+
+            validate(*req, *rctx.uctx);
 
             if (!req->actions().empty()) {
                 throw db_err(pb::CONSTRAINT_FAILED, "Cannot create a time block with actions. Add the actions later.");
@@ -92,6 +116,8 @@ struct ToTimeBlock {
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             const auto& id = req->id();
+
+            validate(*req, *rctx.uctx);
 
             if (req->actions().size() > owner_.server_.config().svr.time_block_max_actions) [[unlikely]] {
                 throw db_err{pb::Error::CONSTRAINT_FAILED,

@@ -274,6 +274,24 @@ void CalendarDayModel::deleteEvent(const QString &eventId)
     }
 }
 
+nextapp::pb::TimeBlock CalendarDayModel::tbById(const QString &eventId) const
+{
+    auto it = std::ranges::find_if(events_, [&eventId](const auto& event) {
+        return event.id_proto() == eventId;
+    });
+
+    if (it != events_.end() && it->hasTimeBlock()) {
+        return it->timeBlock();
+    }
+
+    return {};
+}
+
+void CalendarDayModel::updateTimeBlock(const nextapp::pb::TimeBlock &tb)
+{
+    ServerComm::instance().updateTimeBlock(tb);
+}
+
 void CalendarDayModel::moveEventToDay(const QString &eventId, time_t start)
 {
     // Delegate to the main calendar model

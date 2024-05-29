@@ -75,4 +75,36 @@ std::shared_ptr<pb::Update> newUpdate(pb::Update::Operation op)
     return update;
 }
 
+pb::Date toDate(const time_t when, const chrono::time_zone &tz)
+{
+    const auto ymd = toYearMonthDay(when, tz);
+
+    if (ymd.ok()) [[likely]]{
+        pb::Date date;
+        date.set_year(static_cast<int32_t>(ymd.year()));
+        date.set_month(static_cast<uint32_t>(ymd.month()));
+        date.set_mday(static_cast<uint32_t>(ymd.day()));
+        return date;
+    }
+
+    return {};
+}
+
+std::chrono::year_month_day toYearMonthDay(const time_t when, const chrono::time_zone &tz)
+{
+    using namespace std::chrono;
+
+    auto tp = system_clock::from_time_t(when);
+    chrono::zoned_time ztime{&tz, tp};
+    const auto ymd = year_month_day{floor<days>(ztime.get_local_time())};
+
+    if (!ymd.ok()) {
+        LOG_DEBUG_N << "when is not a valid date: " << when
+                    << " with timezone " << tz.name();
+        return {};
+    }
+
+    return ymd;
+}
+
 } // ns

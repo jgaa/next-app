@@ -33,6 +33,8 @@ concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::
 
 ::nextapp::pb::Date toDate(const boost::mysql::date& from);
 ::nextapp::pb::Date toDate(const boost::mysql::datetime& from);
+::nextapp::pb::Date toDate(const time_t when, const chrono::time_zone& tz);
+std::chrono::year_month_day toYearMonthDay(const time_t when, const chrono::time_zone& tz);
 
 // For TIMESTAMP
 std::time_t toTimeT(const boost::mysql::datetime& from, const chrono::time_zone& tz);

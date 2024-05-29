@@ -48,6 +48,8 @@ public:
     Q_INVOKABLE void addCalendarEvents();
     Q_INVOKABLE void moveEvent(const QString& eventId, time_t start, time_t end);
     Q_INVOKABLE void deleteEvent(const QString& eventId);
+    Q_INVOKABLE nextapp::pb::TimeBlock tbById(const QString& eventId) const;
+    Q_INVOKABLE void updateTimeBlock(const nextapp::pb::TimeBlock& tb);
 
     // Called after a drop operation, potentially on another day
     Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);
@@ -95,6 +97,6 @@ private:
     bool valid_ = false;
     events_t events_;
     QObject& component_;
-    Pool timx_boxes_pool_{QStringLiteral("qrc:/qt/qml/NextAppUi/qml/calendar/TimeBox.qml")};
+    Pool timx_boxes_pool_{QStringLiteral("qrc:/qt/qml/NextAppUi/qml/calendar/TimeBlock.qml")};
     CalendarModel& calendar_;
 };

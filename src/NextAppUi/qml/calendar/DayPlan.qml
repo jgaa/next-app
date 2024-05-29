@@ -235,7 +235,7 @@ Rectangle {
         anchors.fill: parent
 
         onEntered: (drag) => {
-            console.log("TimeBox/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+            console.log("TimeBlock/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
             if (drag.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
                 drag.accepted = true
             }

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import NextAppUi
 import nextapp.pb as NextappPB
 import Nextapp.Models
+import "../common.js" as Common
 
 Rectangle {
     id: root
@@ -81,7 +82,6 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
 
-
         Text {
             color: MaterialDesignStyling.onPrimary
             text: root.start
@@ -106,5 +106,19 @@ Rectangle {
                 root.model.deleteEvent(root.uuid)
             }
         }
+
+        Action {
+            text: qsTr("Edit")
+            onTriggered: {
+                openTimeBlockDlg()
+            }
+        }
+    }
+
+    function openTimeBlockDlg() {
+        Common.openDialog("calendar/EditTimeBlockDlg.qml", root, {
+            title: qsTr("Edit Time Block"),
+            tb: root.model.tbById(root.uuid)
+        });
     }
 }
