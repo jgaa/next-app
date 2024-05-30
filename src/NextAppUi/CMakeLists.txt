@@ -36,8 +36,10 @@ qt_standard_project_setup()
 
 #include(cmake/3rdparty.cmake)
 # Use logfault from git submodule in stead of adding it
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/logfault/include)
-add_library(logfault INTERFACE)
+if (NOT TARGET logfault)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/logfault/include)
+    add_library(logfault INTERFACE)
+endif()
 
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")

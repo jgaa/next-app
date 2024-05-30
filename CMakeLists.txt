@@ -15,6 +15,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(NEXTAPP_WITH_TESTS "Enable Tests" ON)
 option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" OFF)
+option(NEXTAPP_WITH_UI "Include the UI project in the build" OFF)
 
 if (NEXTAPP_BOOST_USE_STATIC_LIBS)
     message("Using static boost libraries")
@@ -69,3 +70,7 @@ include_directories(${NEXTAPP_ROOT}/dependencies/date/include)
 
 add_subdirectory(src/proto)
 add_subdirectory(src/backend)
+
+if (NEXTAPP_WITH_UI)
+    add_subdirectory(src/NextAppUi)
+endif()
