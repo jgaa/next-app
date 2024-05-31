@@ -70,7 +70,7 @@ Item {
             target.y = origY
             target.height = origH
 
-            let new_time = new Date(target.model.year, target.model.month - 1, target.model.day)
+            let new_time = new Date(target.model.when * 1000)
             new_time.setHours(hour)
             new_time.setMinutes(minute)
 

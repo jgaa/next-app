@@ -494,6 +494,7 @@ void ServerComm::deleteTimeBlock(const QString &timeBlockUuid)
 
 void ServerComm::fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents> && done)
 {
+    LOG_TRACE_N << "Fetching calendar events for " << start.toString() << " to " << end.toString();
     nextapp::pb::TimeSpan req;
     req.setStart(QDateTime{start, QTime{}}.toSecsSinceEpoch());
     req.setEnd(QDateTime{end.addDays(1), QTime{}}.toSecsSinceEpoch());

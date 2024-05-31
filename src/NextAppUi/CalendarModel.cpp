@@ -23,6 +23,14 @@ bool compare(const nextapp::pb::CalendarEvent& a, const nextapp::pb::CalendarEve
     return a.id_proto() < b.id_proto();
 }
 
+int version(const nextapp::pb::CalendarEvent& event) {
+    if (event.hasTimeBlock()) {
+        return event.timeBlock().version();
+    }
+    return -1;
+};
+
+
 } // anon ns
 
 CalendarModel::CalendarModel()
@@ -36,13 +44,19 @@ CalendarModel::CalendarModel()
     setOnline(ServerComm::instance().connected());
 }
 
-CalendarDayModel *CalendarModel::getDayModel(QObject *obj, int year, int month, int day) {
+CalendarDayModel *CalendarModel::getDayModel(QObject *obj, int index) {
     assert(obj != nullptr);
     auto& dm = day_models_[obj];
+
+    QDate when = first_.isValid() ? first_.addDays(index) : QDate{};
+
     if (!dm) {
-        dm = std::make_unique<CalendarDayModel>(QDate(year, month, day), *obj, *this);
+        dm = std::make_unique<CalendarDayModel>(when, *obj, *this, index);
         QQmlEngine::setObjectOwnership(dm.get(), QQmlEngine::CppOwnership);
     };
+
+    LOG_TRACE_N << "Returning day model for " << when.toString() << " with index " << index;
+
     return dm.get();
 }
 
@@ -51,10 +65,13 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
 
     LOG_TRACE_N << "mode_=" << mode_ << " mode=" << mode << " year=" << year << " month=" << month << " day=" << day;
 
+    bool need_fetch = false;
+
     if (mode_ != mode) {
         mode_ = mode;
         setValid(false);
         emit modeChanged();
+        need_fetch = true;
     }
 
     QDate when(year, month, day), first, last;
@@ -62,6 +79,7 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
     switch(mode) {
     case CM_UNSET:
         setValid(false);
+        need_fetch = false;
         return;
     case CM_DAY:
         first = when;
@@ -81,9 +99,13 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
         first_ = first;
         last_ = last;
         setValid(false);
+        need_fetch = true;
+        updateDayModelsDates();
     }
 
-    fetchIf();
+    if (need_fetch) {
+        fetchIf();
+    }
 }
 
 void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
@@ -113,6 +135,16 @@ void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
 void CalendarModel::deleteTimeBlock(const QString &eventId)
 {
     ServerComm::instance().deleteTimeBlock(eventId);
+}
+
+time_t CalendarModel::getDate(int index)
+{
+    return first_.addDays(index).startOfDay().toSecsSinceEpoch();
+}
+
+QString CalendarModel::getDateStr(int index)
+{
+    return first_.addDays(index).toString("ddd, MMM d");
 }
 
 void CalendarModel::setValid(bool value) {
@@ -153,13 +185,17 @@ void CalendarModel::onCalendarEventUpdated(const nextapp::pb::CalendarEvents &ev
             return pair.second->date();
     }), std::back_inserter(dates));
 
-
     for(const auto& event : events.events()) {
         auto event_it = std::ranges::find_if(all_events_.events(), [&event](const auto& e) {
             return e.id_proto() == event.id_proto();
         });
 
         nextapp::pb::CalendarEvent *existing = (event_it == all_events_.events().end()) ? nullptr : &*event_it;
+
+        if (existing && version(*existing) > version(event)) {
+            LOG_TRACE_N << "Ignoring event with lower version: " << event.id_proto() << " with version " << version(event);
+            continue;
+        }
 
         QDate new_date = get_date(event);
         QDate old_date = existing ? get_date(*existing) : QDate();
@@ -228,11 +264,12 @@ add:
 void CalendarModel::fetchIf()
 {
     setValid(false);
+
     if (mode_ == CM_UNSET) {
         return;
     }
 
-    if (online_) {
+    if (online_ && !day_models_.empty()) {
         ServerComm::instance().fetchCalendarEvents(first_, last_, [this](auto val) ->void {
             if (std::holds_alternative<ServerComm::CbError>(val)) {
                 LOG_WARN_N << "Failed to get calendar events: " << std::get<ServerComm::CbError>(val).message;
@@ -249,10 +286,12 @@ void CalendarModel::fetchIf()
 
 void CalendarModel::setOnline(bool online)
 {
+    LOG_TRACE_N << "online_=" << online_ << " online=" << online;
     if (online != online_) {
         online_ = online;
-        QTimer::singleShot(0, this, &CalendarModel::fetchIf);
-        if (!online_) {
+        if (online_) {
+            QTimer::singleShot(0, this, &CalendarModel::fetchIf);
+        } else {
             setValid(false);
         }
     }
@@ -323,5 +362,12 @@ void CalendarModel::updateDayModels()
 void CalendarModel::sort()
 {
     ranges::sort(all_events_.events(), compare);
+}
+
+void CalendarModel::updateDayModelsDates()
+{
+    for (auto& [_, dm] : day_models_) {
+        dm->setDate(first_.addDays(dm->index()));
+    }
 }
 

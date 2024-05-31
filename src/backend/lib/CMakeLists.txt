@@ -25,6 +25,9 @@ add_library(${PROJECT_NAME}
     util.cpp
 )
 
+# clang complains about unknown g++ warnings enabled by the date library
+target_compile_options(${PROJECT_NAME} PRIVATE -Wno-unknown-warning-option)
+
 target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${NEXTAPP_ROOT}/include>

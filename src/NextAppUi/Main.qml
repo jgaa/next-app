@@ -164,6 +164,8 @@ ApplicationWindow {
 
                 CalendarView {
                     id: calendarView
+                    mode: CalendarModel.CM_WEEK
+                    days: 7
                 }
 
             } // StackLayout
@@ -180,6 +182,8 @@ ApplicationWindow {
                 id: dayPlan
                 Layout.fillHeight: true
                 visible: sidebar.currentMainItem !== 2
+                mode: CalendarModel.CM_DAY
+                days: 1
             }
         }
     } //Green SplitView

@@ -4,6 +4,7 @@
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QStringLiteral>
+#include <QQuickItem>
 #include "nextapp.qpb.h"
 
 class CalendarModel;
@@ -14,9 +15,7 @@ class CalendarDayModel : public QObject
     QML_ELEMENT
 
     Q_PROPERTY(bool valid READ valid NOTIFY validChanged)
-    Q_PROPERTY(int year READ year CONSTANT)
-    Q_PROPERTY(int month READ month CONSTANT)
-    Q_PROPERTY(int day READ day CONSTANT)
+    Q_PROPERTY(time_t when READ when NOTIFY whenChanged)
     Q_PROPERTY(int size READ size NOTIFY validChanged)
     Q_PROPERTY(int roundToMinutes READ roundToMinutes CONSTANT)
 
@@ -40,7 +39,8 @@ public:
 
 
     using events_t = std::span<const nextapp::pb::CalendarEvent>;
-    CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar,  QObject* parent = nullptr);
+    CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, int index,  QObject* parent = nullptr);
+    ~CalendarDayModel();
 
     // start and end are minuts into the day
     Q_INVOKABLE void createTimeBox(QString name, QString category, int start, int end);
@@ -69,31 +69,47 @@ public:
         return events_;
     }
 
+    time_t when() const {
+        if (date_.isValid()) [[likely]] {
+            return date_.startOfDay().toSecsSinceEpoch();
+        }
+
+        return 0;
+    }
+
     QDate date() const noexcept {
         return date_;
     }
 
-    int year() const noexcept {
-        return date_.year();
+    void setDate(QDate date);
+
+    int index() const noexcept {
+        return index_;
     }
 
-    int month() const noexcept {
-        return date_.month();
-    }
+    // int year() const noexcept {
+    //     return date_.year();
+    // }
 
-    int day() const noexcept {
-        return date_.day();
-    }
+    // int month() const noexcept {
+    //     return date_.month();
+    // }
+
+    // int day() const noexcept {
+    //     return date_.day();
+    // }
 
     int roundToMinutes() const noexcept;
 
 signals:
     void validChanged();
+    void whenChanged();
     void eventChanged(const QString& eventId);
     void resetModel();
 
 private:
-    const QDate date_;
+    QDate date_;
+    const int index_;
     bool valid_ = false;
     events_t events_;
     QObject& component_;

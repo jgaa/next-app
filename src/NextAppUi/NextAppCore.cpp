@@ -1,6 +1,7 @@
 #include "NextAppCore.h"
 #include <QDateTime>
 #include <QQmlEngine>
+#include <CalendarModel.h>
 
 #include "WeeklyWorkReportModel.h"
 #include "util.h"
@@ -61,6 +62,14 @@ WeeklyWorkReportModel *NextAppCore::createWeeklyWorkReportModel()
 QString NextAppCore::toHourMin(int duration)
 {
     return ::toHourMin(duration);
+}
+
+CalendarModel *NextAppCore::createCalendarModel()
+{
+    LOG_DEBUG_N << "Creating CalendarModel";
+    auto model = new CalendarModel();
+    QQmlEngine::setObjectOwnership(model, QQmlEngine::JavaScriptOwnership);
+    return model;
 }
 
 time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)

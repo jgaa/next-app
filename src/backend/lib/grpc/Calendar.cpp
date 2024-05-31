@@ -25,10 +25,10 @@ namespace {
 
 struct ToTimeBlock {
     enum Columns {
-        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY
+        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY, VERSION
     };
 
-    static constexpr auto columns = "id, user, name, start_time, end_time, kind, category";
+    static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, version";
 
     static void assign(const boost::mysql::row_view& row, pb::TimeBlock& tb, const UserContext& uctx) {
         tb.set_id(row.at(ID).as_string());
@@ -43,6 +43,7 @@ struct ToTimeBlock {
         if (const auto& category = row.at(CATEGORY); category.is_string()) {
             tb.set_category(category.as_string());
         }
+        tb.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
     }
 };
 

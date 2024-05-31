@@ -9,13 +9,9 @@ import Nextapp.Models
 Rectangle {
     id: root
     property int hourHeight: 60
-    property int leftMargin: 48
-    implicitWidth: 400
-    implicitHeight: hourHeight * 24
-    //height: hourHeight * 24
+    Layout.fillHeight: true
     color: MaterialDesignStyling.surface
     property var model: null
-    anchors.fill: parent
 
     Connections {
         target: model
@@ -30,13 +26,6 @@ Rectangle {
         }
     }
 
-    Rectangle {
-        id: hourMarkers
-        implicitHeight: parent.height
-        implicitWidth: parent.leftMargin
-        color: MaterialDesignStyling.primaryContainer
-    }
-
     Canvas {
         id: canvasCtl
         anchors.fill: parent
@@ -48,13 +37,10 @@ Rectangle {
             ctx.beginPath();
             ctx.strokeStyle = MaterialDesignStyling.outline;
             ctx.lineWidth = 1;
-            ctx.fillStyle = MaterialDesignStyling.onPrimaryContainer
-            ctx.font = "16px sans-serif";
             for (var i = 1; i <= 24; i++) {
                 var y = i * hourHeight;
                 ctx.moveTo(0, y);
                 ctx.lineTo(width, y);
-                ctx.fillText(i - 1, 5, y - hourHeight + 19);
             }
             ctx.stroke()
 
@@ -69,7 +55,7 @@ Rectangle {
                     if (ii == 2)
                         continue;
                     var yy = y - (ii * (hourHeight / 4));
-                    ctx.moveTo(hourMarkers.width, yy);
+                    ctx.moveTo(0, yy);
                     ctx.lineTo(width, yy);
                 }
             }
@@ -86,7 +72,7 @@ Rectangle {
                 {
                     ii = 2
                     yy = y - (ii * (hourHeight / 4));
-                    ctx.moveTo(hourMarkers.width, yy);
+                    ctx.moveTo(0, yy);
                     ctx.lineTo(width, yy);
                 }
             }
@@ -121,7 +107,7 @@ Rectangle {
         }
 
         visible: false
-        width: parent.width - (hourMarkers.width + 10) - 10
+        width: parent.width
         height: 0
     }
 
@@ -131,7 +117,7 @@ Rectangle {
         acceptedButtons: Qt.LeftButton
         preventStealing: true
         onPressed: {
-            dragRectangle.x = hourMarkers.width + 10
+            dragRectangle.x = 0
             dragRectangle.y = mouseY
             dragRectangle.height = 0
             dragRectangle.visible = true
@@ -252,7 +238,7 @@ Rectangle {
                 console.log("Dropped calendar event ", uuid, " at x=", drop.x, ", y=", drop.y,
                             " hour=", hour, "minute=", minute)
 
-                let new_time = new Date(root.model.year, root.model.month - 1, root.model.day)
+                let new_time = new Date(root.model.when * 1000)
                 new_time.setHours(hour)
                 new_time.setMinutes(getRoundedMinutes(minute))
                 root.model.moveEventToDay(uuid, new_time.getTime() / 1000)

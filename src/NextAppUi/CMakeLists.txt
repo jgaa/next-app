@@ -114,9 +114,10 @@ qt_add_qml_module(appNextAppUi
         qml/WorkSessionsView.qml
         qml/calendar/CalendarView.qml
         qml/calendar/DayPlan.qml
-        qml/calendar/ExpandArea.qml
-        qml/calendar/TimeBlock.qml
         qml/calendar/EditTimeBlockDlg.qml
+        qml/calendar/ExpandArea.qml
+        qml/calendar/HoursBar.qml
+        qml/calendar/TimeBlock.qml
         qml/common.js
         qml/settings/GlobalSettings.qml
         qml/settings/PrefSettings.qml

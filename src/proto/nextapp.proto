@@ -444,6 +444,7 @@ message TimeBlock {
     Kind kind = 5;
     string category = 6;
     repeated ActionInfo actions = 7;
+    int32 version = 8;
 }
 
 message DeleteTimeblockReq {

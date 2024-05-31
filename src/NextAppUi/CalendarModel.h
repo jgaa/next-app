@@ -17,7 +17,6 @@ class CalendarModel : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_SINGLETON
     Q_ENUMS(CalendarMode)
     Q_PROPERTY(bool valid READ valid NOTIFY validChanged)
     Q_PROPERTY(CalendarMode mode READ mode NOTIFY modeChanged)
@@ -40,10 +39,19 @@ public:
         return mode_;
     }
 
-    Q_INVOKABLE CalendarDayModel* getDayModel(QObject *obj, int year, int month, int day);
+    /*! Get a window over a single day.
+     *
+     *  This is used bt QML components to render a day.
+     *
+     *  @param obj The object that will use the model. Used to manually delete the models when the object is destroyed.
+     *  @param index The index of the day in the current window. Starts at 0.
+     */
+    Q_INVOKABLE CalendarDayModel* getDayModel(QObject *obj, int index);
     Q_INVOKABLE void set(CalendarMode mode, int year, int month, int day);
     Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);
     Q_INVOKABLE void deleteTimeBlock(const QString& eventId);
+    Q_INVOKABLE time_t getDate(int index);
+    Q_INVOKABLE QString getDateStr(int index);
 
     void setValid(bool value);
 
@@ -61,6 +69,7 @@ private:
     void onReceivedCalendarData(nextapp::pb::CalendarEvents& data);
     void updateDayModels();
     void sort();
+    void updateDayModelsDates();
 
 
     bool valid_ = false;

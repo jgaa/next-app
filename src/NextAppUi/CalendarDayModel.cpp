@@ -139,12 +139,18 @@ items_t calculatePlacement(CalendarDayModel::events_t events) {
 
 } //anon ns
 
-CalendarDayModel::CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, QObject *parent)
+CalendarDayModel::CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, int index, QObject *parent)
     : QObject(parent)    
     , date_(date)
+    , index_{index}
     , component_{component}
     , calendar_{calendar}
 {
+}
+
+CalendarDayModel::~CalendarDayModel()
+{
+    LOG_TRACE_N << "Destroying day model for " << date_.toString() << " with index=" << index_;
 }
 
 void CalendarDayModel::createTimeBox(QString name, QString category, int start, int end)
@@ -176,9 +182,10 @@ nextapp::pb::CalendarEvent CalendarDayModel::event(int index) const noexcept {
 
 void CalendarDayModel::addCalendarEvents()
 {
-    const auto height = component_.property("height").toInt();
-    const auto width = component_.property("width").toInt();
-    const auto left = component_.property("leftMargin").toInt();
+    auto* ctl = qobject_cast<QQuickItem*>(&component_);
+    const auto height = ctl->property("height").toInt();
+    const auto width = ctl->property("width").toInt();
+    const auto left = 0;
     const auto avail_width = width - left;
 
     const double heigth_per_minute = height / 1440.0;
@@ -191,7 +198,7 @@ void CalendarDayModel::addCalendarEvents()
 
         if (item.event.hasTimeBlock()) {
             const auto& tb = item.event.timeBlock();
-            if (auto *object = timx_boxes_pool_.get(&component_)) {
+            if (auto *object = timx_boxes_pool_.get(ctl)) {
                 object->setProperty("name", tb.name());
                 object->setProperty("uuid", tb.id_proto());
                 object->setProperty("start", NextAppCore::toDateAndTime(item.start, now));
@@ -312,6 +319,13 @@ void CalendarDayModel::setValid(bool valid, bool signalAlways )
     }
     valid_ = valid;
     emit validChanged();
+}
+
+void CalendarDayModel::setDate(QDate date) {
+    date_ = date;
+    emit whenChanged();
+    LOG_TRACE_N << "Updated date to " << date_.toString().toStdString()
+                << " for day with index=" << index_;
 }
 
 int CalendarDayModel::roundToMinutes() const noexcept {
