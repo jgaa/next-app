@@ -583,8 +583,13 @@ void ServerComm::onUpdateMessage()
 {
     LOG_TRACE_N << "Received an update...";
     try {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
         if (auto value = updates_->read<nextapp::pb::Update>()) {
             auto msg = make_shared<nextapp::pb::Update>(std::move(*value));
+#else
+        {
+            auto msg = make_shared<nextapp::pb::Update>(std::move(updates_->read<nextapp::pb::Update>()));
+#endif
             LOG_TRACE << "Got update: " << msg->when().seconds();
 
             if (msg->hasUserGlobalSettings()) {
@@ -626,7 +631,11 @@ void ServerComm::setDefaulValuesInUserSettings()
 
     userGlobalSettings_.setDefaultWorkHours(wh);
 
+#ifdef ANDROID
+    userGlobalSettings_.setTimeZone("Europe/Sofia");
+#else
     userGlobalSettings_.setTimeZone(QString::fromUtf8(chrono::current_zone()->name()));
+#endif
 
     const auto territory = QTimeZone::systemTimeZone().territory();
     if (territory != QLocale::AnyCountry) {

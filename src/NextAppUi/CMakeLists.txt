@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(NextAppUi VERSION 0.1.7 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.7 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -25,6 +25,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(QT6_IS_SHARED_LIBS_BUILD OFF)
+
+# find_package(Boost REQUIRED)
+# include_directories(${Boost_INCLUDE_DIRS})
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
 
@@ -58,6 +61,14 @@ qt_add_grpc(NextappGrpcClient CLIENT
     PROTO_FILES ${protofile}
 )
 
+target_link_libraries(NextappGrpcClient
+    PRIVATE
+        NextappProtoMessageLib
+        Qt6::Core
+        Qt6::Protobuf
+        Qt6::Grpc
+)
+
 qt_add_executable(appNextAppUi
     main.cpp
     logging.h
@@ -68,6 +79,13 @@ target_include_directories(appNextAppUi PRIVATE
     $<INSTALL_INTERFACE:include>
     PRIVATE src
 )
+
+if (NOT ANDROID)
+    find_package(Boost REQUIRED)
+    target_include_directories(appNextAppUi PRIVATE ${Boost_INCLUDE_DIRS})
+else()
+    target_include_directories(appNextAppUi PRIVATE /opt/boost/boost_1_85_0)
+endif()
 
 set_source_files_properties(qml/Colors.qml
     PROPERTIES
@@ -189,20 +207,22 @@ qt_add_qml_module(appNextAppUi
         util.h
 )
 
-# Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-# If you are developing for iOS or macOS you should consider setting an
-# explicit, fixed bundle identifier manually though.
-set_target_properties(appNextAppUi PROPERTIES
-#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appNextAppUi
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-    MACOSX_BUNDLE TRUE
-    WIN32_EXECUTABLE TRUE
-    RUNTIME_OUTPUT_NAME nextapp
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+if(NOT ANDROID)
+    # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
+    # If you are developing for iOS or macOS you should consider setting an
+    # explicit, fixed bundle identifier manually though.
+    set_target_properties(appNextAppUi PROPERTIES
+    #    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appNextAppUi
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+        MACOSX_BUNDLE TRUE
+        WIN32_EXECUTABLE TRUE
+        RUNTIME_OUTPUT_NAME nextapp
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+endif()
 
 add_dependencies(appNextAppUi logfault NextappGrpcClient NextappProtoMessageLib)
 
@@ -237,26 +257,13 @@ if(NOT ANDROID)
     install(SCRIPT ${deploy_script})
 endif()
 
-# if (WITH_TESTS)
-#     find_package(GTest REQUIRED)
+if (ANDROID)
+    include(GNUInstallDirs)
+    install(TARGETS appNextAppUi
+        BUNDLE DESTINATION .
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
 
-#     enable_testing()
+endif()
 
-#     qt_add_executable(tst_data_models
-#         tst_data_models.cpp
-#         MainTreeModel.h MainTreeModel.cpp
-#     )
-
-#     # add_dependencies(tst_data_models
-#     #     ${DEPENDS_GTEST}
-#     # )
-
-#     set_property(TARGET tst_data_models PROPERTY CXX_STANDARD 20)
-
-#     target_link_libraries(tst_data_models
-#         PRIVATE NextappGrpcClient NextappProtoMessageLib Qt6::Protobuf Qt6::Grpc Qt6::Core ${GTEST_LIBRARIES}
-#     )
-
-#     add_test(NAME data_models COMMAND tst_data_models)
-
-# endif() # tests

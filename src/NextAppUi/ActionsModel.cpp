@@ -438,6 +438,9 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) con
 
 QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
 {
+#ifdef ANDROID
+    return "android";
+#else
     using namespace nextapp::pb::ActionDueKindGadget;
 
     if (!when) {
@@ -479,6 +482,7 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget
         return tr("No due time set");
     }
     return {};
+#endif
 }
 
 QString ActionsModel::formatDue(const nextapp::pb::Due &due)
@@ -537,12 +541,14 @@ QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::Act
     return model;
 }
 
+#ifndef ANDROID
 auto timeZoneOffset(const std::chrono::time_zone *tz, const auto& tp) {
 
     const auto ts_offset = tz->get_info(tp).offset;
     const auto offset = ts_offset.count();
     return offset;
 }
+#endif
 
 pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const
 {

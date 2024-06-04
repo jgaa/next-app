@@ -173,8 +173,13 @@ private:
             auto rpc_method = call(args...);
             rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
                 //respT rval = rpc_method-> template read<respT>();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
                 if (auto orval = rpc_method-> template read<respT>()) {
                     auto& rval = *orval;
+#else
+                {
+                    respT rval = rpc_method-> template read<respT>();
+#endif
                     if constexpr (std::is_same_v<nextapp::pb::Status, respT>) {
                         if (!opts.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
                             LOG_ERROR << "RPC request failed with error #" <<
@@ -193,7 +198,6 @@ private:
                         static_assert(std::is_same_v<doneT, bool>);
                         assert(!done);
                     }
-                    } else {
                 }
             },
             [this](QGrpcStatus status) {
