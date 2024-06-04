@@ -20,6 +20,7 @@ class CalendarModel : public QObject
     Q_ENUMS(CalendarMode)
     Q_PROPERTY(bool valid READ valid NOTIFY validChanged)
     Q_PROPERTY(CalendarMode mode READ mode NOTIFY modeChanged)
+    Q_PROPERTY(time_t target READ target NOTIFY targetChanged)
 
 public:
     enum CalendarMode {
@@ -52,14 +53,24 @@ public:
     Q_INVOKABLE void deleteTimeBlock(const QString& eventId);
     Q_INVOKABLE time_t getDate(int index);
     Q_INVOKABLE QString getDateStr(int index);
+    Q_INVOKABLE void goPrev();
+    Q_INVOKABLE void goNext();
+    Q_INVOKABLE void goToday();
 
     void setValid(bool value);
+
+    time_t target() const noexcept {
+        return target_.startOfDay().toSecsSinceEpoch();
+    }
+
+    void setTarget(QDate target);
 
 signals:
     void validChanged();
     void eventChanged(const QString& eventId);
     void resetModel();
     void modeChanged();
+    void targetChanged();
 
 private:
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
@@ -70,6 +81,7 @@ private:
     void updateDayModels();
     void sort();
     void updateDayModelsDates();
+    void alignDates();
 
 
     bool valid_ = false;

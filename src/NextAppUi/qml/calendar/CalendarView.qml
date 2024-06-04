@@ -45,6 +45,79 @@ Rectangle {
         spacing: 0
 
         Rectangle {
+            id: navigation
+            height: 28
+            Layout.fillWidth: true
+            color: MaterialDesignStyling.primary
+
+            RowLayout {
+                anchors.fill: parent
+                Button {
+                    height: navigation.height - 4
+                    Layout.preferredWidth: 28
+                    Text {
+                        anchors.fill: parent
+                        font.family: ce.faSolidName
+                        font.styleName: ce.faSolidStyle
+                        font.pixelSize: 10
+                        text: "\uf104"
+                        verticalAlignment: Text.AlignVCenter
+                        horizontalAlignment: Text.AlignHCenter
+                        color: MaterialDesignStyling.onPrimary
+                    }
+                    onClicked: {
+                        root.model.goPrev();
+                    }
+                }
+
+                Button {
+                    height: navigation.height - 4
+                    Layout.preferredWidth: 28
+                    width: height
+                    Text {
+                        anchors.fill: parent
+                        font.family: ce.faSolidName
+                        font.styleName: ce.faSolidStyle
+                        font.pixelSize: 10
+                        text: "\uf783"
+                        verticalAlignment: Text.AlignVCenter
+                        horizontalAlignment: Text.AlignHCenter
+                        color: MaterialDesignStyling.onPrimary
+                    }
+
+                    onClicked: {
+                        root.model.goToday();
+                    }
+                }
+
+                Button {
+                    height: navigation.height - 4
+                    Layout.preferredWidth: 28
+                    width: height
+                    Text {
+                        anchors.fill: parent
+                        font.family: ce.faSolidName
+                        font.styleName: ce.faSolidStyle
+                        font.pixelSize: 10
+                        text: "\uf105"
+                        verticalAlignment: Text.AlignVCenter
+                        horizontalAlignment: Text.AlignHCenter
+                        color: MaterialDesignStyling.onPrimary
+                    }
+
+                    onClicked: {
+                        root.model.goNext();
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+            }
+        }
+
+        Rectangle {
             id: header
             Layout.fillWidth: true
             height: 28
@@ -147,5 +220,9 @@ Rectangle {
         Item {
             Layout.fillWidth: true
         }
+    }
+
+    CommonElements {
+        id: ce
     }
 }

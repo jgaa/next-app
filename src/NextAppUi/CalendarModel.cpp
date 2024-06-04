@@ -159,6 +159,50 @@ QString CalendarModel::getDateStr(int index)
     return first_.addDays(index).toString("ddd, MMM d");
 }
 
+void CalendarModel::goPrev()
+{
+    switch(mode_) {
+        case CM_DAY:
+        target_ = target_.addDays(-1);
+        break;
+        case CM_WEEK:
+        target_ = target_.addDays(-7);
+        break;
+        case CM_MONTH:
+        target_ = target_.addMonths(-1);
+        break;
+        case CM_UNSET:
+        break;
+    }
+
+    alignDates();
+}
+
+void CalendarModel::goNext()
+{
+    switch (mode_) {
+    case CM_DAY:
+        target_ = target_.addDays(1);
+        break;
+    case CM_WEEK:
+        target_ = target_.addDays(7);
+        break;
+    case CM_MONTH:
+        target_ = target_.addMonths(1);
+        break;
+    case CM_UNSET:
+        break;
+    }
+
+    alignDates();
+}
+
+void CalendarModel::goToday()
+{
+    target_ = QDate::currentDate();
+    alignDates();
+}
+
 void CalendarModel::setValid(bool value) {
     LOG_TRACE_N << "valid_=" << valid_ << " value=" << value;
     if (valid_ != value) {
@@ -168,6 +212,15 @@ void CalendarModel::setValid(bool value) {
             dm->setValid(valid_);
         }
     }
+}
+
+void CalendarModel::setTarget(QDate target)
+{
+    if (target_ == target) {
+        return;
+    }
+    target_ = target;
+    emit targetChanged();
 }
 
 QDate get_date(const nextapp::pb::CalendarEvent& event) {
@@ -381,5 +434,10 @@ void CalendarModel::updateDayModelsDates()
     for (auto& [_, dm] : day_models_) {
         dm->setDate(first_.addDays(dm->index()));
     }
+}
+
+void CalendarModel::alignDates()
+{
+    set(mode_, target_.year(), target_.month(), target_.day());
 }
 
