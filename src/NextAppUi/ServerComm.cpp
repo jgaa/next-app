@@ -583,34 +583,36 @@ void ServerComm::onUpdateMessage()
 {
     LOG_TRACE_N << "Received an update...";
     try {
-        auto msg = make_shared<nextapp::pb::Update>(updates_->read<nextapp::pb::Update>());
-        LOG_TRACE << "Got update: " << msg->when().seconds();
+        if (auto value = updates_->read<nextapp::pb::Update>()) {
+            auto msg = make_shared<nextapp::pb::Update>(std::move(*value));
+            LOG_TRACE << "Got update: " << msg->when().seconds();
 
-        if (msg->hasUserGlobalSettings()) {
-            LOG_DEBUG << "Received global user-settings";
+            if (msg->hasUserGlobalSettings()) {
+                LOG_DEBUG << "Received global user-settings";
 
-            const auto& new_settings = msg->userGlobalSettings();
-            const bool first_day_of_week_changed
-                = userGlobalSettings_.firstDayOfWeekIsMonday() != new_settings.firstDayOfWeekIsMonday();
-            userGlobalSettings_ = new_settings;
-            emit globalSettingsChanged();
+                const auto& new_settings = msg->userGlobalSettings();
+                const bool first_day_of_week_changed
+                    = userGlobalSettings_.firstDayOfWeekIsMonday() != new_settings.firstDayOfWeekIsMonday();
+                userGlobalSettings_ = new_settings;
+                emit globalSettingsChanged();
 
-            if (first_day_of_week_changed) {
-                LOG_DEBUG << "First day of week changed";
-                emit firstDayOfWeekChanged();
+                if (first_day_of_week_changed) {
+                    LOG_DEBUG << "First day of week changed";
+                    emit firstDayOfWeekChanged();
+                }
             }
-        }
-        if (msg->hasDayColor()) {
-            LOG_DEBUG << "Day color is " << msg->dayColor().color();
-            QUuid color;
-            if (!msg->dayColor().color().isEmpty()) {
-                color = QUuid{msg->dayColor().color()};
+            if (msg->hasDayColor()) {
+                LOG_DEBUG << "Day color is " << msg->dayColor().color();
+                QUuid color;
+                if (!msg->dayColor().color().isEmpty()) {
+                    color = QUuid{msg->dayColor().color()};
+                }
+                const auto& date = msg->dayColor().date();
+                emit dayColorChanged(date.year(), date.month(), date.mday(), color);
             }
-            const auto& date = msg->dayColor().date();
-            emit dayColorChanged(date.year(), date.month(), date.mday(), color);
-        }
 
-        emit onUpdate(std::move(msg));
+            emit onUpdate(std::move(msg));
+        }
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();
     }

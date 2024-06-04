@@ -172,24 +172,28 @@ private:
         auto exec = [this, call=std::move(call), done=std::move(done), opts, args...]() {
             auto rpc_method = call(args...);
             rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
-                respT rval = rpc_method-> template read<respT>();
-                if constexpr (std::is_same_v<nextapp::pb::Status, respT>) {
-                    if (!opts.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
-                        LOG_ERROR << "RPC request failed with error #" <<
-                            rval.error() << " : " << rval.message();
+                //respT rval = rpc_method-> template read<respT>();
+                if (auto orval = rpc_method-> template read<respT>()) {
+                    auto& rval = *orval;
+                    if constexpr (std::is_same_v<nextapp::pb::Status, respT>) {
+                        if (!opts.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
+                            LOG_ERROR << "RPC request failed with error #" <<
+                                rval.error() << " : " << rval.message();
 
-                        if constexpr (IsValidFunctor<doneT, CbError>) {
-                            done(CbError{rval.error(), rval.message()});
+                            if constexpr (IsValidFunctor<doneT, CbError>) {
+                                done(CbError{rval.error(), rval.message()});
+                            }
+                            return;
                         }
-                        return;
                     }
-                }
-                if constexpr (IsValidFunctor<doneT, respT>) {
-                    done(rval);
-                } else {
-                    // The done functor must either be valid callable functor, or 'false'
-                    static_assert(std::is_same_v<doneT, bool>);
-                    assert(!done);
+                    if constexpr (IsValidFunctor<doneT, respT>) {
+                        done(rval);
+                    } else {
+                        // The done functor must either be valid callable functor, or 'false'
+                        static_assert(std::is_same_v<doneT, bool>);
+                        assert(!done);
+                    }
+                    } else {
                 }
             },
             [this](QGrpcStatus status) {
