@@ -6,6 +6,7 @@
 #include <QTimer>
 #include "CalendarModel.h"
 #include "ServerComm.h"
+#include "util.h"
 
 using namespace std;
 
@@ -40,6 +41,16 @@ CalendarModel::CalendarModel()
     });
 
     connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &CalendarModel::onUpdate);
+    connect(&ServerComm::instance(), &ServerComm::firstDayOfWeekChanged, [this] {
+        LOG_DEBUG_N << "First day of week changed";
+        if (mode_ == CM_WEEK) {
+            first_ = getFirstDayOfWeek(target_);
+            last_ = first_.addDays(6);
+            setValid(false);
+            updateDayModelsDates();
+            fetchIf();
+        }
+    });
 
     setOnline(ServerComm::instance().connected());
 }
@@ -75,6 +86,7 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
     }
 
     QDate when(year, month, day), first, last;
+    target_ = when;
 
     switch(mode) {
     case CM_UNSET:
@@ -86,8 +98,8 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
         last = when;
         break;
     case CM_WEEK:
-        first = when.addDays(-when.dayOfWeek());
-        last = when.addDays(6 - when.dayOfWeek());
+        first = getFirstDayOfWeek(when);
+        last = first.addDays(6);
         break;
     case CM_MONTH:
         first = when.addDays(-when.day());

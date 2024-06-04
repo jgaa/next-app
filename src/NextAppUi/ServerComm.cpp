@@ -588,8 +588,17 @@ void ServerComm::onUpdateMessage()
 
         if (msg->hasUserGlobalSettings()) {
             LOG_DEBUG << "Received global user-settings";
-            userGlobalSettings_ = msg->userGlobalSettings();
+
+            const auto& new_settings = msg->userGlobalSettings();
+            const bool first_day_of_week_changed
+                = userGlobalSettings_.firstDayOfWeekIsMonday() != new_settings.firstDayOfWeekIsMonday();
+            userGlobalSettings_ = new_settings;
             emit globalSettingsChanged();
+
+            if (first_day_of_week_changed) {
+                LOG_DEBUG << "First day of week changed";
+                emit firstDayOfWeekChanged();
+            }
         }
         if (msg->hasDayColor()) {
             LOG_DEBUG << "Day color is " << msg->dayColor().color();

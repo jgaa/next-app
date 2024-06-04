@@ -76,9 +76,16 @@ Rectangle {
                     x: scrollView.dayWidth * index + hbar.width + (index * 4) + 6
                     width: scrollView.dayWidth
                     height: header.height
-                    text: root.model.valid ? root.model.getDateStr(index) : "unset"
+                    //text: root.model.valid ? root.model.getDateStr(index) : "unset"
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
+
+                    Binding {
+                        target: label
+                        property: "text"
+                        value: root.model.valid ? root.model.getDateStr(index) : "unset"
+                        when: root.model.valid
+                    }
                 }
             }
         }

@@ -130,6 +130,7 @@ signals:
     void dayColorDefinitionsChanged();
     void errorRecieved(const QString &value);
     void globalSettingsChanged();
+    void firstDayOfWeekChanged();
 
     // When the server has replied to our request fo the colors for this month
     void monthColorsChanged(unsigned year, unsigned month, colors_in_months_t colors);
