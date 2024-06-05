@@ -136,6 +136,9 @@ qt_add_qml_module(appNextAppUi
         qml/calendar/ExpandArea.qml
         qml/calendar/HoursBar.qml
         qml/calendar/TimeBlock.qml
+        qml/categories/CategoriesMgr.qml
+        qml/categories/ColorPicker.qml
+        qml/categories/EditCategoryDlg.qml
         qml/common.js
         qml/settings/GlobalSettings.qml
         qml/settings/PrefSettings.qml
@@ -175,6 +178,8 @@ qt_add_qml_module(appNextAppUi
         icons/square-unchecked.svg
         icons/task.svg
     SOURCES
+        ActionCategoriesModel.cpp
+        ActionCategoriesModel.h
         ActionsModel.cpp
         ActionsModel.h
         CalendarDayModel.cpp

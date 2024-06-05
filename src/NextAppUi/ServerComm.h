@@ -117,8 +117,11 @@ public:
     void addTimeBlock(const nextapp::pb::TimeBlock& tb);
     void updateTimeBlock(const nextapp::pb::TimeBlock& tb);
     void deleteTimeBlock(const QString& timeBlockUuid);
-
     void fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents>&& done);
+    void fetchActionCategories(callback_t<nextapp::pb::ActionCategories>&& done);
+    void createActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
+    void updateActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
+    void deleteActionCategory(const QString& id, callback_t<nextapp::pb::Status>&& done);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

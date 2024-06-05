@@ -473,6 +473,27 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     static constexpr auto v7_upgrade = to_array<string_view>({
         "SET FOREIGN_KEY_CHECKS=0",
 
+        R"(CREATE OR REPLACE TABLE action_category (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            user UUID NOT NULL,
+            name VARCHAR(128) NOT NULL,
+            color VARCHAR(32) NOT NULL DEFAULT 'blue',
+            descr TEXT,
+            version INT NOT NULL DEFAULT 1,
+            icon VARCHAR(128),
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE INDEX action_category_ix1 ON action_category (user, name))",
+
+        "DROP TRIGGER IF EXISTS tr_before_update_action_category",
+
+        R"(CREATE TRIGGER tr_before_update_action_category
+          BEFORE UPDATE ON action_category
+          FOR EACH ROW
+          BEGIN
+            SET NEW.version = OLD.version + 1;
+          END)",
+
         R"(CREATE OR REPLACE TABLE time_block (
             id UUID not NULL default UUID() PRIMARY KEY,
             user UUID NOT NULL,
@@ -489,6 +510,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         R"(CREATE INDEX time_block_ix1 ON time_block (user, start_time, end_time))",
 
         "DROP TRIGGER IF EXISTS tr_before_update_time_block",
+
         R"(CREATE TRIGGER tr_before_update_time_block
           BEFORE UPDATE ON time_block
           FOR EACH ROW

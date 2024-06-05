@@ -146,6 +146,11 @@ public:
         ::grpc::ServerUnaryReactor *UpdateTimeblock(::grpc::CallbackServerContext *ctx, const pb::TimeBlock *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *DeleteTimeblock(::grpc::CallbackServerContext *ctx, const pb::DeleteTimeblockReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetCalendarEvents(::grpc::CallbackServerContext *ctx, const pb::TimeSpan *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *CreateActionCategory(::grpc::CallbackServerContext *ctx, const pb::ActionCategory *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *UpdateActionCategory(::grpc::CallbackServerContext *ctx, const pb::ActionCategory *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *DeleteActionCategory(::grpc::CallbackServerContext *ctx, const pb::DeleteActionCategoryReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetActionCategories(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
+
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback

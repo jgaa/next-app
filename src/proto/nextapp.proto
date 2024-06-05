@@ -465,6 +465,22 @@ message CalendarEvents {
     repeated CalendarEvent events = 1;
 }
 
+message ActionCategory {
+    string id = 1;
+    string name = 2;
+    string descr = 3;
+    string color = 4;
+    int32 version = 5;
+    string icon = 6;
+}
+
+message ActionCategories {
+    repeated ActionCategory categories = 1;
+}
+
+message DeleteActionCategoryReq {
+    string id = 1;
+}
 
 message Update {
     Timestamp when = 1;
@@ -489,6 +505,7 @@ message Update {
         WorkSession work = 17;
         UserGlobalSettings userGlobalSettings = 18;
         CalendarEvents calendarEvents = 19;
+        ActionCategory actionCategory = 20;
     }
 }
 
@@ -641,6 +658,8 @@ message Status {
         DetailedWorkSummary detailedWorkSummary = 20;
         UserGlobalSettings userGlobalSettings = 21;
         CalendarEvents calendarEvents = 22;
+        ActionCategory actionCategory = 23;
+        ActionCategories actionCategories = 24;
     }
 }
 
@@ -687,4 +706,8 @@ service Nextapp {
     rpc UpdateTimeblock(TimeBlock) returns (Status) {}
     rpc DeleteTimeblock(DeleteTimeblockReq) returns (Status) {}
     rpc GetCalendarEvents(TimeSpan) returns (Status) {}
+    rpc CreateActionCategory(ActionCategory) returns (Status) {}
+    rpc GetActionCategories(Empty) returns (Status) {}
+    rpc UpdateActionCategory(ActionCategory) returns (Status) {}
+    rpc DeleteActionCategory(DeleteActionCategoryReq) returns (Status) {}
 }

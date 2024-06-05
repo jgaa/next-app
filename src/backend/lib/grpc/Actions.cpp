@@ -5,6 +5,29 @@ namespace nextapp::grpc {
 
 namespace {
 
+struct ToActionCategory {
+    enum Cols {
+        ID, NAME, COLOR, DESCR, VERSION, ICON
+    };
+
+    static constexpr auto columns = "id, name, color, descr, version, icon";
+
+    static void assign(const boost::mysql::row_view& row, pb::ActionCategory& cat) {
+        cat.set_id(row.at(ID).as_string());
+        cat.set_name(row.at(NAME).as_string());
+        if (row.at(COLOR).is_string()) {
+            cat.set_color(row.at(COLOR).as_string());
+        }
+        if (row.at(DESCR).is_string()) {
+            cat.set_descr(row.at(DESCR).as_string());
+        }
+        cat.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
+        if (row.at(ICON).is_string()) {
+            cat.set_icon(row.at(ICON).as_string());
+        }
+    }
+};
+
 struct ToAction {
     enum Cols {
         ID, NODE, USER, VERSION, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME,  // core
@@ -1255,6 +1278,109 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
     }
 
     co_return;
+}
+
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateActionCategory(::grpc::CallbackServerContext *ctx, const pb::ActionCategory *req, pb::Status *reply) {
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+            const auto& cuser = rctx.uctx->userUuid();
+            const auto& dbopts = rctx.uctx->dbOptions();
+
+            auto res = co_await rctx.dbh->exec(
+                format("INSERT INTO action_category (USER, NAME, DESCR, COLOR, ICON) VALUES (?,?,?,?,?) RETURNING {}",
+                       ToActionCategory::columns),
+                dbopts,
+                cuser, req->name(), toStringOrNull(req->descr()), req->color(), toStringOrNull(req->icon()));
+
+            assert(!res.empty());
+            if (res.rows().empty()) [[unlikely]] {
+                reply->set_error(pb::Error::GENERIC_ERROR);
+                reply->set_message(format("ActionCategory with id={} was not created.", req->id()));
+            } else {
+                auto *reply_ac = reply->mutable_actioncategory();
+                ToActionCategory::assign(res.rows().front(), *reply_ac);
+
+                // Publish the new category
+                auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
+                *update->mutable_actioncategory() = *reply_ac;
+                owner_.publish(update);
+            }
+
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateActionCategory(::grpc::CallbackServerContext *ctx, const pb::ActionCategory *req, pb::Status *reply) {
+
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+            const auto& dbopts = rctx.uctx->dbOptions();
+
+            auto res = co_await rctx.dbh->exec(
+                "UPDATE action_category SET name=?, descr=?, color=?, icon=?  WHERE id=? AND user=?",
+                dbopts,
+                req->name(), toStringOrNull(req->descr()), req->color(), toStringOrNull(req->icon()), req->id(), cuser);
+
+            assert(!res.empty());
+            if (res.affected_rows() == 1) {
+                auto *reply_ac = reply->mutable_actioncategory();
+                *reply_ac = *req;
+
+                // Publish the updated category
+                auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
+                *update->mutable_actioncategory() = *reply_ac;
+                owner_.publish(update);
+            } else {
+                reply->set_error(pb::Error::GENERIC_ERROR);
+                reply->set_message(format("ActionCategory with id={} was not updated.", req->id()));
+            }
+
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteActionCategory(::grpc::CallbackServerContext *ctx, const pb::DeleteActionCategoryReq *req, pb::Status *reply) {
+
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+
+            auto res = co_await rctx.dbh->exec("DELETE FROM action_category WHERE id=? AND user=?", req->id(), cuser);
+
+            assert(res.has_value());
+            if (res.affected_rows() == 1) {
+                reply->set_uuid(req->id());
+                auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
+                update->mutable_actioncategory()->set_id(req->id());
+                owner_.publish(update);
+            } else {
+                reply->set_uuid(req->id());
+                reply->set_error(pb::Error::NOT_FOUND);
+                reply->set_message(format("ActionCategory with id={} not found for the current user.", req->id()));
+            }
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetActionCategories(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) {
+    return unaryHandler(ctx, req, reply,
+        [this, ctx] (auto *reply) -> boost::asio::awaitable<void> {
+            const auto uctx = owner_.userContext(ctx);
+            const auto& cuser = uctx->userUuid();
+
+            auto res = co_await owner_.server().db().exec(
+                format("SELECT {} FROM action_category WHERE user=?", ToActionCategory::columns),
+                cuser);
+
+            assert(!res.empty());
+
+            auto *acs = reply->mutable_actioncategories();
+            for(const auto& row : res.rows()) {
+                auto *ac = acs->add_categories();
+                ToActionCategory::assign(row, *ac);
+            }
+
+        }, __func__);
 }
 
 

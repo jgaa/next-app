@@ -24,6 +24,12 @@ ApplicationWindow {
                 shortcut: StandardKey.ZoomIn
                 onTriggered: { openDialog("settings/SettingsDlg.qml") }
             }
+
+            Action {
+                text: qsTr("Categories")
+                onTriggered: { openDialog("categories/CategoriesMgr.qml") }
+            }
+
             Action {
                 text: qsTr("Exit")
                 onTriggered: Qt.exit(0)

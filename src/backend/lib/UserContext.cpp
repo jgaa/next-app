@@ -29,7 +29,12 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
                          const pb::UserGlobalSettings &settings, boost::uuids::uuid sessionId)
     : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings), sessionid_{sessionId} {
     try {
-        tz_ = std::chrono::locate_zone(settings_.timezone());
+        if (settings_.timezone().empty()) [[unlikely]] {
+            tz_ = std::chrono::current_zone();
+            LOG_WARN << "User has no time-zone set. Using " << tz_->name() << ".";
+        } else {
+            tz_ = std::chrono::locate_zone(settings_.timezone());
+        }
     } catch (const std::exception& e) {
         tz_ = std::chrono::current_zone();
         LOG_WARN << "Failed to locate timezone " << settings_.timezone()

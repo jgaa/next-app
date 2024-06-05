@@ -517,6 +517,43 @@ void ServerComm::fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp:
     }, opts);
 }
 
+void ServerComm::fetchActionCategories(callback_t<nextapp::pb::ActionCategories> &&done)
+{
+    callRpc<nextapp::pb::Status>([this]() {
+        return client_->GetActionCategories({});
+    }, [this, done=std::move(done)](const nextapp::pb::Status& status) {
+        if (status.hasActionCategories()) {
+            done(status.actionCategories());
+        } else {
+            done(CbError{nextapp::pb::ErrorGadget::GENERIC_ERROR, "Missing categories"});
+        }
+    });
+}
+
+void ServerComm::createActionCategory(const nextapp::pb::ActionCategory &category, callback_t<nextapp::pb::Status> &&done)
+{
+    callRpc<nextapp::pb::Status>([this, category]() {
+        return client_->CreateActionCategory(category);
+    }, std::move(done));
+}
+
+void ServerComm::updateActionCategory(const nextapp::pb::ActionCategory &category, callback_t<nextapp::pb::Status> &&done)
+{
+    callRpc<nextapp::pb::Status>([this, category]() {
+        return client_->UpdateActionCategory(category);
+    }, std::move(done));
+}
+
+void ServerComm::deleteActionCategory(const QString &id, callback_t<nextapp::pb::Status> &&done)
+{
+    nextapp::pb::DeleteActionCategoryReq req;
+    req.setId_proto(id);
+
+    callRpc<nextapp::pb::Status>([this, req]() {
+        return client_->DeleteActionCategory(req);
+    }, std::move(done));
+}
+
 nextapp::pb::UserGlobalSettings ServerComm::getGlobalSettings() const
 {
     return userGlobalSettings_;
