@@ -102,6 +102,7 @@ class ActionsModel : public QAbstractListModel
         FavoriteRole,
         HasWorkSessionRole,
         ListNameRole,
+        CategoryRole,
     };
 
     enum Shortcuts {

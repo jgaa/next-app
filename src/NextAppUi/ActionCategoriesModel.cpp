@@ -41,6 +41,14 @@ void ActionCategoriesModel::deleteCategory(const QString &id)
     }
 }
 
+void ActionCategoriesModel::deleteSelection(const QModelIndexList &list)
+{
+    for(const auto& index : list) {
+        auto id = data(index, IdRole).toString();
+        deleteCategory(id);
+    }
+}
+
 void ActionCategoriesModel::createCategory(const nextapp::pb::ActionCategory &category)
 {
     if (online_) {
@@ -72,6 +80,33 @@ nextapp::pb::ActionCategory ActionCategoriesModel::get(int index)
     }
 
     return action_categories_.categories().at(index);
+}
+
+int ActionCategoriesModel::getIndexByUuid(const QString &id)
+{
+    auto it = ranges::find_if(action_categories_.categories(), [&id](const nextapp::pb::ActionCategory& c) {
+        return c.id_proto() == id;
+    });
+
+    if (it == action_categories_.categories().end()) {
+        return -1;
+    }
+
+    const int ix = std::distance(action_categories_.categories().begin(), it);
+    return ix;
+}
+
+QString ActionCategoriesModel::getColorFromUuid(const QString &id)
+{
+    auto it = ranges::find_if(action_categories_.categories(), [&id](const nextapp::pb::ActionCategory& c) {
+        return c.id_proto() == id;
+    });
+
+    if (it == action_categories_.categories().end()) [[unlikely]] {
+        return "transparent";
+    }
+
+    return it->color();
 }
 
 int ActionCategoriesModel::rowCount(const QModelIndex &parent) const

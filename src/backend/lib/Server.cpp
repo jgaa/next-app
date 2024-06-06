@@ -504,7 +504,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             category UUID,
             version INT NOT NULL DEFAULT 1,
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-            FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE SET NULL ON UPDATE RESTRICT
+            FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE RESTRICT ON UPDATE RESTRICT
         ))",
 
         R"(CREATE INDEX time_block_ix1 ON time_block (user, start_time, end_time))",

@@ -28,11 +28,13 @@ Dialog {
         return true
     }
 
-    onActionCategoryChanged: {
-        nameField.text = actionCategory.name
-        descriptionField.text = actionCategory.descr
-        color.text = actionCategory.color
-        color.background.color = actionCategory.color
+    onVisibleChanged: {
+        if (visible) {
+            nameField.text = actionCategory.name
+            descrtiption.text = actionCategory.descr
+            color.colorName = actionCategory.color
+            //color.background.color = actionCategory.color
+        }
     }
 
     background: Rectangle {
@@ -65,8 +67,7 @@ Dialog {
         }
 
         DlgInputField {
-            id: descriptionField
-            text: actionCategory.description
+            id: descrtiption
             Layout.fillWidth: true
         }
 
@@ -77,6 +78,8 @@ Dialog {
         Button {
             id: color
             property string colorName: "gray"
+
+            text: colorName
 
             background: Rectangle {
                 color: color.colorName
@@ -91,17 +94,16 @@ Dialog {
     ColorPicker {
         id: colorPicker
 
-        onColorSelectionChanged: (color) => {
-            actionCategory.color = color
-            ////color.background.color = colorPicker.color
-            color.colorName = color
+        onColorSelectionChanged: (choosenColor) => {
+            actionCategory.color = choosenColor
+            color.colorName = choosenColor
         }
     }
 
     onAccepted: {
         if (validate()) {
             actionCategory.name = nameField.text
-            actionCategory.descr = descriptionField.text
+            actionCategory.descr = descrtiption.text
 
             if (actionCategory.id_proto === "") {
                 ActionCategoriesModel.createCategory(actionCategory)

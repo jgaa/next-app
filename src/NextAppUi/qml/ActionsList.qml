@@ -63,6 +63,7 @@ Rectangle {
                 required property bool hasWorkSession
                 required property string listName
                 required property string node
+                required property string category
 
                 implicitHeight: row.implicitHeight + 4
                 width: listView.width
@@ -130,6 +131,13 @@ Rectangle {
                             onClicked: {
                                 ActionsModel.markActionAsDone(uuid, isChecked)
                             }
+                        }
+
+                        Rectangle {
+                            width: 20
+                            height: 20
+                            color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(actionItem.category) : "lightgray"
+                            visible: actionItem.category !== ""
                         }
 
                         Text {

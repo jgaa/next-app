@@ -26,14 +26,14 @@ Dialog {
 
     function assign() {
         title.text = tb.name
-        //category.currentIndex = tb.category
+        category.uuid = tb.category
         start.text = NaCore.toDateAndTime(tb.timeSpan.start, 0)
         end.text = NaCore.toDateAndTime(tb.timeSpan.end, tb.timeSpan.start)
     }
 
     function save() {
         tb.name = title.text
-        //tb.category = category.currentIndex
+        tb.category = category.uuid
         tb.timeSpan.start = NaCore.parseDateOrTime(start.text, tb.timeSpan.start)
         tb.timeSpan.end = NaCore.parseDateOrTime(end.text, tb.timeSpan.start)
 
@@ -69,14 +69,8 @@ Dialog {
             text: qsTr("Category")
         }
 
-        StyledComboBox {
+        CategoryComboBox {
             id: category
-
-            model: ListModel {
-                ListElement { name: "Work" }
-                ListElement { name: "Personal" }
-                ListElement { name: "Family" }
-            }
         }
 
         Label {

@@ -300,6 +300,7 @@ message ActionInfo {
     uint64 completedTime = 11; // time_t
     ActionKind kind     = 12;
     int32 version       = 13;
+    string category     = 14;
 }
 
 message Actions {
@@ -368,6 +369,7 @@ message Action {
     repeated string locations = 18; // Just the uuid's of locations
     ActionKind kind = 19;
     int32 version   = 20;
+    string category = 21;
 }
 
 message DayColor {

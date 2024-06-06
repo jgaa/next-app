@@ -27,9 +27,12 @@ public:
     ActionCategoriesModel(QObject *parent = {});
 
     Q_INVOKABLE void deleteCategory(const QString& id);
+    Q_INVOKABLE void deleteSelection(const QModelIndexList& list);
     Q_INVOKABLE void createCategory(const nextapp::pb::ActionCategory& category);
     Q_INVOKABLE void updateCategory(const nextapp::pb::ActionCategory& category);
     Q_INVOKABLE nextapp::pb::ActionCategory get(int index);
+    Q_INVOKABLE int getIndexByUuid(const QString& id);
+    Q_INVOKABLE QString getColorFromUuid(const QString& id);
 
     void onOnlineChanged(bool online) {
         setOnline(online);

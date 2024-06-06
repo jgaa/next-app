@@ -30,7 +30,7 @@ struct ToActionCategory {
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME,  // core
+        ID, NODE, USER, VERSION, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER // remaining
     };
 
@@ -45,7 +45,7 @@ struct ToAction {
     }
 
     static string_view statementBindingStr() {
-        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
     }
 
     static string_view updateStatementBindingStr() {
@@ -76,6 +76,7 @@ struct ToAction {
             toStringOrNull(action.due().timezone()),
 
             toAnsiTime(action.completedtime(),  uctx.tz()),
+            toStringOrNull(action.category()),
             action.descr(),
             action.timeestimate(),
             pb::ActionDifficulty_Name(action.difficulty()),
@@ -211,6 +212,10 @@ struct ToAction {
             obj.set_completedtime(toTimeT(row.at(COMPLETED_TIME).as_datetime(), uctx.tz()));
         }
 
+        if (row.at(CATEGORY).is_string()) {
+            obj.set_category(row.at(CATEGORY).as_string());
+        }
+
         if constexpr (std::is_same_v<T, pb::Action>) {
             obj.set_descr(row.at(DESCR).as_string());
             obj.set_timeestimate(row.at(TIME_ESTIMATE).as_int64());
@@ -265,7 +270,7 @@ private:
     }
 
     static constexpr string_view ids_ = "id, node, user, version, ";
-    static constexpr string_view core_ = "origin, priority, status, favorite, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time";
+    static constexpr string_view core_ = "origin, priority, status, favorite, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, category";
     static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after";
 };
 

@@ -143,6 +143,7 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     ai.due().setTimezone(action.due().timezone());
     ai.setCompletedTime(ai.completedTime());
     ai.setKind(action.kind());
+    ai.setCategory(action.category());
     return ai;
 }
 
@@ -860,6 +861,8 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
             return {};
         }
         return MainTreeModel::instance()->nodeNameFromUuid(action.node(), true);
+    case CategoryRole:
+        return action.category();
     }
     return {};
 }
@@ -894,6 +897,8 @@ QVariant ActionsModel::headerData(int section, Qt::Orientation orientation, int 
             return "Section Name";
         case DueRole:
             return "Due";
+        case CategoryRole:
+            return "Category";
         }
     }
 
@@ -919,6 +924,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[FavoriteRole] = "favorite";
     roles[HasWorkSessionRole] = "hasWorkSession";
     roles[ListNameRole] = "listName";
+    roles[CategoryRole] = "category";
     return roles;
 }
 

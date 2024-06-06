@@ -137,6 +137,7 @@ qt_add_qml_module(appNextAppUi
         qml/calendar/HoursBar.qml
         qml/calendar/TimeBlock.qml
         qml/categories/CategoriesMgr.qml
+        qml/categories/CategoryComboBox.qml
         qml/categories/ColorPicker.qml
         qml/categories/EditCategoryDlg.qml
         qml/common.js

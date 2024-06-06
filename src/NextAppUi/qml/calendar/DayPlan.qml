@@ -184,12 +184,17 @@ Rectangle {
                 color: MaterialDesignStyling.onTertiaryContainer
             }
 
-            StyledButton {
-                width: 180
-                text: qsTr("Category")
-                onClicked: {
-                    //filter.open()
-                }
+            // StyledButton {
+            //     width: 180
+            //     text: qsTr("Category")
+            //     onClicked: {
+            //         //filter.open()
+            //     }
+            // }
+
+            CategoryComboBox {
+                id: category
+                Layout.fillWidth: true
             }
 
             Item {
@@ -210,7 +215,7 @@ Rectangle {
                 Button {
                     text: "Save"
                     onClicked: {
-                        root.model.createTimeBox(title.text, "",
+                        root.model.createTimeBox(title.text, category.uuid,
                                                  toMinuteInDay(dragRectangle.y),
                                                  toMinuteInDay(dragRectangle.y + dragRectangle.height))
                         timeboxPopup.close()

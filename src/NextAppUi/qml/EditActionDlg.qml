@@ -54,6 +54,9 @@ Dialog {
             repeatUnitCtl.currentIndex = root.action.repeatUnits
             repeatKindCtl.currentIndex = root.action.repeatKind
             favorite.isChecked = root.action.favorite
+            category.uuid = root.action.category
+
+            console.log("EditActionDlg/assign category=", root.action.category)
 
             if (root.action.repeatWhen === 0 /* AT_DATE */) {
                 repeatAfterCtl.value = root.action.repeatAfter
@@ -112,14 +115,6 @@ Dialog {
             RowLayout {
                 Layout.fillHeight: true
                 Layout.fillWidth: true
-                // Image {
-                //     width: 96
-                //     height: 96
-                //     source: root.icon
-                //     sourceSize.width: 96
-                //     sourceSize.height: 96
-                //     fillMode: Image.PreserveAspectFit
-                // }
 
                 GridLayout {
                     id: dlgfields
@@ -158,8 +153,14 @@ Dialog {
                             }
                         }
 
+                        CategoryComboBox {
+                            id: category
+                            Layout.preferredWidth: root.controlsPreferredWidth
+                        }
+
                         CheckBoxWithFontIcon {
                             id: favorite
+                            Layout.preferredWidth: root.controlsPreferredWidth
                             checkedCode: "\uf005"
                             uncheckedCode: "\uf005"
                             checkedColor: "orange"
@@ -167,6 +168,7 @@ Dialog {
                             useSolidForChecked: true
                             text: qsTr("Favorite")
                         }
+
                     }
 
                     Label {
@@ -478,6 +480,7 @@ Dialog {
         root.action.repeatKind = repeatKindCtl.currentIndex
         root.action.repeatWhen = repeatWhenCtl.currentIndex
         root.action.favorite = favorite.isChecked
+        root.action.category = category.uuid
 
         if (grid.showRepeatSpecCtl) {
             root.action.repeatAfter = createIntFromList(repeatSpecCtl.model)
