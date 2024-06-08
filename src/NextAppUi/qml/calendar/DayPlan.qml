@@ -25,11 +25,11 @@ Rectangle {
             }
         }
 
-        function onTimeChanged() {
-            console.log("DayPlan: Model Time Changed ", model.when)
-            canvasCtl.requestPaint()
-            //currentTimeMark.requestPaint()
-        }
+        // function onTimeChanged() {
+        //     console.log("DayPlan: Model Time Changed ", model.when)
+        //     //canvasCtl.requestPaint()
+        //     //currentTimeMark.requestPaint()
+        // }
 
         function onTodayChanged() {
             console.log("DayPlan: Model Today Changed ", model.today)
@@ -91,21 +91,6 @@ Rectangle {
 
             // Draw the events directly from C++
             model.addCalendarEvents()
-
-            // if (model.today) {
-            //     ctx.beginPath();
-            //     ctx.strokeStyle = "green"
-            //     ctx.lineWidth = 1;
-
-            //     var now = new Date()
-            //     const y = timeToY(now.getTime() / 1000)
-
-            //     console.log("DayPlan: Redraing y=", y)
-
-            //     ctx.moveTo(0, y);
-            //     ctx.lineTo(width, y);
-            //     ctx.stroke()
-            // }
         }
     }
 
@@ -117,7 +102,7 @@ Rectangle {
         color: "green"
         opacity: 0.3
         visible: model.today
-        y: timeToY(new Date().getTime() / 1000) - 3
+        y: minuteToY(root.model.now) - 3
         z: 990
     }
 
@@ -132,8 +117,8 @@ Rectangle {
 
     Text {
         id: currentTime
-        text: new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
-        color: "black"
+        text: root.model.timeStr
+        color: "white"
         font.pixelSize: 12
         visible: model.today
         y: currentTimeMarkBg.y - 15
@@ -152,34 +137,15 @@ Rectangle {
         z: 1000
     }
 
-    // Canvas {
-    //     id: currentTimeMark
-    //     anchors.fill: parent
-    //     visible: model.today
-
-    //     onPaint: {
-    //         console.log("DayPlan: Redraing current time mark")
-    //         var ctx = getContext("2d");
-    //         ctx.beginPath();
-    //         ctx.strokeStyle = "green"
-    //         ctx.lineWidth = 1;
-
-    //         var now = new Date()
-    //         const y = timeToY(now.getTime() / 1000)
-
-    //         console.log("DayPlan: Redraing y=", y)
-
-    //         ctx.moveTo(0, y);
-    //         ctx.lineTo(width, y);
-    //         ctx.stroke()
-    //     }
-    // }
-
     function timeToY(time) {
         var when = new Date(time * 1000)
         var minutes = when.getHours() * 60.0 + when.getMinutes();
-        var y = minutes * (root.height / 1440.0)
-        console.log("DayPlan: timeToY time=", time, "y=", y, ", height=", root.height, ", minutes=", minutes, ", when=", when)
+        return minuteToY(minutes)
+    }
+
+    function minuteToY(minutes) {
+        var y = minutes * (root.height / (root.hourHeight * 24.0))
+        //console.log("DayPlan: minuteToY minutes=", minutes, "y=", y, ", height=", root.height, ", minutes=", minutes, ", when=", when)
         return Math.floor(y)
     }
 

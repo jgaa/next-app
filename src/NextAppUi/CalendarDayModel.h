@@ -19,6 +19,8 @@ class CalendarDayModel : public QObject
     Q_PROPERTY(int size READ size NOTIFY validChanged)
     Q_PROPERTY(int roundToMinutes READ roundToMinutes CONSTANT)
     Q_PROPERTY(bool today READ today NOTIFY todayChanged)
+    Q_PROPERTY(int now READ now NOTIFY timeChanged)
+    Q_PROPERTY(QString timeStr READ timeStr NOTIFY timeChanged)
 
 public:
     struct Pool {
@@ -90,6 +92,17 @@ public:
 
     bool today() const noexcept {
         return today_;
+    }
+
+    int now() {
+        // return the current minute in the day
+        const auto current = QDateTime::currentDateTime();
+        return current.time().hour() * 60 + current.time().minute();
+    }
+
+    QString timeStr() {
+        const auto current = QDateTime::currentDateTime();
+        return current.time().toString(QStringLiteral("hh:mm"));
     }
 
     void setToday(bool today);
