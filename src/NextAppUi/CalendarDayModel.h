@@ -18,6 +18,7 @@ class CalendarDayModel : public QObject
     Q_PROPERTY(time_t when READ when NOTIFY whenChanged)
     Q_PROPERTY(int size READ size NOTIFY validChanged)
     Q_PROPERTY(int roundToMinutes READ roundToMinutes CONSTANT)
+    Q_PROPERTY(bool today READ today NOTIFY todayChanged)
 
 public:
     struct Pool {
@@ -87,6 +88,12 @@ public:
         return index_;
     }
 
+    bool today() const noexcept {
+        return today_;
+    }
+
+    void setToday(bool today);
+
     // int year() const noexcept {
     //     return date_.year();
     // }
@@ -101,14 +108,21 @@ public:
 
     int roundToMinutes() const noexcept;
 
+    void emitTimeChanged() {
+        emit timeChanged();
+    }
+
 signals:
     void validChanged();
     void whenChanged();
     void eventChanged(const QString& eventId);
     void resetModel();
+    void timeChanged();
+    void todayChanged();
 
 private:
     QDate date_;
+    bool today_ = false;
     const int index_;
     bool valid_ = false;
     events_t events_;

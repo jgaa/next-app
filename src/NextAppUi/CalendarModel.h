@@ -82,6 +82,8 @@ private:
     void sort();
     void updateDayModelsDates();
     void alignDates();
+    void onMinuteTimer();
+    void updateToday();
 
 
     bool valid_ = false;
@@ -92,4 +94,5 @@ private:
     CalendarMode mode_ = CM_UNSET;
     nextapp::pb::CalendarEvents all_events_;
     std::unordered_map<const QObject *, std::unique_ptr<CalendarDayModel>> day_models_;
+    std::unique_ptr<QTimer> minute_timer_;
 };

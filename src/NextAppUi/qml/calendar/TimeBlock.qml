@@ -25,8 +25,8 @@ Rectangle {
     DragHandler {
         id: dragHandler
         target: root
-        property var origX: root.x
-        property var origY: root.y
+        property real origX: root.x
+        property real origY: root.y
 
         onActiveChanged: {
             if (active) {

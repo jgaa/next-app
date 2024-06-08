@@ -328,6 +328,14 @@ void CalendarDayModel::setDate(QDate date) {
                 << " for day with index=" << index_;
 }
 
+void CalendarDayModel::setToday(bool today) {
+    if (today_ == today) [[likely]] {
+        return;
+    }
+    today_ = today;
+    emit todayChanged();
+}
+
 int CalendarDayModel::roundToMinutes() const noexcept {
     return 5;
 }

@@ -96,10 +96,30 @@ Rectangle {
 
                 DragHandler {
                     id: dragHandler
-                    target: row
+                    target: actionItem
+                    property real origX: actionItem.x
+                    property real origY: actionItem.y
+
+                    onActiveChanged: {
+                        if (active) {
+                            actionItem.opacity = 0.5
+                            dragHandler.origX = actionItem.x
+                            dragHandler.origY = actionItem.y
+                            actionItem.grabToImage(function(result) {
+                                // TODO: Crop the image to a max width in C++ and provide a new url for it
+                                parent.Drag.imageSource = result.url
+                                parent.Drag.active = true
+                            })
+                        } else {
+                            actionItem.opacity = 1
+                            actionItem.x = dragHandler.origX
+                            actionItem.y = dragHandler.origY
+                            parent.Drag.active = false
+                        }
+                    }
                 }
 
-                Drag.active: dragHandler.active
+                //Drag.active: dragHandler.active
                 Drag.dragType: Drag.Automatic
                 Drag.supportedActions: Qt.MoveAction
                 Drag.mimeData: {
@@ -134,7 +154,7 @@ Rectangle {
                         }
 
                         Rectangle {
-                            width: 20
+                            width: 12
                             height: 20
                             color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(actionItem.category) : "lightgray"
                             visible: actionItem.category !== ""

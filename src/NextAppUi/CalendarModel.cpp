@@ -48,11 +48,16 @@ CalendarModel::CalendarModel()
             last_ = first_.addDays(6);
             setValid(false);
             updateDayModelsDates();
+            updateToday();
             fetchIf();
         }
     });
 
     setOnline(ServerComm::instance().connected());
+
+    minute_timer_ = std::make_unique<QTimer>(this);
+    connect(minute_timer_.get(), &QTimer::timeout, this, &CalendarModel::onMinuteTimer);
+    minute_timer_->start(1000);
 }
 
 CalendarDayModel *CalendarModel::getDayModel(QObject *obj, int index) {
@@ -113,6 +118,7 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
         setValid(false);
         need_fetch = true;
         updateDayModelsDates();
+        updateToday();
     }
 
     if (need_fetch) {
@@ -439,5 +445,25 @@ void CalendarModel::updateDayModelsDates()
 void CalendarModel::alignDates()
 {
     set(mode_, target_.year(), target_.month(), target_.day());
+}
+
+void CalendarModel::onMinuteTimer()
+{
+    updateToday();
+    const auto msToNextMinute = (60 - QTime::currentTime().second()) * 1000;
+    minute_timer_->start(msToNextMinute);
+}
+
+void CalendarModel::updateToday()
+{
+    const auto today = QDate::currentDate();
+    for(auto& [_, dm] : day_models_) {
+        if (dm->date() == today) {
+            dm->setToday(true);
+            dm->emitTimeChanged();
+        } else {
+            dm->setToday(false);
+        }
+    }
 }
 
