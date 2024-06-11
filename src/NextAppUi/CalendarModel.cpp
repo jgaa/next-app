@@ -209,6 +209,39 @@ void CalendarModel::goToday()
     alignDates();
 }
 
+bool CalendarModel::addAction(const QString &eventId, const QString &action)
+{
+    if (auto* event = lookup(eventId)) {
+        if (event->hasTimeBlock()) {
+            auto tb = event->timeBlock();
+
+            // Check if the action is already in the block
+            if (std::ranges::find(tb.actions().list(), action) == tb.actions().list().end()) {
+                // Add it
+                tb.actions().list().append(action);
+                ServerComm::instance().updateTimeBlock(tb);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+nextapp::pb::CalendarEvent *CalendarModel::lookup(const QString &eventId)
+{
+    auto it = std::ranges::find_if(all_events_.events(), [&eventId](const auto& event) {
+        return event.id_proto() == eventId;
+    });
+
+    if (it == all_events_.events().end()) {
+        LOG_WARN_N << "No event found with id: " << eventId;
+        return nullptr;
+    }
+
+    return &*it;
+}
+
 void CalendarModel::setValid(bool value) {
     LOG_TRACE_N << "valid_=" << valid_ << " value=" << value;
     if (valid_ != value) {

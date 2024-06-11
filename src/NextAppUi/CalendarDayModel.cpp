@@ -10,6 +10,7 @@
 #include "CalendarDayModel.h"
 #include "CalendarModel.h"
 #include "ServerComm.h"
+#include "TimeBoxActionsModel.h"
 
 using namespace std;
 
@@ -299,10 +300,38 @@ void CalendarDayModel::updateTimeBlock(const nextapp::pb::TimeBlock &tb)
     ServerComm::instance().updateTimeBlock(tb);
 }
 
+bool CalendarDayModel::addAction(const QString &eventId, const QString &action)
+{
+    // Relay to the main calendar model
+    return calendar_.addAction(eventId, action);
+}
+
+TimeBoxActionsModel *CalendarDayModel::getTimeBoxActionsModel(const QString &eventId, QQuickItem *tbItem)
+{
+    const auto uuid = toQuid(eventId);
+    auto model = new TimeBoxActionsModel(uuid, this, tbItem);
+    QQmlEngine::setObjectOwnership(model, QQmlEngine::JavaScriptOwnership);
+    return model;
+}
+
 void CalendarDayModel::moveEventToDay(const QString &eventId, time_t start)
 {
     // Delegate to the main calendar model
     calendar_.moveEventToDay(eventId, start);
+}
+
+nextapp::pb::TimeBlock *CalendarDayModel::lookupTimeBlock(const QUuid &eventId) const
+{
+    const auto id = eventId.toString(QUuid::WithoutBraces);
+    auto it = std::ranges::find_if(events_, [&id](const auto& event) {
+        return event.id_proto() == id;
+    });
+
+    if (it != events_.end() && it->hasTimeBlock()) {
+        return &it->timeBlock();
+    }
+
+    return {};
 }
 
 int CalendarDayModel::size() const noexcept  {

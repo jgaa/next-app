@@ -181,6 +181,8 @@ qt_add_qml_module(appNextAppUi
     SOURCES
         ActionCategoriesModel.cpp
         ActionCategoriesModel.h
+        ActionInfoCache.cpp
+        ActionInfoCache.h
         ActionsModel.cpp
         ActionsModel.h
         CalendarDayModel.cpp
@@ -203,6 +205,8 @@ qt_add_qml_module(appNextAppUi
         NextAppCore.h
         ServerComm.cpp
         ServerComm.h
+        TimeBoxActionsModel.cpp
+        TimeBoxActionsModel.h
         WeeklyWorkReportModel.cpp
         WeeklyWorkReportModel.h
         WorkModel.cpp

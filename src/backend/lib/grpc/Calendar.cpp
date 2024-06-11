@@ -25,10 +25,10 @@ namespace {
 
 struct ToTimeBlock {
     enum Columns {
-        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY, VERSION
+        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY, ACTIONS, VERSION
     };
 
-    static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, version";
+    static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, actions, version";
 
     static void assign(const boost::mysql::row_view& row, pb::TimeBlock& tb, const UserContext& uctx) {
         tb.set_id(row.at(ID).as_string());
@@ -43,6 +43,16 @@ struct ToTimeBlock {
         if (const auto& category = row.at(CATEGORY); category.is_string()) {
             tb.set_category(category.as_string());
         }
+
+        if (const auto& actions = row.at(ACTIONS); actions.is_blob()) {
+            auto& tba = *tb.mutable_actions();
+            const auto blob = row.at(ACTIONS).as_blob();
+            if (!tba.ParseFromArray(blob.data(), blob.size())) {
+                LOG_WARN_N << "Failed to parse actions for time block rom stored protobuf message: " << tb.id();
+                throw db_err(pb::Error::GENERIC_ERROR, "Failed to parse time_block.actions from saved protobuf message");
+            }
+        }
+
         tb.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
     }
 };
@@ -80,12 +90,8 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 
             validate(*req, *rctx.uctx);
 
-            if (!req->actions().empty()) {
+            if (!req->actions().list().empty()) {
                 throw db_err(pb::CONSTRAINT_FAILED, "Cannot create a time block with actions. Add the actions later.");
-            }
-
-            for(const auto& action : req->actions()) {
-                co_await owner_.validateAction(*rctx.dbh, action.id(), cuser);
             }
 
             auto res = co_await rctx.dbh->exec(
@@ -120,7 +126,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 
             validate(*req, *rctx.uctx);
 
-            if (req->actions().size() > owner_.server_.config().svr.time_block_max_actions) [[unlikely]] {
+            if (req->actions().list().size() > owner_.server_.config().svr.time_block_max_actions) [[unlikely]] {
                 throw db_err{pb::Error::CONSTRAINT_FAILED,
                              format("Too many actions. The limit is {}", owner_.server_.config().svr.time_block_max_actions)};
             }
@@ -131,19 +137,21 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
             // TODO: Optimize so we only update the actions that has changed
             co_await rctx.dbh->exec("DELETE FROM time_block_actions WHERE time_block = ?", id);
 
-            for(const auto& action : req->actions()) {
-                co_await owner_.validateAction(*rctx.dbh, action.id(), cuser);
-                co_await rctx.dbh->exec("INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", id, action.id());
+            for(const auto& action : req->actions().list()) {
+                co_await owner_.validateAction(*rctx.dbh, action, cuser);
+                co_await rctx.dbh->exec("INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", id, action);
             }
 
             auto res = co_await rctx.dbh->exec(
-                format("UPDATE time_block SET start_time=?, end_time=?, name=?, kind=?, category=? WHERE id=? AND user=? ",
+                format("UPDATE time_block SET start_time=?, end_time=?, name=?, kind=?, category=?, actions=? WHERE id=? AND user=? ",
                        ToTimeBlock::columns),
                 toAnsiTime(req->timespan().start()),
                 toAnsiTime(req->timespan().end()),
                 req->name(),
                 toLower(pb::TimeBlock::Kind_Name(req->kind())),
-                toStringOrNull(req->category()), id, cuser);
+                toStringOrNull(req->category()),
+                toBlob(req->actions()),
+                id, cuser);
 
             co_await trx.commit();
 

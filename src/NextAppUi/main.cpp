@@ -13,6 +13,9 @@
 #include "ActionsModel.h"
 #include "WorkSessionsModel.h"
 #include "NextAppCore.h"
+#include "ActionInfoCache.h"
+#include "ActionCategoriesModel.h"
+#include "TimeBoxActionsModel.h"
 #include "nextapp.qpb.h"
 
 #include "logging.h"
@@ -97,11 +100,16 @@ int main(int argc, char *argv[])
 
     NextAppCore core;
     ServerComm comms;
+    ActionInfoCache ai_cache;
 
     auto& engine = NextAppCore::engine();
 
+    qRegisterMetaType<ActionCategoriesModel*>("ActionCategoriesModel*");
+    qRegisterMetaType<TimeBoxActionsModel*>("TimeBoxActionsModel*");
+
     qmlRegisterSingletonInstance<NextAppCore>("Nextapp.Models", 1, 0, "NaCore", &core);
     qmlRegisterSingletonInstance<ServerComm>("Nextapp.Models", 1, 0, "NaComm", &comms);
+    qmlRegisterSingletonInstance<ActionInfoCache>("Nextapp.Models", 1, 0, "NaAiCache", &ai_cache);
 
     engine.loadFromModule("NextAppUi", "Main");
     if (engine.rootObjects().isEmpty()) {

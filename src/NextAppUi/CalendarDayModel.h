@@ -5,9 +5,14 @@
 #include <QQmlComponent>
 #include <QStringLiteral>
 #include <QQuickItem>
+#include <QAbstractListModel>
+#include <QUuid>
+
+#include "TimeBoxActionsModel.h"
 #include "nextapp.qpb.h"
 
 class CalendarModel;
+class CalendarDayModel;
 
 class CalendarDayModel : public QObject
 {
@@ -53,9 +58,13 @@ public:
     Q_INVOKABLE void deleteEvent(const QString& eventId);
     Q_INVOKABLE nextapp::pb::TimeBlock tbById(const QString& eventId) const;
     Q_INVOKABLE void updateTimeBlock(const nextapp::pb::TimeBlock& tb);
+    Q_INVOKABLE bool addAction(const QString& eventId, const QString& action);
+    Q_INVOKABLE TimeBoxActionsModel *getTimeBoxActionsModel(const QString& eventId, QQuickItem *tbItem);
 
     // Called after a drop operation, potentially on another day
     Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);
+
+    nextapp::pb::TimeBlock *lookupTimeBlock(const QUuid& eventId) const;
 
     int size() const noexcept;
 

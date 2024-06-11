@@ -17,7 +17,7 @@ Rectangle {
     property string uuid
     property string start
     property string end
-    required property var model
+    required property CalendarDayModel model
 
     property bool haveDragIcons: true // height > 20 && width > 50
     property real minuteHight: parent.hourHeight / 60.0
@@ -56,6 +56,38 @@ Rectangle {
         onLongPressed: contextMenu.popup()
     }
 
+    DropArea {
+        id: dropArea
+        anchors.fill: parent
+        onEntered: function(drag) {
+            console.log("TimeBlock: DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+
+            if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
+
+                var uuid = drag.getDataAsString("text/app.nextapp.action")
+
+                // TODO: Check if the action is already present
+                drag.accepted = true
+                return
+            }
+        }
+
+        onDropped: function(drop) {
+            console.log("DropArea receiceived a drop! source=", drop.source.uuid)
+
+            if (drop.formats.indexOf("text/app.nextapp.action") !== -1) {
+
+                var uuid = drop.getDataAsString("text/app.nextapp.action")
+                drop.accepted = root.model.addAction(root.uuid, uuid)
+                return
+            }
+
+            drop.accepted = false
+        }
+
+    }
+
+
     //Drag.active: dragHandler.active
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.MoveAction
@@ -64,6 +96,7 @@ Rectangle {
     }
 
     ExpandArea {
+        id: expandAreaTop
         target: root
         directionUp: true
         anchors.left : root.left
@@ -82,15 +115,67 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
 
-        Text {
-            color: MaterialDesignStyling.onPrimary
-            text: root.start
+        RowLayout {
+            Layout.fillWidth: true
+            Item {
+                // Upper left expand icon
+                Layout.preferredWidth: expandAreaTop.width + 6
+            }
+
+            Text {
+                color: MaterialDesignStyling.onPrimary
+                text: root.start
+            }
+
+            Text {
+                color: MaterialDesignStyling.onPrimary
+                text: root.name
+                font.bold: true
+                font.pointSize: 14
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+        }
+
+        ListView {
+            id: actionsCtl
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            model: root.model? root.model.getTimeBoxActionsModel(root.uuid, root) : null
+
+            delegate: RowLayout {
+                required property int index
+                required property var name
+                required property var uuid
+
+                Label {
+                    text: "Action: "
+                    color: "red"
+                }
+
+                Text {
+                    text: name
+                    color: MaterialDesignStyling.onPrimary
+                }
+
+                // Text {
+                //     text: uuid
+                //     color: MaterialDesignStyling.onPrimary
+                // }
+            }
         }
 
         Text {
-            color: MaterialDesignStyling.onPrimary
-            text: root.name
+            Layout.fillWidth: true
+            Layout.preferredHeight: 20
+            text: "bottom"
         }
+
+        // Item {
+        //     Layout.fillHeight: true
+        // }
     }
 
     CommonElements {

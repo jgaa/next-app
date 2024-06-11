@@ -433,6 +433,10 @@ message Timestamp {
     uint64 seconds = 1; // C++ time_t UNIX timestamp.
 }
 
+message StringList {
+    repeated string list = 1;
+}
+
 message TimeBlock {
     enum Kind {
         RESERVATION = 0;
@@ -445,7 +449,10 @@ message TimeBlock {
     string name = 4;
     Kind kind = 5;
     string category = 6;
-    repeated ActionInfo actions = 7;
+
+    // Action id's are cached in the timeblock. It is also stored in the table `time_block_actions`
+    // These must be in sync (updated in one transaction)
+    StringList actions = 7;
     int32 version = 8;
 }
 

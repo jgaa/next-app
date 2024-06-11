@@ -503,6 +503,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             kind ENUM ('reservation', 'actions') NOT NULL DEFAULT 'reservation',
             category UUID,
             version INT NOT NULL DEFAULT 1,
+            actions BLOB, -- repeatable string, saved as a protobuf message
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
             FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE RESTRICT ON UPDATE RESTRICT
         ))",

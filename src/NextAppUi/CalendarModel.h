@@ -56,6 +56,9 @@ public:
     Q_INVOKABLE void goPrev();
     Q_INVOKABLE void goNext();
     Q_INVOKABLE void goToday();
+    Q_INVOKABLE bool addAction(const QString& eventId, const QString& action);
+
+    nextapp::pb::CalendarEvent *lookup(const QString& eventId);
 
     void setValid(bool value);
 
