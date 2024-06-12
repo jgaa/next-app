@@ -103,6 +103,7 @@ public:
     void markActionAsFavorite(const QString& actionUuid, bool favorite);
     void getActiveWorkSessions();
     void startWork(const QString& actionId);
+    void addWorkFromTimeBlock(const QString& timeBlockUuid);
     void pauseWork(const QString& sessionId);
     void resumeWork(const QString& sessionId);
     void doneWork(const QString& sessionId);

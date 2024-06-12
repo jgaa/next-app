@@ -1,5 +1,6 @@
 #include "TimeBoxActionsModel.h"
 
+#include "ActionInfoCache.h"
 #include "CalendarDayModel.h"
 #include "logging.h"
 #include "util.h"
@@ -10,6 +11,22 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
 {
     assert(day_);
     tb_ = getTb();
+
+    connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, [this](const QUuid &uuid) {
+        if (tb_) {
+            if (tb_->actions().list().contains(uuid.toString(QUuid::WithoutBraces))) {
+                sync();
+            }
+        }
+    });
+
+    connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, [this](const QUuid &uuid) {
+        if (tb_) {
+            if (tb_->actions().list().contains(uuid.toString(QUuid::WithoutBraces))) {
+                sync();
+            }
+        }
+    });
 
     if (tb_) {
         sync();
@@ -25,7 +42,7 @@ void TimeBoxActionsModel::sync()
 {
     beginResetModel();
 
-    ScopedExit later { [this] {
+    const ScopedExit later { [this] {
         endResetModel();
     }};
 
@@ -34,10 +51,10 @@ void TimeBoxActionsModel::sync()
         auto *ai = ActionInfoCache::instance()->getAction(action);
         assert(ai);
         QQmlEngine::setObjectOwnership(ai, QQmlEngine::CppOwnership);
-        connect(ai, &ActionInfoPrx::actionChanged, this, [this, action] {
-            auto idx = index(tb_->actions().list().indexOf(action));
-            emit dataChanged(idx, idx, {NameRole, ActionRole});
-        });
+        // connect(ai, &ActionInfoPrx::actionChanged, this, [this, action] {
+        //     auto idx = index(tb_->actions().list().indexOf(action));
+        //     emit dataChanged(idx, idx, {NameRole, ActionRole});
+        // });
         aiPrx_.emplace_back(ai);
     }
 }
@@ -67,14 +84,24 @@ QVariant TimeBoxActionsModel::data(const QModelIndex &index, int role) const
 
     switch (role) {
     case NameRole:
-        if (const auto a = aiPrx_[index.row()]->getAction()) {
+        if (const auto* a = aiPrx_[index.row()]->getAction()) {
+            LOG_TRACE_N << "Returning " << a->name() << " for row " << index.row() << " and uuid " << action;
             return a->name();
         }
     case UuidRole:
         return action;
     case ActionRole:
-        if (auto a = aiPrx_[index.row()]->getAction()) {
+        if (auto *a = aiPrx_[index.row()]->getAction()) {
+            LOG_TRACE_N << "Returning action pointer for " << a->name() << " for row " << index.row() << " and uuid " << action;
             return QVariant::fromValue(a);
+        }
+    case CategoryRole:
+        if (auto *a = aiPrx_[index.row()]->getAction()) {
+            return a->category();
+        }
+    case DoneRole:
+        if (auto *a = aiPrx_[index.row()]->getAction()) {
+            return a->status() == ::nextapp::pb::ActionStatusGadget::ActionStatus::DONE;
         }
     default:
         return {};
@@ -86,6 +113,8 @@ QHash<int, QByteArray> TimeBoxActionsModel::roleNames() const
     return {
         {NameRole, "name"},
         {UuidRole, "uuid"},
-        {ActionRole, "action"}
+        {ActionRole, "action"},
+        {CategoryRole, "category"},
+        {DoneRole, "done"},
     };
 }

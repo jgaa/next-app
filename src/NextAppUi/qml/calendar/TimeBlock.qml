@@ -17,6 +17,7 @@ Rectangle {
     property string uuid
     property string start
     property string end
+    property string category
     required property CalendarDayModel model
 
     property bool haveDragIcons: true // height > 20 && width > 50
@@ -95,6 +96,14 @@ Rectangle {
         "text/app.nextapp.calendar.event": root.uuid
     }
 
+    Rectangle {
+        id: cat
+        color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(root.category) : "transparent"
+        width: expandAreaTop.width
+        height: parent.height
+        radius: 5
+    }
+
     ExpandArea {
         id: expandAreaTop
         target: root
@@ -119,7 +128,7 @@ Rectangle {
             Layout.fillWidth: true
             Item {
                 // Upper left expand icon
-                Layout.preferredWidth: expandAreaTop.width + 6
+                Layout.preferredWidth: expandAreaTop.width + 2
             }
 
             Text {
@@ -131,7 +140,7 @@ Rectangle {
                 color: MaterialDesignStyling.onPrimary
                 text: root.name
                 font.bold: true
-                font.pointSize: 14
+                //font.pointSize: 14
             }
 
             Item {
@@ -139,31 +148,78 @@ Rectangle {
             }
         }
 
-        ListView {
-            id: actionsCtl
-            Layout.fillHeight: true
-            Layout.fillWidth: true
-            model: root.model? root.model.getTimeBoxActionsModel(root.uuid, root) : null
+        RowLayout {
+            Item {
+                Layout.preferredWidth: expandAreaTop.width
+            }
 
-            delegate: RowLayout {
-                required property int index
-                required property var name
-                required property var uuid
+            ListView {
+                id: actionsCtl
+                Layout.fillHeight: true
+                Layout.fillWidth: true
+                interactive: false
+                model: root.model? root.model.getTimeBoxActionsModel(root.uuid, root) : null
 
-                Label {
-                    text: "Action: "
-                    color: "red"
+                delegate: Rectangle {
+                    id: actionItem
+                    implicitHeight: actionItemLayout.implicitHeight
+                    implicitWidth: actionsCtl.width
+                    color: index % 2 ? MaterialDesignStyling.onPrimary : MaterialDesignStyling.primaryContainer
+                    required property int index
+                    required property string name
+                    required property string uuid
+                    required property bool done
+                    required property string category
+
+                    RowLayout {
+                        id: actionItemLayout
+
+                        Rectangle {
+                            height: nameCtl.implicitHeight
+                            width: 10
+                            color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(category) : "transparent"
+                            //radius: 5
+                        }
+
+                        Text {
+                            font.family: ce.faNormalName
+                            font.pointSize: nameCtl.font.pointSize
+                            text: done ? "\uf058" : "\uf111"
+                            color: done ? "green" : "orange"
+
+                            Rectangle {
+                                color: "white"
+                                anchors.fill: parent
+                                radius: 100
+                                z: parent.z -1
+                                visible: done
+                            }
+                        }
+
+                        Text {
+                            id: nameCtl
+                            text: name
+                            color: MaterialDesignStyling.onPrimaryContainer
+                        }
+
+                        Text {
+                            text: action ? action.id_proto : "no action object"
+                            color: "yellow"
+                        }
+
+                        // Text {
+                        //     text: uuid
+                        //     color: MaterialDesignStyling.onPrimary
+                        // }
+                    }
                 }
 
-                Text {
-                    text: name
-                    color: MaterialDesignStyling.onPrimary
+                Rectangle {
+                    anchors.fill: parent
+                    z: parent.z - 1
+                    color: MaterialDesignStyling.primaryContainer
+                    radius: 5
                 }
-
-                // Text {
-                //     text: uuid
-                //     color: MaterialDesignStyling.onPrimary
-                // }
             }
         }
 

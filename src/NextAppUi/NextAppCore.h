@@ -37,6 +37,7 @@ public:
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
     static Q_INVOKABLE QString toDateAndTime(time_t when, time_t defaultDate = 0);
+    static Q_INVOKABLE QString toTime(time_t when);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseHourMin(const QString& str);

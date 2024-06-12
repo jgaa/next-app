@@ -11,6 +11,7 @@
 #include "CalendarModel.h"
 #include "ServerComm.h"
 #include "TimeBoxActionsModel.h"
+#include "ActionCategoriesModel.h"
 
 using namespace std;
 
@@ -202,8 +203,9 @@ void CalendarDayModel::addCalendarEvents()
             if (auto *object = timx_boxes_pool_.get(ctl)) {
                 object->setProperty("name", tb.name());
                 object->setProperty("uuid", tb.id_proto());
-                object->setProperty("start", NextAppCore::toDateAndTime(item.start, now));
-                object->setProperty("end", NextAppCore::toDateAndTime(item.end, now));
+                object->setProperty("start", NextAppCore::toTime(item.start));
+                object->setProperty("end", NextAppCore::toTime(item.end));
+                object->setProperty("category", tb.category());
 
                 // Calculate the position and size of the time box
                 const auto when = QDateTime::fromSecsSinceEpoch(tb.timeSpan().start());

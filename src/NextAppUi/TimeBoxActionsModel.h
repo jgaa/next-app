@@ -20,6 +20,8 @@ class TimeBoxActionsModel : public QAbstractListModel
         NameRole = Qt::UserRole + 1,
         UuidRole,
         ActionRole,
+        CategoryRole,
+        DoneRole
     };
 
 public:

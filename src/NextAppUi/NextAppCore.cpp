@@ -84,14 +84,20 @@ time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)
 
 QString NextAppCore::toDateAndTime(time_t when, time_t defaultDate)
 {
-    auto dd = getDefaultDate(defaultDate);
-    auto actualTime = QDateTime::fromSecsSinceEpoch(when);
+    const auto dd = getDefaultDate(defaultDate);
+    const auto actualTime = QDateTime::fromSecsSinceEpoch(when);
 
     if (dd == actualTime.date()) {
         return actualTime.time().toString("hh:mm");
     }
 
     return QDateTime::fromSecsSinceEpoch(when).toString("yyyy-MM-dd hh:mm");
+}
+
+QString NextAppCore::toTime(time_t when)
+{
+    const auto actualTime = QDateTime::fromSecsSinceEpoch(when);
+    return actualTime.time().toString("hh:mm");
 }
 
 time_t NextAppCore::parseHourMin(const QString &str)

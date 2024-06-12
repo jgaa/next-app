@@ -72,6 +72,11 @@ void WorkSessionsModel::finishAction(const QString &sessionId)
     }
 }
 
+void WorkSessionsModel::addCalendarEvent(const QString &eventId)
+{
+    ServerComm::instance().addWorkFromTimeBlock(eventId);
+}
+
 void WorkSessionsModel::start()
 {
     WorkModel::start();

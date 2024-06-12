@@ -88,27 +88,66 @@ struct ToWorkSession {
             auto trx = co_await rctx.dbh->transaction();
 
             string name;
-            co_await owner_.validateAction(*rctx.dbh, req->actionid(), cuser, &name);
+
+            vector<string> actions;
+            vector<std::shared_ptr<pb::Update>> updates;
+
+            if (req->has_actionid()) {
+                actions.push_back(req->actionid());
+            } else if (req->has_timeblockid()) {
+                auto res = co_await rctx.dbh->exec(
+                    "SELECT action FROM time_block_actions WHERE time_block=? ", dbopts, req->timeblockid());
+                if (res.has_value() && !res.rows().empty()) {
+                    actions.reserve(res.rows().size());
+                    for(const auto& row : res.rows()) {
+                        actions.push_back(row.at(0).as_string());
+                    }
+                }
+            }
+
+            auto res = co_await rctx.dbh->exec(
+                "SELECT id FROM work_session WHERE user=? and state='active'", dbopts, cuser);
+            if (res.has_value()) {
+                for(const auto& r : res.rows()) {
+                    const auto id = r.at(0).as_string();
+                    if (auto it = std::ranges::find(actions, id); it != actions.end()) {
+                        actions.erase(it); // Avoid duplicates
+                    }
+                }
+            }
+
+            if (actions.empty()) {
+                throw db_err{pb::Error::NO_RELEVANT_DATA, "No new actions to add to work sessions"};
+            }
+
+            updates.reserve(actions.size());
 
             // Pause any active work session
             co_await owner_.pauseWork(rctx);
-            pb::WorkSession init;
-            init.set_name(name);
-            init.set_action(req->actionid());
-            auto res = co_await owner_.insertWork(init, rctx, true);
+            const bool autostart = rctx.uctx->settings().autostartnextworksession();
+
+            int num = 0;
+            for(const auto& actionId : actions) {
+                ++num;
+                co_await owner_.validateAction(*rctx.dbh, req->actionid(), cuser, &name);
+                pb::WorkSession init;
+                init.set_name(name);
+                init.set_action(req->actionid());
+                auto res = co_await owner_.insertWork(init, rctx, autostart && num == 1);
+
+                assert(res.has_value() && !res.rows().empty());
+
+                {
+                    auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
+                    ToWorkSession::assign(res.rows().front(), *update->mutable_work(), *rctx.uctx);
+                    updates.emplace_back(update);
+                }
+            }
+
             co_await trx.commit();
-
-            assert(res.has_value() && !res.rows().empty());
-
-            pb::WorkSession session;
-            ToWorkSession::assign(res.rows().front(), session, *rctx.uctx);
-
-            auto& final_session = *reply->mutable_work();
-            final_session = std::move(session);
-
-            auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
-            *update->mutable_work() = final_session;
-            owner_.publish(update);
+            for(const auto& update : updates) {
+                owner_.publish(update);
+            }
 
             co_return;
         }, __func__);

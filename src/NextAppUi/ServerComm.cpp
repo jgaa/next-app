@@ -336,6 +336,18 @@ void ServerComm::startWork(const QString &actionId)
     });
 }
 
+void ServerComm::addWorkFromTimeBlock(const QString &timeBlockUuid)
+{
+    nextapp::pb::CreateWorkReq req;
+    req.setTimeBlockId(timeBlockUuid);
+
+    callRpc<nextapp::pb::Status>([this, &req]() {
+        return client_->CreateWorkSession(req);
+    }, [this](const nextapp::pb::Status& status) {
+        ;
+    });
+}
+
 void ServerComm::pauseWork(const QString& sessionId) {
     auto req = createWorkEventReq(sessionId, nextapp::pb::WorkEvent::Kind::PAUSE);
 

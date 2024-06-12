@@ -47,6 +47,7 @@ public:
     Q_INVOKABLE void done(const QString& sessionId);
     Q_INVOKABLE void touch(const QString& sessionId);
     Q_INVOKABLE void finishAction(const QString& sessionId);
+    Q_INVOKABLE void addCalendarEvent(const QString& eventId);
 
     void start() override;
 
