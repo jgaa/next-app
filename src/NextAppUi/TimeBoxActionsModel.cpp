@@ -28,6 +28,23 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
         }
     });
 
+    connect(day_, &CalendarDayModel::validChanged, [this] {
+        if (day_->valid()) {
+            if ((tb_ = getTb())) {
+                sync();
+            } else {
+                beginResetModel();
+                endResetModel();
+            }
+        }
+    });
+
+    connect(day_, &CalendarDayModel::eventChanged, [this](const QString &eventId) {
+        if (tb_ && day_->valid() && tb_->id_proto() == eventId) {
+            sync();
+        }
+    });
+
     if (tb_) {
         sync();
     }
@@ -51,10 +68,6 @@ void TimeBoxActionsModel::sync()
         auto *ai = ActionInfoCache::instance()->getAction(action);
         assert(ai);
         QQmlEngine::setObjectOwnership(ai, QQmlEngine::CppOwnership);
-        // connect(ai, &ActionInfoPrx::actionChanged, this, [this, action] {
-        //     auto idx = index(tb_->actions().list().indexOf(action));
-        //     emit dataChanged(idx, idx, {NameRole, ActionRole});
-        // });
         aiPrx_.emplace_back(ai);
     }
 }

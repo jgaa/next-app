@@ -229,7 +229,7 @@ Rectangle {
             icon.source: "../icons/fontawsome/trash-can.svg"
             text: qsTr("Delete")
             onTriggered: {
-                confirmDelete.uuid = contextMenu.uuidws = {}
+                confirmDelete.uuid = contextMenu.uuid
                 confirmDelete.name = contextMenu.name
                 confirmDelete.open()
             }

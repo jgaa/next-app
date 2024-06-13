@@ -726,7 +726,7 @@ boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actio
 boost::asio::awaitable<void> GrpcServer::validateAction(jgaa::mysqlpool::Mysqlpool::Handle &handle, const std::string &actionId, const std::string &userUuid, std::string *name)
 {
     auto res = co_await handle.exec("SELECT id, name FROM action where id=? and user=?", actionId, userUuid);
-    if (!res.has_value()) {
+    if (!res.has_value() && !res.rows().empty()) {
         throw db_err{pb::Error::INVALID_ACTION, "Action not found for the current user"};
     }
 

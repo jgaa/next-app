@@ -202,11 +202,6 @@ Rectangle {
                             color: MaterialDesignStyling.onPrimaryContainer
                         }
 
-                        Text {
-                            text: action ? action.id_proto : "no action object"
-                            color: "yellow"
-                        }
-
                         // Text {
                         //     text: uuid
                         //     color: MaterialDesignStyling.onPrimary

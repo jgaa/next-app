@@ -522,7 +522,6 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
         ++row;
         switch(event.kind()) {
         case pb::WorkEvent_QtProtobufNested::START:
-            assert(row == 1);
             work.setStart(event.time());
             work.setState(pb::WorkSession::State::ACTIVE);
             break;

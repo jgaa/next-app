@@ -96,7 +96,11 @@ struct ToWorkSession {
                 actions.push_back(req->actionid());
             } else if (req->has_timeblockid()) {
                 auto res = co_await rctx.dbh->exec(
-                    "SELECT action FROM time_block_actions WHERE time_block=? ", dbopts, req->timeblockid());
+                    R"(SELECT tba.action
+                        FROM time_block_actions tba
+                        JOIN action a ON tba.action = a.id
+                        WHERE tba.time_block=? AND a.status = 'active')",
+                    dbopts, req->timeblockid());
                 if (res.has_value() && !res.rows().empty()) {
                     actions.reserve(res.rows().size());
                     for(const auto& row : res.rows()) {
@@ -106,7 +110,7 @@ struct ToWorkSession {
             }
 
             auto res = co_await rctx.dbh->exec(
-                "SELECT id FROM work_session WHERE user=? and state='active'", dbopts, cuser);
+                "SELECT action FROM work_session WHERE user=? and state!='done'", dbopts, cuser);
             if (res.has_value()) {
                 for(const auto& r : res.rows()) {
                     const auto id = r.at(0).as_string();
@@ -124,16 +128,13 @@ struct ToWorkSession {
 
             // Pause any active work session
             co_await owner_.pauseWork(rctx);
-            const bool autostart = rctx.uctx->settings().autostartnextworksession();
 
-            int num = 0;
             for(const auto& actionId : actions) {
-                ++num;
-                co_await owner_.validateAction(*rctx.dbh, req->actionid(), cuser, &name);
+                co_await owner_.validateAction(*rctx.dbh, actionId, cuser, &name);
                 pb::WorkSession init;
                 init.set_name(name);
-                init.set_action(req->actionid());
-                auto res = co_await owner_.insertWork(init, rctx, autostart && num == 1);
+                init.set_action(actionId);
+                auto res = co_await owner_.insertWork(init, rctx, false);
 
                 assert(res.has_value() && !res.rows().empty());
 
@@ -452,17 +453,20 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
     dbopts.reconnect_and_retry_query = false;
 
     auto start_t = work.start();
+    string_view state = "active";
     pb::SavedWorkEvents events;
     if (addStartEvent) {
         events.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_START));
         start_t = events.events(0).time();
+    } else {
+        state = "paused";
     }
 
     const auto start_time = toAnsiTime(start_t, rctx.uctx->tz());
     const auto blob = toBlob(events);
     // Create the work session record
     const auto res = co_await rctx.dbh->exec(
-        format("INSERT INTO work_session (start_time, touch_time, action, user, name, events) VALUES (?, ?, ?, ?, ?, ?) "
+        format("INSERT INTO work_session (start_time, touch_time, action, user, name, events, state) VALUES (?, ?, ?, ?, ?, ?, ?) "
                "RETURNING {}", ToWorkSession::selectCols),
         dbopts,
         start_time,
@@ -470,7 +474,8 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
         work.action(),
         cuser,
         work.name(),
-        blob);
+        blob,
+        state);
 
     co_return std::move(res);
 }
@@ -730,8 +735,17 @@ boost::asio::awaitable<void> GrpcServer::resumeWorkSession(pb::WorkSession &work
         co_await pauseWorkSession(*current_ws, rctx);
     }
 
-    // Add the final event to the list of events before we calculate the outcome
-    work.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_RESUME));
+    // Check if we have an initial start event
+    if (std::ranges::any_of(work.events(), [](const auto& v) {
+            return v.kind() == pb::WorkEvent::Kind::WorkEvent_Kind_START;
+        })) {
+        // Add the event to the end of the list of events before we calculate the outcome
+        work.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_RESUME));
+    } else {
+        // If there is no start event, we need to add one
+        LOG_TRACE_N << "Adding START event in stead of RESUME. There was no initial start event.";
+        work.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_START));
+    }
 
     updateOutcome(work, *rctx.uctx);
     assert(work.state() == pb::WorkSession_State::WorkSession_State_ACTIVE);
@@ -773,7 +787,6 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)
         ++row;
         switch(event.kind()) {
         case pb::WorkEvent::Kind::WorkEvent_Kind_START:
-            assert(row == 1);
             work.set_start(event.time());
             work.set_state(pb::WorkSession_State::WorkSession_State_ACTIVE);
             break;
