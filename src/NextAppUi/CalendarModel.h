@@ -57,6 +57,7 @@ public:
     Q_INVOKABLE void goNext();
     Q_INVOKABLE void goToday();
     Q_INVOKABLE bool addAction(const QString& eventId, const QString& action);
+    Q_INVOKABLE void removeAction(const QString& eventId, const QString& action);
 
     nextapp::pb::CalendarEvent *lookup(const QString& eventId);
 

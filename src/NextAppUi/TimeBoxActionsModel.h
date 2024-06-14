@@ -25,7 +25,9 @@ class TimeBoxActionsModel : public QAbstractListModel
     };
 
 public:
-    TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayModel *day, QQuickItem *parent = nullptr);
+    TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayModel *day, QObject *parent = nullptr);
+
+    Q_INVOKABLE void removeAction(const QString& eventId, const QString& action);
 
 private:
     QUuid uuid_;

@@ -228,6 +228,23 @@ bool CalendarModel::addAction(const QString &eventId, const QString &action)
     return false;
 }
 
+void CalendarModel::removeAction(const QString &eventId, const QString &action)
+{
+    if (auto* event = lookup(eventId)) {
+        if (event->hasTimeBlock()) {
+            auto tb = event->timeBlock();
+
+            // Check if the action is already in the block
+            auto it = std::ranges::find(tb.actions().list(), action);
+            if (it != tb.actions().list().end()) {
+                // Remove it
+                tb.actions().list().erase(it);
+                ServerComm::instance().updateTimeBlock(tb);
+            }
+        }
+    }
+}
+
 nextapp::pb::CalendarEvent *CalendarModel::lookup(const QString &eventId)
 {
     auto it = std::ranges::find_if(all_events_.events(), [&eventId](const auto& event) {
@@ -296,7 +313,9 @@ void CalendarModel::onCalendarEventUpdated(const nextapp::pb::CalendarEvents &ev
 
         nextapp::pb::CalendarEvent *existing = (event_it == all_events_.events().end()) ? nullptr : &*event_it;
 
-        if (existing && version(*existing) > version(event)) {
+        if (existing
+            && op != nextapp::pb::Update_QtProtobufNested::Operation::DELETED
+            && version(*existing) > version(event)) {
             LOG_TRACE_N << "Ignoring event with lower version: " << event.id_proto() << " with version " << version(event);
             continue;
         }

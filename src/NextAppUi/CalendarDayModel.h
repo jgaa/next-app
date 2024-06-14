@@ -59,7 +59,8 @@ public:
     Q_INVOKABLE nextapp::pb::TimeBlock tbById(const QString& eventId) const;
     Q_INVOKABLE void updateTimeBlock(const nextapp::pb::TimeBlock& tb);
     Q_INVOKABLE bool addAction(const QString& eventId, const QString& action);
-    Q_INVOKABLE TimeBoxActionsModel *getTimeBoxActionsModel(const QString& eventId, QQuickItem *tbItem);
+    Q_INVOKABLE void removeAction(const QString& eventId, const QString& action);
+    Q_INVOKABLE TimeBoxActionsModel *getTimeBoxActionsModel(const QString& eventId, QObject *tbItem);
 
     // Called after a drop operation, potentially on another day
     Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);

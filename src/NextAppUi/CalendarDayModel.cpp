@@ -308,7 +308,13 @@ bool CalendarDayModel::addAction(const QString &eventId, const QString &action)
     return calendar_.addAction(eventId, action);
 }
 
-TimeBoxActionsModel *CalendarDayModel::getTimeBoxActionsModel(const QString &eventId, QQuickItem *tbItem)
+void CalendarDayModel::removeAction(const QString &eventId, const QString &action)
+{
+    // Relay to the main calendar model
+    return calendar_.removeAction(eventId, action);
+}
+
+TimeBoxActionsModel *CalendarDayModel::getTimeBoxActionsModel(const QString &eventId, QObject *tbItem)
 {
     const auto uuid = toQuid(eventId);
     auto model = new TimeBoxActionsModel(uuid, this, tbItem);

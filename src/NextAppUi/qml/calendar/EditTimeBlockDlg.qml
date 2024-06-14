@@ -11,10 +11,10 @@ Dialog {
     property NextappPb.timeBlock tb
     property int controlsPreferredWidth: 200
 
-    x: (parent.width - width) / 2
-    y: (parent.height - height) / 2
-    width: 800
-    height: 600
+    x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
+    y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
+    width: 500
+    height: 500
 
     standardButtons: Dialog.Ok | Dialog.Cancel
 
@@ -22,6 +22,7 @@ Dialog {
         console.log("Dialog opened :)");
         console.log("TimeBlock id is", tb.id_proto)
         assign()
+        actionsCtl.model = parent.model.getTimeBoxActionsModel(tb.id_proto, root)
     }
 
     function assign() {
@@ -44,74 +45,149 @@ Dialog {
         parent.model.updateTimeBlock(tb)
     }
 
-    GridLayout {
-        id: dlgfields
-        Layout.alignment: Qt.AlignLeft
-        Layout.fillHeight: true
-        Layout.fillWidth: true
-        rowSpacing: 4
-        columns: 2
+    ColumnLayout {
+        anchors.fill: parent
 
-        Label {
-            Layout.alignment: Qt.AlignLeft
-            color: Colors.disabledText
-            text: qsTr("Title")
-        }
+        GridLayout {
+            id: dlgfields
+            Layout.fillWidth: true
+            rowSpacing: 4
+            columns: 2
 
-        DlgInputField {
-            id: title
-            Layout.preferredWidth: root.controlsPreferredWidth * 3
-        }
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                color: Colors.disabledText
+                text: qsTr("Title")
+            }
 
-        Label {
-            Layout.alignment: Qt.AlignLeft
-            color: Colors.disabledText
-            text: qsTr("Category")
-        }
+            DlgInputField {
+                id: title
+                Layout.preferredWidth: root.controlsPreferredWidth * 2
+            }
 
-        CategoryComboBox {
-            id: category
-        }
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                color: Colors.disabledText
+                text: qsTr("Category")
+            }
 
-        Label {
-            Layout.alignment: Qt.AlignLeft
-            color: Colors.disabledText
-            text: qsTr("Start")
-        }
+            CategoryComboBox {
+                id: category
+            }
 
-        DlgInputField {
-            id: start
-        }
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                color: Colors.disabledText
+                text: qsTr("Start")
+            }
 
-        Label {
-            Layout.alignment: Qt.AlignLeft
-            color: Colors.disabledText
-            text: qsTr("End")
-        }
+            DlgInputField {
+                id: start
+            }
 
-        DlgInputField {
-            id: end
-        }
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                color: Colors.disabledText
+                text: qsTr("End")
+            }
 
-        Label {
-            Layout.alignment: Qt.AlignLeft
-            color: Colors.disabledText
-            text: qsTr("Actions")
+            DlgInputField {
+                id: end
+            }
+
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                color: Colors.disabledText
+                text: qsTr("Actions")
+                visible: actionsCtl.visible
+            }
         }
 
         ListView {
+            id: actionsCtl
+            Layout.fillHeight: true
+            Layout.preferredWidth: root.controlsPreferredWidth * 2
+            interactive: false
+            visible: model !== null
+            spacing: 4
 
+            delegate: Rectangle {
+                id: actionItem
+                implicitHeight: actionItemLayout.implicitHeight
+                implicitWidth: actionsCtl.width
+                color: index % 2 ? MaterialDesignStyling.onPrimary : MaterialDesignStyling.primaryContainer
+                required property int index
+                required property string name
+                required property string uuid
+                required property bool done
+                required property string category
+
+                RowLayout {
+                    width: actionsCtl.width
+                    id: actionItemLayout
+
+                    Rectangle {
+                        height: nameCtl.implicitHeight
+                        width: 10
+                        color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(category) : "transparent"
+                        //radius: 5
+                    }
+
+                    Text {
+                        font.family: ce.faNormalName
+                        font.pointSize: nameCtl.font.pointSize
+                        text: done ? "\uf058" : "\uf111"
+                        color: done ? "green" : "orange"
+
+                        Rectangle {
+                            color: "white"
+                            anchors.fill: parent
+                            radius: 100
+                            z: parent.z -1
+                            visible: done
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        id: nameCtl
+                        text: name
+                        color: MaterialDesignStyling.onPrimaryContainer
+                    }
+
+                    Button {
+                        Layout.preferredHeight: 20
+                        Layout.preferredWidth: 100
+                        icon.source:  "../../icons/fontawsome/trash-can.svg"
+                        icon.color: "red"
+                        onClicked: {
+                            actionsCtl.model.removeAction(root.tb.id_proto, uuid)
+                        }
+
+                        text: qsTr("Remove")
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: parent.z - 1
+                color: MaterialDesignStyling.primaryContainer
+                radius: 5
+            }
         }
     }
 
     onAccepted: {
         save()
         close()
-        deleteLater()
     }
 
     onRejected: {
         close()
-        deleteLater()
+    }
+
+    CommonElements {
+        id: ce
     }
 }

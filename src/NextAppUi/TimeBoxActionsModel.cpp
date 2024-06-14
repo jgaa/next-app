@@ -6,7 +6,7 @@
 #include "util.h"
 
 
-TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayModel *day, QQuickItem *parent)
+TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayModel *day, QObject *parent)
     : QAbstractListModel(parent), uuid_(TimeBoxUuid), day_{day}
 {
     assert(day_);
@@ -48,6 +48,12 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
     if (tb_) {
         sync();
     }
+}
+
+void TimeBoxActionsModel::removeAction(const QString &eventId, const QString &action)
+{
+    assert(day_);
+    day_->removeAction(eventId, action);
 }
 
 nextapp::pb::TimeBlock *TimeBoxActionsModel::getTb()
