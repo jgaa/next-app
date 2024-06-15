@@ -56,10 +56,17 @@ void ServerComm::start()
     QGrpcMetadata metadata;
     metadata.emplace("session-id", session_id_.toLatin1());
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     auto channelOptions = QGrpcChannelOptions{QUrl(current_server_address_, QUrl::StrictMode)}
                               .withMetadata(metadata);
-
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
+#else
+    auto channelOptions = QGrpcChannelOptions{};
+    channelOptions.setMetadata(metadata);
+    client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(current_server_address_, QUrl::StrictMode), channelOptions));
+#endif
+
+
     LOG_INFO << "Using server at " << current_server_address_;
 
     callRpc<nextapp::pb::ServerInfo>([this]() {
@@ -69,7 +76,11 @@ void ServerComm::start()
             // assert(se.properties().front().key() == "version");
             server_version_ = se.properties().front().value();
             LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
             updates_ = client_->streamSubscribeToUpdates({});
+#else
+            updates_ = client_->SubscribeToUpdates({});
+#endif
             connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
             initGlobalSettings();
         }

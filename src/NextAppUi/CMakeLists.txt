@@ -31,6 +31,13 @@ set(QT6_IS_SHARED_LIBS_BUILD OFF)
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
 
+if(Qt6Core_VERSION VERSION_LESS "6.8.0")
+    message("Using an old QT version. 6.8 is required for the current grpc plugin")
+else ()
+    find_package(Qt6 6.8 REQUIRED COMPONENTS ProtobufQuick)
+    set (PROTOBUF_QML_DEPENDENCY Qt::ProtobufQuick)
+endif()
+
 qt_policy(
     SET QTP0001 NEW
 )
@@ -66,6 +73,7 @@ target_link_libraries(NextappGrpcClient
         NextappProtoMessageLib
         Qt6::Core
         Qt6::Protobuf
+        ${PROTOBUF_QML_DEPENDENCY}
         Qt6::Grpc
 )
 
