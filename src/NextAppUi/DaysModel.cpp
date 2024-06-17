@@ -26,6 +26,31 @@ DaysModel *DaysModel::instance_;
 DaysModel::DaysModel()
 {
     instance_ = this;
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::receivedDayColorDefinitions,
+            this,
+            &DaysModel::fetchedColors);
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::receivedMonth,
+            this,
+            &DaysModel::fetchedMonth);
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::onUpdate,
+            this,
+            &DaysModel::onUpdate);
+
+    connect(std::addressof(ServerComm::instance()), &ServerComm::connectedChanged, this, [this] {
+        if (ServerComm::instance().connected()) {
+            onOnline();
+        }
+    });
+
+    if (ServerComm::instance().connected()) {
+        onOnline();
+    }
 }
 
 DayModel *DaysModel::getDay(int year, int month, int day)
@@ -42,7 +67,6 @@ MonthModel *DaysModel::getMonth(int year, int month)
 {
     const auto key = getKey(year, month);
     if (!hasMonth(year, month)) {
-
         months_[key] = {};
         fetchMonth(year, month);
     }
@@ -63,33 +87,10 @@ std::optional<pb::DayColor> DaysModel::getDayColor(const QUuid &uuid) const
     return {};
 }
 
-void DaysModel::start()
-{
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedDayColorDefinitions,
-            this,
-            &DaysModel::fetchedColors);
-
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedMonth,
-            this,
-            &DaysModel::fetchedMonth);
-
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::onUpdate,
-            this,
-            &DaysModel::onUpdate);
-
-    started_ = true;
-    fetchColors();
-}
 
 void DaysModel::fetchMonth(int year, int month)
 {
-    if (!valid()) {
-        actions_queue_.emplace([this, year, month] {
-            fetchMonth(year, month);
-        });
+    if (!ServerComm::instance().connected()) {
         return;
     }
 
@@ -104,14 +105,9 @@ void DaysModel::fetchDay(int year, int month, int day)
 
 void DaysModel::fetchColors()
 {
-    if (!started_) {
-        actions_queue_.emplace([this] {
-            fetchColors();
-        });
-        return;
+    if (ServerComm::instance().connected()) {
+        ServerComm::instance().getDayColorDefinitions();
     }
-
-    ServerComm::instance().getDayColorDefinitions();
 }
 
 QString DaysModel::getColorUuid(int year, int month, int day)
@@ -153,10 +149,8 @@ void DaysModel::fetchedColors(const nextapp::pb::DayColorDefinitions &defs)
 {
     color_definitions_ = defs;
     // TODO: If we actually re-fetch the color defs, we must signal all the existing months that they are invalid
-    months_.clear();
-    for(; !actions_queue_.empty(); actions_queue_.pop()) {
-        actions_queue_.front()();
-    }
+    //months_.clear();
+    refetchAllMonths();
     emit validChanged();
     emit dayColorsChanged(color_definitions_);
 }
@@ -224,6 +218,20 @@ void DaysModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
     }
     if (update->hasDayColor()) {
         set(update->dayColor().date(), update->dayColor().color());
+    }
+}
+
+void DaysModel::onOnline()
+{
+    fetchColors();
+}
+
+void DaysModel::refetchAllMonths()
+{
+    for(const auto &[v, _] : months_) {
+        PackedMonth key = {};
+        key.as_number = v;
+        fetchMonth(key.date.year_, key.date.month_);
     }
 }
 

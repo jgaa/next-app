@@ -99,10 +99,7 @@ MainTreeModel::MainTreeModel(QObject *parent)
     : QAbstractItemModel{parent}
 {
     instance_ = this;
-}
 
-void MainTreeModel::start()
-{
     connect(std::addressof(ServerComm::instance()),
             &ServerComm::receivedNodeTree,
             this,
@@ -113,8 +110,15 @@ void MainTreeModel::start()
             this,
             &MainTreeModel::onUpdate);
 
+    connect(std::addressof(ServerComm::instance()), &ServerComm::connectedChanged, this, [this] {
+        if (ServerComm::instance().connected()) {
+            ServerComm::instance().getNodeTree();
+        }
+    });
 
-    ServerComm::instance().getNodeTree();
+    if (ServerComm::instance().connected()) {
+        ServerComm::instance().getNodeTree();
+    }
 }
 
 void MainTreeModel::setSelected(const QString& newSel)

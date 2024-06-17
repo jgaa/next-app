@@ -119,6 +119,7 @@ Rectangle {
         anchors.right : root.right
         anchors.bottom: root.bottom
         visible: root.haveDragIcons
+        z: actionsCtl.z + 1
     }
 
     ColumnLayout {
@@ -218,11 +219,11 @@ Rectangle {
             }
         }
 
-        Text {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 20
-            text: "bottom"
-        }
+        // Text {
+        //     Layout.fillWidth: true
+        //     Layout.preferredHeight: 20
+        //     text: "bottom"
+        // }
 
         // Item {
         //     Layout.fillHeight: true

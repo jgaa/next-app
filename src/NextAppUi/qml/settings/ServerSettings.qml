@@ -17,6 +17,7 @@ Item {
     function commit() {
         settings.serverAddress = address.text
         settings.setValue("pagination/page_size", pageSize.text)
+        settings.setValue("server/auto_login", autoLogin.checked)
         NaComm.reloadSettings()
     }
 
@@ -43,6 +44,14 @@ Item {
             text: settings.value("pagination/page_size", 100)
             placeholderText: qsTr("20 - 200");
             width: 150
+        }
+
+        Item {}
+
+        CheckBox {
+            id: autoLogin
+            checked: settings.value("server/auto_login", true)
+            text: qsTr("Auto Login")
         }
 
         Item {

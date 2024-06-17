@@ -209,6 +209,10 @@ public:
     bool active() const noexcept { return is_active_; }
     void setActive(bool active);
 
+    bool started() const noexcept {
+        return started_;
+    }
+
 signals:
     void somethingChanged();
     void isVisibleChanged();
@@ -230,7 +234,6 @@ protected:
 
     sessions_t sessions_;
     const QUuid uuid_ = QUuid::createUuid();
-    std::once_flag start_once_;
     Sorting sorting_ = SORT_TOUCHED;
     bool enable_debug_ = false;
     QString currentTreeNode_;
@@ -240,4 +243,5 @@ protected:
     Pagination pagination_;
     bool exclude_done_ = false; // Needed if we show the current work session list
     bool is_active_ = false;
+    bool started_ = false;
 };

@@ -117,34 +117,14 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+#ifdef WITH_TREE_MODEL_TESTING
     {
         auto tree = engine.singletonInstance<MainTreeModel*>("NextAppUi","MainTreeModel");
         assert(tree);
 
-#ifdef WITH_TREE_MODEL_TESTING
         new QAbstractItemModelTester{tree, QAbstractItemModelTester::FailureReportingMode::Fatal, &engine};
+    }
 #endif
-
-        tree->start();
-    }
-
-    {
-        auto days = engine.singletonInstance<DaysModel*>("NextAppUi","DaysModel");
-        assert(days);
-        days->start();
-    }
-
-    {
-        auto actions = engine.singletonInstance<ActionsModel*>("NextAppUi","ActionsModel");
-        assert(actions);
-        actions->start();
-    }
-
-    {
-        auto work_sessions = engine.singletonInstance<WorkSessionsModel*>("NextAppUi","WorkSessionsModel");
-        assert(work_sessions);
-        work_sessions->start();
-    }
 
     {
         auto colors = engine.singletonInstance<DayColorModel*>("NextAppUi","DayColorModel");

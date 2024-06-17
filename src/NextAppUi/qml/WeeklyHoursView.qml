@@ -11,6 +11,8 @@ Rectangle {
     id: root
     Layout.fillHeight: true
     Layout.fillWidth: true
+    enabled: NaComm.connected
+    opacity: NaComm.connected ? 1.0 : 0.5
     color: MaterialDesignStyling.surface
 
     property int cellwidth: 70

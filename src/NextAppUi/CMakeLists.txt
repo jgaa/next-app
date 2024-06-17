@@ -9,14 +9,14 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(SERVER_ADDRESS "http://127.0.0.1:10321" CACHE STRING "Default address to server")
 add_definitions("-DSERVER_ADDRESS=\"${SERVER_ADDRESS}\"")
 
-option(WITH_TREE_MODEL_TESTING "Enable ongoing tests for the MainTreeModel" OFF)
-if (WITH_TREE_MODEL_TESTING)
+option(NEXTAPP_WITH_TREE_MODEL_TESTING "Enable ongoing tests for the MainTreeModel" OFF)
+if (NEXTAPP_WITH_TREE_MODEL_TESTING)
     add_definitions(-DWITH_TREE_MODEL_TESTING)
 endif()
 
 option(WITH_TESTS "Enable Tests" ON)
-option(DEVEL_SETTINGS "Use '-devel' postfix for the settings location." ON)
-if (DEVEL_SETTINGS)
+option(NEXTAPP_DEVEL_SETTINGS "Use '-devel' postfix for the settings location to use a different profile than normal." ON)
+if (NEXTAPP_DEVEL_SETTINGS)
     add_definitions(-DDEVEL_SETTINGS)
 endif()
 
@@ -29,7 +29,7 @@ set(QT6_IS_SHARED_LIBS_BUILD OFF)
 # find_package(Boost REQUIRED)
 # include_directories(${Boost_INCLUDE_DIRS})
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
+find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")

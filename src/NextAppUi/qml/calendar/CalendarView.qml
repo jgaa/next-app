@@ -11,6 +11,8 @@ Rectangle {
     Layout.fillWidth: true
     property int hourHeight: 60
     color: MaterialDesignStyling.surface
+    enabled: NaComm.connected
+    opacity: NaComm.connected ? 1.0 : 0.5
     property CalendarModel model: NaCore.createCalendarModel()
     property bool inilializedModel: false
     property var when: new Date()

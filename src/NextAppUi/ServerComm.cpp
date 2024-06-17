@@ -1,4 +1,5 @@
 
+#include <string_view>
 #include "ServerComm.h"
 #include "logging.h"
 
@@ -9,6 +10,17 @@
 #include "NextAppCore.h"
 
 using namespace std;
+
+ostream& operator << (ostream&o, const ServerComm::Status& v) {
+    static constexpr auto names = to_array<string_view>({
+        "OFFLINE",
+        "CONNECTING",
+        "INITIAL_SYNC",
+        "ONLINE",
+        "ERROR"});
+
+    return o << names.at(static_cast<size_t>(v));
+}
 
 namespace {
 
@@ -35,12 +47,16 @@ ServerComm::ServerComm()
     connect(client_.get(), &nextapp::pb::Nextapp::Client::errorOccurred,
             this, &ServerComm::errorOccurred);
 
-    // TODO: Make it configurable if the comm starts immediately.
-    //       For example, the user may need to select a server first.
-
     setDefaulValuesInUserSettings();
 
-    start();
+    if (!QSettings{}.value("serverAddress", getDefaultServerAddress()).toString().isEmpty()) {
+        if (QSettings{}.value("server/auto_login", true).toBool()) {
+            LOG_DEBUG << "Auto-login is enabled. Starting the server comm...";
+            start();
+        }
+    } else {
+        LOG_WARN << "Server address is unset.";
+    }
 }
 
 ServerComm::~ServerComm()
@@ -66,13 +82,14 @@ void ServerComm::start()
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(current_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
-
     LOG_INFO << "Using server at " << current_server_address_;
+    setStatus(Status::CONNECTING);
 
     callRpc<nextapp::pb::ServerInfo>([this]() {
         return client_->GetServerInfo({});
     }, [this](const nextapp::pb::ServerInfo& se) {
         if (!se.properties().empty()) {
+            setStatus(Status::INITIAL_SYNC);
             // assert(se.properties().front().key() == "version");
             server_version_ = se.properties().front().value();
             LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
@@ -89,7 +106,19 @@ void ServerComm::start()
 
 void ServerComm::stop()
 {
+    if (status_ != Status::ERROR) {
+        setStatus(Status::OFFLINE);
+    }
 
+    LOG_DEBUG_N << "Purging " << grpc_queue_.size() << " pending gRPC calls";
+    while(!grpc_queue_.empty()) {
+        grpc_queue_.pop();
+    }
+    emit connectedChanged();
+    if (updates_) {
+        updates_->cancel();
+        updates_.reset();
+    }
 }
 
 QString ServerComm::version()
@@ -98,9 +127,18 @@ QString ServerComm::version()
     return server_version_;
 }
 
-bool ServerComm::connected()
+bool ServerComm::connected() const noexcept
 {
-    return grpc_is_ready_;
+    return status_ == Status::ONLINE;
+}
+
+void ServerComm::toggleConnect()
+{
+    if (connected()) {
+        stop();
+    } else {
+        start();
+    }
 }
 
 void ServerComm::reloadSettings()
@@ -577,6 +615,18 @@ void ServerComm::deleteActionCategory(const QString &id, callback_t<nextapp::pb:
     }, std::move(done));
 }
 
+void ServerComm::setStatus(Status status) {
+    if (status_ != status) {
+        LOG_INFO << "Status changed from " << status_ << " to " << status;
+        status_ = status;
+        emit statusChanged();
+
+        if (status == Status::ONLINE || Status::OFFLINE || Status::ERROR) {
+            emit connectedChanged();
+        }
+    }
+}
+
 nextapp::pb::UserGlobalSettings ServerComm::getGlobalSettings() const
 {
     return userGlobalSettings_;
@@ -597,9 +647,16 @@ void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &setti
 
 void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
-    LOG_ERROR_N << "Call to gRPC server failed: " << status.message();
+    LOG_ERROR_N << "Connection to gRPC server failed: " << status.message();
 
-    emit errorRecieved(tr("Call to gRPC server failed: %1").arg(status.message()));
+    emit errorRecieved(tr("Connection to gRPC server failed: %1").arg(status.message()));
+
+    if (status.code() == QGrpcStatus::StatusCode::Cancelled) {
+        setStatus(Status::OFFLINE);
+        return;
+    }
+    setStatus(Status::ERROR);
+    scheduleReconnect();
 }
 
 void ServerComm::initGlobalSettings()
@@ -620,6 +677,7 @@ void ServerComm::initGlobalSettings()
             saveGlobalSettings(userGlobalSettings_);
         } else {
             LOG_ERROR << "Failed to get global user-settings: " << status.message();
+            setStatus(Status::ERROR);
             stop();
             return;
         }
@@ -629,7 +687,8 @@ void ServerComm::initGlobalSettings()
 
 void ServerComm::onGrpcReady()
 {
-    grpc_is_ready_ = true;
+    reconnect_after_seconds_ = 0;
+    setStatus(Status::ONLINE);
     emit versionChanged();
     emit connectedChanged();
     for(; !grpc_queue_.empty(); grpc_queue_.pop()) {
@@ -708,4 +767,16 @@ void ServerComm::setDefaulValuesInUserSettings()
 
     const bool monday_is_first_dow = QLocale::system().firstDayOfWeek() == Qt::Monday;
     userGlobalSettings_.setFirstDayOfWeekIsMonday(monday_is_first_dow);
+}
+
+void ServerComm::scheduleReconnect()
+{
+    if (reconnect_after_seconds_ == 0) {
+        reconnect_after_seconds_ = 1;
+    } else {
+        reconnect_after_seconds_ = std::min(reconnect_after_seconds_ * 2, 60 * 5);
+    }
+
+    LOG_INFO_N << "Reconnecting in " << reconnect_after_seconds_ << " seconds";
+    QTimer::singleShot(reconnect_after_seconds_ * 1000, this, &ServerComm::start);
 }

@@ -79,23 +79,29 @@ void WorkSessionsModel::addCalendarEvent(const QString &eventId)
 
 void WorkSessionsModel::start()
 {
-    WorkModel::start();
+    if (!started()) {
+        WorkModel::start();
 
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedCurrentWorkSessions,
-            this,
-            &WorkSessionsModel::receivedCurrentWorkSessions);
+        connect(std::addressof(ServerComm::instance()),
+                &ServerComm::receivedCurrentWorkSessions,
+                this,
+                &WorkSessionsModel::receivedCurrentWorkSessions);
+    }
 
     fetch();
 
-    timer_ = new QTimer(this);
+    if (!timer_) {
+        timer_ = new QTimer(this);
+    }
     connect(timer_, &QTimer::timeout, this, &WorkSessionsModel::onTimer);
     timer_->start(5000);
 }
 
 void WorkSessionsModel::fetch()
 {
-    ServerComm::instance().getActiveWorkSessions();
+    if (ServerComm::instance().connected()) {
+        ServerComm::instance().getActiveWorkSessions();
+    }
 }
 
 

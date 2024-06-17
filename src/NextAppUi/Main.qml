@@ -28,6 +28,7 @@ ApplicationWindow {
             Action {
                 text: qsTr("Categories")
                 onTriggered: { openDialog("categories/CategoriesMgr.qml") }
+                enabled: NaComm.connected
             }
 
             Action {
@@ -35,10 +36,15 @@ ApplicationWindow {
                 onTriggered: Qt.exit(0)
                 shortcut: StandardKey.Quit
             }
+
+            Action {
+                text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
+                onTriggered: NaComm.toggleConnect();
+            }
         }
 
         MyMenu {
-            enabled: sidebar.currentMainItem == 1
+            enabled: sidebar.currentMainItem == 1 && NaComm.connected
             title: qsTr("Lists")
 
             Action {
@@ -64,7 +70,7 @@ ApplicationWindow {
         }
 
         MyMenu {
-            enabled: sidebar.currentMainItem == 1 && mainTree.hasSelection
+            enabled: sidebar.currentMainItem == 1 && mainTree.hasSelection && NaComm.connected
             title: qsTr("Actions")
 
             Action {

@@ -4,11 +4,14 @@ import QtQuick.Controls
 import QtQuick.Effects
 import QtQuick.Dialogs
 import NextAppUi
+import Nextapp.Models
 
 pragma ComponentBehavior: Bound
 
 Rectangle {
     id: root
+    enabled: NaComm.connected
+    opacity: NaComm.connected ? 1.0 : 0.5
 
     //property alias currentIndex : treeView.selectionModel.currentIndex
     property string selectedItemUuid: MainTreeModel.selected

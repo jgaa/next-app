@@ -13,6 +13,8 @@ Rectangle {
     color: MaterialDesignStyling.surface
     property bool ready: false
     property int prev_selection: 0
+    enabled: NaComm.connected
+    opacity: NaComm.connected ? 1.0 : 0.5
 
     onVisibleChanged: {
         if (root.visible) {

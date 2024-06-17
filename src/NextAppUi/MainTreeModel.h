@@ -96,8 +96,6 @@ public:
 
     explicit MainTreeModel(QObject *parent = nullptr);
 
-    void start();
-
     static MainTreeModel* instance() noexcept {
         return instance_;
     }

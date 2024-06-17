@@ -3,10 +3,12 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
 import NextAppUi
-
+import Nextapp.Models
 
 Rectangle {
     id: root
+    enabled: NaComm.connected
+    opacity: NaComm.connected ? 1.0 : 0.5
 
     property int fontSize: 16
 

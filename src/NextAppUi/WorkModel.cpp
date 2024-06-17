@@ -152,22 +152,26 @@ WorkModel::WorkModel(QObject *parent)
     : QAbstractTableModel{parent}
 {
     connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
+        start();
         setActive(ServerComm::instance().connected());
     });
 
-    setActive(ServerComm::instance().connected());
+    if (ServerComm::instance().connected()) {
+        start();
+        setActive(true);
+    }
 }
 
 void WorkModel::start()
 {
-    LOG_DEBUG << "WorkModel::start() called" << uuid().toString();
+    if (!started_) {
+        LOG_DEBUG << "WorkModel::start() called" << uuid().toString();
 
-    std::call_once(start_once_, [this] {
-        LOG_DEBUG << "WorkModel::start() exceuting" << uuid().toString();
         connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &WorkModel::onUpdate);
         connect(&ServerComm::instance(), &ServerComm::receivedWorkSessions, this, &WorkModel::receivedWorkSessions);
         connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &WorkModel::selectedChanged);
-    });
+        started_ = true;
+    }
 }
 
 // WorkModel *WorkModel::createModel()

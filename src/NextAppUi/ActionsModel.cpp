@@ -165,6 +165,32 @@ ActionsModel::ActionsModel(QObject *parent)
     flags_.setDone(false);
     flags_.setUnscheduled(true);
     flags_.setUpcoming(true);
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::receivedActions,
+            this,
+            &ActionsModel::receivedActions);
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::onUpdate,
+            this,
+            &ActionsModel::onUpdate);
+
+    connect(std::addressof(ServerComm::instance()),
+            &ServerComm::receivedCurrentWorkSessions,
+            this,
+            &ActionsModel::receivedWorkSessions);
+
+    connect(MainTreeModel::instance(),
+            &MainTreeModel::selectedChanged,
+            this,
+            &ActionsModel::selectedChanged);
+
+    connect(&ServerComm::instance(), &ServerComm::connectedChanged, this, [this] {
+        fetchIf();
+    });
+
+    fetchIf();
 }
 
 void ActionsModel::addAction(const nextapp::pb::Action &action)
@@ -207,29 +233,6 @@ void ActionsModel::markActionAsDone(const QString &actionUuid, bool done)
 void ActionsModel::markActionAsFavorite(const QString &actionUuid, bool favorite)
 {
     ServerComm::instance().markActionAsFavorite(actionUuid, favorite);
-}
-
-void ActionsModel::start()
-{
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedActions,
-            this,
-            &ActionsModel::receivedActions);
-
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::onUpdate,
-            this,
-            &ActionsModel::onUpdate);
-
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedCurrentWorkSessions,
-            this,
-            &ActionsModel::receivedWorkSessions);
-
-    connect(MainTreeModel::instance(),
-            &MainTreeModel::selectedChanged,
-            this,
-            &ActionsModel::selectedChanged);
 }
 
 void ActionsModel::fetch(nextapp::pb::GetActionsReq &filter)
@@ -577,7 +580,7 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
     }
     auto qt_start = QDateTime::fromSecsSinceEpoch(when);
     qt_start.setTimeZone(ts);
-    qt_start.setTimeSpec(Qt::LocalTime);
+    //qt_start.setTimeSpec(Qt::LocalTime);
     const auto tz_name = qt_start.timeZoneAbbreviation();
     due.setTimezone(tz_name.toUtf8().constData());
     auto d_start = qt_start.date().startOfDay();
@@ -665,9 +668,9 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
     auto qt_end = QDateTime::fromSecsSinceEpoch(end);
     auto zone = QTimeZone::systemTimeZone();
     qt_start.setTimeZone(zone);
-    qt_start.setTimeSpec(Qt::LocalTime);
+    //qt_start.setTimeSpec(Qt::LocalTime);
     qt_end.setTimeZone(zone);
-    qt_end.setTimeSpec(Qt::LocalTime);
+    //qt_end.setTimeSpec(Qt::LocalTime);
 
     auto today = QDate::currentDate();
 
@@ -951,7 +954,7 @@ void ActionsModel::fetchIf(bool restart)
         pagination_.reset();
     }
 
-    if (!is_visible_) {
+    if (!isVisible() || !ServerComm::instance().connected()) {
         return;
     }
 

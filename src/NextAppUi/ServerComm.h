@@ -18,7 +18,18 @@ concept IsValidFunctor = std::invocable<T&, Y...>;
 
 class ServerComm : public QObject
 {
+public:
+    enum Status {
+        OFFLINE,
+        CONNECTING,
+        INITIAL_SYNC,
+        ONLINE,
+        ERROR
+    };
+
+private:
     Q_OBJECT
+    Q_ENUM(Status)
     QML_ELEMENT
 
     Q_PROPERTY(QString version
@@ -27,12 +38,12 @@ class ServerComm : public QObject
 
     Q_PROPERTY(QString defaultServerAddress READ getDefaultServerAddress CONSTANT)
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
+    Q_PROPERTY(bool status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString version READ version NOTIFY versionChanged)
     Q_PROPERTY(nextapp::pb::UserGlobalSettings globalSettings
                 READ getGlobalSettings
                 NOTIFY globalSettingsChanged)
 public:
-
     struct CbError {
         nextapp::pb::ErrorGadget::Error error;
         QString message;
@@ -58,7 +69,9 @@ public:
     void stop();
 
     [[nodiscard]] QString version();
-    [[nodiscard]] bool connected();
+    [[nodiscard]] bool connected() const noexcept;
+
+    Q_INVOKABLE void toggleConnect();
 
     // Called when the servers app settings may have changed
     Q_INVOKABLE void reloadSettings();
@@ -128,6 +141,12 @@ public:
         return SERVER_ADDRESS;
     }
 
+    Status status() const noexcept {
+        return status_;
+    }
+
+    void setStatus(Status status);
+
 signals:
     void versionChanged();
     void connectedChanged();
@@ -135,6 +154,7 @@ signals:
     void errorRecieved(const QString &value);
     void globalSettingsChanged();
     void firstDayOfWeekChanged();
+    void statusChanged();
 
     // When the server has replied to our request fo the colors for this month
     void monthColorsChanged(unsigned year, unsigned month, colors_in_months_t colors);
@@ -164,6 +184,7 @@ private:
     void onGrpcReady();
     void onUpdateMessage();
     void setDefaulValuesInUserSettings();
+    void scheduleReconnect();
 
     struct GrpcCallOptions {
         bool enable_queue = true;
@@ -174,6 +195,10 @@ private:
     void callRpc_(callT&& call, doneT && done, const GrpcCallOptions& opts, Args... args) {
 
         auto exec = [this, call=std::move(call), done=std::move(done), opts, args...]() {
+            if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
+                LOG_ERROR << "ServerComm::callRpc_ Called when status is " << status_;
+                return;
+            }
             auto rpc_method = call(args...);
             rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
                 //respT rval = rpc_method-> template read<respT>();
@@ -205,11 +230,11 @@ private:
                 }
             },
             [this](QGrpcStatus status) {
-                LOG_ERROR << "Comm error: " << status.message();
+                LOG_ERROR << "callRpc_ Comm error: " << status.message();
             });
         };
 
-        if (opts.enable_queue && !grpc_is_ready_) {
+        if (opts.enable_queue && !connected()) {
             grpc_queue_.emplace(std::move(exec));
             return;
         }
@@ -244,10 +269,12 @@ private:
     nextapp::pb::ServerInfo server_info_;
     QString server_version_{"Unknown"};
     std::queue<std::function<void()>> grpc_queue_;
-    bool grpc_is_ready_ = false;
+    //bool grpc_is_ready_ = false;
+    Status status_{Status::OFFLINE};
     static ServerComm *instance_;
     std::shared_ptr<QGrpcServerStream> updates_;
     QString current_server_address_;
     nextapp::pb::UserGlobalSettings userGlobalSettings_;
     QString session_id_;
+    int reconnect_after_seconds_{0};
 };

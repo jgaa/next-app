@@ -10,6 +10,8 @@ import Nextapp.Models
 Rectangle {
     id: root
     color: MaterialDesignStyling.surface
+    enabled: NaComm.connected
+    opacity: NaComm.connected ? 1.0 : 0.5
     property bool ready: false
     property int prev_selection: 0
 

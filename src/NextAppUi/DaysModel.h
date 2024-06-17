@@ -83,8 +83,6 @@ public:
 
     std::optional<nextapp::pb::DayColor> getDayColor(const QUuid& uuid) const;
 
-    void start();
-
     void fetchMonth(int year, int month);
     void fetchDay(int year, int month, int day);
     void fetchColors();
@@ -114,6 +112,9 @@ public slots:
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
 
 private:
+    void onOnline();
+    void refetchAllMonths();
+
     uint32_t static getKey(int year, int month) noexcept;
     DayInfo *lookup(int year, int month, int day);
     void toDayInfo(const nextapp::pb::Day& day, DaysModel::DayInfo& di);
@@ -121,10 +122,8 @@ private:
     bool setDayColor(DayInfo &di, const QUuid& color);
     using days_in_month_t = std::array<DayInfo, 31>;
     using months_t = std::map<uint16_t, days_in_month_t>;
-    std::queue<std::function<void()>> actions_queue_;
     months_t months_;
     nextapp::pb::DayColorDefinitions color_definitions_;
-    bool started_ = false;
     static DaysModel *instance_;
 };
 

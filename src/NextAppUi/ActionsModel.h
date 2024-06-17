@@ -158,7 +158,6 @@ public:
     Q_INVOKABLE nextapp::pb::Due changeDue(int shortcut, const nextapp::pb::Due& fromDue) const;
     Q_INVOKABLE bool moveToNode(const QString& actionUuid, const QString& nodeUuid);
 
-    void start();
     void fetch(nextapp::pb::GetActionsReq& filter);
     void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);

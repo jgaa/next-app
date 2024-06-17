@@ -5,11 +5,14 @@ import QtQuick.Dialogs
 import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPB
+import Nextapp.Models
 
 Rectangle {
     id: root
     color: MaterialDesignStyling.surfaceContainer
     Layout.fillWidth: true
+    enabled: NaComm.connected
+    opacity: NaComm.connected ? 1.0 : 0.5
 
     RowLayout {
         anchors.fill: parent
