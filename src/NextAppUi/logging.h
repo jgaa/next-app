@@ -7,6 +7,10 @@ namespace nextapp::logging {
 #define LOGFAULT_USE_TID_AS_NAME 1
 #define LOGFAULT_USE_QT_LOG 1
 
+#ifdef __ANDROID__
+#define LOGFAULT_USE_ANDROID_NDK_LOG 1
+#endif
+
 #include "logfault/logfault.h"
 
 #define LOG_ERROR   LFLOG_ERROR

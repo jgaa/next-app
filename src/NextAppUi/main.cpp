@@ -85,6 +85,12 @@ int main(int argc, char *argv[])
     if (auto level = toLogLevel(log_level_qt)) {
         logfault::LogManager::Instance().AddHandler(
             make_unique<logfault::QtHandler>(*level));
+
+// #ifdef __ANDROID__
+//         logfault::LogManager::Instance().AddHandler(
+//             make_unique<logfault::AndroidHandler>("next-app", *level));
+// #endif
+
     }
 
     if (parser.isSet("log-file")) {
@@ -101,6 +107,7 @@ int main(int argc, char *argv[])
     NextAppCore core;
     ServerComm comms;
     ActionInfoCache ai_cache;
+    MainTreeModel main_tree;
 
     auto& engine = NextAppCore::engine();
 
@@ -110,21 +117,26 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance<NextAppCore>("Nextapp.Models", 1, 0, "NaCore", &core);
     qmlRegisterSingletonInstance<ServerComm>("Nextapp.Models", 1, 0, "NaComm", &comms);
     qmlRegisterSingletonInstance<ActionInfoCache>("Nextapp.Models", 1, 0, "NaAiCache", &ai_cache);
+    qmlRegisterSingletonInstance<MainTreeModel>("Nextapp.Models", 1, 0, "NaMainTreeModel", &main_tree);
 
-    engine.loadFromModule("NextAppUi", "Main");
+#ifdef WITH_TREE_MODEL_TESTING
+    new QAbstractItemModelTester{&main_tree, QAbstractItemModelTester::FailureReportingMode::Fatal, &engine};
+#endif
+
+    string_view main_qml = "qrc:/qt/qml/NextAppUi/Main.qml";
+#ifdef __ANDROID__
+    // Code specific to Android
+    qputenv("QT_QUICK_CONTROLS_STYLE", "Material");
+    main_qml = "qrc:/qt/qml/NextAppUi/qml/android/main.qml";
+#endif
+
+    LOG_INFO << "Loading main QML file: " << main_qml;
+    //engine.loadFromModule("NextAppUi", main_qml);
+    engine.load(QUrl{QString::fromUtf8(main_qml)});
     if (engine.rootObjects().isEmpty()) {
         qWarning() << "Failed to initialize engine!";
         return -1;
     }
-
-#ifdef WITH_TREE_MODEL_TESTING
-    {
-        auto tree = engine.singletonInstance<MainTreeModel*>("NextAppUi","MainTreeModel");
-        assert(tree);
-
-        new QAbstractItemModelTester{tree, QAbstractItemModelTester::FailureReportingMode::Fatal, &engine};
-    }
-#endif
 
     {
         auto colors = engine.singletonInstance<DayColorModel*>("NextAppUi","DayColorModel");

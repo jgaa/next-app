@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
 import NextAppUi
+import Nextapp.Models
 
 Dialog {
     id: root
@@ -13,7 +14,7 @@ Dialog {
     property string kind: "folder"
     property bool isNew: true
     property var node: null
-    property string parentUuid: MainTreeModel.selected
+    property string parentUuid: NaMainTreeModel.selected
     property string currentUuid: ""
     property var kinds: ["folder", "organization", "person", "project", "task"]
     property string icon: "../icons/folder/.svg"
@@ -147,9 +148,9 @@ Dialog {
             //let x = {...node, ...args}; Don't work
             let new_args = {}
             Object.assign(new_args, node, args)
-            MainTreeModel.updateNode(new_args)
+            NaMainTreeModel.updateNode(new_args)
         } else {
-            MainTreeModel.addNode(args)
+            NaMainTreeModel.addNode(args)
         }
 
         close()

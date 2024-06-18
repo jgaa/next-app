@@ -138,6 +138,7 @@ qt_add_qml_module(appNextAppUi
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
+        qml/android/main.qml
         qml/calendar/CalendarView.qml
         qml/calendar/DayPlan.qml
         qml/calendar/EditTimeBlockDlg.qml
@@ -276,6 +277,8 @@ if(NOT ANDROID)
 endif()
 
 if (ANDROID)
+    message(STATUS "Compiling for Android")
+    target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
     include(GNUInstallDirs)
     install(TARGETS appNextAppUi
         BUNDLE DESTINATION .

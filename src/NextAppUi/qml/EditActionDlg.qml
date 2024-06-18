@@ -5,10 +5,11 @@ import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPb
 import "common.js" as Common
+import Nextapp.Models
 
 Dialog {
     id: root
-    property string node: MainTreeModel.selected
+    property string node: NaMainTreeModel.selected
     property ActionPrx aprx
     property NextappPb.action action: aprx.action
     property bool assigned: false

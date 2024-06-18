@@ -1021,7 +1021,7 @@ void ActionsModel::fetchIf(bool restart)
 
 void ActionsModel::selectedChanged()
 {
-    if (mode_ >= FetchWhat::FW_SELECTED_NODE) {
+    if (mode_ == FetchWhat::FW_SELECTED_NODE || mode_ == FetchWhat::FW_SELECTED_NODE_AND_CHILDREN) {
         fetchIf();
     }
 }

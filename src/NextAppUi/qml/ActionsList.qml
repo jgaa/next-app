@@ -5,11 +5,12 @@ import QtQuick.Dialogs
 import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPB
+import Nextapp.Models
 
 Rectangle {
     id: root
     anchors.fill: parent
-    property string selectedItemUuid: MainTreeModel.selected
+    property string selectedItemUuid: NaMainTreeModel.selected
 
     color: MaterialDesignStyling.surface
 

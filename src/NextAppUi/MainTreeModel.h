@@ -12,7 +12,7 @@ class MainTreeModel : public QAbstractItemModel
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_SINGLETON
+//    QML_SINGLETON
     Q_PROPERTY(QModelIndex useRoot READ useRoot NOTIFY useRootChanged)
     Q_PROPERTY(QString selected READ selected WRITE setSelected NOTIFY selectedChanged)
 

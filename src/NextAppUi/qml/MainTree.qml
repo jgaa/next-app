@@ -14,7 +14,7 @@ Rectangle {
     opacity: NaComm.connected ? 1.0 : 0.5
 
     //property alias currentIndex : treeView.selectionModel.currentIndex
-    property string selectedItemUuid: MainTreeModel.selected
+    property string selectedItemUuid: NaMainTreeModel.selected
     property bool hasSelection: selectedItemUuid !== ""
 
     color: MaterialDesignStyling.surface
@@ -34,7 +34,7 @@ Rectangle {
                 boundsMovement: Flickable.StopAtBounds
                 clip: true
                 anchors.fill: parent
-                model: MainTreeModel
+                model: NaMainTreeModel
 
                 delegate: TreeViewDelegate {
                     id: treeDelegate
@@ -144,7 +144,7 @@ Rectangle {
                                         setSelection(uuid)
                                     break;
                                     case Qt.RightButton:
-                                        contextMenu.node = MainTreeModel.nodeMapFromUuid(uuid)
+                                        contextMenu.node = NaMainTreeModel.nodeMapFromUuid(uuid)
                                         contextMenu.index = treeDelegate.index
                                         contextMenu.popup();
                                     break;
@@ -157,7 +157,7 @@ Rectangle {
                             }
 
                             onLongPressed: {
-                                contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                                contextMenu.node = NaMainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
                                 contextMenu.popup();
                             }
                         }
@@ -180,7 +180,7 @@ Rectangle {
 
                     background: Rectangle {
                         id: bg
-                        property bool isSelected : MainTreeModel.selected === treeDelegate.uuid
+                        property bool isSelected : NaMainTreeModel.selected === treeDelegate.uuid
 
                         color: (isSelected)
                             ? MaterialDesignStyling.surfaceContainer
@@ -224,7 +224,7 @@ Rectangle {
                                             drag.getDataAsString("text/app.nextapp.node"))
 
                                 var uuid = drag.getDataAsString("text/app.nextapp.node")
-                                if (!MainTreeModel.canMove(uuid, treeDelegate.uuid)) {
+                                if (!NaMainTreeModel.canMove(uuid, treeDelegate.uuid)) {
                                     console.log("We should not allow the drop here")
                                     drag.accepted = false
                                 }
@@ -249,10 +249,10 @@ Rectangle {
                                             drop.getDataAsString("text/app.nextapp.node"))
 
                                 var uuid = drop.getDataAsString("text/app.nextapp.node")
-                                if (MainTreeModel.canMove(drop.source.uuid, treeDelegate.uuid)) {
+                                if (NaMainTreeModel.canMove(drop.source.uuid, treeDelegate.uuid)) {
                                     console.log("Seems OK")
                                     drop.accepted = true
-                                    MainTreeModel.moveNode(drop.source.uuid, treeDelegate.uuid)
+                                    NaMainTreeModel.moveNode(drop.source.uuid, treeDelegate.uuid)
                                     return
                                 }
                             }
@@ -275,7 +275,7 @@ Rectangle {
                     //             //     setSelection(treeDelegate.uuid)
                     //             // break;
                     //             case Qt.RightButton:
-                    //                 contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                    //                 contextMenu.node = NaMainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
                     //                 contextMenu.index = treeDelegate.index
                     //                 contextMenu.popup();
                     //             break;
@@ -283,7 +283,7 @@ Rectangle {
                     //     }
 
                     //     onLongPressed: {
-                    //         contextMenu.node = MainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                    //         contextMenu.node = NaMainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
                     //         contextMenu.popup();
                     //     }
                     // }
@@ -333,7 +333,7 @@ Rectangle {
         text: qsTr("Note that any sub-items and all related information, including worked time, project information, actions etc. will also be deleted! This action can not be undone.")
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: {
-           MainTreeModel.deleteNode(node.uuid)
+           NaMainTreeModel.deleteNode(node.uuid)
            confirmDelete.close()
         }
 
@@ -363,6 +363,6 @@ Rectangle {
 
     function setSelection(uuid) {
         console.log("Selection changed to ", uuid)
-        MainTreeModel.selected = uuid;
+        NaMainTreeModel.selected = uuid;
     }
 }
