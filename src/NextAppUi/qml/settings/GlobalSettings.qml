@@ -8,6 +8,7 @@ import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
 
 Item {
+    id: root
     property bool initialized: false
 
     function commit() {
@@ -48,7 +49,7 @@ Item {
             DlgInputField {
                 id: from
                 //placeholderText: qsTr("from");
-                pwidth: 100
+                Layout.preferredWidth: 80
             }
 
             Item {
@@ -58,7 +59,7 @@ Item {
             DlgInputField {
                 id: to
                 //placeholderText: qsTr("to");
-                pwidth: 100
+                Layout.preferredWidth: 80
             }
         }
 
@@ -67,6 +68,7 @@ Item {
         DlgInputField {
             id: timeZone
             //placeholderText: qsTr("to");
+            Layout.fillWidth: true
         }
 
         Label { text: qsTr("Region")}
@@ -74,6 +76,7 @@ Item {
         DlgInputField {
             id: region
             //placeholderText: qsTr("to");
+            Layout.fillWidth: true
         }
 
         // Label { text: qsTr("Language")}

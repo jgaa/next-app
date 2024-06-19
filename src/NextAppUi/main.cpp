@@ -5,6 +5,7 @@
 #include <QCommandLineParser>
 #include <QIcon>
 #include <QAbstractItemModelTester>
+#include <QQuickStyle>
 
 #include "ServerComm.h"
 #include "MainTreeModel.h"
@@ -45,6 +46,11 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
 int main(int argc, char *argv[])
 {
     //qRegisterProtobufTypes();
+
+#ifdef __ANDROID__
+    qputenv("QT_SCALE_FACTOR", QByteArray("1.3")); // Adjust the scale factor as needed
+#endif
+
     volatile auto registration = &qml_register_types_nextapp_pb;
     Q_UNUSED(registration);
     std::string log_level_qt =
@@ -64,6 +70,8 @@ int main(int argc, char *argv[])
 #endif
     QGuiApplication::setApplicationVersion(NEXTAPP_VERSION);
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/NextAppUi/icons/nextapp.svg"));
+
+    QQuickStyle::setStyle("Material");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Personal organizer");
@@ -132,6 +140,7 @@ int main(int argc, char *argv[])
 
     LOG_INFO << "Loading main QML file: " << main_qml;
     //engine.loadFromModule("NextAppUi", main_qml);
+    engine.addImportPath("qrc:/qt/qml/NextAppUi/qml");
     engine.load(QUrl{QString::fromUtf8(main_qml)});
     if (engine.rootObjects().isEmpty()) {
         qWarning() << "Failed to initialize engine!";

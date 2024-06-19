@@ -172,7 +172,8 @@ MenuBar {
     background: Rectangle {
         color: NaCore.develBuild ? "red" : MaterialDesignStyling.surfaceContainer
         WindowDragHandler {
-            dragWindow: root.dragWindow
+            enabled: Qt.platform.os !== "android" && Qt.platform.os !== "ios"
+            dragWindow: enabled ? root.dragWindow : null
         }
     }
 }

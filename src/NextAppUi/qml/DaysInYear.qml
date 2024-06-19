@@ -9,12 +9,15 @@ Rectangle {
     id: root
     enabled: NaComm.connected
     opacity: NaComm.connected ? 1.0 : 0.5
+    implicitWidth: grid.implicitWidth
+    implicitHeight: grid.implicitHeight
 
     property int fontSize: 16
 
-    color: Colors.background
+    color: MaterialDesignStyling.surface
 
     GridLayout {
+        id: grid
         columns: 4
         columnSpacing: 20
         rowSpacing: 10

@@ -6,6 +6,7 @@ import QtCore
 import NextAppUi
 import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
+
 Item {
     anchors.fill: parent
 
@@ -27,23 +28,24 @@ Item {
         columns: 2
         //flow: GridLayout.TopToBottom
 
-        Label { text: qsTr("Server")}
+        Label {
+            id: label
+            text: qsTr("Server")
+        }
 
-        TextField {
+        DlgInputField {
             Layout.fillWidth: true
             id: address
             text: settings.serverAddress
-            placeholderText: qsTr("https://nextapp.lastviking.eu");
-            width: 150
+            //placeholderText: qsTr("https://nextapp.lastviking.eu");
         }
 
         Label { text: qsTr("Page Size")}
-        TextField {
-            Layout.fillWidth: true
+        DlgInputField {
             id: pageSize
             text: settings.value("pagination/page_size", 100)
-            placeholderText: qsTr("20 - 200");
-            width: 150
+            //placeholderText: qsTr("20 - 200");
+            Layout.preferredWidth: 80
         }
 
         Item {}

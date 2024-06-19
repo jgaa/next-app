@@ -3,13 +3,14 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
 import NextAppUi
+import Nextapp.Models
 
 Dialog {
     id: root
-    x: (parent.width - width) / 3
-    y: (parent.height - height) / 3
-    width: 800
-    height: 600
+    x: NaCore.isMobile ? 0 : (parent.width - width) / 3
+    y: NaCore.isMobile ? 0 : (parent.height - height) / 3
+    width: NaCore.isMobile ? Screen.width : 800
+    height: NaCore.isMobile ? Screen.height - 100 : 600
 
     standardButtons: Dialog.Ok | Dialog.Cancel
     title: qsTr("Settings")

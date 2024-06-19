@@ -107,6 +107,7 @@ ApplicationWindow {
     }
 
     ResizeButton {
-        resizeWindow: root
+        enabled: Qt.platform.os !== "android" && Qt.platform.os !== "ios"
+        resizeWindow: enabled ? root : null
     }
 }

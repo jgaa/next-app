@@ -21,11 +21,8 @@ if (NEXTAPP_DEVEL_SETTINGS)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
-
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 set(QT6_IS_SHARED_LIBS_BUILD OFF)
-
 # find_package(Boost REQUIRED)
 # include_directories(${Boost_INCLUDE_DIRS})
 
@@ -77,10 +74,19 @@ target_link_libraries(NextappGrpcClient
         Qt6::Grpc
 )
 
+#set(ANDROID_MANIFEST_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/AndroidManifest.xml)
+
+
 qt_add_executable(appNextAppUi
     main.cpp
     logging.h
 )
+
+if(ANDROID)
+    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android")
+    set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_PACKAGE_SOURCE_DIR}")
+endif()
+
 
 target_include_directories(appNextAppUi PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
@@ -138,6 +144,7 @@ qt_add_qml_module(appNextAppUi
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
+        qml/android/DrawerContent.qml
         qml/android/main.qml
         qml/calendar/CalendarView.qml
         qml/calendar/DayPlan.qml
@@ -163,6 +170,7 @@ qt_add_qml_module(appNextAppUi
         icons/folder_open.svg
         icons/fontawsome/angle-down.svg
         icons/fontawsome/angle-right.svg
+        icons/fontawsome/bars.svg
         icons/fontawsome/calendar-day.svg
         icons/fontawsome/calendar-days.svg
         icons/fontawsome/calendar.svg
@@ -173,6 +181,7 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/pen-to-square.svg
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
+        icons/fontawsome/gear.svg
         icons/fontawsome/trash-can.svg
         icons/generic_file.svg
         icons/globe.svg

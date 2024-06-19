@@ -5,7 +5,6 @@ import NextAppUi
 import nextapp.pb as NextappPB
 import Nextapp.Models
 
-
 Rectangle {
     id: root
     property int hourHeight: 60

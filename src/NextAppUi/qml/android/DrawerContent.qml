@@ -11,9 +11,8 @@ Rectangle {
     id: root
 
     //property alias currentTabIndex: topBar.currentIndex
-    property int currentMainItem: 0
-    property int currentTabIndex: -1
-    property ApplicationWindow dragWindow: null
+    property int current: 0
+    //property int currentTabIndex: -1
     readonly property int tabBarSpacing: 10
     property string currentIcon: topBar.currentItem.icon.source
 
@@ -101,8 +100,9 @@ Rectangle {
 
                 onCheckedChanged: {
                     if (checked) {
-                        root.currentMainItem = 0
-                        root.currentTabIndex = -1
+                        root.current = 0
+                        //root.current = 0
+                        //root.currentTabIndex = -1
                     }
                 }
             }
@@ -115,8 +115,9 @@ Rectangle {
 
                 onCheckedChanged: {
                     if (checked) {
-                        root.currentMainItem = 1
-                        root.currentTabIndex = 0
+                        root.current = 1
+                        //root.currentMainItem = 1
+                        //root.currentTabIndex = 0
                     }
                 }
             }
@@ -129,8 +130,9 @@ Rectangle {
 
                 onCheckedChanged: {
                     if (checked) {
-                        root.currentMainItem = 1
-                        root.currentTabIndex = 1
+                        root.current = 2
+                        //root.currentMainItem = 1
+                        //root.currentTabIndex = 1
                     }
                 }
             }
@@ -143,8 +145,9 @@ Rectangle {
 
                 onCheckedChanged: {
                     if (checked) {
-                        root.currentMainItem = 2
-                        root.currentTabIndex = -1
+                        root.current = 3
+                        //root.currentMainItem = 2
+                        //root.currentTabIndex = -1
                     }
                 }
             }
@@ -157,8 +160,9 @@ Rectangle {
 
                 onCheckedChanged: {
                     if (checked) {
-                        root.currentMainItem = 1
-                        root.currentTabIndex = 2
+                        root.current = 4
+                        //root.currentMainItem = 1
+                        //root.currentTabIndex = 2
                     }
                 }
             }
