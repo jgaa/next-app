@@ -19,8 +19,8 @@ Dialog {
     standardButtons: Dialog.Ok | Dialog.Cancel
 
     onOpened: {
-        console.log("Dialog opened :)");
-        console.log("TimeBlock id is", tb.id_proto)
+        // console.log("Dialog opened :)");
+        // console.log("TimeBlock id is", tb.id_proto)
         assign()
         actionsCtl.model = parent.model.getTimeBoxActionsModel(tb.id_proto, root)
     }

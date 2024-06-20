@@ -24,8 +24,8 @@ Dialog {
     }
 
     onValidChanged: {
-        console.log("DayDialog: Valid changed to ", valid)
-        console.log("Report is ", model.report)
+        // console.log("DayDialog: Valid changed to ", valid)
+        // console.log("Report is ", model.report)
 
         // if (valid && !colorts_initialized) {
         //     //select.currentIndex = DayColorModel.getIndexForColorUuid(model.colorUuid)

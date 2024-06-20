@@ -85,7 +85,6 @@ Rectangle {
                         switch (button) {
                             case Qt.LeftButton:
                                 listView.currentIndex = index
-                                console.log("Actions: Current selection is ", index)
                                 break;
                             case Qt.RightButton:
                                 contextMenu.uuid = uuid
@@ -148,6 +147,10 @@ Rectangle {
                             Layout.topMargin: 2
                             Layout.bottomMargin: 2
                             isChecked: done
+                            checkedCode: "\uf058"
+                            uncheckedCode: "\uf111"
+                            checkedColor: "green"
+                            uncheckedColor: "orange"
 
                             onClicked: {
                                 ActionsModel.markActionAsDone(uuid, isChecked)
@@ -165,6 +168,10 @@ Rectangle {
                             id: actionName
                             text: name
                             color: done ? MaterialDesignStyling.onSurfaceVariant : MaterialDesignStyling.onSurface
+
+                            Component.onCompleted: {
+                                font.pointSize *= 1.15;
+                            }
                         }
 
                         CheckBoxWithFontIcon {
@@ -209,7 +216,7 @@ Rectangle {
                         }
 
                         Label {
-                            color: done ? MaterialDesignStyling.onSurfaceVariant : MaterialDesignStyling.onSurface
+                            color: MaterialDesignStyling.outline
                             text: listName
                             visible: text !== ""
                         }

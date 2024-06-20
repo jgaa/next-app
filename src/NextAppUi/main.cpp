@@ -41,15 +41,34 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
 
     return logfault::LogLevel::INFO;
 }
+
+// Must match uiStyle in PrefSettings.qml
+constexpr auto styles = to_array<string_view>(
+    {"", "Basic", "Imagine", "Fusion", "Material",
+//        "MacOS", "iOS",
+     "Universal"});
+
+// Must match uiScale in PrefSettings.qml
+constexpr auto scales = to_array<string_view>(
+    {
+        "",
+        "0.5",
+        "0.75",
+        "0.88",
+        "1.0",
+        "1.1",
+        "1.2",
+        "1.3",
+        "1.5",
+        "1.75",
+        "2.0",
+    });
+
 } // anon ns
 
 int main(int argc, char *argv[])
 {
     //qRegisterProtobufTypes();
-
-#ifdef __ANDROID__
-    qputenv("QT_SCALE_FACTOR", QByteArray("1.3")); // Adjust the scale factor as needed
-#endif
 
     volatile auto registration = &qml_register_types_nextapp_pb;
     Q_UNUSED(registration);
@@ -62,6 +81,7 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
 
+
     QGuiApplication::setOrganizationName("TheLastViking");
 #ifdef DEVEL_SETTINGS
     QGuiApplication::setApplicationName("nextapp-devel");
@@ -70,8 +90,6 @@ int main(int argc, char *argv[])
 #endif
     QGuiApplication::setApplicationVersion(NEXTAPP_VERSION);
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/NextAppUi/icons/nextapp.svg"));
-
-    QQuickStyle::setStyle("Material");
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Personal organizer");
@@ -109,6 +127,38 @@ int main(int argc, char *argv[])
         }
     }
 
+    {
+        QSettings settings;
+
+        if (!settings.contains("UI/style")) {
+            settings.setValue("UI/style", 0);
+        }
+
+        auto style = styles.at(settings.value("UI/style").toInt());
+        auto scale = scales.at(settings.value("UI/scale").toInt());
+
+#ifdef USE_ANDROID_UI
+        if (style.empty()) {
+            style = "Material";
+        }
+#endif
+#if defined(USE_ANDROID_UI) || defined(__ANDROID__)
+        if (scale.empty()) {
+            scale = "1.3";
+        }
+#endif
+
+        if (!style.empty()) {
+            LOG_INFO << "Setting UI style to: " << style;
+            QQuickStyle::setStyle(style.data());
+        }
+
+        if (!scale.empty()) {
+            LOG_INFO << "Setting UI scale to: " << scale;
+            qputenv("QT_SCALE_FACTOR", scale.data());
+        }
+    }
+
     nextapp::pb::Nextapp::Client cli{&app};
     auto info = cli.GetServerInfo({});
 
@@ -118,6 +168,7 @@ int main(int argc, char *argv[])
     MainTreeModel main_tree;
 
     auto& engine = NextAppCore::engine();
+
 
     qRegisterMetaType<ActionCategoriesModel*>("ActionCategoriesModel*");
     qRegisterMetaType<TimeBoxActionsModel*>("TimeBoxActionsModel*");
@@ -132,7 +183,7 @@ int main(int argc, char *argv[])
 #endif
 
     string_view main_qml = "qrc:/qt/qml/NextAppUi/Main.qml";
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(USE_ANDROID_UI)
     // Code specific to Android
     qputenv("QT_QUICK_CONTROLS_STYLE", "Material");
     main_qml = "qrc:/qt/qml/NextAppUi/qml/android/main.qml";

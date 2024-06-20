@@ -6,18 +6,21 @@ import QtCore
 import NextAppUi
 import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
+
+pragma ComponentBehavior: Bound
+
 Item {
     anchors.fill: parent
 
     Settings {
         id: settings
-        property string uiTheme : "light"
     }
 
     function commit() {
-        var name = uiTheme.currentText
-        settings.setValue("UI/theme", name)
-        MaterialDesignStyling.setTheme(name)
+        settings.setValue("UI/theme", uiTheme.currentText)
+        settings.setValue("UI/style", uiStyle.currentIndex.toString())
+        settings.setValue("UI/scale", uiScale.currentIndex.toString())
+        settings.sync()
     }
 
     GridLayout {
@@ -30,6 +33,39 @@ Item {
             id: uiTheme
             currentIndex: settings.value("UI/theme") === "light" ? 0 : 1
             model: ["light", "dark"]
+        }
+
+        Label { text: qsTr("Ui Style")}
+        ComboBox {
+            id: uiStyle
+            currentIndex: parseInt(settings.value("UI/style"))
+            Layout.fillWidth: true
+            model: [qsTr("Default"),
+                qsTr("Simple"),
+                qsTr("Imagine"),
+                qsTr("Desktop"),
+                qsTr("Android"),
+                // qsTr("macOS"),
+                // qsTr("iOS"),
+                qsTr("Windows")]
+        }
+
+        Label { text: qsTr("Ui Scale")}
+        ComboBox {
+            id: uiScale
+            currentIndex: parseInt(settings.value("UI/scale"))
+            Layout.fillWidth: true
+            model: [qsTr("Default"),
+                qsTr("Very Tiny"),
+                qsTr("Tiny"),
+                qsTr("Small"),
+                qsTr("Normal"),
+                qsTr("Large"),
+                qsTr("Larger"),
+                qsTr("Even larger"),
+                qsTr("Very large"),
+                qsTr("Huge"),
+                qsTr("Very Huge"),]
         }
 
         Item {

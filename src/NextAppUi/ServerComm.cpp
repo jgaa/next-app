@@ -163,8 +163,8 @@ void ServerComm::getColorsInMonth(unsigned int year, unsigned int month)
     callRpc<nextapp::pb::Month>([this](nextapp::pb::MonthReq req) {
         return client_->GetMonth(req);
     } , [this, y=year, m=month](const nextapp::pb::Month& month) {
-        LOG_TRACE << "Received colors for " << month.days().size()
-                  << " days for month: " << y << "-" << (m + 1);
+        // LOG_TRACE << "Received colors for " << month.days().size()
+        //           << " days for month: " << y << "-" << (m + 1);
 
         assert(month.year() == y);
         assert(month.month() == m);

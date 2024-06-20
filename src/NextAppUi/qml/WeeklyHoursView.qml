@@ -135,7 +135,7 @@ Rectangle {
         modal: true
 
         onSelectedWeekClosed: (date, accepted, week) => {
-            console.log("Selected week: " + date + ", accepted = " + accepted + ", week: " + week)
+            // console.log("Selected week: " + date + ", accepted = " + accepted + ", week: " + week)
             if (accepted) {
                 tableView.model.startTime = date.getTime() / 1000
                 selectionCtl.displayText = qsTr("Week #%1/%2").arg(week).arg(datePicker.currentYear)

@@ -9,13 +9,14 @@ Dialog {
     id: root
     x: NaCore.isMobile ? 0 : (parent.width - width) / 3
     y: NaCore.isMobile ? 0 : (parent.height - height) / 3
-    width: NaCore.isMobile ? Screen.width : 800
-    height: NaCore.isMobile ? Screen.height - 100 : 600
+    width: Math.min(parent.width, 800)
+    height: Math.min(parent.height - 10, 600)
 
     standardButtons: Dialog.Ok | Dialog.Cancel
     title: qsTr("Settings")
 
     ColumnLayout {
+        anchors.margins: 20
         anchors.fill: parent
         TabBar {
             id: tab
@@ -32,7 +33,7 @@ Dialog {
             }
 
             TabButton {
-                text: qsTr("Preferences")
+                text: qsTr("Appearance")
                 width: implicitWidth
             }
         }

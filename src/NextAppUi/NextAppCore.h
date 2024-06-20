@@ -18,6 +18,7 @@ class NextAppCore : public QObject
 
     Q_PROPERTY(QString qtVersion READ qtVersion CONSTANT)
     Q_PROPERTY(bool isMobile READ isMobile CONSTANT)
+    Q_PROPERTY(bool isMobileSimulation READ isMobileSimulation CONSTANT)
 
     // True if the app was build with the CMAKE option DEVEL_SETTINGS enabled
     Q_PROPERTY(bool develBuild READ isDevelBuild CONSTANT)
@@ -44,15 +45,23 @@ public:
     static Q_INVOKABLE time_t parseHourMin(const QString& str);
 
     bool isMobile() const noexcept {
-#ifdef __ANDROID__
+#if defined (__ANDROID__) || defined (USE_ANDROID_UI)
         return true;
 #else
         return false;
 #endif
     }
 
+    bool isMobileSimulation() const noexcept {
+#if defined (USE_ANDROID_UI)
+        return true;
+#else
+        return false;
+#endif
+}
+
     static constexpr bool isDevelBuild() {
-#if defined(DEVEL_SETTINGS) && DEVEL_SETTINGS
+#if defined(DEVEL_SETTINGS)
         return true;
 #else
         return false;

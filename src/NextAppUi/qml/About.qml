@@ -4,22 +4,10 @@ import QtQuick.Layouts
 import NextAppUi
 import Nextapp.Models
 
-ApplicationWindow {
+Dialog {
     id: root
-    width: 650
-    height: 550
-    flags: Qt.Window // | Qt.FramelessWindowHint
-    color: MaterialDesignStyling.surfaceContainerHigh
-    title: "About Nextapp"
-
-    menuBar: MyMenuBar {
-        id: menuBar
-        visible: false
-
-        dragWindow: root
-        implicitHeight: 30
-        infoText: "About Nextapp"
-    }
+    title: "About"
+    standardButtons: Dialog.Close
 
     ColumnLayout {
         anchors.fill: parent
@@ -65,7 +53,6 @@ ApplicationWindow {
                        + "The nextapp-server is version %5."
                        + "")
                        .arg(Application.version).arg("https://github.com/jgaa/next-app/blob/main/src/NextAppUi/LICENSE").arg("2024").arg(NaCore.qtVersion).arg(NaComm.version);
-              color: MaterialDesignStyling.onSurface
               wrapMode: Text.WordWrap
               readOnly: true
               antialiasing: true
@@ -77,37 +64,8 @@ ApplicationWindow {
           }
         }
 
-        Button {
-            id: btn
-            Layout.preferredWidth: 200
-            Layout.preferredHeight: 30
-            width: 200
-            Layout.alignment: Qt.AlignHCenter
-            text: qsTr("Close")
-            onClicked: root.close()
-
-            contentItem: Text {
-                color: MaterialDesignStyling.onSecondaryContainer
-                text: parent.text
-                font: btn.font
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            background: Rectangle {
-                anchors.fill: parent
-                color: MaterialDesignStyling.secondaryContainer
-                border.width: 1
-                border.color: MaterialDesignStyling.outline
-            }
-        }
-
         Item {
             Layout.preferredHeight: 10
         }
-    }
-
-    ResizeButton {
-        enabled: Qt.platform.os !== "android" && Qt.platform.os !== "ios"
-        resizeWindow: enabled ? root : null
     }
 }

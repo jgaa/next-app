@@ -20,12 +20,12 @@ Rectangle {
     property int days: 1
 
     onVisibleChanged: {
-        console.log("CalendarView: Visible changed to ", visible)
+        // console.log("CalendarView: Visible changed to ", visible)
         initModel()
     }
 
     Component.onCompleted: {
-        console.log("CalendarView: Completed")
+        // console.log("CalendarView: Completed")
         initModel()
     }
 
@@ -33,7 +33,7 @@ Rectangle {
     function initModel() {
         if (root.visible && !root.inilializedModel) {
             root.inilializedModel = true
-            console.log("Visible. model is valid=", root.model.valid)
+            // console.log("Visible. model is valid=", root.model.valid)
             refresh()
         }
     }
@@ -199,7 +199,7 @@ Rectangle {
 
                 Repeater {
                     onModelChanged: {
-                        console.log("Repeater model changed")
+                        // console.log("Repeater model changed")
                     }
 
                     id: repeaterCtl

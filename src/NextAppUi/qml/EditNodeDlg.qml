@@ -36,11 +36,11 @@ Dialog {
     }
 
     onOpened: {
-        console.log("Dialog opened :)");
+        // console.log("Dialog opened :)");
 
         if (node !== null) {
 
-            console.log("EditNode - node: ", JSON.stringify(node))
+            // console.log("EditNode - node: ", JSON.stringify(node))
 
             root.active = node.active
             root.name = node.name
@@ -75,7 +75,7 @@ Dialog {
                 text: qsTr("Name")
             }
 
-            DlgInputField {
+            TextField{
                 id: name
             }
 
@@ -128,7 +128,7 @@ Dialog {
                         root.kind = kinds[0]
                     }
 
-                    console.log("root.kind is ", root.kind)
+                    // console.log("root.kind is ", root.kind)
                     root.icon = "../icons/" + root.kind + ".svg"
                 }
             }

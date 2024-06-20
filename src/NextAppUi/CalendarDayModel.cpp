@@ -201,11 +201,17 @@ void CalendarDayModel::addCalendarEvents()
         if (item.event.hasTimeBlock()) {
             const auto& tb = item.event.timeBlock();
             if (auto *object = timx_boxes_pool_.get(ctl)) {
-                object->setProperty("name", tb.name());
+                auto name = tb.name();
+                if (name.isEmpty() && !tb.category().isEmpty()) {
+                    name = ActionCategoriesModel::instance().getName(tb.category());
+                }
+                object->setProperty("name", name);
                 object->setProperty("uuid", tb.id_proto());
                 object->setProperty("start", NextAppCore::toTime(item.start));
                 object->setProperty("end", NextAppCore::toTime(item.end));
                 object->setProperty("category", tb.category());
+                const auto duration = (item.end - item.start);
+                object->setProperty("duration", toHourMin(duration));
 
                 // Calculate the position and size of the time box
                 const auto when = QDateTime::fromSecsSinceEpoch(tb.timeSpan().start());

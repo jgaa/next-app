@@ -4,8 +4,10 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
+import QtQuick.Effects
 import NextAppUi
-import Nextapp.Models 1.0
+import Nextapp.Models
+import "../common.js" as Common
 
 Rectangle {
     id: root
@@ -20,23 +22,27 @@ Rectangle {
 
     component SidebarEntry: Button {
         id: sidebarButton
+        property int inconSize: 27
+        property string bgColor: MaterialDesignStyling.onSurface
 
-        Layout.alignment: Qt.AlignHCenter
+        Layout.alignment: Qt.AlignLeft
         Layout.fillWidth: true
+        Layout.leftMargin: 10
+        Layout.rightMargin: 10
 
         icon.color: down || checked ? MaterialDesignStyling.onPrimaryContainer  : MaterialDesignStyling.onSurfaceVariant
-        icon.width: 27
-        icon.height: 27
+        icon.width: inconSize
+        icon.height: inconSize
 
-        topPadding: 0
-        rightPadding: 0
-        bottomPadding: 0
-        leftPadding: 0
+        // topPadding: 0
+        // rightPadding: 0
+        // bottomPadding: 0
+        // leftPadding: 0
         background: Rectangle {
             height: icon.height * 1.2
             x: 20
             width: parent.width - 40
-            color: MaterialDesignStyling.onSurface
+            color: sidebarButton.bgColor
             opacity: sidebarButton.hovered ? 0.5 : 0
             radius: 5
         }
@@ -48,8 +54,9 @@ Rectangle {
 
             anchors.verticalCenter: parent.verticalCenter
             x: 2
-            width: 4
-            height: sidebarButton.icon.height * 1.2
+            width: 6
+            radius: 5
+            height: sidebarButton.icon.height
 
             visible: sidebarButton.checked
             color: MaterialDesignStyling.onPrimaryContainer
@@ -86,17 +93,25 @@ Rectangle {
         anchors.fill: root
         anchors.topMargin: root.tabBarSpacing
         anchors.bottomMargin: root.tabBarSpacing
-
         spacing: root.tabBarSpacing
+
         TabBar {
             id: topBar
+            Layout.margins: 10
+
+            background: Rectangle {
+                color: MaterialDesignStyling.inverseSurface
+                opacity: 0.4
+                radius: 10
+            }
 
             spacing: root.tabBarSpacing
             SidebarEntry {
                 id: dayInYear
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome//calendar-days.svg"
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-days.svg"
                 checkable: true
                 checked: true
+                text: qsTr("Green Days")
 
                 onCheckedChanged: {
                     if (checked) {
@@ -123,14 +138,26 @@ Rectangle {
             }
 
             SidebarEntry {
-                id: workHours
-
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/clock.svg"
                 checkable: true
 
                 onCheckedChanged: {
                     if (checked) {
                         root.current = 2
+                        //root.currentMainItem = 1
+                        //root.currentTabIndex = 1
+                    }
+                }
+            }
+
+            SidebarEntry {
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-day.svg"
+                text: qsTr("Calendar")
+                checkable: true
+
+                onCheckedChanged: {
+                    if (checked) {
+                        root.current = 3
                         //root.currentMainItem = 1
                         //root.currentTabIndex = 1
                     }
@@ -145,7 +172,7 @@ Rectangle {
 
                 onCheckedChanged: {
                     if (checked) {
-                        root.current = 3
+                        root.current = 4
                         //root.currentMainItem = 2
                         //root.currentTabIndex = -1
                     }
@@ -160,11 +187,36 @@ Rectangle {
 
                 onCheckedChanged: {
                     if (checked) {
-                        root.current = 4
+                        root.current = 5
                         //root.currentMainItem = 1
                         //root.currentTabIndex = 2
                     }
                 }
+            }
+        }
+
+        ColumnLayout {
+            id: menuBar
+            spacing: root.tabBarSpacing
+            Layout.leftMargin: 10
+            Layout.rightMargin: 10
+            Layout.fillWidth: true
+            RoundButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/gear.svg"
+                checkable: false
+                text: qsTr("Settings")
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/settings/SettingsDlg.qml", appWindow, {});
+            }
+
+            RoundButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
+                text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/cloud-bolt.svg"
+                checkable: false
+                onClicked: NaComm.toggleConnect()
             }
         }
 

@@ -57,11 +57,11 @@ Rectangle {
             editTriggers: TableView.OnDoubleClicked | TableView.editTriggersOnEditKeyPressed | TableView.OnEnterPressed | TableView.OnF2Pressed
 
             Component.onCompleted: {
-                console.log("WorkSessionList.onCompleted")
+                // console.log("WorkSessionList.onCompleted")
                 model.onModelReset.connect(function() {
-                    console.log("WorkSessionList.onModelReset")
+                    // console.log("WorkSessionList.onModelReset")
                     if (root.selectedItem !== "" && !model.sessionExists(root.selectedItem)) {
-                        console.log("WorkSessionList.onModelReset clearing selectedItem")
+                        // console.log("WorkSessionList.onModelReset clearing selectedItem")
                         root.selectedItem = ""
                     }
                     somethingChanged()
@@ -182,7 +182,7 @@ Rectangle {
                     Component.onCompleted: selectAll()
 
                     TableView.onCommit: {
-                        console.log("Committing: ", text)
+                        // console.log("Committing: ", text)
                         display = text
                     }
                 }

@@ -16,7 +16,7 @@ Rectangle {
         target: model
 
         function onValidChanged() {
-            console.log("DayPlan: Model Valid Changed ", model.valid)
+            // console.log("DayPlan: Model Valid Changed ", model.valid)
             if (model.valid) {
                 // Redraw the component
                 //root.update();
@@ -25,13 +25,13 @@ Rectangle {
         }
 
         // function onTimeChanged() {
-        //     console.log("DayPlan: Model Time Changed ", model.when)
+        //     // console.log("DayPlan: Model Time Changed ", model.when)
         //     //canvasCtl.requestPaint()
         //     //currentTimeMark.requestPaint()
         // }
 
         function onTodayChanged() {
-            console.log("DayPlan: Model Today Changed ", model.today)
+            // console.log("DayPlan: Model Today Changed ", model.today)
         }
     }
 
@@ -40,7 +40,7 @@ Rectangle {
         anchors.fill: parent
 
         onPaint: {
-            //console.log("DayPlan: Redraing Canvas")
+            // console.log("DayPlan: Redraing Canvas")
 
             var ctx = getContext("2d");
             ctx.beginPath();
@@ -144,7 +144,7 @@ Rectangle {
 
     function minuteToY(minutes) {
         var y = minutes * (root.height / (root.hourHeight * 24.0))
-        //console.log("DayPlan: minuteToY minutes=", minutes, "y=", y, ", height=", root.height, ", minutes=", minutes, ", when=", when)
+        //// console.log("DayPlan: minuteToY minutes=", minutes, "y=", y, ", height=", root.height, ", minutes=", minutes, ", when=", when)
         return Math.floor(y)
     }
 
@@ -180,18 +180,18 @@ Rectangle {
         }
         onPositionChanged: {
             dragRectangle.height = mouseY - dragRectangle.y
-            console.log("dragRectangle: x=",
-                        dragRectangle.x, " y=",
-                        dragRectangle.y, " w=",
-                        dragRectangle.width, ", h=",
-                        dragRectangle.height)
+            // console.log("dragRectangle: x=",
+            //             dragRectangle.x, " y=",
+            //             dragRectangle.y, " w=",
+            //             dragRectangle.width, ", h=",
+            //             dragRectangle.height)
         }
         onReleased: {
             if (dragRectangle.height < 10) {
                 dragRectangle.visible = false
                 return
             }
-            console.log("released")
+            // console.log("released")
             if (mouseY + timeboxPopup.height > root.height) {
                 timeboxPopup.y = mouseY - timeboxPopup.height - 10
             } else {
@@ -210,7 +210,7 @@ Rectangle {
         //visible: false
 
         onClosed: {
-            console.log("closed")
+            // console.log("closed")
             dragRectangle.visible = false
         }
 
@@ -285,7 +285,7 @@ Rectangle {
         anchors.fill: parent
 
         onEntered: (drag) => {
-            console.log("TimeBlock/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+            // console.log("TimeBlock/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
             if (drag.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
                 drag.accepted = true
             }
@@ -296,8 +296,8 @@ Rectangle {
                 let uuid = drop.getDataAsString("text/app.nextapp.calendar.event")
                 let hour =  Math.floor(drop.y / root.hourHeight)
                 let minute = Math.floor((drop.y % root.hourHeight) / (root.hourHeight / 60))
-                console.log("Dropped calendar event ", uuid, " at x=", drop.x, ", y=", drop.y,
-                            " hour=", hour, "minute=", minute)
+                // console.log("Dropped calendar event ", uuid, " at x=", drop.x, ", y=", drop.y,
+                //            " hour=", hour, "minute=", minute)
 
                 let new_time = new Date(root.model.when * 1000)
                 new_time.setHours(hour)

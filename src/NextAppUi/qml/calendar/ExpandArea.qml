@@ -64,8 +64,8 @@ Item {
             let parentPos = mapToItem(target.parent, mouseX, mouseY)
             let hour = Math.floor(parentPos.y / 60)
             let minute = getRoundedMinutes(parentPos.y % 60)
-            console.log("released at x=", parentPos.x, ", y=", parentPos.y,
-                        " hour=", hour, "minute=", minute)
+            // console.log("released at x=", parentPos.x, ", y=", parentPos.y,
+            //            " hour=", hour, "minute=", minute)
 
             target.y = origY
             target.height = origH
@@ -75,20 +75,20 @@ Item {
             new_time.setMinutes(minute)
 
             if (directionUp) {
-                console.log("start_time is ", new_time, ", start is ", target.start)
+                // console.log("start_time is ", new_time, ", start is ", target.start)
                 target.model.moveEvent(target.uuid, new_time.getTime() / 1000, 0)
             } else {
-                console.log("end_time is ", new_time, ", end is ", target.end)
+                // console.log("end_time is ", new_time, ", end is ", target.end)
                 target.model.moveEvent(target.uuid, 0, new_time.getTime() / 1000)
             }
 
-            console.log("released")
+            // console.log("released")
         }
     }
 
     function getRoundedMinutes(minute) {
         const rounded = Math.round(minute / target.model.roundToMinutes) * target.model.roundToMinutes
-        console.log("minute=", minute, ", rounded=", rounded, ", roundToMinutes=", target.model.roundToMinutes)
+        // console.log("minute=", minute, ", rounded=", rounded, ", roundToMinutes=", target.model.roundToMinutes)
         return rounded
     }
 }

@@ -24,8 +24,8 @@ Dialog {
     standardButtons: root.aprx.valid ? (Dialog.Ok | Dialog.Cancel) : Dialog.Cancel
 
     onOpened: {
-        console.log("Dialog opened :)");
-        console.log("action.name is", action.name)
+        // console.log("Dialog opened :)");
+        // console.log("action.name is", action.name)
         assign()
     }
 
@@ -34,7 +34,7 @@ Dialog {
             assign()
         } else {
             // TODO: Popup
-            console.log("Failed to fetch existing Action")
+            // console.log("Failed to fetch existing Action")
         }
     }
 
@@ -57,7 +57,7 @@ Dialog {
             favorite.isChecked = root.action.favorite
             category.uuid = root.action.category
 
-            console.log("EditActionDlg/assign category=", root.action.category)
+            // console.log("EditActionDlg/assign category=", root.action.category)
 
             if (root.action.repeatWhen === 0 /* AT_DATE */) {
                 repeatAfterCtl.value = root.action.repeatAfter
@@ -186,7 +186,7 @@ Dialog {
                             Layout.preferredWidth: root.controlsPreferredWidth
 
                             onSelectionChanged: {
-                                console.log("DueType changed to", whenControl.due.kind)
+                                // console.log("DueType changed to", whenControl.due.kind)
                                 //root.action.due = whenControl.due
                                 shortcuts.currentIndex = -1
                             }
@@ -485,7 +485,7 @@ Dialog {
 
         if (grid.showRepeatSpecCtl) {
             root.action.repeatAfter = createIntFromList(repeatSpecCtl.model)
-            console.log("RepeatAfter bits: ", root.action.repeatAfter)
+            // console.log("RepeatAfter bits: ", root.action.repeatAfter)
             root.action.repeatUnits = 0
         } else if (grid.showRepeatAfterCtl) {
             root.action.repeatAfter = repeatAfterCtl.value
@@ -512,7 +512,7 @@ Dialog {
         let value = 0;
         for (let i = 0; i < listModel.count; i++) {
             var checked = listModel.get(i).checked
-            console.log("Checked", i, checked)
+            // console.log("Checked", i, checked)
             if (checked) {
                 value |= 1 << i;
             }

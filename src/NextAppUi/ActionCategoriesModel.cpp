@@ -14,9 +14,13 @@ bool compare(const nextapp::pb::ActionCategory& a, const nextapp::pb::ActionCate
 
 } // anon ns
 
+ActionCategoriesModel* ActionCategoriesModel::instance_;
+
 ActionCategoriesModel::ActionCategoriesModel(QObject *parent)
     : QAbstractListModel(parent)
 {
+    assert(!instance_);
+    instance_ = this;
     LOG_TRACE_N << "ActionCategoriesModel created";
 
     connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &ActionCategoriesModel::onUpdate);
@@ -80,6 +84,15 @@ nextapp::pb::ActionCategory ActionCategoriesModel::get(int index)
     }
 
     return action_categories_.categories().at(index);
+}
+
+QString ActionCategoriesModel::getName(const QString &id)
+{
+    if (const auto* cat = lookup(id)) {
+        return cat->name();
+    }
+
+    return {};
 }
 
 int ActionCategoriesModel::getIndexByUuid(const QString &id)
@@ -146,6 +159,12 @@ QHash<int, QByteArray> ActionCategoriesModel::roleNames() const
         {DescrRole, "descr"},
         {IdRole, "id"},
     };
+}
+
+ActionCategoriesModel &ActionCategoriesModel::instance()
+{
+    assert(instance_);
+    return *instance_;
 }
 
 void ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
@@ -259,4 +278,17 @@ void ActionCategoriesModel::onReceivedActionCategories(nextapp::pb::ActionCatego
     ranges::sort(action_categories_.categories(), compare);
 
     setValid(true);
+}
+
+nextapp::pb::ActionCategory *ActionCategoriesModel::lookup(const QString &id)
+{
+    auto it = ranges::find_if(action_categories_.categories(), [&id](const nextapp::pb::ActionCategory& c) {
+        return c.id_proto() == id;
+    });
+
+    if (it == action_categories_.categories().end()) {
+        return nullptr;
+    }
+
+    return &*it;
 }

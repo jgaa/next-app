@@ -97,7 +97,7 @@ Rectangle {
         anchors.fill: parent
 
         onEntered: (drag) => {
-            console.log("WorkSessionsView/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+            // console.log("WorkSessionsView/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
             if (drag.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
                 drag.accepted = true
             }
@@ -106,7 +106,7 @@ Rectangle {
         onDropped: (drop) => {
             if (drop.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
                 let uuid = drop.getDataAsString("text/app.nextapp.calendar.event")
-                console.log("WorkSessionsViewDropped calendar event ", uuid, " at x=", drop.x, ", y=", drop.y)
+                // console.log("WorkSessionsViewDropped calendar event ", uuid, " at x=", drop.x, ", y=", drop.y)
 
                 WorkSessionsModel.addCalendarEvent(uuid)
                 drop.accepted = true

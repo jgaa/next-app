@@ -47,35 +47,16 @@ Rectangle {
                     required property string uuid
                     required property string kind
 
-                    indicator: Image {
-                        id: treeIcon
-
+                    indicator: Text {
                         x: treeDelegate.leftMargin + (treeDelegate.depth * treeDelegate.indentation) + 10
+                        width: 12
                         anchors.verticalCenter: parent.verticalCenter
-                        source: treeDelegate.hasChildren ? (treeDelegate.expanded
-                                    ? "../icons/fontawsome/angle-down.svg" : "../icons/fontawsome/angle-right.svg")
-                                : "../icons/fontawsome/circle.svg"
-                        sourceSize.width: 12
-                        sourceSize.height: 12
-                        fillMode: Image.PreserveAspectFit
-
-                        smooth: true
-                        antialiasing: true
-                        asynchronous: true
-                        //visible: treeDelegate.hasChildren
-                    }
-
-                    MultiEffect {
-                        id: iconOverlay
-
-                        anchors.fill: treeIcon
-                        source: treeIcon
-
-                        colorizationColor: (treeDelegate.expanded && treeDelegate.hasChildren)
-                                                 ? MaterialDesignStyling.tertiaryFixed : MaterialDesignStyling.tertiaryFixedDim
-                        colorization: 1.0
-                        brightness: 1.0
-                        visible: treeDelegate.hasChildren
+                        color: MaterialDesignStyling.onSurfaceVariant
+                        font.family: ce.faSolidName
+                        font.styleName: ce.faSolidStyle
+                        font.pointSize: 12
+                        text: treeDelegate.hasChildren
+                              ? treeDelegate.expanded ? "\uf0d7" : "\uf0da" : ""
                     }
 
                     contentItem: RowLayout {
@@ -86,8 +67,6 @@ Rectangle {
                             Layout.leftMargin: 10
                             Layout.preferredHeight: 16
                             Layout.preferredWidth: 20
-                            // width: 20
-                            // height: 16
 
                             Image {
                                 id: kindIcon
@@ -111,7 +90,7 @@ Rectangle {
                             }
 
                             Drag.onDragStarted: {
-                                console.log("Drag started")
+                                // console.log("Drag started")
                             }
                         }
 
@@ -136,11 +115,11 @@ Rectangle {
                             onSingleTapped: (eventPoint, button) => {
                                 switch (button) {
                                     case Qt.LeftButton:
-                                        console.log("Selection: ", name)
+                                        // console.log("Selection: ", name)
                                         if (!label.contains(eventPoint)) {
                                             treeView.toggleExpanded(treeDelegate.row)
                                         }
-                                        treeView.lastIndex = index
+                                        treeView.lastIndex = treeDelegate.index
                                         setSelection(uuid)
                                     break;
                                     case Qt.RightButton:
@@ -152,7 +131,7 @@ Rectangle {
                             }
 
                             onDoubleTapped: {
-                                console.log("Double tapped: ", name, ", row=", treeDelegate.row)
+                                // console.log("Double tapped: ", name, ", row=", treeDelegate.row)
                                 treeView.toggleExpanded(treeDelegate.row)
                             }
 
@@ -174,7 +153,7 @@ Rectangle {
                         id: dragHandler
                         target: content
                         onActiveChanged: {
-                            console.log("DragHandler: active=", active)
+                            // console.log("DragHandler: active=", active)
                         }
                     }
 
@@ -199,18 +178,18 @@ Rectangle {
                         anchors.fill: parent
 
                         onEntered: function(drag) {
-                            console.log("DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+                            // console.log("DropArea entered by ", drag.source.toString(), " types ", drag.formats)
 
                             if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
 
                                 var uuid = drag.getDataAsString("text/app.nextapp.action")
                                 var currNode = drag.getDataAsString("text/app.nextapp.curr.node")
 
-                                console.log("Drag from Action: curr-node=", currNode, " action=", uuid,
-                                            ", drop node=", treeDelegate.uuid)
+                                // console.log("Drag from Action: curr-node=", currNode, " action=", uuid,
+                                //            ", drop node=", treeDelegate.uuid)
 
                                 if (currNode === treeDelegate.uuid) {
-                                    console.log("We should not allow the drop here. Same node.")
+                                    // console.log("We should not allow the drop here. Same node.")
                                     drag.accepted = false
                                     return
                                 }
@@ -220,12 +199,12 @@ Rectangle {
                             }
 
                             if (drag.formats.indexOf("text/app.nextapp.node") !== -1) {
-                                console.log("text/app.nextapp.node: ",
-                                            drag.getDataAsString("text/app.nextapp.node"))
+                                // console.log("text/app.nextapp.node: ",
+                                //            drag.getDataAsString("text/app.nextapp.node"))
 
                                 var uuid = drag.getDataAsString("text/app.nextapp.node")
                                 if (!NaMainTreeModel.canMove(uuid, treeDelegate.uuid)) {
-                                    console.log("We should not allow the drop here")
+                                    // console.log("We should not allow the drop here")
                                     drag.accepted = false
                                 }
                                 drag.accepted = true
@@ -234,7 +213,7 @@ Rectangle {
                         }
 
                         onDropped: function(drop) {
-                            console.log("DropArea receiceived a drop! source=", drop.source.uuid)
+                            // console.log("DropArea receiceived a drop! source=", drop.source.uuid)
 
                             if (drop.formats.indexOf("text/app.nextapp.action") !== -1) {
 
@@ -245,12 +224,12 @@ Rectangle {
                             }
 
                             if (drop.formats.indexOf("text/app.nextapp.node") !== -1) {
-                                console.log("text/app.nextapp.node: ",
-                                            drop.getDataAsString("text/app.nextapp.node"))
+                                // console.log("text/app.nextapp.node: ",
+                                //            drop.getDataAsString("text/app.nextapp.node"))
 
                                 var uuid = drop.getDataAsString("text/app.nextapp.node")
                                 if (NaMainTreeModel.canMove(drop.source.uuid, treeDelegate.uuid)) {
-                                    console.log("Seems OK")
+                                    // console.log("Seems OK")
                                     drop.accepted = true
                                     NaMainTreeModel.moveNode(drop.source.uuid, treeDelegate.uuid)
                                     return
@@ -362,7 +341,11 @@ Rectangle {
     }
 
     function setSelection(uuid) {
-        console.log("Selection changed to ", uuid)
+        // console.log("Selection changed to ", uuid)
         NaMainTreeModel.selected = uuid;
+    }
+
+    CommonElements {
+        id: ce
     }
 }

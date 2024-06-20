@@ -13,11 +13,13 @@ Rectangle {
     border.color: MaterialDesignStyling.outline
     border.width: 1
     opacity: 0.8
+    clip: true
     property string name
     property string uuid
     property string start
     property string end
     property string category
+    property string duration
     required property CalendarDayModel model
 
     property bool haveDragIcons: true // height > 20 && width > 50
@@ -61,7 +63,7 @@ Rectangle {
         id: dropArea
         anchors.fill: parent
         onEntered: function(drag) {
-            console.log("TimeBlock: DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+            // console.log("TimeBlock: DropArea entered by ", drag.source.toString(), " types ", drag.formats)
 
             if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
 
@@ -74,7 +76,7 @@ Rectangle {
         }
 
         onDropped: function(drop) {
-            console.log("DropArea receiceived a drop! source=", drop.source.uuid)
+            // console.log("DropArea receiceived a drop! source=", drop.source.uuid)
 
             if (drop.formats.indexOf("text/app.nextapp.action") !== -1) {
 
@@ -124,8 +126,10 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
+        spacing: 2
 
         RowLayout {
+            id: header
             Layout.fillWidth: true
             Item {
                 // Upper left expand icon
@@ -134,7 +138,7 @@ Rectangle {
 
             Text {
                 color: MaterialDesignStyling.onPrimary
-                text: root.start
+                text: root.start + " - " + root.end
             }
 
             Text {
@@ -149,85 +153,82 @@ Rectangle {
             }
         }
 
-        RowLayout {
-            Item {
-                Layout.preferredWidth: expandAreaTop.width
-            }
 
-            ListView {
-                id: actionsCtl
-                Layout.fillHeight: true
-                Layout.fillWidth: true
-                interactive: false
-                model: root.model? root.model.getTimeBoxActionsModel(root.uuid, root) : null
+        ListView {
+            id: actionsCtl
+            //Layout.fillHeight: true
+            Layout.leftMargin: expandAreaTop.width
+            Layout.preferredHeight: contentHeight
+            Layout.minimumHeight: 0
+            Layout.fillWidth: true
+            interactive: false
+            clip: true
+            model: root.model? root.model.getTimeBoxActionsModel(root.uuid, root) : null
 
-                delegate: Rectangle {
-                    id: actionItem
-                    implicitHeight: actionItemLayout.implicitHeight
-                    implicitWidth: actionsCtl.width
-                    color: index % 2 ? MaterialDesignStyling.onPrimary : MaterialDesignStyling.primaryContainer
-                    required property int index
-                    required property string name
-                    required property string uuid
-                    required property bool done
-                    required property string category
+            delegate: Rectangle {
+                id: actionItem
+                implicitHeight: actionItemLayout.implicitHeight
+                implicitWidth: actionsCtl.width
+                color: index % 2 ? MaterialDesignStyling.onPrimary : MaterialDesignStyling.primaryContainer
+                required property int index
+                required property string name
+                required property string uuid
+                required property bool done
+                required property string category
 
-                    RowLayout {
-                        id: actionItemLayout
+                RowLayout {
+                    id: actionItemLayout
+
+                    Rectangle {
+                        height: nameCtl.implicitHeight
+                        width: 10
+                        color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(category) : "transparent"
+                        //radius: 5
+                    }
+
+                    Text {
+                        font.family: ce.faNormalName
+                        font.pointSize: nameCtl.font.pointSize
+                        text: done ? "\uf058" : "\uf111"
+                        color: done ? "green" : "orange"
 
                         Rectangle {
-                            height: nameCtl.implicitHeight
-                            width: 10
-                            color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(category) : "transparent"
-                            //radius: 5
+                            color: "white"
+                            anchors.fill: parent
+                            radius: 100
+                            z: parent.z -1
+                            visible: done
                         }
+                    }
 
-                        Text {
-                            font.family: ce.faNormalName
-                            font.pointSize: nameCtl.font.pointSize
-                            text: done ? "\uf058" : "\uf111"
-                            color: done ? "green" : "orange"
-
-                            Rectangle {
-                                color: "white"
-                                anchors.fill: parent
-                                radius: 100
-                                z: parent.z -1
-                                visible: done
-                            }
-                        }
-
-                        Text {
-                            id: nameCtl
-                            text: name
-                            color: MaterialDesignStyling.onPrimaryContainer
-                        }
-
-                        // Text {
-                        //     text: uuid
-                        //     color: MaterialDesignStyling.onPrimary
-                        // }
+                    Text {
+                        id: nameCtl
+                        text: name
+                        color: MaterialDesignStyling.onPrimaryContainer
                     }
                 }
-
-                Rectangle {
-                    anchors.fill: parent
-                    z: parent.z - 1
-                    color: MaterialDesignStyling.primaryContainer
-                    radius: 5
-                }
             }
+
+            // Rectangle {
+            //     anchors.fill: parent
+            //     z: parent.z - 1
+            //     color: MaterialDesignStyling.primaryContainer
+            //     radius: 5
+            // }
         }
 
-        // Text {
-        //     Layout.fillWidth: true
-        //     Layout.preferredHeight: 20
-        //     text: "bottom"
-        // }
+        Item {
+            Layout.fillHeight: true
+        }
 
-        // Item {
-        //     Layout.fillHeight: true
-        // }
+        Text {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 20
+            Layout.leftMargin: expandAreaTop.width
+            text: qsTr("Duration ") + duration
+            color: MaterialDesignStyling.onPrimary
+            visible: parent.height - header.height - actionsCtl.height >= height - 2
+        }
     }
 
     CommonElements {

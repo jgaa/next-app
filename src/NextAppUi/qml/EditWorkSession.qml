@@ -20,7 +20,7 @@ Dialog {
     standardButtons: Dialog.Cancel
 
     onOpened: {
-        console.log("Opened. ws.start=", ws.start)
+        // console.log("Opened. ws.start=", ws.start)
         from.text = NaCore.toDateAndTime(ws.start, 0)
         notes.text = ws.notes
         paused.text = NaCore.toHourMin(ws.paused)
@@ -35,7 +35,7 @@ Dialog {
     }
 
     onAccepted: {
-        console.log("Accepted")
+        // console.log("Accepted")
 
         ws.start = NaCore.parseDateOrTime(from.text, 0)
         if (to.text.trim() !== "") {
@@ -50,11 +50,11 @@ Dialog {
     }
 
     onRejected: {
-        console.log("Rejected")
+        // console.log("Rejected")
     }
 
     onVisibleChanged: {
-        console.log("VisibleChanged: ws: ", ws)
+        // console.log("VisibleChanged: ws: ", ws)
     }
 
     GridLayout {
@@ -116,7 +116,7 @@ Dialog {
             Layout.preferredWidth: root.controlsPreferredWidth
 
             onChanged: {
-                console.log("From changed")
+                // console.log("From changed")
                 somethingChanged()
             }
         }

@@ -18,13 +18,13 @@ Rectangle {
 
     onVisibleChanged: {
         if (root.visible) {
-            console.log("ActionsListView is now visible.")
+            // console.log("ActionsListView is now visible.")
             if (!root.ready) {
-                console.log("ActionsListView is now becoming ready.")
+                // console.log("ActionsListView is now becoming ready.")
                 root.ready = true
             }
         } else {
-            console.log("ActionsListView is now hidden");
+            // console.log("ActionsListView is now hidden");
         }
         ActionsModel.isVisible = root.visible
     }
@@ -59,7 +59,7 @@ Rectangle {
                     }
 
                     onActivated: (ix) => {
-                        console.log("Selection changed to", ix)
+                        // console.log("Selection changed to", ix)
                         ActionsModel.mode = ix
                     }
                 }
@@ -89,7 +89,7 @@ Rectangle {
         id: filter
 
         onApply: {
-            console.log("Filter applied")
+            // console.log("Filter applied")
             ActionsModel.filter = filter.filter
         }
     }

@@ -19,6 +19,10 @@ option(NEXTAPP_DEVEL_SETTINGS "Use '-devel' postfix for the settings location to
 if (NEXTAPP_DEVEL_SETTINGS)
     add_definitions(-DDEVEL_SETTINGS)
 endif()
+option(NEXTAPP_USE_ANDROID_UI "Use Android UI. Enable to develop Android UI on the Desktop." OFF)
+if (NEXTAPP_USE_ANDROID_UI)
+    add_definitions(-DUSE_ANDROID_UI)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -183,6 +187,7 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/square.svg
         icons/fontawsome/gear.svg
         icons/fontawsome/trash-can.svg
+        icons/fontawsome/cloud-bolt.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg

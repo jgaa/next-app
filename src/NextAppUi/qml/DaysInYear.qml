@@ -73,7 +73,7 @@ Rectangle {
         border.width: 1
 
         onValidColorsChanged: {
-            console.log("Month ", grid.month, " validColors changed to ", monthComponent.validColors)
+            // console.log("Month ", grid.month, " validColors changed to ", monthComponent.validColors)
         }
 
         Layout.fillWidth: true

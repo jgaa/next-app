@@ -31,6 +31,7 @@ public:
     Q_INVOKABLE void createCategory(const nextapp::pb::ActionCategory& category);
     Q_INVOKABLE void updateCategory(const nextapp::pb::ActionCategory& category);
     Q_INVOKABLE nextapp::pb::ActionCategory get(int index);
+    Q_INVOKABLE QString getName(const QString& id);
     Q_INVOKABLE int getIndexByUuid(const QString& id);
     Q_INVOKABLE QString getColorFromUuid(const QString& id);
 
@@ -52,6 +53,8 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
 
+    static ActionCategoriesModel& instance();
+
 signals:
     void validChanged();
     void onlineChanged();
@@ -63,8 +66,11 @@ private:
     void fetchIf();
     void onReceivedActionCategories(nextapp::pb::ActionCategories& action_categories);
 
+    nextapp::pb::ActionCategory *lookup(const QString& id);
+
     bool online_{};
     bool valid_{};
     nextapp::pb::ActionCategories action_categories_;
     std::set<QString> deleted_entries_;
+    static ActionCategoriesModel *instance_;
 };

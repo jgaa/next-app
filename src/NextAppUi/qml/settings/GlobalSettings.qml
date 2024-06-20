@@ -10,16 +10,17 @@ import nextapp.pb as NextappPb
 Item {
     id: root
     property bool initialized: false
+    anchors.fill: parent
 
     function commit() {
-        console.log("GlobalSettings: commit")
+        // console.log("GlobalSettings: commit")
         var tmp = NaComm.getGlobalSettings()
         tmp.defaultWorkHours.start = NaCore.parseHourMin(from.text)
         tmp.defaultWorkHours.end = NaCore.parseHourMin(to.text)
         tmp.timeZone = timeZone.text
         tmp.region = region.text
-        tmp.firstDayOfWeekIsMonday = monday.isChecked
-        tmp.autoStartNextWorkSession = autoStartNextWs.isChecked
+        tmp.firstDayOfWeekIsMonday = monday.checked
+        tmp.autoStartNextWorkSession = autoStartNextWs.checked
 
         NaComm.saveGlobalSettings(tmp)
         initialized = false
@@ -32,9 +33,9 @@ Item {
             to.text = NaCore.toHourMin(tmp.defaultWorkHours.end)
             timeZone.text = tmp.timeZone
             region.text = tmp.region
-            monday.isChecked = tmp.firstDayOfWeekIsMonday
+            monday.checked = tmp.firstDayOfWeekIsMonday
             initialized = true;
-            autoStartNextWs.isChecked = tmp.autoStartNextWorkSession
+            autoStartNextWs.checked = tmp.autoStartNextWorkSession
         }
     }
 
@@ -46,9 +47,9 @@ Item {
         Label { text: qsTr("Work Hours")}
 
         RowLayout {
-            DlgInputField {
+            TextField {
                 id: from
-                //placeholderText: qsTr("from");
+                placeholderText: qsTr("09:00");
                 Layout.preferredWidth: 80
             }
 
@@ -56,26 +57,26 @@ Item {
                 width: 6
             }
 
-            DlgInputField {
+            TextField {
                 id: to
-                //placeholderText: qsTr("to");
+                placeholderText: qsTr("17:00");
                 Layout.preferredWidth: 80
             }
         }
 
         Label { text: qsTr("Time Zone")}
 
-        DlgInputField {
+        TextField {
             id: timeZone
-            //placeholderText: qsTr("to");
+            placeholderText: qsTr("Like: Europe/Berlin");
             Layout.fillWidth: true
         }
 
         Label { text: qsTr("Region")}
 
-        DlgInputField {
+        TextField {
             id: region
-            //placeholderText: qsTr("to");
+            placeholderText: qsTr("Like: Europe");
             Layout.fillWidth: true
         }
 
@@ -88,22 +89,16 @@ Item {
 
         Item {}
 
-        CheckBoxWithFontIcon {
+        CheckBox {
             id: monday
             text: qsTr("First day of week is Monday")
-            textColor: "black"
-
-            //placeholderText: qsTr("to");
         }
 
         Item {}
 
-        CheckBoxWithFontIcon {
+        CheckBox {
             id: autoStartNextWs
             text: qsTr("When a work session is completed, automatically start the next one")
-            textColor: "black"
-
-            //placeholderText: qsTr("to");
         }
     }
 }

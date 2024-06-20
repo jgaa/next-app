@@ -41,7 +41,7 @@ Popup {
     signal selectedWeekClosed(var date, var accepted, var week)
 
     onDateChanged: {
-        console.log("DatePicker.onDateChanged: date=", date.toISOString())
+        // console.log("DatePicker.onDateChanged: date=", date.toISOString())
         grid.year = date.getFullYear()
         grid.month = date.getMonth()
         currentDay = date.getDate()
@@ -234,7 +234,7 @@ Popup {
                                     popup.accepted = true
                                     popup.close()
                                 }
-                                console.log("weekNumber ", weekNumber)
+                                // console.log("weekNumber ", weekNumber)
                             }
 
                             hoverEnabled: canSelect
@@ -304,9 +304,9 @@ Popup {
                                 }
 
                                 onClicked: {
-                                    console.log("model.month ", model.month, "model.year ", model.year, "model.day ", model.day)
-                                    console.log("popup.currentMonth", popup.currentMonth, "popup.currentYear", popup.currentYear)
-                                    console.log("currentDate", currentDate, "inRange", inRange)
+                                    // console.log("model.month ", model.month, "model.year ", model.year, "model.day ", model.day)
+                                    // console.log("popup.currentMonth", popup.currentMonth, "popup.currentYear", popup.currentYear)
+                                    // console.log("currentDate", currentDate, "inRange", inRange)
 
                                     popup.date.setYear(grid.year)
                                     popup.date.setMonth(grid.month)

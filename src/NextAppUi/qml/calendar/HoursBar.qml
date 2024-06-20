@@ -17,7 +17,7 @@ Rectangle {
         anchors.fill: parent
 
         onPaint: {
-            console.log("HoursBar: Redraing Canvas")
+            // console.log("HoursBar: Redraing Canvas")
 
             var ctx = getContext("2d");
             ctx.beginPath();

@@ -1,29 +1,49 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Effects
 import NextAppUi
 import Nextapp.Models
 import "../common.js" as Common
 
 
 ApplicationWindow {
-    id: root
+    id: appWindow
     visible: true
-    width: Screen.width
-    height: Screen.height
+    width: NaCore.isMobileSimulation ? 350 : Screen.width
+    height: NaCore.isMobileSimulation ? 750 : Screen.height
+    // width: 350
+    // height: 750
 
     // Toolbar
     header: ToolBar {
         width: parent.width
         RowLayout {
             anchors.fill: parent
-            ToolButton {
-                icon.source: sidebar.currentIcon
-                onClicked: drawer.open()
-            }
+            // ToolButton {
+            //     icon.source: sidebar.currentIcon
+            //     onClicked: drawer.open()
+            // }
             ToolButton {
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/bars.svg"
-                onClicked: menuDrawer.open()
+                onClicked: drawer.open()
+            }
+
+            Image {
+                id: selImage
+                source: sidebar.currentIcon
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
+                sourceSize.width: 24
+                sourceSize.height: 24
+            }
+
+            MultiEffect {
+                source: selImage
+                anchors.fill: selImage
+                brightness: 0.9
+                colorization: 1.0
+                colorizationColor: MaterialDesignStyling.onPrimaryContainer
             }
 
             Item {
@@ -48,7 +68,7 @@ ApplicationWindow {
     // Drawer Navigation
     Drawer {
         id: drawer
-        width: Math.max(0.4 * parent.width, 100)
+        width: 0.75 * parent.width
         height: parent.height
 
         DrawerContent {
@@ -57,33 +77,33 @@ ApplicationWindow {
         }
     }
 
-    Drawer {
-        id: menuDrawer
-        width: Math.max(0.6 * parent.width, 100)
-        height: parent.height
+    // Drawer {
+    //     id: menuDrawer
+    //     width: Math.max(0.6 * parent.width, 100)
+    //     height: parent.height
 
-        ColumnLayout {
-            anchors.fill: parent
-            Label {
-                text: qsTr("Menu")
-                Layout.alignment: Qt.AlignCenter
-            }
+    //     ColumnLayout {
+    //         anchors.fill: parent
+    //         Label {
+    //             text: qsTr("Menu")
+    //             Layout.alignment: Qt.AlignCenter
+    //         }
 
-            Button {
-                text: qsTr("Settings")
-                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/settings/SettingsDlg.qml", root, {});
-            }
+    //         Button {
+    //             text: qsTr("Settings")
+    //             onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/settings/SettingsDlg.qml", appWindow, {});
+    //         }
 
-            Button {
-                text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
-                onClicked: NaComm.toggleConnect()
-            }
+    //         Button {
+    //             text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
+    //             onClicked: NaComm.toggleConnect()
+    //         }
 
-            Item {
-                Layout.fillHeight: true
-            }
-        }
-    }
+    //         Item {
+    //             Layout.fillHeight: true
+    //         }
+    //     }
+    // }
 
     // Main Content
     StackLayout {
@@ -119,6 +139,14 @@ ApplicationWindow {
                     color: MaterialDesignStyling.surface
                 }
             }
+        }
+
+        CalendarView {
+            id: calendarPage
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            mode: CalendarModel.CM_DAY
+            days: 1
         }
     }
 

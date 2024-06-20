@@ -64,7 +64,7 @@ Rectangle
         }
 
         onClicked: {
-            console.log("Toggeling checkbox")
+            // console.log("Toggeling checkbox")
             if (checkBox.autoToggle) {
                 checkBox.isChecked = !checkBox.isChecked
             }

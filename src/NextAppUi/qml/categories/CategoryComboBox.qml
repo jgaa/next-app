@@ -22,7 +22,7 @@ ComboBox {
     }
 
     onUuidChanged: {
-        console.log("CategoryComboBox/onUuidChanged: category is", root.uuid)
+        // console.log("CategoryComboBox/onUuidChanged: category is", root.uuid)
         if (root.uuid !== "") {
             root.currentIndex = root.model.getIndexByUuid(root.uuid)
         } else {

@@ -110,7 +110,7 @@ Dialog {
 
                         onTapped: {
                             selectionModel.select(listCtl.model.index(index, 0), ItemSelectionModel.Select | ItemSelectionModel.Current)
-                            console.log("selected")
+                            // console.log("selected")
                         }
 
                         onLongPressed: {
@@ -137,7 +137,7 @@ Dialog {
                 enabled: selectionModel.hasSelection
                 text: qsTr("Edit Category")
                 onClicked: {
-                    console.log("edit selectopn. Selections=", selectionModel.selectedIndexes.length, "has selection=", selectionModel.hasSelection)
+                    // console.log("edit selectopn. Selections=", selectionModel.selectedIndexes.length, "has selection=", selectionModel.hasSelection)
                     editDlg.actionCategory = listCtl.model.get(selectionModel.selectedIndexes[0].row)
                     selectionModel.clear();
                     editDlg.open()

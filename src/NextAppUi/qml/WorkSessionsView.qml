@@ -16,14 +16,14 @@ Rectangle {
     property int prev_selection: 0
 
     Component.onCompleted: {
-        console.log("WorkSessionsView is now completed");
+        // console.log("WorkSessionsView is now completed");
     }
 
     onVisibleChanged: {
         if (root.visible) {
-            console.log("WorkSessionsView is now visible.")
+            // console.log("WorkSessionsView is now visible.")
             if (!root.ready) {
-                console.log("WorkSessionsView is now becoming ready.")
+                // console.log("WorkSessionsView is now becoming ready.")
                 root.ready = true
                 workSessions.model = NaCore.createWorkModel()
                 //workSessions.model.setDebug(true)
@@ -33,7 +33,7 @@ Rectangle {
                 workSessions.model.fetchSome(selectionCtl.currentIndex)
             }
         } else {
-            console.log("Component is now hidden");
+            // console.log("Component is now hidden");
         }
 
         if (root.ready) {
