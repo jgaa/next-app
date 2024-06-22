@@ -10,8 +10,9 @@ pragma ComponentBehavior: Bound
 
 Rectangle {
     id: root
-    enabled: NaComm.connected
-    opacity: NaComm.connected ? 1.0 : 0.5
+    enabled: NaComm.connected && NaMainTreeModel.useRoot
+
+    DisabledDimmer {}
 
     //property alias currentIndex : treeView.selectionModel.currentIndex
     property string selectedItemUuid: NaMainTreeModel.selected
@@ -29,12 +30,22 @@ Rectangle {
             TreeView {
                 id: treeView
                 property int lastIndex: -1
+                property bool wasExpanded: false
 
                 boundsBehavior: Flickable.StopAtBounds
                 boundsMovement: Flickable.StopAtBounds
                 clip: true
                 anchors.fill: parent
                 model: NaMainTreeModel
+
+                Connections {
+                    target: treeView.model
+
+                    function onUseRootChanged() {
+                        console.log("onUseRootChanged: Tree Model was reset. It has ", treeView.model.rowCount(), " items")
+                        treeView.expandRecursively(-1, 2)
+                    }
+                }
 
                 delegate: TreeViewDelegate {
                     id: treeDelegate

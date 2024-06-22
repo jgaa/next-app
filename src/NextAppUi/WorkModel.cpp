@@ -291,6 +291,9 @@ int WorkModel::rowCount(const QModelIndex &parent) const
     return sessions_.size();
 }
 
+// This model is used by both ListVew and TableView and
+// needs to handle both roles and coumns.
+// We use goto to avoid duplicating code. Goto is not evil if used with care.
 QVariant WorkModel::data(const QModelIndex &index, int role) const
 {
     if (enable_debug_) {
@@ -309,13 +312,12 @@ QVariant WorkModel::data(const QModelIndex &index, int role) const
     }
 
     const auto& session = *std::next(session_by_ordered().begin(), row);
-    if (enable_debug_) {
-        int i = 0;
-    }
+
     switch (role) {
     case Qt::DisplayRole:
         switch(index.column()) {
         case FROM: {
+from:
             const auto start = QDateTime::fromSecsSinceEpoch(session.session.start());
             const auto now = QDateTime::currentDateTime();
             if (start.date() == now.date()) {
@@ -324,6 +326,7 @@ QVariant WorkModel::data(const QModelIndex &index, int role) const
             return start.toString("yyyy-MM-dd hh:mm");
         }
         case TO: {
+to:
             if (!session.session.hasEnd()) {
                 return QString{};
             }
@@ -335,10 +338,13 @@ QVariant WorkModel::data(const QModelIndex &index, int role) const
             return end.toString("yyyy-MM-dd hh:mm");
         }
         case PAUSE:
+pause:
             return toHourMin(static_cast<int>(session.session.paused()));
         case USED:
+used:
             return toHourMin(static_cast<int>(session.session.duration()));
         case NAME:
+name:
             return session.session.name();
         } // switch col
 
@@ -359,6 +365,16 @@ QVariant WorkModel::data(const QModelIndex &index, int role) const
         return session.session.state() == nextapp::pb::WorkSession::State::ACTIVE;
     case HasNotesRole:
         return !session.session.notes().isEmpty();
+    case FromRole:
+        goto from;
+    case ToRole:
+        goto to;
+    case PauseRole:
+        goto pause;
+    case DurationRole:
+        goto used;
+    case NameRole:
+        goto name;
     }
 
     return {};
@@ -372,6 +388,11 @@ QHash<int, QByteArray> WorkModel::roleNames() const
     roles[IconRole] = "icon";
     roles[ActiveRole] = "active";
     roles[HasNotesRole] = "hasNotes";
+    roles[FromRole] = "from";
+    roles[ToRole] = "to";
+    roles[PauseRole] = "pause";
+    roles[DurationRole] = "duration";
+    roles[NameRole] = "name";
 
     return roles;
 }

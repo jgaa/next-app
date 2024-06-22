@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.7 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.8 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -81,7 +81,7 @@ target_link_libraries(NextappGrpcClient
 #set(ANDROID_MANIFEST_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/AndroidManifest.xml)
 
 
-qt_add_executable(appNextAppUi
+qt_add_executable(${PROJECT_NAME}
     main.cpp
     logging.h
 )
@@ -92,7 +92,7 @@ if(ANDROID)
 endif()
 
 
-target_include_directories(appNextAppUi PRIVATE
+target_include_directories(${PROJECT_NAME} PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<INSTALL_INTERFACE:include>
     PRIVATE src
@@ -100,9 +100,9 @@ target_include_directories(appNextAppUi PRIVATE
 
 if (NOT ANDROID)
     find_package(Boost REQUIRED)
-    target_include_directories(appNextAppUi PRIVATE ${Boost_INCLUDE_DIRS})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
-    target_include_directories(appNextAppUi PRIVATE /opt/boost/boost_1_85_0)
+    target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_85_0)
 endif()
 
 set_source_files_properties(qml/Colors.qml
@@ -110,7 +110,7 @@ set_source_files_properties(qml/Colors.qml
         QT_QML_SINGLETON_TYPE TRUE
 )
 
-qt_add_qml_module(appNextAppUi
+qt_add_qml_module(${PROJECT_NAME}
     URI NextAppUi
     VERSION ${VERSION}
     QML_FILES
@@ -165,6 +165,10 @@ qt_add_qml_module(appNextAppUi
         qml/settings/PrefSettings.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
+        qml/android/TodoList.qml
+        qml/DisabledDimmer.qml
+        qml/android/WorkSessionsStacked.qml
+        qml/android/WorkSessionsCompactList.qml
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
@@ -186,8 +190,11 @@ qt_add_qml_module(appNextAppUi
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/gear.svg
+        icons/fontawsome/list-check.svg
+        icons/fontawsome/folder-tree.svg
         icons/fontawsome/trash-can.svg
         icons/fontawsome/cloud-bolt.svg
+        icons/fontawsome/hourglass-half.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg
@@ -244,8 +251,8 @@ if(NOT ANDROID)
     # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
     # If you are developing for iOS or macOS you should consider setting an
     # explicit, fixed bundle identifier manually though.
-    set_target_properties(appNextAppUi PROPERTIES
-    #    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appNextAppUi
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+    #    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.${PROJECT_NAME}
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
         MACOSX_BUNDLE TRUE
@@ -257,9 +264,9 @@ if(NOT ANDROID)
 )
 endif()
 
-add_dependencies(appNextAppUi logfault NextappGrpcClient NextappProtoMessageLib)
+add_dependencies(${PROJECT_NAME} logfault NextappGrpcClient NextappProtoMessageLib)
 
-target_link_libraries(appNextAppUi
+target_link_libraries(${PROJECT_NAME}
     PRIVATE
         Qt6::Core
         Qt6::Gui
@@ -275,30 +282,40 @@ target_link_libraries(appNextAppUi
 )
 
 if(NOT ANDROID)
-    include(GNUInstallDirs)
-    install(TARGETS appNextAppUi
-        BUNDLE DESTINATION .
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
+    # include(GNUInstallDirs)
+    # install(TARGETS ${PROJECT_NAME}
+    #     BUNDLE DESTINATION .
+    #     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    #     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    # )
 
-    qt_generate_deploy_app_script(
-        TARGET appNextAppUi
-        OUTPUT_SCRIPT deploy_script
+    # qt_generate_deploy_app_script(
+    #     TARGET ${PROJECT_NAME}
+    #     OUTPUT_SCRIPT deploy_script
 
-    )
-    install(SCRIPT ${deploy_script})
+    # )
+    # install(SCRIPT ${deploy_script})
+    include(InstallRequiredSystemLibraries)
+    set(CPACK_GENERATOR "TGZ")
+    set(CPACK_PACKAGE_NAME "nextapp")
+    set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+    set(CPACK_PACKAGE_CONTACT "jgaa@jgaa.com")
+
+    install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+    install(DIRECTORY ${CMAKE_PREFIX_PATH}/lib DESTINATION lib)
+
+    include(CPack)
+
 endif()
 
 if (ANDROID)
     message(STATUS "Compiling for Android")
     target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
     include(GNUInstallDirs)
-    install(TARGETS appNextAppUi
+    install(TARGETS ${PROJECT_NAME}
         BUNDLE DESTINATION .
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 
 endif()
-

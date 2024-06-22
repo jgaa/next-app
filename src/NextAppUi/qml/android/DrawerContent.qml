@@ -106,46 +106,42 @@ Rectangle {
             }
 
             spacing: root.tabBarSpacing
+
             SidebarEntry {
-                id: dayInYear
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-days.svg"
+                id: todolist
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/list-check.svg"
                 checkable: true
-                checked: true
-                text: qsTr("Green Days")
+                checked: true // First item is checked by default.
+                text: qsTr("Todos")
 
                 onCheckedChanged: {
                     if (checked) {
                         root.current = 0
-                        //root.current = 0
-                        //root.currentTabIndex = -1
                     }
                 }
             }
 
             SidebarEntry {
-                id: lists
-
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/read.svg"
+                id: tree
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/folder-tree.svg"
                 checkable: true
+                text: qsTr("Lists")
 
                 onCheckedChanged: {
                     if (checked) {
                         root.current = 1
-                        //root.currentMainItem = 1
-                        //root.currentTabIndex = 0
                     }
                 }
             }
 
             SidebarEntry {
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/clock.svg"
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/hourglass-half.svg"
                 checkable: true
+                text: qsTr("Current")
 
                 onCheckedChanged: {
                     if (checked) {
                         root.current = 2
-                        //root.currentMainItem = 1
-                        //root.currentTabIndex = 1
                     }
                 }
             }
@@ -158,41 +154,69 @@ Rectangle {
                 onCheckedChanged: {
                     if (checked) {
                         root.current = 3
-                        //root.currentMainItem = 1
-                        //root.currentTabIndex = 1
                     }
                 }
             }
 
-            SidebarEntry {
-                id: planDay
 
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-day.svg"
-                checkable: true
 
-                onCheckedChanged: {
-                    if (checked) {
-                        root.current = 4
-                        //root.currentMainItem = 2
-                        //root.currentTabIndex = -1
-                    }
-                }
-            }
+            // SidebarEntry {
+            //     id: lists
 
-            SidebarEntry {
-                id: reports
+            //     icon.source: "qrc:/qt/qml/NextAppUi/icons/read.svg"
+            //     checkable: true
 
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/chart-line.svg"
-                checkable: true
+            //     onCheckedChanged: {
+            //         if (checked) {
+            //             root.current = 1
+            //             //root.currentMainItem = 1
+            //             //root.currentTabIndex = 0
+            //         }
+            //     }
+            // }
 
-                onCheckedChanged: {
-                    if (checked) {
-                        root.current = 5
-                        //root.currentMainItem = 1
-                        //root.currentTabIndex = 2
-                    }
-                }
-            }
+            // SidebarEntry {
+            //     icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/clock.svg"
+            //     checkable: true
+
+            //     onCheckedChanged: {
+            //         if (checked) {
+            //             root.current = 2
+            //             //root.currentMainItem = 1
+            //             //root.currentTabIndex = 1
+            //         }
+            //     }
+            // }
+
+            // SidebarEntry {
+            //     id: planDay
+
+            //     icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-day.svg"
+            //     checkable: true
+
+            //     onCheckedChanged: {
+            //         if (checked) {
+            //             root.current = 4
+            //             //root.currentMainItem = 2
+            //             //root.currentTabIndex = -1
+            //         }
+            //     }
+            // }
+
+            // SidebarEntry {
+            //     id: reports
+
+            //     icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/chart-line.svg"
+            //     checkable: true
+
+            //     onCheckedChanged: {
+            //         if (checked) {
+            //             root.current = 5
+            //             //root.currentMainItem = 1
+            //             //root.currentTabIndex = 2
+            //         }
+            //     }
+            // }
         }
 
         ColumnLayout {

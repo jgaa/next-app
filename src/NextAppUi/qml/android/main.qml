@@ -77,68 +77,33 @@ ApplicationWindow {
         }
     }
 
-    // Drawer {
-    //     id: menuDrawer
-    //     width: Math.max(0.6 * parent.width, 100)
-    //     height: parent.height
-
-    //     ColumnLayout {
-    //         anchors.fill: parent
-    //         Label {
-    //             text: qsTr("Menu")
-    //             Layout.alignment: Qt.AlignCenter
-    //         }
-
-    //         Button {
-    //             text: qsTr("Settings")
-    //             onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/settings/SettingsDlg.qml", appWindow, {});
-    //         }
-
-    //         Button {
-    //             text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
-    //             onClicked: NaComm.toggleConnect()
-    //         }
-
-    //         Item {
-    //             Layout.fillHeight: true
-    //         }
-    //     }
-    // }
-
     // Main Content
     StackLayout {
         id: stackView
         currentIndex: sidebar.current
         anchors.fill: parent
 
-        // ScrollView {
-        //     ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
-        //     ScrollBar.vertical.policy: ScrollBar.AlwaysOn
-        //     contentHeight: daysInYear.implicitHeight
-        //     contentWidth: daysInYear.implictWidth
-        //     DaysInYear {
-        //         id: daysInYear
-        //     }
+        // Green days
+        // DaysInYear {
+        //     id: daysInYear
         // }
 
-        DaysInYear {
-            id: daysInYear
-        }
-
-
-        Rectangle {
-            id: mainTreePage
-            color: "yellow"
+        // Home screen
+        TodoList {
             Layout.fillWidth: true
             Layout.fillHeight: true
+        }
 
-            StackLayout {
-                anchors.fill: parent
-                MainTree {
-                    id: mainTree
-                    color: MaterialDesignStyling.surface
-                }
-            }
+        MainTree {
+            id: mainTree
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+        }
+
+        WorkSessionsStacked {
+            id: workSessionsStacked
+            Layout.fillWidth: true
+            Layout.fillHeight: true
         }
 
         CalendarView {

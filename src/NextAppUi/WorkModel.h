@@ -67,7 +67,12 @@ public:
         UuidRole = Qt::UserRole + 1,
         IconRole,
         ActiveRole,
-        HasNotesRole
+        HasNotesRole,
+        FromRole,
+        ToRole,
+        PauseRole,
+        DurationRole,
+        NameRole,
     };
 
     enum Cols {

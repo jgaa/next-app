@@ -8,15 +8,15 @@ import Nextapp.Models
 
 Dialog {
     id: root
-    title: tr("Work")
+    title: qsTr("Work")
     property var ws: null
     property int controlsPreferredWidth: 200
     property var model: null
 
-    x: (parent.width - width) / 2
-    y: (parent.height - height) / 2
-    width: 800
-    height: 600
+    x: NaCore.isMobile ? 0 : (parent.width - width) / 3
+    y: NaCore.isMobile ? 0 : (parent.height - height) / 3
+    implicitWidth: Math.min(parent.width, 800)
+    implicitHeight: Math.min(parent.height - 10, 600)
     standardButtons: Dialog.Cancel
 
     onOpened: {
@@ -62,7 +62,7 @@ Dialog {
         Layout.fillHeight: true
         Layout.fillWidth: true
         rowSpacing: 4
-        columns: 2
+        columns: NaCore.isMobile ? 1 : 2
         anchors.fill: parent
         anchors.margins: 10
 
@@ -75,7 +75,7 @@ Dialog {
         DlgInputField {
             id: name
             text: ws.name
-            Layout.preferredWidth: root.controlsPreferredWidth * 3
+            Layout.fillWidth: true
 
             onChanged: {
                 somethingChanged()
@@ -159,10 +159,9 @@ Dialog {
 
         TextArea {
             id: notes
-            //Layout.preferredHeight: 200
             Layout.fillHeight: true
-            Layout.preferredWidth: root.controlsPreferredWidth * 3
-            placeholderText: qsTr("Optional notes...")
+            Layout.fillWidth: true
+            Layout.topMargin: 10
             text: ws.notes
             background: Rectangle {
                 color: notes.focus ? "lightblue" : "lightgray"
