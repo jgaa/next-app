@@ -168,7 +168,7 @@ public:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
         template <typename ReqT, typename ReplyT, typename FnT>
         ::grpc::ServerUnaryReactor*
-        unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT&& fn, const std::string_view name = {}) noexcept {
+        unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn, std::string_view name = {}) noexcept {
             assert(ctx);
             assert(reply);
 

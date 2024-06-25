@@ -12,7 +12,7 @@ echo "Building nextappd..."
 
 cd /build || die
 
-cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DNEXTAPP_BOOST_USE_STATIC_LIBS=ON /src || die "CMake failed configure step"
+VERBOSE=1 cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DNEXTAPP_BOOST_USE_STATIC_LIBS=ON /src || die "CMake failed configure step"
 
 make -j `nproc` || die "Build failed"
 
