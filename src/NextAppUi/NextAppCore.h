@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QQmlEngine>
 #include <QQmlApplicationEngine>
+#include <QGuiApplication>
 
 #include "WorkModel.h"
 #include "WeeklyWorkReportModel.h"
@@ -19,6 +20,8 @@ class NextAppCore : public QObject
     Q_PROPERTY(QString qtVersion READ qtVersion CONSTANT)
     Q_PROPERTY(bool isMobile READ isMobile CONSTANT)
     Q_PROPERTY(bool isMobileSimulation READ isMobileSimulation CONSTANT)
+    Q_PROPERTY(int width READ width NOTIFY widthChanged FINAL)
+    Q_PROPERTY(int height READ height NOTIFY heightChanged FINAL)
 
     // True if the app was build with the CMAKE option DEVEL_SETTINGS enabled
     Q_PROPERTY(bool develBuild READ isDevelBuild CONSTANT)
@@ -35,6 +38,7 @@ public:
     static Q_INVOKABLE WeeklyWorkReportModel *createWeeklyWorkReportModel();
     static Q_INVOKABLE QString toHourMin(int duration);
     static Q_INVOKABLE CalendarModel *createCalendarModel();
+    Q_INVOKABLE QString openFile(const QString& path);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
@@ -83,10 +87,20 @@ public:
 
     static QQmlApplicationEngine& engine();
 
+    int width() const noexcept;
+    int height() const noexcept;
+    void setWidth(int width);
+    void setHeight(int height);
+
 signals:
     void allBaseModelsCreated();
     void onlineChanged(bool online);
+    void widthChanged();
+    void heightChanged();
 
 private:
     static NextAppCore *instance_;
+    QGuiApplication *app_{qApp};
+    int height_{0};
+    int width_{0};
 };

@@ -2,6 +2,7 @@
 #include <QDateTime>
 #include <QQmlEngine>
 #include <CalendarModel.h>
+#include <QDesktopServices>
 
 #include "WeeklyWorkReportModel.h"
 #include "util.h"
@@ -22,6 +23,17 @@ NextAppCore *NextAppCore::instance_;
 NextAppCore::NextAppCore() {
     assert(instance_ == nullptr);
     instance_ = this;
+
+#ifdef USE_ANDROID_UI
+    LOG_DEBUG_N << "Android UI";
+    width_ = 350;
+    height_ = 750;
+#else
+    connect(app_, &QGuiApplication::primaryScreenChanged, [this](QScreen *screen) {
+        emit widthChanged();
+        emit heightChanged();
+    });
+#endif
 }
 
 QDateTime NextAppCore::dateFromWeek(int year, int week)
@@ -72,6 +84,13 @@ CalendarModel *NextAppCore::createCalendarModel()
     return model;
 }
 
+QString NextAppCore::openFile(const QString &path)
+{
+    if (const auto url = QUrl::fromLocalFile(path); url.isValid()) {
+        QDesktopServices::openUrl(path);
+    }
+}
+
 time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)
 {
     try {
@@ -116,4 +135,21 @@ QQmlApplicationEngine &NextAppCore::engine()
     static QQmlApplicationEngine engine_;
     return engine_;
 }
+
+int NextAppCore::width() const noexcept
+{
+    if (width_ > 0) {
+        return width_;
+    }
+    return app_->primaryScreen()->geometry().width();
+}
+
+int NextAppCore::height() const noexcept
+{
+    if (height_ > 0) {
+        return height_;
+    }
+    return app_->primaryScreen()->geometry().height();
+}
+
 

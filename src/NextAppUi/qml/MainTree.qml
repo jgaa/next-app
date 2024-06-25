@@ -68,6 +68,7 @@ Rectangle {
                         font.pointSize: 12
                         text: treeDelegate.hasChildren
                               ? treeDelegate.expanded ? "\uf0d7" : "\uf0da" : ""
+
                     }
 
                     contentItem: RowLayout {
@@ -124,9 +125,10 @@ Rectangle {
                             target: treeDelegate
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onSingleTapped: (eventPoint, button) => {
+                                //console.log("TapHandler: ", name, ", row=", treeDelegate.row, ", button=", button, ", evenPoint=", eventPoint)
                                 switch (button) {
+                                    case 0: // touch
                                     case Qt.LeftButton:
-                                        // console.log("Selection: ", name)
                                         if (!label.contains(eventPoint)) {
                                             treeView.toggleExpanded(treeDelegate.row)
                                         }
@@ -154,7 +156,7 @@ Rectangle {
                     }
 
                     Drag.active: dragHandler.active
-                    Drag.dragType: Drag.Automatic
+                    Drag.dragType: NaCore.isMobile ? Drag.None :  Drag.Automatic
                     Drag.supportedActions: Qt.MoveAction
                     Drag.mimeData: {
                         "text/app.nextapp.node": treeDelegate.uuid
@@ -163,6 +165,7 @@ Rectangle {
                     DragHandler {
                         id: dragHandler
                         target: content
+                        enabled: !NaCore.isMobile
                         onActiveChanged: {
                             // console.log("DragHandler: active=", active)
                         }

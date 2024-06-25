@@ -955,8 +955,11 @@ void ActionsModel::fetchIf(bool restart)
     }
 
     if (!isVisible() || !ServerComm::instance().connected()) {
+        LOG_DEBUG_N << "Not connected or not visible. Skipping fetch.";
         return;
     }
+
+    LOG_DEBUG_N << "Fetching actions. Mode is " << mode_;
 
     nextapp::pb::GetActionsReq req;
     req.setFlags(flags_);

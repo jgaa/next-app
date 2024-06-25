@@ -6,6 +6,7 @@ import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPB
 import Nextapp.Models
+import "common.js" as Common
 
 Rectangle {
     id: root
@@ -83,6 +84,7 @@ Rectangle {
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onSingleTapped: (eventPoint, button) => {
                         switch (button) {
+                            case 0: // touch
                             case Qt.LeftButton:
                                 listView.currentIndex = index
                                 break;
@@ -92,11 +94,17 @@ Rectangle {
                                 contextMenu.popup();
                         }
                     }
+                    onLongPressed: {
+                        contextMenu.uuid = uuid
+                        contextMenu.name = name
+                        contextMenu.popup()
+                    }
                 }
 
                 DragHandler {
                     id: dragHandler
                     target: actionItem
+                    enabled: !NaCore.isMobile
                     property real origX: actionItem.x
                     property real origY: actionItem.y
 
@@ -120,7 +128,7 @@ Rectangle {
                 }
 
                 //Drag.active: dragHandler.active
-                Drag.dragType: Drag.Automatic
+                Drag.dragType: NaCore.isMobile ? Drag.None :  Drag.Automatic
                 Drag.supportedActions: Qt.MoveAction
                 Drag.mimeData: {
                     "text/app.nextapp.action": actionItem.uuid,
@@ -284,7 +292,7 @@ Rectangle {
     }
 
     function openActionDlg(uuid) {
-        openDialog("EditActionDlg.qml", {
+        Common.openDialog("EditActionDlg.qml", root, {
             node: mainTree.selectedItemUuid,
             title: qsTr("Edit Action"),
             aprx: ActionsModel.getAction(uuid)
@@ -292,7 +300,7 @@ Rectangle {
     }
 
     function openAddWorkDialog(uuid, name) {
-        openDialog("EditWorkSession.qml", {
+        Common.openDialog("EditWorkSession.qml", root, {
             ws: WorkSessionsModel.createSession(uuid, name),
             title: qsTr("Add Work Session"),
             model: WorkSessionsModel

@@ -137,6 +137,14 @@ int main(int argc, char *argv[])
         auto style = styles.at(settings.value("UI/style").toInt());
         auto scale = scales.at(settings.value("UI/scale").toInt());
 
+        if (const auto level = settings.value("logging/level", 0).toInt()) {
+            if (auto path = settings.value("logging/path", "").toString().toStdString(); !path.empty()) {
+                const bool prune = settings.value("logging/prune", "").toString() == "true";
+                logfault::LogManager::Instance().AddHandler(
+                    make_unique<logfault::StreamHandler>(path, static_cast<logfault::LogLevel>(level), prune));
+            }
+        }
+
 #ifdef USE_ANDROID_UI
         if (style.empty()) {
             style = "Material";

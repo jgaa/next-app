@@ -19,10 +19,10 @@ Dialog {
     property var kinds: ["folder", "organization", "person", "project", "task"]
     property string icon: "../icons/folder/.svg"
 
-    x: (parent.width - width) / 2
-    y: (parent.height - height) / 2
-    width: 800
-    height: 600
+    x: NaCore.isMobile ? 0 : (parent.width - width) / 2
+    y: NaCore.isMobile ? 0 : (parent.height - height) / 2
+    width: Math.min(NaCore.width, 600)
+    height: Math.min(NaCore.height, 500)
 
     standardButtons: Dialog.Ok | Dialog.Cancel
     title: qsTr("Nodes and lists")
@@ -51,14 +51,16 @@ Dialog {
         }
     }
 
-    RowLayout {
+    GridLayout {
         anchors.fill: parent
+        columns: NaCore.isMobile ? 1 : 2
+
         Image {
-            width: 96
-            height: 96
+            width: NaCore.isMobile ? 36 : 96
+            height: NaCore.isMobile ? 36 : 96
             source: root.icon
-            sourceSize.width: 96
-            sourceSize.height: 96
+            sourceSize.width: width
+            sourceSize.height: height
             fillMode: Image.PreserveAspectFit
         }
 
@@ -67,11 +69,10 @@ Dialog {
             Layout.fillHeight: true
             Layout.fillWidth: true
             rowSpacing: 4
-            columns: 2
+            columns: NaCore.isMobile ? 1 : 2
 
             Label {
                 Layout.alignment: Qt.AlignLeft
-                color: Colors.disabledText
                 text: qsTr("Name")
             }
 
@@ -89,15 +90,14 @@ Dialog {
 
             Label {
                 Layout.alignment: Qt.AlignLeft
-                color: Colors.disabledText
                 text: qsTr("Description")
             }
 
             TextArea {
                 id: descr
-                Layout.preferredHeight: 250
-                Layout.preferredWidth: 400
-                placeholderText: qsTr("Some words to describe the purpose of this item?")
+                Layout.fillHeight: true
+                Layout.fillWidth: true
+                //placeholderText: qsTr("Some words to describe the purpose of this item?")
 
                 background: Rectangle {
                     color: descr.focus ? "lightblue" : "lightgray"
@@ -106,13 +106,13 @@ Dialog {
 
             Label {
                 Layout.alignment: Qt.AlignLeft
-                color: Colors.disabledText
                 text: qsTr("Kind")
             }
 
             ComboBox {
                 id: kind
                 currentIndex: kinds.indexOf(root.kind, 0)
+                Layout.fillWidth: true
                 model: ListModel {
                     ListElement{ text: qsTr("folder")}
                     ListElement{ text: qsTr("organization")}

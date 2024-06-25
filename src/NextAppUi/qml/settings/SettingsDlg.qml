@@ -36,6 +36,11 @@ Dialog {
                 text: qsTr("Appearance")
                 width: implicitWidth
             }
+
+            TabButton {
+                text: qsTr("Advanced")
+                width: implicitWidth
+            }
         }
 
         StackLayout {
@@ -54,6 +59,10 @@ Dialog {
                 id: preferencesTab
                 PrefSettings {id: preferences}
             }
+            Item {
+                id: advancedTab
+                AdvancedSettings {id: advanced}
+            }
         }
     }
 
@@ -61,6 +70,7 @@ Dialog {
         server.commit()
         global.commit()
         preferences.commit()
+        advanced.commit()
         close()
     }
 

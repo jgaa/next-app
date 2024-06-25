@@ -126,6 +126,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/DatePicker.qml
         qml/DayDialog.qml
         qml/DaysInYear.qml
+        qml/DisabledDimmer.qml
         qml/DlgInputField.qml
         qml/DueSelectionDialog.qml
         qml/EditActionDlg.qml
@@ -149,6 +150,9 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
         qml/android/DrawerContent.qml
+        qml/android/TodoList.qml
+        qml/android/WorkSessionsCompactList.qml
+        qml/android/WorkSessionsStacked.qml
         qml/android/main.qml
         qml/calendar/CalendarView.qml
         qml/calendar/DayPlan.qml
@@ -161,14 +165,11 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/categories/ColorPicker.qml
         qml/categories/EditCategoryDlg.qml
         qml/common.js
+        qml/settings/AdvancedSettings.qml
         qml/settings/GlobalSettings.qml
         qml/settings/PrefSettings.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
-        qml/android/TodoList.qml
-        qml/DisabledDimmer.qml
-        qml/android/WorkSessionsStacked.qml
-        qml/android/WorkSessionsCompactList.qml
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"

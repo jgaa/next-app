@@ -100,5 +100,9 @@ Item {
             id: autoStartNextWs
             text: qsTr("When a work session is completed, automatically start the next one")
         }
+
+        Item {
+            Layout.fillHeight: true
+        }
     }
 }

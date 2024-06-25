@@ -13,8 +13,8 @@ Dialog {
 
     x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
     y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
-    width: 500
-    height: 500
+    width: Math.min(500, NaCore.width)
+    height: Math.min(800, NaCore.height)
 
     standardButtons: Dialog.Ok | Dialog.Cancel
 
@@ -52,7 +52,7 @@ Dialog {
             id: dlgfields
             Layout.fillWidth: true
             rowSpacing: 4
-            columns: 2
+            columns: NaCore.isMobile ? 1 : 2
 
             Label {
                 Layout.alignment: Qt.AlignLeft
@@ -62,7 +62,7 @@ Dialog {
 
             DlgInputField {
                 id: title
-                Layout.preferredWidth: root.controlsPreferredWidth * 2
+                Layout.fillWidth: true
             }
 
             Label {
@@ -72,6 +72,7 @@ Dialog {
             }
 
             CategoryComboBox {
+                Layout.fillWidth: true
                 id: category
             }
 
@@ -83,6 +84,7 @@ Dialog {
 
             DlgInputField {
                 id: start
+                Layout.preferredWidth: root.controlsPreferredWidth
             }
 
             Label {
@@ -93,6 +95,7 @@ Dialog {
 
             DlgInputField {
                 id: end
+                Layout.preferredWidth: root.controlsPreferredWidth
             }
 
             Label {
@@ -106,14 +109,13 @@ Dialog {
         ListView {
             id: actionsCtl
             Layout.fillHeight: true
-            Layout.preferredWidth: root.controlsPreferredWidth * 2
-            interactive: false
+            Layout.fillWidth: true
             visible: model !== null
             spacing: 4
 
             delegate: Rectangle {
                 id: actionItem
-                implicitHeight: actionItemLayout.implicitHeight
+                implicitHeight: 40
                 implicitWidth: actionsCtl.width
                 color: index % 2 ? MaterialDesignStyling.onPrimary : MaterialDesignStyling.primaryContainer
                 required property int index
@@ -123,7 +125,8 @@ Dialog {
                 required property string category
 
                 RowLayout {
-                    width: actionsCtl.width
+                    height: actionItem.height
+                    width: actionItem.width
                     id: actionItemLayout
 
                     Rectangle {
@@ -155,9 +158,10 @@ Dialog {
                         color: MaterialDesignStyling.onPrimaryContainer
                     }
 
-                    Button {
-                        Layout.preferredHeight: 20
-                        Layout.preferredWidth: 100
+                    RoundButton {
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 16
+                        Layout.preferredWidth: 150
                         icon.source:  "../../icons/fontawsome/trash-can.svg"
                         icon.color: "red"
                         onClicked: {

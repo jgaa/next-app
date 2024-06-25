@@ -10,8 +10,8 @@ import "../common.js" as Common
 ApplicationWindow {
     id: appWindow
     visible: true
-    width: NaCore.isMobileSimulation ? 350 : Screen.width
-    height: NaCore.isMobileSimulation ? 750 : Screen.height
+    width: NaCore.width
+    height: NaCore.height
     // width: 350
     // height: 750
 
