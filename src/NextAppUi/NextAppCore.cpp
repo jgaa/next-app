@@ -36,6 +36,7 @@ NextAppCore::NextAppCore() {
 #endif
 }
 
+
 QDateTime NextAppCore::dateFromWeek(int year, int week)
 {
     QDate date(year, 1, 1);
@@ -86,9 +87,15 @@ CalendarModel *NextAppCore::createCalendarModel()
 
 QString NextAppCore::openFile(const QString &path)
 {
-    if (const auto url = QUrl::fromLocalFile(path); url.isValid()) {
-        QDesktopServices::openUrl(path);
-    }
+    // Does not work in release mode under Ubuntu 23.10
+    // if (const auto url = QUrl::fromLocalFile(path); url.isValid()) {
+    //     LOG_DEBUG_N << "Opening file " << url.toString();
+    //     try {
+    //         QDesktopServices::openUrl(path);
+    //     } catch (const std::exception &e) {
+    //         LOG_ERROR_N << "Failed to open file " << path << " - " << e.what();
+    //     }
+    // }
 }
 
 time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)

@@ -23,9 +23,21 @@
 
 namespace nextapp::grpc {
 
+// Use this so that we don't forget to set the operation
+std::shared_ptr<nextapp::pb::Update> newUpdate(nextapp::pb::Update::Operation op);
+
 struct RequestCtx {
     std::optional<jgaa::mysqlpool::Mysqlpool::Handle> dbh;
     std::shared_ptr<UserContext> uctx;
+    std::vector<std::shared_ptr<nextapp::pb::Update>> updates;
+
+    void publishLater(std::shared_ptr<nextapp::pb::Update> update) {
+        updates.emplace_back(update);
+    }
+
+    nextapp::pb::Update& publishLater(pb::Update::Operation op) {
+        return *updates.emplace_back(newUpdate(op));
+    }
 };
 
 template <typename T, typename Arg>
@@ -173,6 +185,13 @@ public:
                             rctx.uctx = owner_.userContext(ctx);
                             rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
                             co_await fn(reply, rctx);
+                            if (!rctx.updates.empty()) {
+                                LOG_TRACE << std::format("Publishing {} delayed updates to user {} for {}.",
+                                                         rctx.updates.size(), name, rctx.uctx->userUuid());
+                                for (auto& update : rctx.updates) {
+                                    owner_.publish(update);
+                                }
+                            }
                         } else if constexpr (!UnaryFnWithoutContext<FnT, ReplyT *> && !UnaryFnWithContext<FnT, ReplyT *>) {
                             static_assert(false, "Invalid unary handler function");
                         }
@@ -268,7 +287,7 @@ public:
     boost::asio::awaitable<void> syncActiveWork(RequestCtx& rctx);
     boost::asio::awaitable<void> pauseWorkSession(pb::WorkSession &work, RequestCtx& rctx);
     boost::asio::awaitable<void> touchWorkSession(pb::WorkSession &work, RequestCtx& rctx);
-    boost::asio::awaitable<void> resumeWorkSession(pb::WorkSession &work, RequestCtx& rctx);
+    boost::asio::awaitable<void> resumeWorkSession(pb::WorkSession &work, RequestCtx& rctx, bool makeUpdate = true);
     boost::asio::awaitable<std::optional<pb::WorkSession> > fetchActiveWorkSession(RequestCtx& rctx);
     boost::asio::awaitable<void> endWorkSessionForAction(const std::string_view& actionId, RequestCtx& rctx);
 

@@ -21,6 +21,7 @@ Item {
         tmp.region = region.text
         tmp.firstDayOfWeekIsMonday = monday.checked
         tmp.autoStartNextWorkSession = autoStartNextWs.checked
+        tmp.autoStartNewWorkSession = autoStartNewWs.checked
 
         NaComm.saveGlobalSettings(tmp)
         initialized = false
@@ -36,6 +37,7 @@ Item {
             monday.checked = tmp.firstDayOfWeekIsMonday
             initialized = true;
             autoStartNextWs.checked = tmp.autoStartNextWorkSession
+            autoStartNewWs.checked = tmp.autoStartNewWorkSession
         }
     }
 
@@ -92,6 +94,13 @@ Item {
         CheckBox {
             id: monday
             text: qsTr("First day of week is Monday")
+        }
+
+        Item {}
+
+        CheckBox {
+            id: autoStartNewWs
+            text: qsTr("When a work session is created, start it automatically")
         }
 
         Item {}

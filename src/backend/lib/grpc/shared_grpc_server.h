@@ -24,8 +24,6 @@ namespace asio = boost::asio;
 
 namespace nextapp::grpc {
 
-// Use this so that we don't forget to set the operation
-std::shared_ptr<nextapp::pb::Update> newUpdate(nextapp::pb::Update::Operation op);
 
 template <typename T>
 concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::Action>;

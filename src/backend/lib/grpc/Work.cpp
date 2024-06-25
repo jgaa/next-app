@@ -90,7 +90,6 @@ struct ToWorkSession {
             string name;
 
             vector<string> actions;
-            vector<std::shared_ptr<pb::Update>> updates;
 
             if (req->has_actionid()) {
                 actions.push_back(req->actionid());
@@ -124,11 +123,9 @@ struct ToWorkSession {
                 throw db_err{pb::Error::NO_RELEVANT_DATA, "No new actions to add to work sessions"};
             }
 
-            updates.reserve(actions.size());
+            rctx.updates.reserve(actions.size());
 
-            // Pause any active work session
-            co_await owner_.pauseWork(rctx);
-
+            int count = 0;
             for(const auto& actionId : actions) {
                 co_await owner_.validateAction(*rctx.dbh, actionId, cuser, &name);
                 pb::WorkSession init;
@@ -138,17 +135,21 @@ struct ToWorkSession {
 
                 assert(res.has_value() && !res.rows().empty());
 
-                {
-                    auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
-                    ToWorkSession::assign(res.rows().front(), *update->mutable_work(), *rctx.uctx);
-                    updates.emplace_back(update);
+                auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
+                auto& work = *update.mutable_work();
+                ToWorkSession::assign(res.rows().front(), work, *rctx.uctx);
+
+                if (++count == 1) {
+                    if (rctx.uctx->settings().autostartnewworksession()) {
+                        LOG_TRACE_N << "Created and starting WorkSession: " << work.id();
+                        // Pause any active work session
+                        co_await owner_.pauseWork(rctx);
+                        co_await owner_.resumeWorkSession(work, rctx, false /* New session, no need to send two updates */);
+                    }
                 }
             }
 
             co_await trx.commit();
-            for(const auto& update : updates) {
-                owner_.publish(update);
-            }
 
             co_return;
         }, __func__);
@@ -204,9 +205,8 @@ struct ToWorkSession {
                         work.add_events()->Swap(&ne);
                         co_await owner_.saveWorkSession(work, rctx);
                         rctx.dbh.reset();
-                        auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-                        *update->mutable_work() = work;
-                        owner_.publish(update);
+                        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+                        *update.mutable_work() = work;
                     } break;
                 case pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION: {
                     auto ne = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION);
@@ -235,9 +235,8 @@ struct ToWorkSession {
                     updateOutcome(work, *rctx.uctx);
                     co_await owner_.saveWorkSession(work, rctx, false);
                     rctx.dbh.reset();
-                    auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-                    *update->mutable_work() = work;
-                    owner_.publish(update);
+                    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+                    *update.mutable_work() = work;
                 } break;
                 default:
                     assert(false);
@@ -308,7 +307,8 @@ struct ToWorkSession {
         }, __func__);
 }
 
-::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteWorkSession(::grpc::CallbackServerContext *ctx, const pb::DeleteWorkReq *req, pb::Status *reply)
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteWorkSession(::grpc::CallbackServerContext *ctx,
+                                                                       const pb::DeleteWorkReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
         [this, ctx, req] (pb::Status *reply) -> boost::asio::awaitable<void> {
@@ -524,9 +524,8 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
 
             co_await trx.commit();
 
-            auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
-            *update->mutable_work() = work;
-            owner_.publish(update);
+            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
+            *update.mutable_work() = work;
 
             *reply->mutable_work() = std::move(work);
             co_return;
@@ -693,9 +692,8 @@ boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work,
 
     co_await saveWorkSession(work, rctx);
 
-    auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-    *update->mutable_work() = work;
-    publish(update);
+    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+    *update.mutable_work() = work;
 }
 
 boost::asio::awaitable<void> GrpcServer::pauseWorkSession(pb::WorkSession &work, RequestCtx&  rctx)
@@ -711,21 +709,19 @@ boost::asio::awaitable<void> GrpcServer::pauseWorkSession(pb::WorkSession &work,
 
     co_await saveWorkSession(work, rctx);
 
-    auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-    *update->mutable_work() = work;
-    publish(update);
+    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+    *update.mutable_work() = work;
 }
 
 boost::asio::awaitable<void> GrpcServer::touchWorkSession(pb::WorkSession &work, RequestCtx&  rctx)
 {
     work.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH));
     co_await saveWorkSession(work, rctx);
-    auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-    *update->mutable_work() = work;
-    publish(update);
+    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+    *update.mutable_work() = work;
 }
 
-boost::asio::awaitable<void> GrpcServer::resumeWorkSession(pb::WorkSession &work, RequestCtx&  rctx)
+boost::asio::awaitable<void> GrpcServer::resumeWorkSession(pb::WorkSession &work, RequestCtx&  rctx, bool makeUpdate)
 {
     // TODO: use transaction
     auto dbopts = rctx.uctx->dbOptions();
@@ -752,9 +748,10 @@ boost::asio::awaitable<void> GrpcServer::resumeWorkSession(pb::WorkSession &work
 
     co_await saveWorkSession(work, rctx);
 
-    auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-    *update->mutable_work() = work;
-    publish(update);
+    if (makeUpdate) {
+        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+        *update.mutable_work() = work;
+    }
 }
 
 void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)
@@ -899,9 +896,8 @@ boost::asio::awaitable<void> GrpcServer::activateNextWorkSession(RequestCtx& rct
     updateOutcome(work, *rctx.uctx);
     co_await saveWorkSession(work, rctx);
 
-    auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-    *update->mutable_work() = work;
-    publish(update);
+    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+    *update.mutable_work() = work;
 }
 
 boost::asio::awaitable<void> GrpcServer::pauseWork(RequestCtx&  rctx)

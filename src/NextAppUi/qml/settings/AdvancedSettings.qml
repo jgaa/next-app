@@ -36,13 +36,14 @@ Item {
                 text: settings.value("logging/path")
             }
 
-            RoundButton {
-                id: viewLogBtn
-                text: qsTr("View")
-                onClicked: {
-                    NaCore.openFile(logPath.text)
-                }
-            }
+            // Does not work in Ubuntu 23.10. The system goes into a loop of opening the file
+            // RoundButton {
+            //     id: viewLogBtn
+            //     text: qsTr("View")
+            //     onClicked: {
+            //         NaCore.openFile(logPath.text)
+            //     }
+            // }
         }
 
         Label { text: qsTr("Log Level")}
