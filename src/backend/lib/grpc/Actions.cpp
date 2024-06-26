@@ -298,10 +298,8 @@ boost::asio::awaitable<void>
         auto *action = reply->mutable_action();
         ToAction::assign(row, *action, *rctx.uctx);
         if (publish) {
-            // Copy the new Action to an update and publish it
-            auto update = newUpdate(op);
-            *update->mutable_action() = *action;
-            grpc.publish(update);
+            auto& update = rctx.publishLater(op);
+            *update.mutable_action() = *action;
         }
 
         switch (done) {
@@ -504,19 +502,14 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
     assert(!res.empty());
     // Set the reply data
 
-    auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
+    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
     if (reply) {
         auto *reply_action = reply->mutable_action();
         ToAction::assign(res.rows().front(), *reply_action, *rctx.uctx);
-        *update->mutable_action() = *reply_action;
+        *update.mutable_action() = *reply_action;
     } else {
-        action.Clear();
-        ToAction::assign(res.rows().front(), action, *rctx.uctx);
-        *update->mutable_action() = action;
+        ToAction::assign(res.rows().front(), *update.mutable_action(), *rctx.uctx);
     }
-
-    // Copy the new Action to an update and publish it
-    owner.publish(update);
 }
 
 
@@ -605,9 +598,8 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
             assert(res.has_value());
             if (res.affected_rows() == 1) {
                 reply->set_deletedactionid(uuid);
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
-                update->mutable_action()->set_id(uuid);
-                owner_.publish(update);
+                auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+                update.mutable_action()->set_id(uuid);
             } else {
                 reply->set_uuid(uuid);
                 reply->set_error(pb::Error::NOT_FOUND);
@@ -1223,10 +1215,8 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
     if (res.affected_rows() && dres.has_value()) {
         for(const auto drow : dres.rows()) {
             auto id = drow.at(0).as_string();
-            pb::Update update;
-            update.set_op(pb::Update::Operation::Update_Operation_DELETED);
+            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
             update.mutable_action()->set_id(id);
-            publish(make_shared<pb::Update>(update));
         }
     }
 
@@ -1307,10 +1297,8 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
                 auto *reply_ac = reply->mutable_actioncategory();
                 ToActionCategory::assign(res.rows().front(), *reply_ac);
 
-                // Publish the new category
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
-                *update->mutable_actioncategory() = *reply_ac;
-                owner_.publish(update);
+                auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
+                *update.mutable_actioncategory() = *reply_ac;
             }
 
         }, __func__);
@@ -1333,10 +1321,8 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
                 auto *reply_ac = reply->mutable_actioncategory();
                 *reply_ac = *req;
 
-                // Publish the updated category
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
-                *update->mutable_actioncategory() = *reply_ac;
-                owner_.publish(update);
+                auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+                *update.mutable_actioncategory() = *reply_ac;
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("ActionCategory with id={} was not updated.", req->id()));
@@ -1356,9 +1342,8 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
             assert(res.has_value());
             if (res.affected_rows() == 1) {
                 reply->set_uuid(req->id());
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
-                update->mutable_actioncategory()->set_id(req->id());
-                owner_.publish(update);
+                auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+                update.mutable_actioncategory()->set_id(req->id());
             } else {
                 reply->set_uuid(req->id());
                 reply->set_error(pb::Error::NOT_FOUND);

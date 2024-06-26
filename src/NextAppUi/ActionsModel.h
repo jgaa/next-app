@@ -148,8 +148,8 @@ public:
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
     Q_INVOKABLE void markActionAsFavorite(const QString& actionUuid, bool favorite);
     Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind) const;
-    Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
-    Q_INVOKABLE QString formatDue(const nextapp::pb::Due& due);
+    Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt) const;
+    Q_INVOKABLE QString formatDue(const nextapp::pb::Due& due) const;
     Q_INVOKABLE QString whenListElement(uint64_t when,
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind dt,
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind btn);

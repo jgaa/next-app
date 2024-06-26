@@ -85,7 +85,7 @@ CalendarModel *NextAppCore::createCalendarModel()
     return model;
 }
 
-QString NextAppCore::openFile(const QString &path)
+void NextAppCore::openFile(const QString &path)
 {
     // Does not work in release mode under Ubuntu 23.10
     // if (const auto url = QUrl::fromLocalFile(path); url.isValid()) {

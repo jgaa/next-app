@@ -400,6 +400,7 @@ void ActionsModel::setMode(FetchWhat mode)
 
 void ActionsModel::setIsVisible(bool isVisible)
 {
+    LOG_DEBUG_N << "Visible is now: " << isVisible;
     if (is_visible_ != isVisible) {
         LOG_DEBUG_N << "Visible changed to " << isVisible;
         is_visible_ = isVisible;
@@ -440,7 +441,7 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) con
     assert(false);
 }
 
-QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
+QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt) const
 {
 #ifdef ANDROID
     return "android";
@@ -469,7 +470,17 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget
     switch(dt) {
     case ActionDueKind::DATETIME:
         return tr("Time") + " " + QString::fromUtf8(std::format("{:%F %R}", zoned));
-    case ActionDueKind::DATE:
+    case ActionDueKind::DATE: {
+            // Check if it is tomorrow
+            if (ymd == current_ymd) {
+                return tr("Today");
+            }
+            const auto tomorrow_ymd = std::chrono::year_month_day(floor<std::chrono::days>(current.get_local_time() + std::chrono::days{1}));
+            if (ymd == tomorrow_ymd) {
+                return tr("Tomorrow");
+            }
+        }
+
         return select(format("{:%F}", zoned), tr("Today"), tr("Day"));
     case ActionDueKind::WEEK:
         return select(format("{:%W %Y}", zoned), tr("This week"), tr("Week"), tr("W"));
@@ -489,7 +500,7 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget
 #endif
 }
 
-QString ActionsModel::formatDue(const nextapp::pb::Due &due)
+QString ActionsModel::formatDue(const nextapp::pb::Due &due) const
 {
     auto when = due.hasStart() ? due.start() : 0;
     return formatWhen(when, due.kind());
@@ -828,7 +839,7 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case UuidRole:
         return action.id_proto();
     case PriorityRole:
-        return static_cast<unsigned>(action.priority());
+        return static_cast<int>(action.priority());
     case StatusRole:
         return action.status();
     case NodeRole:
@@ -853,8 +864,8 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return name;
         }
     case DueRole:
-        //return action.due(); // Does not work
-        return {};
+        // Only return if it's
+        return formatDue(action.due());
     case FavoriteRole:
         return action.favorite();
     case HasWorkSessionRole:

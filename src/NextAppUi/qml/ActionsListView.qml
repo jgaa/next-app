@@ -11,21 +11,19 @@ Rectangle {
     id: root
     anchors.fill: parent
     color: MaterialDesignStyling.surface
-    property bool ready: false
     property int prev_selection: 0
     enabled: NaComm.connected
-    opacity: NaComm.connected ? 1.0 : 0.5
+
+    DisabledDimmer {}
 
     onVisibleChanged: {
-        if (root.visible) {
-            // console.log("ActionsListView is now visible.")
-            if (!root.ready) {
-                // console.log("ActionsListView is now becoming ready.")
-                root.ready = true
-            }
-        } else {
-            // console.log("ActionsListView is now hidden");
-        }
+        console.log("ActionsView visible changed to", root.visible)
+        ActionsModel.isVisible = root.visible
+    }
+
+    // onVisibleChanged is not called when the view is part of the initial view stack
+    Component.onCompleted: {
+        console.log("ActionsView completed")
         ActionsModel.isVisible = root.visible
     }
 

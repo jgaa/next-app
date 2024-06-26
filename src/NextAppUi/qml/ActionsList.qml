@@ -12,7 +12,8 @@ Rectangle {
     id: root
     anchors.fill: parent
     property string selectedItemUuid: NaMainTreeModel.selected
-
+    property var priorityColors: ["magenta", "red", "orangered", "orange", "green", "blue", "lightblue", "gray"]
+    property var statusIcons: ["\uf058", "\uf111", "\uf0c8"]
     color: MaterialDesignStyling.surface
 
     ColumnLayout {
@@ -66,6 +67,9 @@ Rectangle {
                 required property string listName
                 required property string node
                 required property string category
+                required property string due
+                required property int priority
+                required property string status
 
                 implicitHeight: row.implicitHeight + 4
                 width: listView.width
@@ -156,14 +160,25 @@ Rectangle {
                             Layout.bottomMargin: 2
                             isChecked: done
                             checkedCode: "\uf058"
-                            uncheckedCode: "\uf111"
+                            uncheckedCode: root.statusIcons[status]
                             checkedColor: "green"
                             uncheckedColor: "orange"
 
                             onClicked: {
                                 ActionsModel.markActionAsDone(uuid, isChecked)
                             }
+
+                            Text {
+                                anchors.fill: parent
+                                font.family: ce.faSolidName
+                                font.styleName: ce.faSolidStyle
+                                text: "\uf06d"
+                                color: root.priorityColors[priority]
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
                         }
+
 
                         Rectangle {
                             width: 12
@@ -204,8 +219,8 @@ Rectangle {
                             id: canWorkIcon
                             enabled: !done
                             isChecked: hasWorkSession
-                            checkedCode: "\uf017"
-                            uncheckedCode: "\uf017"
+                            checkedCode: "\uf252"
+                            uncheckedCode: "\uf254"
                             checkedColor: "green"
                             uncheckedColor: "lightblue"
                             useSolidForChecked: true
@@ -224,6 +239,36 @@ Rectangle {
                         }
 
                         Label {
+                            visible: dueLabel.visible
+                            font.family: ce.faNormalName
+                            text: "\uf133"
+                            color: MaterialDesignStyling.onSurface
+                            font.pixelSize: listLabel.font.pixelSize
+                        }
+
+                        Label {
+                            id: dueLabel
+                            color: MaterialDesignStyling.onSurfaceVariant
+                            text: due
+                            visible: text !== qsTr("Today")
+                        }
+
+                        Item {
+                            visible: dueLabel.visible
+                            Layout.preferredWidth: 4
+                        }
+
+                        Label {
+                            visible: listLabel.visible
+                            font.family: ce.faSolidName
+                            font.styleName: ce.faSolidStyle
+                            text: "\uf802"
+                            color: MaterialDesignStyling.onSurface
+                            font.pixelSize: listLabel.font.pixelSize
+                        }
+
+                        Label {
+                            id: listLabel
                             color: MaterialDesignStyling.outline
                             text: listName
                             visible: text !== ""
@@ -270,6 +315,10 @@ Rectangle {
                 confirmDelete.open()
             }
         }
+    }
+
+    CommonElements {
+        id: ce
     }
 
     MessageDialog {

@@ -38,7 +38,7 @@ public:
     static Q_INVOKABLE WeeklyWorkReportModel *createWeeklyWorkReportModel();
     static Q_INVOKABLE QString toHourMin(int duration);
     static Q_INVOKABLE CalendarModel *createCalendarModel();
-    Q_INVOKABLE QString openFile(const QString& path);
+    Q_INVOKABLE void openFile(const QString& path);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
