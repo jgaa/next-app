@@ -16,7 +16,7 @@ Rectangle {
     property int current: 0
     //property int currentTabIndex: -1
     readonly property int tabBarSpacing: 10
-    property string currentIcon: topBar.currentItem.icon.source
+    //property string currentIcon: topBar.currentItem.icon.source
 
     color: MaterialDesignStyling.surfaceContainer
 
@@ -63,31 +63,31 @@ Rectangle {
         }
     }
 
-    // TabBar is designed to be horizontal, whereas we need a vertical bar.
-    // We can easily achieve that by using a Container.
-    component TabBar: Container {
-        id: tabBarComponent
+    // // TabBar is designed to be horizontal, whereas we need a vertical bar.
+    // // We can easily achieve that by using a Container.
+    // component TabBar: Container {
+    //     id: tabBarComponent
 
-        Layout.fillWidth: true
-        // ButtonGroup ensures that only one button can be checked at a time.
-        ButtonGroup {
-            buttons: tabBarComponent.contentChildren
+    //     Layout.fillWidth: true
+    //     // ButtonGroup ensures that only one button can be checked at a time.
+    //     ButtonGroup {
+    //         buttons: tabBarComponent.contentChildren
 
-            // We have to manage the currentIndex ourselves, which we do by setting it to the index
-            // of the currently checked button. We use setCurrentIndex instead of setting the
-            // currentIndex property to avoid breaking bindings. See "Managing the Current Index"
-            // in Container's documentation for more information.
-            onCheckedButtonChanged: tabBarComponent.setCurrentIndex(
-                Math.max(0, buttons.indexOf(checkedButton)))
-        }
+    //         // We have to manage the currentIndex ourselves, which we do by setting it to the index
+    //         // of the currently checked button. We use setCurrentIndex instead of setting the
+    //         // currentIndex property to avoid breaking bindings. See "Managing the Current Index"
+    //         // in Container's documentation for more information.
+    //         onCheckedButtonChanged: tabBarComponent.setCurrentIndex(
+    //             Math.max(0, buttons.indexOf(checkedButton)))
+    //     }
 
-        contentItem: ColumnLayout {
-            spacing: tabBarComponent.spacing
-            Repeater {
-                model: tabBarComponent.contentModel
-            }
-        }
-    }
+    //     contentItem: ColumnLayout {
+    //         spacing: tabBarComponent.spacing
+    //         Repeater {
+    //             model: tabBarComponent.contentModel
+    //         }
+    //     }
+    // }
 
     ColumnLayout {
         anchors.fill: root
@@ -95,129 +95,156 @@ Rectangle {
         anchors.bottomMargin: root.tabBarSpacing
         spacing: root.tabBarSpacing
 
-        TabBar {
-            id: topBar
-            Layout.margins: 10
+        // Control {
+        //     Layout.margins: 10
 
-            background: Rectangle {
+        //     background: Rectangle {
+        //         color: MaterialDesignStyling.inverseSurface
+        //         opacity: 0.4
+        //         radius: 10
+        //     }
+        // }
+
+        ColumnLayout {
+            id: selectionsBar
+            Layout.margins: 10
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignHCenter
+            property int colWidth: (root.width - 40) / 3
+
+            ButtonGroup {
+                id: buttonGroupLeft
+                checkedButton: buttonGroupLeft.buttons[0]
+            }
+
+            ButtonGroup {
+                id: buttonGroupRight
+            }
+
+            Repeater {
+                id: repeaterCtl
+                property var icons: [
+                    "qrc:/qt/qml/NextAppUi/icons/fontawsome/list-check.svg",
+                    "qrc:/qt/qml/NextAppUi/icons/fontawsome/folder-tree.svg",
+                    "qrc:/qt/qml/NextAppUi/icons/fontawsome/hourglass-half.svg",
+                    "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-day.svg"
+                ]
+                model: [qsTr("Todos"), qsTr("Lists"), qsTr("Current"), qsTr("Calendar")]
+
+                RowLayout {
+                    //Layout.fillWidth: true
+                    //Layout.alignment: Qt.AlignCenter
+                    // Label {
+                    //     text: modelData
+                    //     color: "yellow"
+                    //     Layout.preferredWidth: selectionsBar.colWidth
+                    // }
+
+                    RoundButton {
+                        icon.source: repeaterCtl.icons[index]
+                        checkable: true
+                        Layout.preferredWidth: selectionsBar.colWidth
+                        ButtonGroup.group: buttonGroupLeft
+                    }
+
+                    RoundButton {
+                        icon.source: repeaterCtl.icons[index]
+                        checkable: true
+                        Layout.preferredWidth: selectionsBar.colWidth
+                        ButtonGroup.group: buttonGroupRight
+
+                        onClicked: {
+                            console.log("Clicked: ", index, "checked: ", checked)
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Item {
+                    Layout.preferredWidth: selectionsBar.colWidth
+                }
+
+                RoundButton {
+                    //icon.source: repeaterCtl.icons[index]
+                    text: "X"
+                    checkable: true
+                    Layout.preferredWidth: selectionsBar.colWidth
+                    ButtonGroup.group: buttonGroupRight
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
                 color: MaterialDesignStyling.inverseSurface
-                opacity: 0.4
+                opacity: 0.2
                 radius: 10
             }
-
-            spacing: root.tabBarSpacing
-
-            SidebarEntry {
-                id: todolist
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/list-check.svg"
-                checkable: true
-                checked: true // First item is checked by default.
-                text: qsTr("Todos")
-
-                onCheckedChanged: {
-                    if (checked) {
-                        root.current = 0
-                    }
-                }
-            }
-
-            SidebarEntry {
-                id: tree
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/folder-tree.svg"
-                checkable: true
-                text: qsTr("Lists")
-
-                onCheckedChanged: {
-                    if (checked) {
-                        root.current = 1
-                    }
-                }
-            }
-
-            SidebarEntry {
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/hourglass-half.svg"
-                checkable: true
-                text: qsTr("Current")
-
-                onCheckedChanged: {
-                    if (checked) {
-                        root.current = 2
-                    }
-                }
-            }
-
-            SidebarEntry {
-                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-day.svg"
-                text: qsTr("Calendar")
-                checkable: true
-
-                onCheckedChanged: {
-                    if (checked) {
-                        root.current = 3
-                    }
-                }
-            }
-
-
-
-            // SidebarEntry {
-            //     id: lists
-
-            //     icon.source: "qrc:/qt/qml/NextAppUi/icons/read.svg"
-            //     checkable: true
-
-            //     onCheckedChanged: {
-            //         if (checked) {
-            //             root.current = 1
-            //             //root.currentMainItem = 1
-            //             //root.currentTabIndex = 0
-            //         }
-            //     }
-            // }
-
-            // SidebarEntry {
-            //     icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/clock.svg"
-            //     checkable: true
-
-            //     onCheckedChanged: {
-            //         if (checked) {
-            //             root.current = 2
-            //             //root.currentMainItem = 1
-            //             //root.currentTabIndex = 1
-            //         }
-            //     }
-            // }
-
-            // SidebarEntry {
-            //     id: planDay
-
-            //     icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-day.svg"
-            //     checkable: true
-
-            //     onCheckedChanged: {
-            //         if (checked) {
-            //             root.current = 4
-            //             //root.currentMainItem = 2
-            //             //root.currentTabIndex = -1
-            //         }
-            //     }
-            // }
-
-            // SidebarEntry {
-            //     id: reports
-
-            //     icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/chart-line.svg"
-            //     checkable: true
-
-            //     onCheckedChanged: {
-            //         if (checked) {
-            //             root.current = 5
-            //             //root.currentMainItem = 1
-            //             //root.currentTabIndex = 2
-            //         }
-            //     }
-            // }
         }
+
+        // TabBar {
+        //     id: topBar
+        //     Layout.margins: 10
+
+        //     background: Rectangle {
+        //         color: MaterialDesignStyling.inverseSurface
+        //         opacity: 0.4
+        //         radius: 10
+        //     }
+
+        //     spacing: root.tabBarSpacing
+
+        //     SidebarEntry {
+        //         id: todolist
+        //         icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/list-check.svg"
+        //         checkable: true
+        //         checked: true // First item is checked by default.
+        //         text: qsTr("Todos")
+
+        //         onCheckedChanged: {
+        //             if (checked) {
+        //                 root.current = 0
+        //             }
+        //         }
+        //     }
+
+        //     SidebarEntry {
+        //         id: tree
+        //         icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/folder-tree.svg"
+        //         checkable: true
+        //         text: qsTr("Lists")
+
+        //         onCheckedChanged: {
+        //             if (checked) {
+        //                 root.current = 1
+        //             }
+        //         }
+        //     }
+
+        //     SidebarEntry {
+        //         icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/hourglass-half.svg"
+        //         checkable: true
+        //         text: qsTr("Current")
+
+        //         onCheckedChanged: {
+        //             if (checked) {
+        //                 root.current = 2
+        //             }
+        //         }
+        //     }
+
+        //     SidebarEntry {
+        //         icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-day.svg"
+        //         text: qsTr("Calendar")
+        //         checkable: true
+
+        //         onCheckedChanged: {
+        //             if (checked) {
+        //                 root.current = 3
+        //             }
+        //         }
+        //     }
+        // }
 
         ColumnLayout {
             id: menuBar

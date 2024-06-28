@@ -353,7 +353,7 @@ Rectangle {
 
     function openActionDlg(uuid) {
         Common.openDialog("EditActionDlg.qml", root, {
-            node: mainTree.selectedItemUuid,
+            node: NaMainTreeModel.selected,
             title: qsTr("Edit Action"),
             aprx: ActionsModel.getAction(uuid)
         });

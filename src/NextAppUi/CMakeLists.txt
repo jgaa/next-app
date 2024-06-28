@@ -226,6 +226,7 @@ qt_add_qml_module(${PROJECT_NAME}
         DayModel.h
         DaysModel.cpp
         DaysModel.h
+        DualView.h DualView.cpp
         MainTreeModel.cpp
         MainTreeModel.h
         MaterialDesignStyling.cpp

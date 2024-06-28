@@ -29,22 +29,22 @@ ApplicationWindow {
                 onClicked: drawer.open()
             }
 
-            Image {
-                id: selImage
-                source: sidebar.currentIcon
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
-                sourceSize.width: 24
-                sourceSize.height: 24
-            }
+            // Image {
+            //     id: selImage
+            //     source: sidebar.currentIcon
+            //     Layout.preferredWidth: 24
+            //     Layout.preferredHeight: 24
+            //     sourceSize.width: 24
+            //     sourceSize.height: 24
+            // }
 
-            MultiEffect {
-                source: selImage
-                anchors.fill: selImage
-                brightness: 0.9
-                colorization: 1.0
-                colorizationColor: MaterialDesignStyling.onPrimaryContainer
-            }
+            // MultiEffect {
+            //     source: selImage
+            //     anchors.fill: selImage
+            //     brightness: 0.9
+            //     colorization: 1.0
+            //     colorizationColor: MaterialDesignStyling.onPrimaryContainer
+            // }
 
             Item {
                 Layout.fillWidth: true
@@ -78,41 +78,46 @@ ApplicationWindow {
     }
 
     // Main Content
-    StackLayout {
-        id: stackView
-        currentIndex: sidebar.current
+    // StackLayout {
+    //     id: stackView
+    //     currentIndex: sidebar.current
+    //     anchors.fill: parent
+
+    //     // Green days
+    //     // DaysInYear {
+    //     //     id: daysInYear
+    //     // }
+
+    //     // // Home screen
+    //     // TodoList {
+    //     //     Layout.fillWidth: true
+    //     //     Layout.fillHeight: true
+    //     // }
+
+    //     // MainTree {
+    //     //     id: mainTree
+    //     //     Layout.fillWidth: true
+    //     //     Layout.fillHeight: true
+    //     // }
+
+    //     // WorkSessionsStacked {
+    //     //     id: workSessionsStacked
+    //     //     Layout.fillWidth: true
+    //     //     Layout.fillHeight: true
+    //     // }
+
+    //     // CalendarView {
+    //     //     id: calendarPage
+    //     //     Layout.fillWidth: true
+    //     //     Layout.fillHeight: true
+    //     //     mode: CalendarModel.CM_DAY
+    //     //     days: 1
+    //     // }
+    // }
+
+    DualView {
+        id: dualView
         anchors.fill: parent
-
-        // Green days
-        // DaysInYear {
-        //     id: daysInYear
-        // }
-
-        // Home screen
-        TodoList {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-        }
-
-        MainTree {
-            id: mainTree
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-        }
-
-        WorkSessionsStacked {
-            id: workSessionsStacked
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-        }
-
-        CalendarView {
-            id: calendarPage
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            mode: CalendarModel.CM_DAY
-            days: 1
-        }
     }
 
     CommonElements {
