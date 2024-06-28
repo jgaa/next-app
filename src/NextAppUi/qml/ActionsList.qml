@@ -22,17 +22,18 @@ Rectangle {
         Component {
             id: sectionHeading
             Rectangle {
-                width: ListView.view.width
+                width: ListView.view.width  - MaterialDesignStyling.scrollBarWidth
                 height: 22
-                color: MaterialDesignStyling.primary
+                color: MaterialDesignStyling.primaryContainer
 
                 required property string section
 
                 Text {
+                    leftPadding: 10
                     id: label
                     text: ActionsModel.toName(parent.section)
                     font.bold: true
-                    color: MaterialDesignStyling.onPrimary
+                    color: MaterialDesignStyling.onPrimaryContainer
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -46,6 +47,16 @@ Rectangle {
             clip: true
             Layout.fillHeight: true
             Layout.fillWidth: true
+
+            ScrollBar.vertical: ScrollBar {
+                id: vScrollBar
+                parent: listView
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: MaterialDesignStyling.scrollBarWidth
+                policy: ScrollBar.AlwaysOn
+            }
 
             section {
                 criteria: ViewSection.FullString
@@ -72,7 +83,7 @@ Rectangle {
                 required property string status
 
                 implicitHeight: row.implicitHeight + 4
-                width: listView.width
+                width: listView.width - MaterialDesignStyling.scrollBarWidth
                 clip: true
 
                 Rectangle {

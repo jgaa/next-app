@@ -170,13 +170,25 @@ Rectangle {
             id: scrollView
             property int hdrHeiht: 28
             property real dayHeight: root.hourHeight * 24.0
-            property real dayWidth: (width - hbar.width - (4 * root.days - 1)) / root.days
+            property real dayWidth: (width - hbar.width - MaterialDesignStyling.scrollBarWidth - (4 * root.days - 1)) / root.days
             Layout.fillHeight: true
             Layout.fillWidth: true
             contentWidth: width - 10
             contentHeight: dayHeight
+
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+            //ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+            //ScrollBar.vertical.size: MaterialDesignStyling.scrollBarWidth
+
+            ScrollBar.vertical: ScrollBar {
+                id: vScrollBar
+                parent: scrollView
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: MaterialDesignStyling.scrollBarWidth
+                policy: ScrollBar.AlwaysOn
+            }
 
             Component.onCompleted: {
                 scrollView.ScrollBar.vertical.position = 0.25
@@ -184,7 +196,7 @@ Rectangle {
 
             Rectangle {
                 id: dayplan
-                width: parent.width
+                width: parent.width - MaterialDesignStyling.scrollBarWidth
                 height: parent.height
                 //spacing: 0
                 color: MaterialDesignStyling.primaryContainer

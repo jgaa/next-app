@@ -60,7 +60,7 @@ ApplicationWindow {
                 text: "\uf0c2"
                 font.family: ce.faSolidName
                 font.styleName: ce.faSolidStyle
-                color: NaComm.connected ? "green" : "lightgray"
+                color: NaComm.connected ? "green" : "red"
             }
         }
     }

@@ -47,10 +47,22 @@ Rectangle {
                     }
                 }
 
+                ScrollBar.vertical: ScrollBar {
+                    id: vScrollBar
+                    parent: listView
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: MaterialDesignStyling.scrollBarWidth
+                    policy: ScrollBar.AlwaysOn
+                }
+
+
                 delegate: TreeViewDelegate {
                     id: treeDelegate
                     indentation: 8
-                    implicitWidth: treeView.width > 0 ? treeView.width : 250
+                    //implicitWidth: treeView.width > 0 ? treeView.width : 250
+                    width: treeView.width - MaterialDesignStyling.scrollBarWidth
                     implicitHeight: 25
 
                     required property int index

@@ -1,6 +1,7 @@
 #include <QSettings>
 
 #include "MaterialDesignStyling.h"
+#include "NextAppCore.h"
 
 MaterialDesignStyling *MaterialDesignStyling::instance_ = nullptr;
 
@@ -30,6 +31,10 @@ void MaterialDesignStyling::setTheme(const QString &name)
         setLightTheme();
     }
     emit colorsChanged();
+}
+
+int MaterialDesignStyling::scrollBarWidth() const {
+    return NextAppCore::instance()->isMobile() ? 16 : 12;
 }
 
 QString MaterialDesignStyling::primary() const { return theme_.primary; }

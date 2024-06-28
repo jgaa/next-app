@@ -14,18 +14,18 @@ Dialog {
     property NextappPb.action action: aprx.action
     property bool assigned: false
     property bool valid: aprx.valid
-    property int controlsPreferredWidth: 200
+    property int controlsPreferredWidth: (width - 40 - leftMarginForControls) / (NaCore.isMobile ? 1 : 4)
+    property int labelWidth: 80
+    property int leftMarginForControls: NaCore.isMobile ? 20 : 0
 
-    x: (parent.width - width) / 2
-    y: (parent.height - height) / 2
-    width: 800
-    height: 600
+    x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
+    y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
+    width: Math.min(600, NaCore.width, Screen.width)
+    height: Math.min(800, NaCore.height, Screen.height)
 
     standardButtons: root.aprx.valid ? (Dialog.Ok | Dialog.Cancel) : Dialog.Cancel
 
     onOpened: {
-        // console.log("Dialog opened :)");
-        // console.log("action.name is", action.name)
         assign()
     }
 
@@ -113,7 +113,7 @@ Dialog {
             currentIndex: bar.currentIndex
 
             // Main tab
-            RowLayout {
+            ColumnLayout {
                 Layout.fillHeight: true
                 Layout.fillWidth: true
 
@@ -122,138 +122,152 @@ Dialog {
                     Layout.alignment: Qt.AlignLeft
                     Layout.fillHeight: true
                     Layout.fillWidth: true
+                    uniformCellWidths: false
                     rowSpacing: 4
-                    columns: 2
+                    columns: NaCore.isMobile ? 1 : 2
 
-                    Label {
-                        Layout.alignment: Qt.AlignLeft
-                        color: Colors.disabledText
-                        text: qsTr("Name")
+                    ColumnLayout {
+                        Layout.column: 0 // This is the first column
+                        Label {
+                            Layout.preferredWidth: root.labelWidth
+                            color: Colors.disabledText
+                            text: qsTr("Name")
+                        }
                     }
 
                     DlgInputField {
+                        Layout.leftMargin: root.leftMarginForControls
                         id: name
-                        Layout.preferredWidth: root.controlsPreferredWidth * 3
+                        Layout.fillWidth: true
                     }
+                }
 
-                    Label {
-                        Layout.alignment: Qt.AlignLeft
-                        color: Colors.disabledText
-                        text: qsTr("Status")
-                    }
+                //RowLayout {
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: NaCore.isMobile ? 1 : 4
+                    uniformCellWidths: false
 
-                    RowLayout {
-                        Layout.alignment: Qt.AlignLeft
-                        ComboBox {
-                            id: status
-                            Layout.preferredWidth: root.controlsPreferredWidth
-                            model: ListModel {
-                                ListElement{ text: qsTr("Active")}
-                                ListElement{ text: qsTr("Done")}
-                                ListElement{ text: qsTr("On Hold")}
-                            }
+                    ColumnLayout {
+                        Layout.column: 0 // This is the first column
+                        Label {
+                            Layout.preferredWidth: root.labelWidth
+                            color: Colors.disabledText
+                            text: qsTr("Status")
                         }
-
-                        CategoryComboBox {
-                            id: category
-                            Layout.preferredWidth: root.controlsPreferredWidth
-                        }
-
-                        CheckBoxWithFontIcon {
-                            id: favorite
-                            Layout.preferredWidth: root.controlsPreferredWidth
-                            checkedCode: "\uf005"
-                            uncheckedCode: "\uf005"
-                            checkedColor: "orange"
-                            uncheckedColor: "lightgray"
-                            useSolidForChecked: true
-                            text: qsTr("Favorite")
-                        }
-
-                    }
-
-                    Label {
-                        Layout.alignment: Qt.AlignLeft
-                        color: Colors.disabledText
-                        text: qsTr("When")
-                    }
-
-                    RowLayout {
-                        WhenControl {
-                            //width: root.controlsPreferredWidth * 2
-                            id: whenControl
-                            due: root.action.due
-                            Layout.preferredWidth: root.controlsPreferredWidth
-
-                            onSelectionChanged: {
-                                // console.log("DueType changed to", whenControl.due.kind)
-                                //root.action.due = whenControl.due
-                                shortcuts.currentIndex = -1
-                            }
-                        }
-                        ComboBox {
-                            id: shortcuts
-                            Layout.preferredWidth: root.controlsPreferredWidth
-
-                            displayText: qsTr("Move the due time")
-                            currentIndex: -1
-                            model: ListModel {
-                                ListElement{ text: qsTr("Today")}
-                                ListElement{ text: qsTr("Tomorrow")}
-                                ListElement{ text: qsTr("This Weekend")}
-                                ListElement{ text: qsTr("Next Monday")}
-                                ListElement{ text: qsTr("This week")}
-                                ListElement{ text: qsTr("After one week")}
-                                ListElement{ text: qsTr("Next Week")}
-                                ListElement{ text: qsTr("This month")}
-                                ListElement{ text: qsTr("Next month")}
-                                ListElement{ text: qsTr("This Quarter")}
-                                ListElement{ text: qsTr("Next Quarter")}
-                                ListElement{ text: qsTr("This Year")}
-                                ListElement{ text: qsTr("Next Year")}
-                            }
-
-                            onCurrentIndexChanged: {
-                                if (currentIndex >= 0) {
-                                    whenControl.due = ActionsModel.changeDue(currentIndex, whenControl.due)
-                                }
-                            }
-                        }
-                    }
-
-                    Label {
-                        Layout.alignment: Qt.AlignLeft
-                        color: Colors.disabledText
-                        text: qsTr("Priority")
                     }
 
                     ComboBox {
-                        id: priority
+                        id: status
+                        Layout.leftMargin: root.leftMarginForControls
                         Layout.preferredWidth: root.controlsPreferredWidth
                         model: ListModel {
-                            ListElement{ text: qsTr("Critical")}
-                            ListElement{ text: qsTr("Very Important")}
-                            ListElement{ text: qsTr("Higher")}
-                            ListElement{ text: qsTr("High")}
-                            ListElement{ text: qsTr("Normal")}
-                            ListElement{ text: qsTr("Medium")}
-                            ListElement{ text: qsTr("Low")}
-                            ListElement{ text: qsTr("Insignificant")}
+                            ListElement{ text: qsTr("Active")}
+                            ListElement{ text: qsTr("Done")}
+                            ListElement{ text: qsTr("On Hold")}
                         }
                     }
 
-                    Label {
-                        Layout.alignment: Qt.AlignLeft
-                        color: Colors.disabledText
-                        text: qsTr("Description")
+                    CategoryComboBox {
+                        id: category
+                        Layout.leftMargin: root.leftMarginForControls
+                        //Layout.preferredWidth: root.controlsPreferredWidth
+                        Layout.fillWidth: true
+                    }
+
+                    CheckBoxWithFontIcon {
+                        id: favorite
+                        Layout.leftMargin: root.leftMarginForControls
+                        //Layout.preferredWidth: root.controlsPreferredWidth
+                        checkedCode: "\uf005"
+                        uncheckedCode: "\uf005"
+                        checkedColor: "orange"
+                        uncheckedColor: "lightgray"
+                        useSolidForChecked: true
+                        text: qsTr("Favorite")
+                    }
+
+                }
+
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: NaCore.isMobile ? 1 : 4
+
+                    ColumnLayout {
+                        Layout.column: 0 // This is the first column
+                        Label {
+                            Layout.preferredWidth: root.labelWidth
+                            color: Colors.disabledText
+                            text: qsTr("When")
+                        }
+                    }
+
+                    WhenControl {
+                        id: whenControl
+                        due: root.action.due
+                        Layout.leftMargin: root.leftMarginForControls
+                        Layout.preferredWidth: root.controlsPreferredWidth
+
+                        onSelectionChanged: {
+                            // console.log("DueType changed to", whenControl.due.kind)
+                            //root.action.due = whenControl.due
+                            shortcuts.currentIndex = -1
+                        }
+                    }
+
+                    ComboBox {
+                        id: shortcuts
+                        //Layout.preferredWidth: root.controlsPreferredWidth * (NaCore.isMobile ? 1 : 2)
+                        Layout.fillWidth: true
+                        Layout.leftMargin: root.leftMarginForControls
+                        Layout.rowSpan: NaCore.isMobile ? 1 : 2
+
+                        displayText: qsTr("Move the due time")
+                        currentIndex: -1
+                        model: ListModel {
+                            ListElement{ text: qsTr("Today")}
+                            ListElement{ text: qsTr("Tomorrow")}
+                            ListElement{ text: qsTr("This Weekend")}
+                            ListElement{ text: qsTr("Next Monday")}
+                            ListElement{ text: qsTr("This week")}
+                            ListElement{ text: qsTr("After one week")}
+                            ListElement{ text: qsTr("Next Week")}
+                            ListElement{ text: qsTr("This month")}
+                            ListElement{ text: qsTr("Next month")}
+                            ListElement{ text: qsTr("This Quarter")}
+                            ListElement{ text: qsTr("Next Quarter")}
+                            ListElement{ text: qsTr("This Year")}
+                            ListElement{ text: qsTr("Next Year")}
+                        }
+
+                        onCurrentIndexChanged: {
+                            if (currentIndex >= 0) {
+                                whenControl.due = ActionsModel.changeDue(currentIndex, whenControl.due)
+                            }
+                        }
+                    }
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: NaCore.isMobile ? 1 : 2
+
+                    ColumnLayout {
+                        Layout.column: 0 // This is the first column
+                        Label {
+                            Layout.preferredWidth: root.labelWidth
+                            color: Colors.disabledText
+                            text: qsTr("Description")
+                        }
                     }
 
                     TextArea {
                         id: descr
-                        //Layout.preferredHeight: 200
+                        Layout.leftMargin: root.leftMarginForControls
                         Layout.fillHeight: true
-                        Layout.preferredWidth: root.controlsPreferredWidth * 3
-                        placeholderText: qsTr("Some words to describe the purpose of this item?")
+                        Layout.fillWidth: true
+                        //placeholderText: qsTr("Some words to describe the purpose of this item?")
                         //text: root.action.descr
 
                         background: Rectangle {
@@ -273,16 +287,19 @@ Dialog {
                     Layout.fillHeight: true
                     Layout.fillWidth: true
                     rowSpacing: 4
-                    columns: 2
+                    columns: NaCore.isMobile ? 1 : 2
 
-
-                    Label {
-                        Layout.alignment: Qt.AlignLeft
-                        color: Colors.disabledText
-                        text: qsTr("Created")
+                    ColumnLayout {
+                        Layout.column: 0 // This is the first column
+                        Label {
+                            Layout.preferredWidth: root.labelWidth
+                            color: Colors.disabledText
+                            text: qsTr("Created")
+                        }
                     }
 
                     Text {
+                        Layout.leftMargin: root.leftMarginForControls
                         id: createdDateCtl
                         color: Colors.disabledText
                     }
@@ -294,6 +311,7 @@ Dialog {
                     }
 
                     Text {
+                        Layout.leftMargin: root.leftMarginForControls
                         id: completedTimeCtl
                         color: Colors.disabledText
                     }
@@ -305,6 +323,7 @@ Dialog {
                     }
 
                     RowLayout {
+                        Layout.leftMargin: root.leftMarginForControls
                         DlgInputField {
                             id: timeEstimateCtl
                             //inputMask: "999:99:99"
@@ -320,11 +339,34 @@ Dialog {
                     Label {
                         Layout.alignment: Qt.AlignLeft
                         color: Colors.disabledText
+                        text: qsTr("Priority")
+                    }
+
+                    ComboBox {
+                        id: priority
+                        Layout.leftMargin: root.leftMarginForControls
+                        Layout.preferredWidth: root.controlsPreferredWidth
+                        model: ListModel {
+                            ListElement{ text: qsTr("Critical")}
+                            ListElement{ text: qsTr("Very Important")}
+                            ListElement{ text: qsTr("Higher")}
+                            ListElement{ text: qsTr("High")}
+                            ListElement{ text: qsTr("Normal")}
+                            ListElement{ text: qsTr("Medium")}
+                            ListElement{ text: qsTr("Low")}
+                            ListElement{ text: qsTr("Insignificant")}
+                        }
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignLeft
+                        color: Colors.disabledText
                         text: qsTr("Difficulty")
                     }
 
                     ComboBox {
                         id: difficultyCtl
+                        Layout.leftMargin: root.leftMarginForControls
                         Layout.preferredWidth: root.controlsPreferredWidth
                         model: ListModel {
                             ListElement{ text: qsTr("Trivial")}
@@ -335,7 +377,7 @@ Dialog {
                             ListElement{ text: qsTr("Inspiered moment")}
                         }
                     }
-                }
+                } // Grid Layout
             } // Details tab
 
             // Repeat tab
@@ -345,12 +387,12 @@ Dialog {
 
                 GridLayout {
                     id: grid
-
-                    Layout.alignment: Qt.AlignLeft
+                    property int colWidth: NaCore.isMobile ? (root.controlsPreferredWidth)
+                                                           : (root.controlsPreferredWidth * 2)
                     Layout.fillHeight: true
                     Layout.fillWidth: true
                     rowSpacing: 4
-                    columns: 2
+                    columns: NaCore.isMobile ? 1 : 2
 
                     property bool showControls: repeatKindCtl.currentIndex > 0
 
@@ -360,15 +402,19 @@ Dialog {
                     property bool showRepeatSpecCtl :
                         showControls && repeatWhenCtl.currentIndex === 1
 
-                    Label {
-                        Layout.alignment: Qt.AlignLeft
-                        color: Colors.disabledText
-                        text: qsTr("Repeat?")
+                    ColumnLayout {
+                        Layout.column: 0 // This is the first column
+                        Label {
+                            Layout.preferredWidth: root.labelWidth
+                            color: Colors.disabledText
+                            text: qsTr("Repeat")
+                        }
                     }
 
                     ComboBox {
                         id: repeatKindCtl
-                        Layout.preferredWidth: root.controlsPreferredWidth
+                        Layout.preferredWidth: grid.colWidth
+                        Layout.leftMargin: root.leftMarginForControls
                         currentIndex: 0
                         model: ListModel {
                             ListElement{ text: qsTr("Never")}
@@ -387,8 +433,9 @@ Dialog {
 
                     ComboBox {
                         id: repeatWhenCtl
+                        Layout.leftMargin: root.leftMarginForControls
                         visible: grid.showControls
-                        Layout.preferredWidth: root.controlsPreferredWidth
+                        Layout.preferredWidth: grid.colWidth
                         currentIndex: -1
                         model: ListModel {
                             ListElement{ text: qsTr("At Date")}
@@ -405,6 +452,8 @@ Dialog {
 
                     RowLayout {
                         visible: grid.showRepeatAfterCtl
+                        Layout.leftMargin: root.leftMarginForControls
+                        Layout.preferredWidth: grid.colWidth
                         SpinBox {
                             id: repeatAfterCtl
                             editable: true
@@ -415,6 +464,7 @@ Dialog {
                             id: repeatUnitCtl
                             Layout.leftMargin: 10
                             //Layout.preferredWidth: root.controlsPreferredWidth
+                            //Layout.fillWidth: true
                             model: ListModel {
                                 ListElement{ text: qsTr("Days")}
                                 ListElement{ text: qsTr("Weeks")}
@@ -423,18 +473,54 @@ Dialog {
                                 ListElement{ text: qsTr("Years")}
                             }
                         }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
                     }
 
                     Item {
-                        visible: grid.showRepeatSpecCtl
+                        visible: grid.showRepeatSpecCtl && !NaCore.isMobile
+                    }
+
+                    Item {
+                        visible: !grid.showRepeatSpecCtl
+                        //Layout.fillWidth: true
+                        Layout.fillHeight: true
                     }
 
                     ListView {
                         id: repeatSpecCtl
-                        Layout.preferredWidth: root.controlsPreferredWidth
+                        Layout.leftMargin: root.leftMarginForControls
+                        Layout.preferredWidth: grid.colWidth
+                        //width: grid.colWidth
                         Layout.fillHeight: true
                         clip: true
                         visible: grid.showRepeatSpecCtl
+
+                        onVisibleChanged: {
+                            console.log("RepeatSpecCtl visible:", visible)
+                            width: visible ? grid.colWidth : 0
+                            Layout.fillWidth = true
+                            console.log("x=", x, "y=", y, "width=", width, "height=", height)
+                        }
+
+                        ScrollBar.vertical: ScrollBar {
+                            id: vScrollBar
+                            parent: repeatSpecCtl
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: MaterialDesignStyling.scrollBarWidth
+                            policy: ScrollBar.AlwaysOn
+                        }
+
+                        // Rectangle {
+                        //     id: background
+                        //     color: "gray"
+                        //     anchors.fill: parent
+                        // }
+
                         model: ListModel {
                             ListElement{ text: qsTr("Sunday"); checked: false }
                             ListElement{ text: qsTr("Monday"); checked: false }
@@ -453,10 +539,12 @@ Dialog {
                             ListElement{ text: qsTr("Last Day in Year"); checked: false }
                         }
                         delegate: Item {
-                            Layout.fillWidth: true
+                            width: repeatSpecCtl.width - vScrollBar.width
                             height: checkBox.height
+                            visible: true
                             CheckBox {
                                 id: checkBox
+                                visible: true
                                 checked: model.checked
                                 text: model.text
                                 //onCheckedChanged: model.checked = checked

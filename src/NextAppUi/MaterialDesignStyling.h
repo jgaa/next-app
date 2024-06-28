@@ -8,6 +8,8 @@ class MaterialDesignStyling : public QObject
     QML_ELEMENT
     QML_SINGLETON
 
+    Q_PROPERTY(int scrollBarWidth READ scrollBarWidth CONSTANT)
+
     Q_PROPERTY(QString primary READ primary NOTIFY colorsChanged FINAL)
     Q_PROPERTY(QString onPrimary READ onPrimary NOTIFY colorsChanged FINAL)
     Q_PROPERTY(QString primaryContainer READ primaryContainer NOTIFY colorsChanged FINAL)
@@ -120,6 +122,8 @@ public:
     MaterialDesignStyling();
 
     Q_INVOKABLE void setTheme(const QString& name);
+
+    int scrollBarWidth() const;
 
     QString primary() const;
     QString onPrimary() const;
