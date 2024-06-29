@@ -10,6 +10,7 @@ pragma ComponentBehavior: Bound
 
 Rectangle {
     id: root
+    //anchors.fill: parent
     enabled: NaComm.connected && NaMainTreeModel.useRoot
 
     DisabledDimmer {}
@@ -23,19 +24,23 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
 
-        ScrollView {
-            Layout.fillHeight: true
-            Layout.fillWidth: true
+        // ScrollView {
+        //     Layout.fillHeight: true
+        //     Layout.fillWidth: true
+        //     contentWidth: width
+        //     contentHeight: treeView.height
 
             TreeView {
                 id: treeView
                 property int lastIndex: -1
                 property bool wasExpanded: false
+                Layout.fillHeight: true
+                Layout.fillWidth: true
 
                 boundsBehavior: Flickable.StopAtBounds
                 boundsMovement: Flickable.StopAtBounds
                 clip: true
-                anchors.fill: parent
+                //anchors.fill: parent
                 model: NaMainTreeModel
 
                 Connections {
@@ -49,7 +54,7 @@ Rectangle {
 
                 ScrollBar.vertical: ScrollBar {
                     id: vScrollBar
-                    parent: listView
+                    parent: treeView
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
@@ -60,9 +65,8 @@ Rectangle {
 
                 delegate: TreeViewDelegate {
                     id: treeDelegate
-                    indentation: 8
-                    //implicitWidth: treeView.width > 0 ? treeView.width : 250
-                    width: treeView.width - MaterialDesignStyling.scrollBarWidth
+                    indentation: 12
+                    implicitWidth: treeView.width - MaterialDesignStyling.scrollBarWidth
                     implicitHeight: 25
 
                     required property int index
@@ -72,15 +76,30 @@ Rectangle {
 
                     indicator: Text {
                         x: treeDelegate.leftMargin + (treeDelegate.depth * treeDelegate.indentation) + 10
-                        width: 12
+                        //width: 12
                         anchors.verticalCenter: parent.verticalCenter
                         color: MaterialDesignStyling.onSurfaceVariant
                         font.family: ce.faSolidName
                         font.styleName: ce.faSolidStyle
-                        font.pointSize: 12
+                        font.pointSize: 14
                         text: treeDelegate.hasChildren
                               ? treeDelegate.expanded ? "\uf0d7" : "\uf0da" : ""
+                    }
 
+                    TapHandler {
+                        target: indicator
+                        acceptedButtons: Qt.LeftButton
+                        onSingleTapped: (eventPoint, button) => {
+                            const exclude = eventPoint.pressPosition.x > indicator.x + 40
+                            console.log("indicator tapped, indicator.x ", indicator.x, " exclude ", exclude )
+                            if (!exclude) {
+                                treeView.toggleExpanded(treeDelegate.row)
+                            }
+                        }
+                        // onDoubleTapped: {
+                        //     console.log("indicator double tapped")
+                        //     treeView.toggleExpanded(treeDelegate.row)
+                        // }
                     }
 
                     contentItem: RowLayout {
@@ -125,46 +144,52 @@ Rectangle {
                             clip: true
                             Layout.alignment: Qt.AlignLeft
                             Layout.fillWidth: true
-
-                            // MouseArea {
-                            //     enabled: false
-                            //     id: labelMouseArea
-                            //     anchors.fill: parent
-                            // }
                         }
 
-                        TapHandler {
-                            target: treeDelegate
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onSingleTapped: (eventPoint, button) => {
-                                //console.log("TapHandler: ", name, ", row=", treeDelegate.row, ", button=", button, ", evenPoint=", eventPoint)
-                                switch (button) {
-                                    case 0: // touch
-                                    case Qt.LeftButton:
-                                        if (!label.contains(eventPoint)) {
-                                            treeView.toggleExpanded(treeDelegate.row)
-                                        }
-                                        treeView.lastIndex = treeDelegate.index
-                                        setSelection(uuid)
-                                    break;
-                                    case Qt.RightButton:
-                                        contextMenu.node = NaMainTreeModel.nodeMapFromUuid(uuid)
-                                        contextMenu.index = treeDelegate.index
-                                        contextMenu.popup();
-                                    break;
+                            TapHandler {
+                                target: treeDelegate
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onSingleTapped: (eventPoint, button) => {
+                                    const exclude = eventPoint.pressPosition.x >= label.x
+                                    console.log("TapHandler: ", name, ", row=", treeDelegate.row, "button=", button,
+                                        " expanded ", treeView.isExpanded(treeDelegate.row),
+                                        " exclude ", exclude,
+                                        " label.x ", label.x,
+                                        " contains", label.contains(eventPoint.pressPosition),
+                                        " eventPoint.pressPosition.x=", eventPoint.pressPosition.x,
+                                        " evenPoint=", eventPoint)
+                                    switch (button) {
+                                        case 0: // touch
+                                        case Qt.LeftButton:
+                                            treeView.lastIndex = treeDelegate.index
+                                            setSelection(uuid)
+                                            // //if (!exclude /*label.contains(eventPoint.pressPosition)*/) {
+                                            //     // Buggy
+                                            //     //treeView.toggleExpanded(treeDelegate.row)
+                                            //     console.log("Single tapped / toggle! ")
+                                            //     treeView.expand(!treeView.isExpanded(treeDelegate.row))
+                                            // //}
+                                        break;
+                                        case Qt.RightButton:
+                                            contextMenu.node = NaMainTreeModel.nodeMapFromUuid(uuid)
+                                            contextMenu.index = treeDelegate.index
+                                            contextMenu.popup();
+                                        break;
+                                    }
+                                }
+
+                                // onDoubleTapped: {
+                                //     console.log("Double tapped: ", name, ", row=", treeDelegate.row, " expanded: ", treeView.isExpanded(treeDelegate.row))
+                                //     // Buggy
+                                //     treeView.toggleExpanded(treeDelegate.row)
+                                //     //treeView.expand(!treeView.isExpanded(treeDelegate.row))
+                                // }
+
+                                onLongPressed: {
+                                    contextMenu.node = NaMainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
+                                    contextMenu.popup();
                                 }
                             }
-
-                            onDoubleTapped: {
-                                // console.log("Double tapped: ", name, ", row=", treeDelegate.row)
-                                treeView.toggleExpanded(treeDelegate.row)
-                            }
-
-                            onLongPressed: {
-                                contextMenu.node = NaMainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
-                                contextMenu.popup();
-                            }
-                        }
                     }
 
                     Drag.active: dragHandler.active
@@ -270,29 +295,6 @@ Rectangle {
                         id: hoverHandler
                     }
 
-                    // TapHandler {
-                    //     acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    //     onSingleTapped: (eventPoint, button) => {
-                    //         switch (button) {
-                    //             // case Qt.LeftButton:
-                    //             //     treeView.toggleExpanded(treeDelegate.row)
-                    //             //     treeView.lastIndex = treeDelegate.index
-                    //             //     setSelection(treeDelegate.uuid)
-                    //             // break;
-                    //             case Qt.RightButton:
-                    //                 contextMenu.node = NaMainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
-                    //                 contextMenu.index = treeDelegate.index
-                    //                 contextMenu.popup();
-                    //             break;
-                    //         }
-                    //     }
-
-                    //     onLongPressed: {
-                    //         contextMenu.node = NaMainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
-                    //         contextMenu.popup();
-                    //     }
-                    // }
-
                     MyMenu {
                         id: contextMenu
                         property var node: null
@@ -327,7 +329,7 @@ Rectangle {
                     }
                 }
             }
-        }
+        //}
     }
 
     MessageDialog {
