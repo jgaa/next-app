@@ -11,6 +11,7 @@ Rectangle {
     Layout.fillHeight: true
     color: MaterialDesignStyling.surface
     property var model: null
+    property var scroller: null
 
     Connections {
         target: model
@@ -204,10 +205,31 @@ Rectangle {
     Popup {
         id: timeboxPopup
         x: 10
-        width: 400
-        //height: 200
+        width: Math.min(350, root.scroller.availableWidth - 40)
         modal: true
-        //visible: false
+
+        onOpened: {
+            const scroll_xy = root.scroller.contentItem.mapToGlobal(root.scroller.contentItem.visibleArea)
+            const scroll_hight = root.scroller.availableHeight
+            console.log("scroll_xy=", scroll_xy, " scroll_hight ", scroll_hight)
+
+            var my_xy = root.mapToGlobal(x, y)
+            console.log("my_xy=", my_xy)
+
+            if (my_xy.y + height > scroll_xy.y + scroll_hight) {
+                var new_y  = scroll_xy.y + scroll_hight - height - 10
+                var new_y_in_popup = root.mapFromGlobal(scroll_xy.x, new_y)
+                console.log("new_y ", new_y, " new_y_in_popup ", new_y_in_popup)
+                y = new_y_in_popup.y
+            }
+
+            if (my_xy.x + width > scroll_xy.x + root.scroller.availableWidth) {
+                var new_x = scroll_xy.x + root.scroller.availableWidth - width - 10
+                var new_x_in_popup = root.mapFromGlobal(new_x, scroll_xy.y)
+                console.log("new_x ", new_x, " new_x_in_popup ", new_x_in_popup)
+                x = new_x_in_popup.x
+            }
+        }
 
         onClosed: {
             // console.log("closed")
@@ -222,11 +244,11 @@ Rectangle {
         }
 
         background: Rectangle {
-            color: MaterialDesignStyling.tertiaryContainer
+            color: "white"
         }
         contentItem: ColumnLayout {
             spacing: 10
-            anchors.fill: parent
+            anchors.fill: timeboxPopup
 
             Item {
                 Layout.fillWidth: true
@@ -236,17 +258,8 @@ Rectangle {
             TextField {
                 id: title
                 Layout.fillWidth: true
-                placeholderText: "Title"
-                color: MaterialDesignStyling.onTertiaryContainer
+                placeholderText: qsTr("Title")
             }
-
-            // StyledButton {
-            //     width: 180
-            //     text: qsTr("Category")
-            //     onClicked: {
-            //         //filter.open()
-            //     }
-            // }
 
             CategoryComboBox {
                 id: category
@@ -258,18 +271,18 @@ Rectangle {
                 Layout.preferredHeight: 10
             }
 
-            RowLayout {
+            Flow {
                 spacing: 10
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignHCenter
                 Button {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     onClicked: {
                         timeboxPopup.close()
                     }
                 }
                 Button {
-                    text: "Save"
+                    text: qsTr("Save")
                     onClicked: {
                         root.model.createTimeBox(title.text, category.uuid,
                                                  toMinuteInDay(dragRectangle.y),

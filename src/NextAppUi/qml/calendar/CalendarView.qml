@@ -226,6 +226,8 @@ Rectangle {
                         height: dayplan.height
                         hourHeight: root.hourHeight
                         model: root.model.getDayModel(dayplanCtl, index)
+                        scroller: scrollView
+
                     }
                 }
             }
