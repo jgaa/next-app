@@ -53,6 +53,16 @@ Rectangle {
 
             RoundButton {
                 Layout.leftMargin: 10
+                text: qsTr("Action Done")
+                enabled: workSessionList.selectedItem !== ""
+
+                onClicked: {
+                    WorkSessionsModel.finishAction(workSessionList.selectedItem)
+                }
+            }
+
+            RoundButton {
+                Layout.leftMargin: 10
                 text: qsTr("To the Top")
                 enabled: workSessionList.selectedItem !== ""
 

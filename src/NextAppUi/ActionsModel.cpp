@@ -966,7 +966,8 @@ void ActionsModel::fetchIf(bool restart)
     }
 
     if (!isVisible() || !ServerComm::instance().connected()) {
-        LOG_DEBUG_N << "Not connected or not visible. Skipping fetch.";
+        LOG_DEBUG_N << "Not connected or not visible. Skipping fetch. connected="
+                    << ServerComm::instance().connected() << ", visible=" << isVisible();
         return;
     }
 

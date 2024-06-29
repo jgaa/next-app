@@ -15,7 +15,7 @@ class DualView : public QQuickItem
 public:
     explicit DualView(QQuickItem *parent = nullptr);
 
-    enum class ViewType : char {
+    enum ViewType : char {
         Actions,
         Lists,
         WorkSessions,
@@ -47,7 +47,10 @@ signals:
 private:
     QQuickItem *createView(ViewType type);
     QQuickItem *getView(ViewType type);
+    void init();
+    void recalculateLayout();
 
+    QQuickItem *split_view_{};
     QQuickItem *first_{};
     QQuickItem *second_{};
     std::array<QQuickItem *, static_cast<size_t>(ViewType::None)> views_{};

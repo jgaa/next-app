@@ -74,46 +74,16 @@ ApplicationWindow {
         DrawerContent {
             id: sidebar
             anchors.fill: parent
+
+            Connections {
+                target: sidebar
+                onSelectionChanged: (left, right) => {
+                    console.log("Selection changed B ", left, " ", right)
+                    dualView.setViews(left, right)
+                }
+            }
         }
     }
-
-    // Main Content
-    // StackLayout {
-    //     id: stackView
-    //     currentIndex: sidebar.current
-    //     anchors.fill: parent
-
-    //     // Green days
-    //     // DaysInYear {
-    //     //     id: daysInYear
-    //     // }
-
-    //     // // Home screen
-    //     // TodoList {
-    //     //     Layout.fillWidth: true
-    //     //     Layout.fillHeight: true
-    //     // }
-
-    //     // MainTree {
-    //     //     id: mainTree
-    //     //     Layout.fillWidth: true
-    //     //     Layout.fillHeight: true
-    //     // }
-
-    //     // WorkSessionsStacked {
-    //     //     id: workSessionsStacked
-    //     //     Layout.fillWidth: true
-    //     //     Layout.fillHeight: true
-    //     // }
-
-    //     // CalendarView {
-    //     //     id: calendarPage
-    //     //     Layout.fillWidth: true
-    //     //     Layout.fillHeight: true
-    //     //     mode: CalendarModel.CM_DAY
-    //     //     days: 1
-    //     // }
-    // }
 
     DualView {
         id: dualView

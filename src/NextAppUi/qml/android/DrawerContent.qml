@@ -12,13 +12,21 @@ import "../common.js" as Common
 Rectangle {
     id: root
 
-    //property alias currentTabIndex: topBar.currentIndex
-    property int current: 0
-    //property int currentTabIndex: -1
+    property bool initialized: false
     readonly property int tabBarSpacing: 10
-    //property string currentIcon: topBar.currentItem.icon.source
+    signal selectionChanged(int left, int right)
 
     color: MaterialDesignStyling.surfaceContainer
+
+    onVisibleChanged: {
+        console.log("DrawerContent Visible: ", visible)
+
+        if (!visible) {
+            root.selectionChanged(
+                        getCheckedButtonIndex("left", buttonGroupLeft),
+                        getCheckedButtonIndex("right", buttonGroupRight))
+        }
+    }
 
     component SidebarEntry: Button {
         id: sidebarButton
@@ -63,47 +71,37 @@ Rectangle {
         }
     }
 
-    // // TabBar is designed to be horizontal, whereas we need a vertical bar.
-    // // We can easily achieve that by using a Container.
-    // component TabBar: Container {
-    //     id: tabBarComponent
+    // TabBar is designed to be horizontal, whereas we need a vertical bar.
+    // We can easily achieve that by using a Container.
+    component TabBar: Container {
+        id: tabBarComponent
 
-    //     Layout.fillWidth: true
-    //     // ButtonGroup ensures that only one button can be checked at a time.
-    //     ButtonGroup {
-    //         buttons: tabBarComponent.contentChildren
+        Layout.fillWidth: true
+        // ButtonGroup ensures that only one button can be checked at a time.
+        ButtonGroup {
+            buttons: tabBarComponent.contentChildren
 
-    //         // We have to manage the currentIndex ourselves, which we do by setting it to the index
-    //         // of the currently checked button. We use setCurrentIndex instead of setting the
-    //         // currentIndex property to avoid breaking bindings. See "Managing the Current Index"
-    //         // in Container's documentation for more information.
-    //         onCheckedButtonChanged: tabBarComponent.setCurrentIndex(
-    //             Math.max(0, buttons.indexOf(checkedButton)))
-    //     }
+            // We have to manage the currentIndex ourselves, which we do by setting it to the index
+            // of the currently checked button. We use setCurrentIndex instead of setting the
+            // currentIndex property to avoid breaking bindings. See "Managing the Current Index"
+            // in Container's documentation for more information.
+            onCheckedButtonChanged: tabBarComponent.setCurrentIndex(
+                Math.max(0, buttons.indexOf(checkedButton)))
+        }
 
-    //     contentItem: ColumnLayout {
-    //         spacing: tabBarComponent.spacing
-    //         Repeater {
-    //             model: tabBarComponent.contentModel
-    //         }
-    //     }
-    // }
+        contentItem: ColumnLayout {
+            spacing: tabBarComponent.spacing
+            Repeater {
+                model: tabBarComponent.contentModel
+            }
+        }
+    }
 
     ColumnLayout {
         anchors.fill: root
         anchors.topMargin: root.tabBarSpacing
         anchors.bottomMargin: root.tabBarSpacing
         spacing: root.tabBarSpacing
-
-        // Control {
-        //     Layout.margins: 10
-
-        //     background: Rectangle {
-        //         color: MaterialDesignStyling.inverseSurface
-        //         opacity: 0.4
-        //         radius: 10
-        //     }
-        // }
 
         ColumnLayout {
             id: selectionsBar
@@ -114,7 +112,6 @@ Rectangle {
 
             ButtonGroup {
                 id: buttonGroupLeft
-                checkedButton: buttonGroupLeft.buttons[0]
             }
 
             ButtonGroup {
@@ -141,15 +138,19 @@ Rectangle {
                     // }
 
                     RoundButton {
+                        property int viewId: index
                         icon.source: repeaterCtl.icons[index]
                         checkable: true
+                        checked: index === 0
                         Layout.preferredWidth: selectionsBar.colWidth
                         ButtonGroup.group: buttonGroupLeft
                     }
 
                     RoundButton {
+                        property int viewId: index
                         icon.source: repeaterCtl.icons[index]
                         checkable: true
+                        checked: index === 0
                         Layout.preferredWidth: selectionsBar.colWidth
                         ButtonGroup.group: buttonGroupRight
 
@@ -167,8 +168,10 @@ Rectangle {
 
                 RoundButton {
                     //icon.source: repeaterCtl.icons[index]
+                    property int viewId: 4
                     text: "X"
                     checkable: true
+                    checked: false
                     Layout.preferredWidth: selectionsBar.colWidth
                     ButtonGroup.group: buttonGroupRight
                 }
@@ -181,70 +184,6 @@ Rectangle {
                 radius: 10
             }
         }
-
-        // TabBar {
-        //     id: topBar
-        //     Layout.margins: 10
-
-        //     background: Rectangle {
-        //         color: MaterialDesignStyling.inverseSurface
-        //         opacity: 0.4
-        //         radius: 10
-        //     }
-
-        //     spacing: root.tabBarSpacing
-
-        //     SidebarEntry {
-        //         id: todolist
-        //         icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/list-check.svg"
-        //         checkable: true
-        //         checked: true // First item is checked by default.
-        //         text: qsTr("Todos")
-
-        //         onCheckedChanged: {
-        //             if (checked) {
-        //                 root.current = 0
-        //             }
-        //         }
-        //     }
-
-        //     SidebarEntry {
-        //         id: tree
-        //         icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/folder-tree.svg"
-        //         checkable: true
-        //         text: qsTr("Lists")
-
-        //         onCheckedChanged: {
-        //             if (checked) {
-        //                 root.current = 1
-        //             }
-        //         }
-        //     }
-
-        //     SidebarEntry {
-        //         icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/hourglass-half.svg"
-        //         checkable: true
-        //         text: qsTr("Current")
-
-        //         onCheckedChanged: {
-        //             if (checked) {
-        //                 root.current = 2
-        //             }
-        //         }
-        //     }
-
-        //     SidebarEntry {
-        //         icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/calendar-day.svg"
-        //         text: qsTr("Calendar")
-        //         checkable: true
-
-        //         onCheckedChanged: {
-        //             if (checked) {
-        //                 root.current = 3
-        //             }
-        //         }
-        //     }
-        // }
 
         ColumnLayout {
             id: menuBar
@@ -352,5 +291,15 @@ Rectangle {
 
     CommonElements {
         id: ce
+    }
+
+    function getCheckedButtonIndex(name, buttonGroup) {
+        if (buttonGroup.checkedButton) {
+            console.log("Button ", buttonGroup.checkedButton.viewId, " checked in button group ", name)
+            return buttonGroup.checkedButton.viewId
+        }
+
+        console.log("No button checked in button group ", name)
+        return 4
     }
 }
