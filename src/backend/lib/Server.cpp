@@ -391,38 +391,6 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             settings BLOB, -- The settings saved as a protobuf message
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
-        // R"(ALTER TABLE action
-        //     ADD COLUMN ts_seq TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
-        //     ADD COLUMN tkey BINARY(16) NOT NULL,
-        //     ADD INDEX action_ix6 (user, status, tkey, due_by_time))",
-
-        // "DROP TRIGGER IF EXISTS tr_before_insert_action",
-        // R"(CREATE TRIGGER tr_before_insert_action
-        //     BEFORE INSERT ON action
-        //     FOR EACH ROW
-        //     BEGIN
-        //         SET NEW.tkey = CONCAT(
-        //           UNHEX(LPAD(HEX(IFNULL(UNIX_TIMESTAMP(NEW.start_time), 0)), 16, '0')),
-        //           UNHEX(LPAD(HEX(IFNULL(UNIX_TIMESTAMP(NEW.ts_seq) * 1000 + MICROSECOND(NEW.ts_seq) / 1000, 0)), 16, '0'))
-        //         );
-        //     END)",
-
-        // "DROP TRIGGER IF EXISTS tr_before_update_action",
-        // R"(CREATE TRIGGER tr_before_update_action
-        //     BEFORE UPDATE ON action
-        //     FOR EACH ROW
-        //     BEGIN
-        //         SET NEW.tkey = CONCAT(
-        //           UNHEX(LPAD(HEX(IFNULL(UNIX_TIMESTAMP(NEW.start_time), 0)), 16, '0')),
-        //           UNHEX(LPAD(HEX(IFNULL(UNIX_TIMESTAMP(NEW.ts_seq) * 1000 + MICROSECOND(NEW.ts_seq) / 1000, 0)), 16, '0'))
-        //         );
-        //       SET NEW.version = IFNULL(NEW.version, 0) + 1;
-        //     END)",
-
-        // "SET @i = 10000",
-        // R"(UPDATE action SET ts_seq = FROM_UNIXTIME(@i := @i + 1))",
-        // R"(UPDATE action SET status = status)",
-
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
@@ -522,6 +490,35 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v8_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        "ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1",
+
+        "UPDATE user_settings SET version = 1 WHERE version is NULL",
+
+        "DROP TRIGGER IF EXISTS tr_before_update_user_settings",
+
+        R"(CREATE TRIGGER tr_before_update_user_settings
+          BEFORE UPDATE ON user_settings
+          FOR EACH ROW
+          BEGIN
+            SET NEW.version = OLD.version + 1;
+          END)",
+
+        R"(CREATE OR REPLACE TABLE notification (
+            user UUID not NULL default UUID() PRIMARY KEY,
+            device UUID,
+            read BOOLEAN NOT NULL DEFAULT FALSE,
+            created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
+            content BLOB, -- The notification saved as a protobuf message
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        "CREATE INDEX notification_ix1 ON notification (user, created, read)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -529,7 +526,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v4_upgrade,
         v5_upgrade,
         v6_upgrade,
-        v7_upgrade
+        v7_upgrade,
+        v8_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
