@@ -22,6 +22,7 @@ class NextAppCore : public QObject
     Q_PROPERTY(bool isMobileSimulation READ isMobileSimulation CONSTANT)
     Q_PROPERTY(int width READ width NOTIFY widthChanged FINAL)
     Q_PROPERTY(int height READ height NOTIFY heightChanged FINAL)
+    Q_PROPERTY(bool dragEnabled READ dragEnabled WRITE setDragEnabled NOTIFY dragEnabledChanged)
 
     // True if the app was build with the CMAKE option DEVEL_SETTINGS enabled
     Q_PROPERTY(bool develBuild READ isDevelBuild CONSTANT)
@@ -92,15 +93,23 @@ public:
     void setWidth(int width);
     void setHeight(int height);
 
+    bool dragEnabled() const noexcept {
+        return drag_enabled_;
+    }
+
+    void setDragEnabled(bool drag_enabled);
+
 signals:
     void allBaseModelsCreated();
     void onlineChanged(bool online);
     void widthChanged();
     void heightChanged();
+    void dragEnabledChanged();
 
 private:
     static NextAppCore *instance_;
     QGuiApplication *app_{qApp};
     int height_{0};
     int width_{0};
+    bool drag_enabled_{};
 };

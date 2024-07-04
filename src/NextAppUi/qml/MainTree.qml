@@ -192,8 +192,8 @@ Rectangle {
                             }
                     }
 
-                    Drag.active: dragHandler.active
-                    Drag.dragType: NaCore.isMobile ? Drag.None :  Drag.Automatic
+                    Drag.dragType: Drag.Automatic
+                    Drag.source: content
                     Drag.supportedActions: Qt.MoveAction
                     Drag.mimeData: {
                         "text/app.nextapp.node": treeDelegate.uuid
@@ -202,9 +202,32 @@ Rectangle {
                     DragHandler {
                         id: dragHandler
                         target: content
-                        enabled: !NaCore.isMobile
+                        enabled: NaCore.dragEnabled
+
+                        property real origX: content.x
+                        property real origY: content.y
+
                         onActiveChanged: {
-                            // console.log("DragHandler: active=", active)
+                            if (active) {
+                                treeDelegate.opacity = 0.5
+                                dragHandler.origX = content.x
+                                dragHandler.origY = content.y
+                                console.log("onActiveChanged: isMobile=", NaCore.isMobile)
+                                content.grabToImage(function(result) {
+                                    parent.Drag.imageSource = result.url
+                                    //parent.Drag.hotSpot = Qt.point(content.width / 2, content.height / 2)
+                                    //parent.Drag.hotSpot = Qt.point(content.x, content.y)
+                                    parent.Drag.active = true
+                                    console.log("Grabbed image. Drag.active=", parent.Drag.active)
+                                })
+                                console.log("Drag began")
+                            } else {
+                                console.log("Drag ended")
+                                treeDelegate.opacity = 1
+                                content.x = dragHandler.origX
+                                content.y = dragHandler.origY
+                                parent.Drag.active = false
+                            }
                         }
                     }
 
@@ -229,18 +252,18 @@ Rectangle {
                         anchors.fill: parent
 
                         onEntered: function(drag) {
-                            // console.log("DropArea entered by ", drag.source.toString(), " types ", drag.formats)
+                             console.log("DropArea entered by ", drag.source.toString(), " types ", drag.formats)
 
                             if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
 
                                 var uuid = drag.getDataAsString("text/app.nextapp.action")
                                 var currNode = drag.getDataAsString("text/app.nextapp.curr.node")
 
-                                // console.log("Drag from Action: curr-node=", currNode, " action=", uuid,
-                                //            ", drop node=", treeDelegate.uuid)
+                                console.log("Drag from Action: curr-node=", currNode, " action=", uuid,
+                                           ", drop node=", treeDelegate.uuid)
 
                                 if (currNode === treeDelegate.uuid) {
-                                    // console.log("We should not allow the drop here. Same node.")
+                                    console.log("We should not allow the drop here. Same node.")
                                     drag.accepted = false
                                     return
                                 }
@@ -250,12 +273,12 @@ Rectangle {
                             }
 
                             if (drag.formats.indexOf("text/app.nextapp.node") !== -1) {
-                                // console.log("text/app.nextapp.node: ",
-                                //            drag.getDataAsString("text/app.nextapp.node"))
+                                console.log("text/app.nextapp.node: ",
+                                           drag.getDataAsString("text/app.nextapp.node"))
 
                                 var uuid = drag.getDataAsString("text/app.nextapp.node")
                                 if (!NaMainTreeModel.canMove(uuid, treeDelegate.uuid)) {
-                                    // console.log("We should not allow the drop here")
+                                    console.log("We should not allow the drop here")
                                     drag.accepted = false
                                 }
                                 drag.accepted = true
@@ -264,7 +287,7 @@ Rectangle {
                         }
 
                         onDropped: function(drop) {
-                            // console.log("DropArea receiceived a drop! source=", drop.source.uuid)
+                            console.log("DropArea receiceived a drop! source=", drop.source)
 
                             if (drop.formats.indexOf("text/app.nextapp.action") !== -1) {
 
@@ -275,14 +298,14 @@ Rectangle {
                             }
 
                             if (drop.formats.indexOf("text/app.nextapp.node") !== -1) {
-                                // console.log("text/app.nextapp.node: ",
-                                //            drop.getDataAsString("text/app.nextapp.node"))
+                                console.log("text/app.nextapp.node: ",
+                                           drop.getDataAsString("text/app.nextapp.node"))
 
                                 var uuid = drop.getDataAsString("text/app.nextapp.node")
-                                if (NaMainTreeModel.canMove(drop.source.uuid, treeDelegate.uuid)) {
-                                    // console.log("Seems OK")
+                                if (NaMainTreeModel.canMove(uuid, treeDelegate.uuid)) {
+                                    console.log("Seems OK")
                                     drop.accepted = true
-                                    NaMainTreeModel.moveNode(drop.source.uuid, treeDelegate.uuid)
+                                    NaMainTreeModel.moveNode(uuid, treeDelegate.uuid)
                                     return
                                 }
                             }

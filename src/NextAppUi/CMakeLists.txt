@@ -197,6 +197,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/trash-can.svg
         icons/fontawsome/cloud-bolt.svg
         icons/fontawsome/hourglass-half.svg
+        icons/fontawsome/arrows-up-down-left-right.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg

@@ -119,7 +119,7 @@ Rectangle {
                 DragHandler {
                     id: dragHandler
                     target: actionItem
-                    enabled: !NaCore.isMobile
+                    enabled: NaCore.dragEnabled
                     property real origX: actionItem.x
                     property real origY: actionItem.y
 
@@ -143,7 +143,7 @@ Rectangle {
                 }
 
                 //Drag.active: dragHandler.active
-                Drag.dragType: NaCore.isMobile ? Drag.None :  Drag.Automatic
+                Drag.dragType: Drag.Automatic
                 Drag.supportedActions: Qt.MoveAction
                 Drag.mimeData: {
                     "text/app.nextapp.action": actionItem.uuid,

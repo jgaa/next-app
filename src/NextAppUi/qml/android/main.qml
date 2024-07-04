@@ -29,6 +29,16 @@ ApplicationWindow {
                 onClicked: drawer.open()
             }
 
+            ToolButton {
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/arrows-up-down-left-right.svg"
+                checkable: true
+                checked: NaCore.dragEnabled
+
+                onClicked: {
+                    NaCore.dragEnabled = checked
+                }
+            }
+
             // Image {
             //     id: selImage
             //     source: sidebar.currentIcon
@@ -51,7 +61,7 @@ ApplicationWindow {
             }
 
             Label {
-                text: qsTr("Next-App")
+                text: qsTr("NextApp")
                 Layout.alignment: Qt.AlignCenter
             }
 

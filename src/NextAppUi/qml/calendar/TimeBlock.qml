@@ -28,6 +28,7 @@ Rectangle {
     DragHandler {
         id: dragHandler
         target: root
+        enabled: NaCore.dragEnabled
         property real origX: root.x
         property real origY: root.y
 
@@ -57,7 +58,19 @@ Rectangle {
 
     TapHandler {
         onLongPressed: contextMenu.popup()
+
+        onTapped: {
+            // Start drag
+            if (NaCore.dragEnabled) {
+                dragHandler.active = true
+            }
+        }
     }
+
+    // MouseArea {
+    //     anchors.fill: parent
+    //     drag.target: root
+    // }
 
     DropArea {
         id: dropArea
@@ -92,7 +105,7 @@ Rectangle {
 
 
     //Drag.active: dragHandler.active
-    Drag.dragType: Drag.Automatic
+    Drag.dragType: NaCore.dragEnabled ? Drag.Automatic : Drag.None
     Drag.supportedActions: Qt.MoveAction
     Drag.mimeData: {
         "text/app.nextapp.calendar.event": root.uuid

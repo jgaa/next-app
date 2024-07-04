@@ -23,6 +23,7 @@ NextAppCore *NextAppCore::instance_;
 NextAppCore::NextAppCore() {
     assert(instance_ == nullptr);
     instance_ = this;
+    drag_enabled_ = !isMobile();
 
 #ifdef USE_ANDROID_UI
     LOG_DEBUG_N << "Android UI";
@@ -157,6 +158,15 @@ int NextAppCore::height() const noexcept
         return height_;
     }
     return app_->primaryScreen()->geometry().height();
+}
+
+void NextAppCore::setDragEnabled(bool drag_enabled) {
+    if (drag_enabled_ == drag_enabled) {
+        return;
+    }
+    LOG_TRACE_N << "Drag enabled: " << drag_enabled;
+    drag_enabled_ = drag_enabled;
+    emit dragEnabledChanged();
 }
 
 
