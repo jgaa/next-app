@@ -6,6 +6,7 @@ add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/GrpcServer.h
     ${NEXTAPP_BACKEND}/include/nextapp/Server.h
     ${NEXTAPP_BACKEND}/include/nextapp/UserContext.h
+    ${NEXTAPP_BACKEND}/include/nextapp/certs.h
     ${NEXTAPP_BACKEND}/include/nextapp/config.h
     ${NEXTAPP_BACKEND}/include/nextapp/errors.h
     ${NEXTAPP_BACKEND}/include/nextapp/logging.h
@@ -13,6 +14,7 @@ add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/util.h
     Server.cpp
     UserContext.cpp
+    certs.cpp
     grpc/Actions.cpp
     grpc/Calendar.cpp
     grpc/GreenDays.cpp

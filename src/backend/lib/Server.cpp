@@ -109,6 +109,23 @@ void Server::bootstrap(const BootstrapOptions& opts)
     LOG_INFO << "Bootstrapping is complete";
 }
 
+void Server::bootstrapCa()
+{
+    // Create CA cert
+    auto cert = createCaCert();
+
+    // Save CA cert in the database
+
+    // Create server cert
+    CertAuthority ca{cert, config().ca};
+    auto serverCert = ca.createServerCert(config().options.fqdn);
+
+    LOG_INFO << "Created CA";
+    LOG_INFO << "Created server cert for fqdn " << config().options.fqdn;
+
+    // Save server cert in the database
+}
+
 void Server::initCtx(size_t numThreads)
 {
     io_threads_.reserve(numThreads);
@@ -515,6 +532,13 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         "CREATE INDEX notification_ix1 ON notification (user, created, read)",
+
+        // R"(CREATE OR REPLACE TABLE cert (
+        //     user UUID not NULL default UUID() PRIMARY KEY,
+        //     created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
+        //     content BLOB, -- The certificate saved as a protobuf message
+        //     FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
 
         "SET FOREIGN_KEY_CHECKS=1"
     });

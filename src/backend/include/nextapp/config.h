@@ -5,6 +5,7 @@
 #include <cstdint>
 #include "nextapp/util.h"
 #include "mysqlpool/conf.h"
+#include "nextapp/certs.h"
 
 namespace nextapp {
 
@@ -26,6 +27,8 @@ struct ServerOptions {
 
     /*! Maximum page size for paginated results */
     size_t max_page_size = 250;
+
+    std::string fqdn = "localhost";
 };
 
 struct Config {
@@ -38,6 +41,7 @@ struct Config {
     jgaa::mysqlpool::DbConfig db;
     GrpcConfig grpc;
     ServerOptions options;
+    CaOptions ca;
 };
 
 } // ns

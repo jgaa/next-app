@@ -100,6 +100,7 @@ int main(int argc, char* argv[]) {
         std::string log_file;
         bool trunc_log = false;
         bool bootstrap = false;
+        bool bootstrap_ca = false;
 
         general.add_options()
             ("help,h", "Print help and exit")
@@ -145,6 +146,18 @@ int main(int argc, char* argv[]) {
              "Address and port to use for gRPC")
             ;
 
+        po::options_description ca("Certs");
+        svr.add_options()
+            ("cert-lifetime", po::value(&config.ca.lifetime_days_certs)->default_value(config.ca.lifetime_days_certs),
+             "Life-time in days for self signed TLS certificates")
+            ("cert-key-size", po::value(&config.ca.key_bytes)->default_value(config.ca.key_bytes),
+             "Size of keys in self-signed carts (in bytes)")
+            ("server-fqdn", po::value(&config.options.fqdn)->default_value(config.options.fqdn),
+             "The fqdn to use in the server-certificate.")
+            ("bootstrap-ca", po::bool_switch(&bootstrap_ca),
+             "Bootstrap the CA. Creates a new CA certificate and and server certificate. Exits when done.")
+            ;
+
         po::options_description db("Database");
         db.add_options()
             ("db-user",
@@ -177,7 +190,7 @@ int main(int argc, char* argv[]) {
             ;
 
         po::options_description cmdline_options;
-        cmdline_options.add(general).add(bs).add(svr).add(db);
+        cmdline_options.add(general).add(bs).add(svr).add(ca).add(db);
         po::variables_map vm;
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
@@ -229,6 +242,18 @@ int main(int argc, char* argv[]) {
                 return -4;
             }
         }
+
+        if (bootstrap_ca) {
+            LOG_INFO << appname << ' ' << APP_VERSION << ".";
+            try {
+                Server server{config};
+                server.bootstrapCa();
+                return 0; // Done
+            } catch (const exception& ex) {
+                LOG_ERROR << "Caught exception during bootstrapping CA: " << ex.what();
+                return -5;
+            }
+        }
     }
 
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";
@@ -239,10 +264,10 @@ int main(int argc, char* argv[]) {
         server.run();
     } catch (const nextapp::aborted& ex) {
         LOG_INFO << "Server was aborted: " << ex.what();
-        return -5;
+        return -100;
     } catch (const exception& ex) {
         LOG_ERROR << "Caught exception: " << ex.what() << endl;
-        return -6;
+        return -101;
     }
 
     LOG_INFO << appname << " done! ";

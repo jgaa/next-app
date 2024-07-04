@@ -38,6 +38,8 @@ public:
 
     void bootstrap(const BootstrapOptions& opts);
 
+    void bootstrapCa();
+
     const auto& config() const noexcept {
         return config_;
     }
@@ -68,6 +70,8 @@ private:
     boost::asio::awaitable<void> createDb(const BootstrapOptions& opts);
     boost::asio::awaitable<void> upgradeDbTables(uint version);
     boost::asio::awaitable<void> startGrpcService();
+    void createCa();
+    void createServerCert();
 
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;
