@@ -9,6 +9,7 @@
 #include "nextapp/nextapp.h"
 #include "nextapp/config.h"
 #include "nextapp/util.h"
+#include "nextapp/certs.h"
 #include "mysqlpool/mysqlpool.h"
 
 namespace nextapp {
@@ -62,6 +63,19 @@ public:
         return *grpc_service_;
     }
 
+    auto& ca() noexcept {
+        assert(ca_);
+        return *ca_;
+    }
+
+    enum class WithMissingCert {
+        FAIL,
+        CREATE_SERVER,
+        CREATE_CLIENT
+    };
+
+    boost::asio::awaitable<CertData> getCert(std::string_view id, WithMissingCert what);
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
@@ -69,6 +83,7 @@ private:
     boost::asio::awaitable<bool> checkDb();
     boost::asio::awaitable<void> createDb(const BootstrapOptions& opts);
     boost::asio::awaitable<void> upgradeDbTables(uint version);
+    boost::asio::awaitable<void> loadCertAuthority();
     boost::asio::awaitable<void> startGrpcService();
     void createCa();
     void createServerCert();
@@ -81,6 +96,7 @@ private:
     std::atomic_size_t running_io_threads_{0};
     std::atomic_bool done_{false};
     std::shared_ptr<grpc::GrpcServer> grpc_service_;
+    std::optional<CertAuthority> ca_;
 };
 
 } // ns

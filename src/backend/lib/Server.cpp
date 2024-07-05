@@ -53,6 +53,7 @@ void Server::run()
                 stop();
             }
 
+            co_await loadCertAuthority();
             co_await startGrpcService();
         },
         [](std::exception_ptr ptr) {
@@ -126,6 +127,56 @@ void Server::bootstrapCa()
     // Save server cert in the database
 }
 
+boost::asio::awaitable<CertData> Server::getCert(std::string_view id, WithMissingCert what)
+{
+    enum Cols {
+        CERT,
+        KEY
+    };
+
+    auto conn = co_await db().getConnection();
+    auto trx = co_await conn.transaction(false, false);
+
+    // See if we have a CA cert in the db.
+    auto res = co_await conn.exec("SELECT cert, pkey FROM cert WHERE id=?", id);
+    assert(!res.empty());
+    CertData cd;
+    if (res.rows().empty()) {
+        switch (what) {
+        case WithMissingCert::FAIL:
+            co_return cd;
+        case WithMissingCert::CREATE_SERVER:
+            LOG_INFO << "Creating server cert for " << config().options.fqdn;
+            cd = ca().createServerCert(config().options.fqdn);
+            break;
+        case WithMissingCert::CREATE_CLIENT:
+            // This is for creating a client cert with a name (id). Users devices will not use this.
+            LOG_INFO << "Creating client cert for " << id;
+            cd = ca().createClientCert(string{id});
+            break;
+        default:
+            break;
+        }
+
+        assert(!id.empty());
+        assert(!cd.cert.empty());
+        assert(!cd.key.empty());
+
+        co_await conn.exec("INSERT INTO cert (id, cert, pkey) VALUES (?, ?, ?)", id, cd.cert, cd.key);
+
+    } else {
+        cd.cert = res.rows().at(0).at(CERT).as_string();
+        cd.key = res.rows().at(0).at(KEY).as_string();
+    }
+
+    co_await trx.commit();
+
+    assert(!cd.cert.empty());
+    assert(!cd.key.empty());
+
+    co_return cd;
+}
+
 void Server::initCtx(size_t numThreads)
 {
     io_threads_.reserve(numThreads);
@@ -149,6 +200,7 @@ void Server::runIoThread(const size_t id)
             LOG_ERROR << LogEvent::LE_IOTHREAD_THREW
                       << "Caught exception from IO therad #" << id
                       << ": " << ex.what();
+            assert(false);
         }
     }
 
@@ -526,19 +578,19 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         R"(CREATE OR REPLACE TABLE notification (
             user UUID not NULL default UUID() PRIMARY KEY,
             device UUID,
-            read BOOLEAN NOT NULL DEFAULT FALSE,
+            is_read BOOLEAN NOT NULL DEFAULT FALSE,
             created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
             content BLOB, -- The notification saved as a protobuf message
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
-        "CREATE INDEX notification_ix1 ON notification (user, created, read)",
+        "CREATE INDEX notification_ix1 ON notification (user, created, is_read)",
 
-        // R"(CREATE OR REPLACE TABLE cert (
-        //     user UUID not NULL default UUID() PRIMARY KEY,
-        //     created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
-        //     content BLOB, -- The certificate saved as a protobuf message
-        //     FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
-
+        R"(CREATE OR REPLACE TABLE cert (
+            id VARCHAR(42) NOT NULL PRIMARY KEY,
+            created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
+            expires TIMESTAMP,
+            cert TEXT,
+            pkey TEXT))",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
@@ -580,6 +632,37 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         co_await db.close();
 
     }, asio::use_awaitable);
+}
+
+boost::asio::awaitable<void> Server::loadCertAuthority()
+{
+    enum Cols {
+        CERT,
+        KEY
+    };
+
+    auto conn = co_await db().getConnection();
+    auto trx = co_await conn.transaction(false, false);
+
+    // See if we have a CA cert in the db.
+    auto res = co_await conn.exec("SELECT cert, pkey FROM cert WHERE id='ca'");
+    assert(!res.empty());
+    CertData cd;
+    if (res.rows().empty()) {
+        LOG_INFO << "Creating CA cert: " << config_.ca.ca_name;
+        cd = createCaCert(config_.ca.ca_name);
+        co_await conn.exec("INSERT INTO cert (id, cert, pkey) VALUES ('ca', ?, ?)", cd.cert, cd.key);
+    } else {
+        cd.cert = res.rows().at(0).at(CERT).as_string();
+        cd.key = res.rows().at(0).at(KEY).as_string();
+    }
+
+    co_await trx.commit();
+
+    assert(!cd.cert.empty());
+    assert(!cd.key.empty());
+    ca_.emplace(cd, config_.ca);
+    co_return;
 }
 
 boost::asio::awaitable<void> Server::startGrpcService()

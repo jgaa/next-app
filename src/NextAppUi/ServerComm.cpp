@@ -72,13 +72,24 @@ void ServerComm::start()
     QGrpcMetadata metadata;
     metadata.emplace("session-id", session_id_.toLatin1());
 
+    QSslConfiguration sslConfig;
+    sslConfig.setPeerVerifyMode(QSslSocket::QueryPeer);
+    //sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
+    sslConfig.setProtocol(QSsl::TlsV1_3);
+
+    // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
+    // it only support https/2.
+    sslConfig.setAllowedNextProtocols({{"h2"}});
+
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     auto channelOptions = QGrpcChannelOptions{QUrl(current_server_address_, QUrl::StrictMode)}
-                              .withMetadata(metadata);
+                              .withMetadata(metadata)
+                              .withSslConfiguration(sslConfig);
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else
-    auto channelOptions = QGrpcChannelOptions{};
-    channelOptions.setMetadata(metadata);
+    auto channelOptions = QGrpcChannelOptions{}
+                              .setMetadata(metadata)
+                              .withSslConfiguration(sslConfig);
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(current_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 

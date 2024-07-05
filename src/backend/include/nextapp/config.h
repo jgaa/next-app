@@ -16,6 +16,8 @@ struct ServerConfig {
 
 struct GrpcConfig {
     std::string address = "127.0.0.1:10321";
+
+    std::string tls_mode = "ca"; // ca | none
 };
 
 struct ServerOptions {

@@ -326,35 +326,35 @@ void toBuffer(const T& cert, U& dest) {
     }
 }
 
-X509_Ptr loadCertFromBuffer(const auto& buffer) {
-    if (auto* bio = BIO_new_mem_buf(buffer.data(), buffer.size())) {
-        ScopedExit bio_cleanup{[bio] {
-            BIO_free(bio);
-        }};
-        if (auto cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr)) {
-            return X509_Ptr{cert};
-        } else {
-            throw runtime_error{"PEM_read_bio_X509"};
-        }
-    } else {
-        throw runtime_error{"BIO_new_mem_buf"};
-    }
-}
+// X509_Ptr loadCertFromBuffer(const auto& buffer) {
+//     if (auto* bio = BIO_new_mem_buf(buffer.data(), buffer.size())) {
+//         ScopedExit bio_cleanup{[bio] {
+//             BIO_free(bio);
+//         }};
+//         if (auto cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr)) {
+//             return X509_Ptr{cert};
+//         } else {
+//             throw runtime_error{"PEM_read_bio_X509"};
+//         }
+//     } else {
+//         throw runtime_error{"BIO_new_mem_buf"};
+//     }
+// }
 
-EVP_PKEY_Ptr loadKeyFromBuffer(const auto& buffer) {
-    if (auto* bio = BIO_new_mem_buf(buffer.data(), buffer.size())) {
-        ScopedExit bio_cleanup{[bio] {
-            BIO_free(bio);
-        }};
-        if (auto key = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr)) {
-            return EVP_PKEY_Ptr{key};
-        } else {
-            throw runtime_error{"PEM_read_bio_X509"};
-        }
-    } else {
-        throw runtime_error{"BIO_new_mem_buf"};
-    }
-}
+// EVP_PKEY_Ptr loadKeyFromBuffer(const auto& buffer) {
+//     if (auto* bio = BIO_new_mem_buf(buffer.data(), buffer.size())) {
+//         ScopedExit bio_cleanup{[bio] {
+//             BIO_free(bio);
+//         }};
+//         if (auto key = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr)) {
+//             return EVP_PKEY_Ptr{key};
+//         } else {
+//             throw runtime_error{"PEM_read_bio_X509"};
+//         }
+//     } else {
+//         throw runtime_error{"BIO_new_mem_buf"};
+//     }
+// }
 
 string getSubject(const X509& cert) {
     if (auto sname = X509_get_subject_name(&cert)) {
@@ -407,6 +407,7 @@ CertAuthority::CertAuthority(const CertData& rootCaCert, const CaOptions &option
     rootCa_ = loadCertFromBuffer(rootCaCert.cert);
     rootKey_ = loadKeyFromBuffer(rootCaCert.key);
     ca_name_ = getSubject(*rootCa_);
+    root_cert_ = rootCaCert.cert;
 }
 
 CertData CertAuthority::createServerCert(const std::string &subject)
@@ -422,7 +423,7 @@ CertData CertAuthority::createServerCert(const std::string &subject)
     auto [cert, key] = createCert(ca_name_, rval.id, options_.lifetime_days_certs, options_.key_bytes, s);
 
     if (!X509_sign(cert.get(), rootKey_.get(), EVP_sha256())) {
-        throw runtime_error{format("Error signing client certificate {}.",
+        throw runtime_error{format("Error signing server certificate {}.",
                                    boost::uuids::to_string(rval.id))};
     }
 
@@ -430,6 +431,30 @@ CertData CertAuthority::createServerCert(const std::string &subject)
     toBuffer(*key, rval.key);
 
     LOG_DEBUG_N << "Created server cert for " << subject << " with id " << rval.id
+                << " and " <<  options_.lifetime_days_certs << " days lifetime.";
+    return rval;
+}
+
+CertData CertAuthority::createClientCert(const std::string &subject)
+{
+    const array<pair<const string&, const string&>, 2> s = {
+        make_pair(ca_name_, "O"s),
+        make_pair(subject, "CN"s)
+    };
+
+    CertData rval;
+    rval.id = newUuid();
+    auto [cert, key] = createCert(ca_name_, rval.id, options_.lifetime_days_certs, options_.key_bytes, s);
+
+    if (!X509_sign(cert.get(), rootKey_.get(), EVP_sha256())) {
+        throw runtime_error{format("Error signing client certificate {}.",
+                                   boost::uuids::to_string(rval.id))};
+    }
+
+    toBuffer(*cert, rval.cert);
+    toBuffer(*key, rval.key);
+
+    LOG_DEBUG_N << "Created client cert for " << subject << " with id " << rval.id
                 << " and " <<  options_.lifetime_days_certs << " days lifetime.";
     return rval;
 }

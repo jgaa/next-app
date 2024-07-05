@@ -159,11 +159,29 @@ GrpcServer::GrpcServer(Server &server)
 }
 
 void GrpcServer::start() {
+
+    // Load the certificate and key for the gRPC server.
+    boost::asio::co_spawn(server_.ctx(), [&]() -> boost::asio::awaitable<void> {
+        co_await loadCert();
+    }, boost::asio::use_future).get();
+
     ::grpc::ServerBuilder builder;
 
     // Tell gRPC what TCP address/port to listen to and how to handle TLS.
     // grpc::InsecureServerCredentials() will use HTTP 2.0 without encryption.
-    builder.AddListeningPort(config().address, ::grpc::InsecureServerCredentials());
+
+    if (config().tls_mode == "none") {
+        builder.AddListeningPort(config().address, ::grpc::InsecureServerCredentials());
+    } else if (config().tls_mode == "ca") {
+        LOG_INFO << "Using CA mode for TLS on gRPC endpoint";
+        ::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY};
+        //::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE};
+        ssl_opts.pem_root_certs = server_.ca().rootCert();
+        ssl_opts.pem_key_cert_pairs.push_back({cert_.key, cert_.cert});
+        builder.AddListeningPort(config().address, ::grpc::SslServerCredentials(ssl_opts));
+    } else {
+        throw runtime_error{"Unknown TLS mode: " + config().tls_mode};
+    }
 
     // Feed gRPC our implementation of the RPC's
     service_ = std::make_unique<NextappImpl>(*this);
@@ -300,6 +318,14 @@ boost::uuids::uuid GrpcServer::getSessionId(::grpc::CallbackServerContext *ctx) 
     }
 
     return toUuid({session_id->second.data(), session_id->second.size()});
+}
+
+boost::asio::awaitable<void> GrpcServer::loadCert()
+{
+    cert_ = co_await server_.getCert("grpc-server", Server::WithMissingCert::CREATE_SERVER   );
+    assert(!cert_.cert.empty());
+    assert(!cert_.key.empty());
+    co_return;
 }
 
 } // ns

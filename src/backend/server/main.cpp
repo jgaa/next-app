@@ -144,6 +144,8 @@ int main(int argc, char* argv[]) {
              "Number of worker-threads to start for IO")
             ("grpc-address,g", po::value(&config.grpc.address)->default_value(config.grpc.address),
              "Address and port to use for gRPC")
+            ("grpc-tls-mode", po::value(&config.grpc.tls_mode)->default_value(config.grpc.tls_mode),
+             "TLS mode; one of 'ca' or 'none'. Ca will use a self-signed server cert.")
             ;
 
         po::options_description ca("Certs");
