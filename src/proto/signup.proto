@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package signup.pb;
+
+message GetInfoRequest {
+}
+
+message GetInfoResponse {
+  string eula = 1;
+  string greeting = 2;
+}
+
+message Device {
+    enum Type {
+        UNKNOWN = 0;
+        LINUX_DESKTOP = 1;
+        MAC_DESKTOP = 2;
+        WINDOWS_DESKTOP = 3;
+        LINUX_SERVER = 4;
+        ANDROID_PHONE = 5;
+        ANDROID_TABLET = 6;
+        IPHONE = 7;
+        IPAD = 8;
+    }
+
+  string uuid = 1; // Assigned by server
+  string name = 2;
+  Type type = 3;
+  string os = 4;
+  string osVersion = 5;
+  string appVersion = 6;
+  string csr = 7; // Certificate Signing Request
+  string language = 8;
+}
+
+message SignUpRequest {
+  string email = 1;
+  bool acceptedEula = 2;
+  Device device = 3;
+}
+
+message SignUpResponse {
+    enum Status {
+        OK = 0;
+        EMAIL_ALREADY_EXISTS = 1;
+        INVALID_CSR = 2;
+        REJECTED = 3;
+        TRY_AGAIN_LATER = 4;
+        MUST_ACCEPT_EULA = 5;
+    }
+
+    string uuid = 1; // Device uuid
+    string message = 2;  // Optional message
+    Status status = 3;
+    string signedCert = 4; // PEM encoded signed certificate
+}
+
+service SignUp {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {}
+  rpc SignUp(stream SignUpRequest) returns (SignUpResponse) {}
+}

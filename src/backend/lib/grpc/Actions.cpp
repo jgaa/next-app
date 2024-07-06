@@ -1,5 +1,6 @@
 ﻿
 #include "shared_grpc_server.h"
+#include "nextapp/UserContext.h"
 
 namespace nextapp::grpc {
 

@@ -13,6 +13,7 @@
 
 #include "nextapp/GrpcServer.h"
 #include "nextapp/Server.h"
+#include "nextapp/errors.h"
 #include "nextapp/util.h"
 
 using namespace std;
@@ -22,11 +23,29 @@ using namespace std;
 namespace json = boost::json;
 namespace asio = boost::asio;
 
-namespace nextapp::grpc {
+namespace nextapp {
+class UserContext;
+}
 
+namespace nextapp::grpc {
 
 template <typename T>
 concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::Action>;
+
+std::optional<std::string> toAnsiDate(const nextapp::pb::Date& date);
+std::optional<std::string> toAnsiTime(std::time_t time, const std::chrono::time_zone& ts, bool required = false);
+std::optional<std::string> toAnsiTime(std::time_t time, bool required = false);
+
+struct TimePeriod {
+    time_t start = 0;
+    time_t end = 0;
+};
+
+TimePeriod toTimePeriod(time_t when, const UserContext& uctx, nextapp::pb::WorkSummaryKind kind);
+TimePeriod toTimePeriodDay(time_t when, const UserContext& uctx);
+TimePeriod toTimePeriodWeek(time_t when, const UserContext& uctx);
+
+std::string prefixNames(const std::string_view cols, const std::string_view prefix);
 
 
 ::nextapp::pb::Date toDate(const boost::mysql::date& from);

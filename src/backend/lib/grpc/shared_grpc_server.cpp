@@ -1,5 +1,7 @@
 
 #include "shared_grpc_server.h"
+#include "nextapp/UserContext.h"
+
 
 namespace nextapp::grpc {
 
@@ -106,5 +108,137 @@ std::chrono::year_month_day toYearMonthDay(const time_t when, const chrono::time
 
     return ymd;
 }
+
+
+optional<string> toAnsiDate(const nextapp::pb::Date& date) {
+
+    if (date.year() == 0) {
+        return {};
+    }
+
+    return format("{:0>4d}-{:0>2d}-{:0>2d}", date.year(), date.month() + 1, date.mday());
+}
+
+optional<string> toAnsiTime(time_t time, const std::chrono::time_zone& ts, bool required) {
+    using namespace std::chrono;
+
+    if (time == 0) {
+        if (required) {
+            throw db_err{pb::Error::CONSTRAINT_FAILED, "datetime is required"};
+        }
+        return {};
+    }
+
+    const auto when = round<seconds>(system_clock::from_time_t(time));
+    const auto zoned = zoned_time{&ts, when};
+    auto out = format("{:%F %T}", zoned);
+    return out;
+}
+
+std::optional<string> toAnsiTime(time_t time, bool required)
+{
+    using namespace std::chrono;
+    if (time == 0) {
+        if (required) {
+            throw db_err{pb::Error::CONSTRAINT_FAILED, "datetime is required"};
+        }
+        return {};
+    }
+
+    const auto when = round<seconds>(system_clock::from_time_t(time));
+    auto out = format("{:%F %T}", when);
+    return out;
+}
+
+auto getLocalDate(time_t when, const std::chrono::time_zone &tz)
+{
+    using namespace std::chrono;
+
+    const auto start = floor<days>(system_clock::from_time_t(when));
+    auto zoned_ref = zoned_time{&tz, start};
+    return year_month_day{floor<days>(zoned_ref.get_local_time())};
+}
+
+auto getLocalDays(time_t when, const std::chrono::time_zone &tz) -> std::chrono::local_days
+{
+    using namespace std::chrono;
+    return local_days{getLocalDate(when, tz)};
+}
+
+TimePeriod toTimePeriodDay(time_t when, const UserContext& uctx)
+{
+    using namespace std::chrono;
+    const auto& tz = uctx.tz();
+    const auto start_day = getLocalDays(when, tz);
+    const auto end_day = start_day + days{1};
+
+    const auto local_start = zoned_time{&tz, start_day};
+    const auto local_end = zoned_time{&tz, end_day};
+
+    return {system_clock::to_time_t(local_start.get_sys_time()),
+            system_clock::to_time_t(local_end.get_sys_time())};
+}
+
+TimePeriod toTimePeriodWeek(time_t when, const UserContext& uctx)
+{
+    using namespace std::chrono;
+    const auto& tz = uctx.tz();
+    const auto start_of_week_offset = uctx.sundayIsFirstWeekday() ? days(0) : days(1);
+
+    const auto start = floor<days>(system_clock::from_time_t(when));
+    auto zoned_ref = zoned_time{&tz, start};
+    const auto l_day = floor<days>(zoned_ref.get_local_time());
+    const auto ymd = year_month_day{l_day};
+    const auto ymw = year_month_weekday{l_day};
+
+    const auto start_day = l_day + (days{ymw.weekday().c_encoding()} * -1) + start_of_week_offset;
+    const auto end_day = start_day + days{7};
+
+    const auto local_start = zoned_time{&tz, start_day};
+    const auto local_end = zoned_time{&tz, end_day};
+
+    LOG_DEBUG_N << format("local_when = {} local_start = {}, local_end = {}",
+                          zoned_ref, local_start, local_end);
+
+    const auto res_start = system_clock::to_time_t(local_start.get_sys_time());
+    const auto res_end = system_clock::to_time_t(local_end.get_sys_time());
+
+    LOG_DEBUG_N << format("start = {}, end = {}",
+                          chrono::system_clock::from_time_t(res_start),
+                          chrono::system_clock::from_time_t(res_end));
+
+
+    return {res_start, res_end};
+}
+
+string prefixNames(const std::string_view cols, const std::string_view prefix) {
+    std::ostringstream os;
+
+    size_t col = 0;
+    for (auto word : std::views::split(cols, ',')) {
+        os << (++col == 1 ? "" : ", ");
+        auto w = std::string_view{word.data(), word.size()};
+        if (!w.empty() && w.front() == ' ') {
+            w = w.substr(1);
+        }
+        os << prefix << w;
+    }
+    auto rval = os.str();
+    return rval;
+}
+
+TimePeriod toTimePeriod(time_t when, const UserContext &uctx, pb::WorkSummaryKind kind)
+{
+    switch (kind) {
+    case pb::WorkSummaryKind::WSK_DAY:
+        return toTimePeriodDay(when, uctx);
+    case pb::WorkSummaryKind::WSK_WEEK:
+        return toTimePeriodWeek(when, uctx);
+        break;
+    default:
+        throw std::runtime_error{"Invalid WorkSummaryRequest.Kind"};
+    }
+}
+
 
 } // ns

@@ -2,7 +2,7 @@ INCLUDE(FindProtobuf)
 FIND_PACKAGE(Protobuf REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 set(GRPC_LIB gRPC::grpc gRPC::grpc++)
-set(GRPC_SRC_FILES nextapp.proto)
+set(GRPC_SRC_FILES nextapp.proto signup.proto)
 
 set(PROTO_FILES
    ${GRPC_SRC_FILES}

@@ -5,6 +5,7 @@
 #include <locale>
 #include <optional>
 #include <ranges>
+#include <filesystem>
 
 #include <boost/json.hpp>
 #include <boost/uuid/random_generator.hpp>
@@ -15,7 +16,7 @@
 #include "google/protobuf/util/json_util.h"
 
 #include "nextapp.pb.h"
-#include "logging.h"
+#include "nextapp/logging.h"
 
 namespace nextapp {
 
@@ -44,6 +45,12 @@ template <class T, class V>
 concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
 
 std::string getEnv(const char *name, std::string def = {});
+
+/*! Read a file into a string
+     *
+     *  (A funtion like this is part of the Rust standard library because it is so common...)
+     */
+std::string readFileToBuffer(const std::filesystem::path& path);
 
 template <range_of<char> T>
 std::string toUpper(const T& input)
@@ -120,10 +127,6 @@ std::string toJson(const T& map, int mode = 1) {
     return boost::json::serialize(o);
 }
 
-std::optional<std::string> toAnsiDate(const nextapp::pb::Date& date);
-std::optional<std::string> toAnsiTime(std::time_t time, const std::chrono::time_zone& ts, bool required = false);
-std::optional<std::string> toAnsiTime(std::time_t time, bool required = false);
-
 template <typename T>
 std::optional<std::string> toStringOrNull(const T& val) {
     if (val.empty()) {
@@ -133,18 +136,6 @@ std::optional<std::string> toStringOrNull(const T& val) {
     return std::string{val};
 }
 
-struct TimePeriod {
-    time_t start = 0;
-    time_t end = 0;
-};
-
-class UserContext;
-
-TimePeriod toTimePeriod(time_t when, const UserContext& uctx, nextapp::pb::WorkSummaryKind kind);
-TimePeriod toTimePeriodDay(time_t when, const UserContext& uctx);
-TimePeriod toTimePeriodWeek(time_t when, const UserContext& uctx);
-
-std::string prefixNames(const std::string_view cols, const std::string_view prefix);
 
 
 } // ns

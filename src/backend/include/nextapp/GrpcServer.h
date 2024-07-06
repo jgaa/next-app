@@ -18,7 +18,7 @@
 #include "nextapp/errors.h"
 #include "nextapp/UserContext.h"
 #include "nextapp/certs.h"
-#include "util.h"
+#include "nextapp/util.h"
 
 #include "mysqlpool/mysqlpool.h"
 
