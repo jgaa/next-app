@@ -501,7 +501,7 @@ void WorkModel::fetchMore(const QModelIndex &parent)
 
 bool WorkModel::canFetchMore(const QModelIndex &parent) const
 {
-    LOG_DEBUG << "WorkModel::canFetchMore() called " << uuid().toString()
+    LOG_DEBUG_N << "Called " << uuid().toString()
               << ", more=" << pagination_.more << ", prev=" << pagination_.prev
               << ", page = " << pagination_.page;
     return pagination_.hasMore();

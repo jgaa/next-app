@@ -723,17 +723,19 @@ void ServerComm::onUpdateMessage()
             LOG_TRACE << "Got update: " << msg->when().seconds();
 
             if (msg->hasUserGlobalSettings()) {
-                LOG_DEBUG << "Received global user-settings";
-
                 const auto& new_settings = msg->userGlobalSettings();
-                const bool first_day_of_week_changed
-                    = userGlobalSettings_.firstDayOfWeekIsMonday() != new_settings.firstDayOfWeekIsMonday();
-                userGlobalSettings_ = new_settings;
-                emit globalSettingsChanged();
+                if (new_settings.version() > userGlobalSettings_.version()) {
+                    LOG_DEBUG << "Received updated global user-settings";
 
-                if (first_day_of_week_changed) {
-                    LOG_DEBUG << "First day of week changed";
-                    emit firstDayOfWeekChanged();
+                    const bool first_day_of_week_changed
+                        = userGlobalSettings_.firstDayOfWeekIsMonday() != new_settings.firstDayOfWeekIsMonday();
+                    userGlobalSettings_ = new_settings;
+                    emit globalSettingsChanged();
+
+                    if (first_day_of_week_changed) {
+                        LOG_DEBUG << "First day of week changed";
+                        emit firstDayOfWeekChanged();
+                    }
                 }
             }
             if (msg->hasDayColor()) {

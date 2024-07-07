@@ -6,6 +6,7 @@
 #include <QIcon>
 #include <QAbstractItemModelTester>
 #include <QQuickStyle>
+#include <QSslSocket>
 
 #include "ServerComm.h"
 #include "MainTreeModel.h"
@@ -78,9 +79,9 @@ int main(int argc, char *argv[])
 #else
         "info";
 #endif
+    qDebug() << "Device supports OpenSSL: " << QSslSocket::supportsSsl();
 
     QGuiApplication app(argc, argv);
-
 
     QGuiApplication::setOrganizationName("TheLastViking");
 #ifdef DEVEL_SETTINGS

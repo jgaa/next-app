@@ -89,6 +89,7 @@ message UserGlobalSettings {
     bool firstDayOfWeekIsMonday = 5;
     bool autoStartNextWorkSession = 6;
     bool autoStartNewWorkSession = 7;
+    int64 version = 8;
 }
 
 message Node {
@@ -107,7 +108,7 @@ message Node {
     string name = 5;
     Kind kind = 6;
     string descr = 7;
-    int64 version = 8;
+    int64 version = 8; // Set by the server, handled by version trigger in the db
 }
 
 message WorkEvent {

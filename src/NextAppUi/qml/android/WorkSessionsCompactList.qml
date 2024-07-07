@@ -46,6 +46,12 @@ Rectangle {
                 }
                 somethingChanged()
             })
+
+            model.isVisible = visible
+        }
+
+        onVisibleChanged: {
+            model.isVisible = visible
         }
 
         delegate: Rectangle {

@@ -116,15 +116,17 @@ namespace {
             const auto& cuser = rctx.uctx->userUuid();
 
             auto res = co_await rctx.dbh->exec(
-                "SELECT settings FROM user_settings WHERE user = ?",
+                "SELECT settings, version FROM user_settings WHERE user = ?",
                 cuser);
 
-            enum Cols { SETTINGS };
+            enum Cols { SETTINGS, VERSION };
             if (!res.rows().empty()) {
                 const auto& row = res.rows().front();
                 auto blob = row.at(SETTINGS).as_blob();
                 pb::UserGlobalSettings settings;
                 if (settings.ParseFromArray(blob.data(), blob.size())) {
+                    auto version = row.at(VERSION).as_int64();
+                    settings.set_version(version);
                     reply->mutable_userglobalsettings()->CopyFrom(settings);
                 } else {
                     LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << cuser;
