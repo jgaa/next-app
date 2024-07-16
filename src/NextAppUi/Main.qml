@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtCore
 import NextAppUi
 import Nextapp.Models
 
@@ -8,10 +9,22 @@ ApplicationWindow {
     id: root
     width: 1700
     height: 900
-    visible: true
+    visible: settings.onboarding
     title: NaCore.develBuild ? "Next-app --Developer Edition--" : qsTr("Next-app: Your Personal Organizer")
     color: MaterialDesignStyling.surface
     flags: Qt.Window //| Qt.FramelessWindowHint
+
+    Settings {
+        id: settings
+        property bool onboarding: false
+    }
+
+    Component.onCompleted: {
+        if (!settings.onboarding) {
+            console.log("Opening onboarding")
+            openWindow("onboard/OnBoardingWizard.qml");
+        }
+    }
 
     menuBar: MyMenuBar {
         dragWindow: root
@@ -214,6 +227,17 @@ ApplicationWindow {
         }
         var dlg = component.createObject(root, args);
         dlg.open()
+    }
+
+    function openWindow(name, args) {
+        var component = Qt.createComponent("qml/" + name);
+        if (component.status !== Component.Ready) {
+            if(component.status === Component.Error )
+                console.debug("Error:"+ component.errorString() );
+            return;
+        }
+        var win = component.createObject(root, args);
+        win.show()
     }
 
     function openNodeDlg(kind) {

@@ -6,7 +6,7 @@ find_package(Doxygen)
 set(NEXTAPP_BACKEND ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(NOT DEFINED USE_BOOST_VERSION)
-    set(USE_BOOST_VERSION 1.83)
+    set(USE_BOOST_VERSION 1.85)
 endif()
 
 option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" ON)
@@ -16,6 +16,7 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     date_time
     coroutine
     context
+    charconv
     chrono
     json
     )

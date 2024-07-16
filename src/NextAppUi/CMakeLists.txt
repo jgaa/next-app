@@ -64,16 +64,18 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(-D_DEBUG)
 endif()
 
-set (protofile "${CMAKE_CURRENT_SOURCE_DIR}/../proto/nextapp.proto")
+set (protofile_nextapp "${CMAKE_CURRENT_SOURCE_DIR}/../proto/nextapp.proto")
+set (protofile_signup "${CMAKE_CURRENT_SOURCE_DIR}/../proto/signup.proto")
 
 qt_add_protobuf(NextappProtoMessageLib
     QML
     QML_URI nextapp.pb
-    PROTO_FILES ${protofile}
+    PROTO_FILES ${protofile_nextapp} ${protofile_signup}
 )
 
+
 qt_add_grpc(NextappGrpcClient CLIENT
-    PROTO_FILES ${protofile}
+    PROTO_FILES ${protofile_nextapp} ${protofile_signup}
 )
 
 target_link_libraries(NextappGrpcClient
@@ -146,6 +148,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/ResizeButton.qml # x
         qml/SelectedIndicatorBar.qml
         qml/Sidebar.qml
+        qml/SplitViewComponent.qml
         qml/StyledButton.qml
         qml/StyledCheckBox.qml
         qml/StyledComboBox.qml
@@ -172,12 +175,17 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/categories/ColorPicker.qml
         qml/categories/EditCategoryDlg.qml
         qml/common.js
+        qml/onboard/OnBoardingWizard.qml
+        qml/onboard/OnboardingAccept.qml
+        qml/onboard/OnboardingAccount.qml
+        qml/onboard/OnboardingReady.qml
+        qml/onboard/OnboardingServer.qml
+        qml/onboard/OnboardingWelcome.qml
         qml/settings/AdvancedSettings.qml
         qml/settings/GlobalSettings.qml
         qml/settings/PrefSettings.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
-        qml/SplitViewComponent.qml
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"

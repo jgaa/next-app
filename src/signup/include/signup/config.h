@@ -14,7 +14,7 @@ struct ServerConfig {
 };
 
 struct GrpcConfig {
-    std::string address = "localhost:10321";
+    std::string address = "localhost:10322";
     std::string tls_mode = "cert"; // cert | none
     std::string ca_cert;
     std::string server_cert;

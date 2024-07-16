@@ -7,6 +7,7 @@
 
 
 #include "nextapp_client.grpc.qpb.h"
+#include "signup_client.grpc.qpb.h"
 
 #include <QObject>
 #include <QUuid>
@@ -43,6 +44,8 @@ private:
     Q_PROPERTY(nextapp::pb::UserGlobalSettings globalSettings
                 READ getGlobalSettings
                 NOTIFY globalSettingsChanged)
+    Q_PROPERTY(signup::pb::GetInfoResponse signupInfo READ getSignupInfo NOTIFY signupInfoChanged)
+
 public:
     struct CbError {
         nextapp::pb::ErrorGadget::Error error;
@@ -77,6 +80,8 @@ public:
     Q_INVOKABLE void reloadSettings();
     Q_INVOKABLE void saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings);
     Q_INVOKABLE nextapp::pb::UserGlobalSettings getGlobalSettings() const;
+    signup::pb::GetInfoResponse getSignupInfo() const;
+    Q_INVOKABLE void setSignupServerAddress(const QString &address);
 
     static ServerComm& instance() noexcept {
         assert(instance_);
@@ -155,6 +160,7 @@ signals:
     void globalSettingsChanged();
     void firstDayOfWeekChanged();
     void statusChanged();
+    void signupInfoChanged();
 
     // When the server has replied to our request fo the colors for this month
     void monthColorsChanged(unsigned year, unsigned month, colors_in_months_t colors);
@@ -185,17 +191,19 @@ private:
     void onUpdateMessage();
     void setDefaulValuesInUserSettings();
     void scheduleReconnect();
+    void connectToSignupServer();
 
     struct GrpcCallOptions {
         bool enable_queue = true;
         bool ignore_errors = false;
+        bool ignore_offline = false;
     };
 
     template <typename respT, typename callT, typename doneT, typename ...Args>
     void callRpc_(callT&& call, doneT && done, const GrpcCallOptions& opts, Args... args) {
 
         auto exec = [this, call=std::move(call), done=std::move(done), opts, args...]() {
-            if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
+            if (!opts.ignore_offline && (status_ == Status::OFFLINE || status_ == Status::ERROR)) {
                 LOG_ERROR << "ServerComm::callRpc_ Called when status is " << status_;
                 return;
             }
@@ -266,6 +274,7 @@ private:
     }
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
+    std::unique_ptr<signup::pb::SignUp::Client> signup_client_;
     nextapp::pb::ServerInfo server_info_;
     QString server_version_{"Unknown"};
     std::queue<std::function<void()>> grpc_queue_;
@@ -277,4 +286,6 @@ private:
     nextapp::pb::UserGlobalSettings userGlobalSettings_;
     QString session_id_;
     int reconnect_after_seconds_{0};
+    QString signup_server_address_;
+    signup::pb::GetInfoResponse signup_info_;
 };

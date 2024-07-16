@@ -40,7 +40,8 @@ auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind k
 ServerComm *ServerComm::instance_;
 
 ServerComm::ServerComm()
-    : client_{new nextapp::pb::Nextapp::Client} {
+    : client_{new nextapp::pb::Nextapp::Client}, signup_client_{new signup::pb::SignUp::Client}
+{
 
     instance_ = this;
 
@@ -49,7 +50,8 @@ ServerComm::ServerComm()
 
     setDefaulValuesInUserSettings();
 
-    if (!QSettings{}.value("serverAddress", getDefaultServerAddress()).toString().isEmpty()) {
+    if (QSettings{}.value("onboarding", false).toBool()
+        && !QSettings{}.value("serverAddress", getDefaultServerAddress()).toString().isEmpty()) {
         if (QSettings{}.value("server/auto_login", true).toBool()) {
             LOG_DEBUG << "Auto-login is enabled. Starting the server comm...";
             start();
@@ -643,6 +645,20 @@ nextapp::pb::UserGlobalSettings ServerComm::getGlobalSettings() const
     return userGlobalSettings_;
 }
 
+signup::pb::GetInfoResponse ServerComm::getSignupInfo() const {
+    return signup_info_;
+}
+
+void ServerComm::setSignupServerAddress(const QString &address)
+{
+    if (address != signup_server_address_) {
+        signup_server_address_ = address;
+        signup_info_ = {};
+        emit signupInfoChanged();
+        connectToSignupServer();
+    }
+}
+
 void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings)
 {
     LOG_DEBUG_N << "Saving global user-settings";
@@ -792,4 +808,39 @@ void ServerComm::scheduleReconnect()
 
     LOG_INFO_N << "Reconnecting in " << reconnect_after_seconds_ << " seconds";
     QTimer::singleShot(reconnect_after_seconds_ * 1000, this, &ServerComm::start);
+}
+
+void ServerComm::connectToSignupServer()
+{
+    QGrpcMetadata metadata;
+    metadata.emplace("session-id", session_id_.toLatin1());
+    QSslConfiguration sslConfig;
+    sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
+    sslConfig.setProtocol(QSsl::TlsV1_3);
+
+    // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
+    // it only support https/2.
+    sslConfig.setAllowedNextProtocols({{"h2"}});
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+    auto channelOptions = QGrpcChannelOptions{QUrl(signup_server_address_, QUrl::StrictMode)}
+                              .withMetadata(metadata)
+                              .withSslConfiguration(sslConfig);
+    signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
+#else
+    auto channelOptions = QGrpcChannelOptions{}
+                              .setMetadata(metadata)
+                              .withSslConfiguration(sslConfig);
+    signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(signup_server_address_, QUrl::StrictMode), channelOptions));
+#endif
+
+    LOG_INFO << "Using signup server at " << signup_server_address_;
+
+    callRpc<signup::pb::GetInfoResponse>([this]() {
+        return signup_client_->GetInfo({});
+    }, [this](const signup::pb::GetInfoResponse& info) {
+        LOG_DEBUG << "Received signup info from server ";
+        signup_info_ = info;
+        emit signupInfoChanged();
+     }, GrpcCallOptions{false, false, true});
 }
