@@ -81,7 +81,7 @@ void handleSignals(auto& signals, bool& done, T& service) {
 int main(int argc, char* argv[]) {
     try {
         locale loc("");
-    } catch (const std::exception&) {
+    } catch (const exception&) {
         cout << "Locales in Linux are fundamentally broken. Never worked. Never will. Overriding the current mess with LC_ALL=C" << endl;
         setenv("LC_ALL", "C", 1);
     }
@@ -93,9 +93,11 @@ int main(int argc, char* argv[]) {
     {
         namespace po = boost::program_options;
         po::options_description general("Options");
-        std::string log_level_console = "info";
-        std::string log_level = "info";
-        std::string log_file;
+        const string default_config_file = "/etc/nextapp/signupd.conf";
+        string config_file;
+        string log_level_console = "info";
+        string log_level = "info";
+        string log_file;
         bool trunc_log = false;
         bool bootstrap = false;
         bool bootstrap_ca = false;
@@ -103,6 +105,9 @@ int main(int argc, char* argv[]) {
         general.add_options()
             ("help,h", "Print help and exit")
             ("version,v", "Print version and exit")
+            ("config,c",
+             po::value(&config_file)->default_value(default_config_file),
+             "Configuration file to use")
             ("log-to-console,C",
              po::value(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
@@ -154,26 +159,46 @@ int main(int argc, char* argv[]) {
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
             po::notify(vm);
-        } catch (const std::exception& ex) {
+        } catch (const exception& ex) {
             cerr << appname
                  << " Failed to parse command-line arguments: " << ex.what() << endl;
             return -1;
         }
 
         if (vm.count("help")) {
-            std::cout <<appname << " [options]";
-            std::cout << cmdline_options << std::endl;
+            cout <<appname << " [options]";
+            cout << cmdline_options << endl;
             return -2;
         }
 
         if (vm.count("version")) {
-            std::cout << appname << ' ' << APP_VERSION << endl
+            cout << appname << ' ' << APP_VERSION << endl
                       << "Using C++ standard " << __cplusplus << endl
                       << "Boost " << BOOST_LIB_VERSION << endl
                       << "Platform " << BOOST_PLATFORM << endl
                       << "Compiler " << BOOST_COMPILER << endl
                       << "Build date " << __DATE__ << endl;
             return -3;
+        }
+
+        if (!config_file.empty()) {
+            if (filesystem::exists(config_file)) {
+                try {
+                    ifstream config_file_stream(config_file);
+                    po::store(po::parse_config_file(config_file_stream, cmdline_options), vm);
+                    po::notify(vm);
+                } catch (const exception& ex) {
+                    cerr << appname << " Failed to load configuration file '" << config_file << "': " << ex.what() << endl;
+                    return -4;
+                }
+            } else {
+                if (config_file == default_config_file) {
+                    cerr << appname << " Default configuration file '" << config_file << "' does not exist." << endl;
+                } else {
+                    cerr << appname << " Configuration file '" << config_file << "' does not exist." << endl;
+                    return -4;
+                }
+            }
         }
 
         if (auto level = toLogLevel(log_level_console)) {

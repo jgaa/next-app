@@ -95,9 +95,11 @@ int main(int argc, char* argv[]) {
     {
         namespace po = boost::program_options;
         po::options_description general("Options");
-        std::string log_level_console = "info";
-        std::string log_level = "info";
-        std::string log_file;
+        const string default_config_file = "/etc/nextapp/nextappd.conf";
+        string config_file;
+        string log_level_console = "info";
+        string log_level = "info";
+        string log_file;
         bool trunc_log = false;
         bool bootstrap = false;
         bool bootstrap_ca = false;
@@ -105,6 +107,9 @@ int main(int argc, char* argv[]) {
         general.add_options()
             ("help,h", "Print help and exit")
             ("version,v", "Print version and exit")
+            ("config,c",
+             po::value(&config_file)->default_value(default_config_file),
+             "Configuration file to use")
             ("log-to-console,C",
              po::value(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
@@ -217,6 +222,26 @@ int main(int argc, char* argv[]) {
                       << "Compiler " << BOOST_COMPILER << endl
                       << "Build date " << __DATE__ << endl;
             return -3;
+        }
+
+        if (!config_file.empty()) {
+            if (filesystem::exists(config_file)) {
+                try {
+                    std::ifstream config_file_stream(config_file);
+                    po::store(po::parse_config_file(config_file_stream, cmdline_options), vm);
+                    po::notify(vm);
+                } catch (const exception& ex) {
+                    cerr << appname << " Failed to load configuration file '" << config_file << "': " << ex.what() << endl;
+                    return -4;
+                }
+            } else {
+                if (config_file == default_config_file) {
+                    cerr << appname << " Default configuration file '" << config_file << "' does not exist." << endl;
+                } else {
+                    cerr << appname << " Configuration file '" << config_file << "' does not exist." << endl;
+                    return -4;
+                }
+            }
         }
 
         if (auto level = toLogLevel(log_level_console)) {
