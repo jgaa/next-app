@@ -28,6 +28,13 @@ public:
         ERROR
     };
 
+    enum SignupStatus {
+        SIGNUP_NOT_STARTED,
+        SIGNUP_SIGNING_UP,
+        SIGNUP_OK,
+        SIGNUP_ERROR
+    };
+
 private:
     Q_OBJECT
     Q_ENUM(Status)
@@ -45,6 +52,7 @@ private:
                 READ getGlobalSettings
                 NOTIFY globalSettingsChanged)
     Q_PROPERTY(signup::pb::GetInfoResponse signupInfo READ getSignupInfo NOTIFY signupInfoChanged)
+    Q_PROPERTY(SignupStatus SignupStatus MEMBER signup_status_ NOTIFY signupStatusChanged)
 
 public:
     struct CbError {
@@ -82,6 +90,7 @@ public:
     Q_INVOKABLE nextapp::pb::UserGlobalSettings getGlobalSettings() const;
     signup::pb::GetInfoResponse getSignupInfo() const;
     Q_INVOKABLE void setSignupServerAddress(const QString &address);
+    Q_INVOKABLE void signup(const QString &name, const QString &email);
 
     static ServerComm& instance() noexcept {
         assert(instance_);
@@ -182,6 +191,7 @@ signals:
 
     // Triggered on all updates from the server
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    void signupStatusChanged();
 
 private:
     void errorOccurred(const QGrpcStatus &status);
@@ -273,6 +283,8 @@ private:
         callRpc_<respT>(std::move(call), false, opts, arg...);
     }
 
+    static std::pair<QString, QString> createCsr();
+
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     std::unique_ptr<signup::pb::SignUp::Client> signup_client_;
     nextapp::pb::ServerInfo server_info_;
@@ -288,4 +300,5 @@ private:
     int reconnect_after_seconds_{0};
     QString signup_server_address_;
     signup::pb::GetInfoResponse signup_info_;
+    SignupStatus signup_status_{SIGNUP_NOT_STARTED};
 };

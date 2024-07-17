@@ -14,15 +14,6 @@ ColumnLayout  {
     signal nextClicked()
     signal backClicked()
 
-    Component.onCompleted: {
-
-    }
-
-    Settings {
-        id: settings
-        property string serverAddress : NaComm.defaultServerAddress
-    }
-
     TextArea {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -40,29 +31,40 @@ ColumnLayout  {
         }
     }
 
-    TextArea {
+    Item {
+        Layout.preferredHeight: 20
+    }
+
+    ScrollView {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        horizontalAlignment: Text.AlignHCenter
-        textFormat: Text.RichText
+        TextArea {
+            text: NaComm.signupInfo.eula
+            textFormat: Text.RichText
 
-        text: NaComm.signupInfo.eula
-
-        wrapMode: Text.WordWrap
-        readOnly: true
-        antialiasing: true
-        color: MaterialDesignStyling.onSurface
-        background: Rectangle {
-            color: "transparent"
+            wrapMode: Text.WordWrap
+            readOnly: true
+            antialiasing: true
+            color: "black"
+            background: Rectangle {
+                color: "white"
+            }
         }
     }
 
-    CheckBox {
-        id: acceptCheckBox
-        text: qsTr("I accept the terms and conditions")
-        enabled: NaComm.signupInfo.eula.length > 0
-        onCheckedChanged: {
-            root.accepted = checked
+    RowLayout {
+        spacing: 4
+        CheckBox {
+            id: acceptCheckBox
+            enabled: NaComm.signupInfo.eula.length > 0
+            onCheckedChanged: {
+                root.accepted = checked
+            }
+        }
+
+        Text {
+            text: qsTr("I accept the terms and conditions")
+            color: MaterialDesignStyling.onSurface
         }
     }
 

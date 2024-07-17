@@ -1,4 +1,4 @@
-
+#include <iostream>
 #include <string_view>
 #include "ServerComm.h"
 #include "logging.h"
@@ -6,6 +6,13 @@
 #include <QSettings>
 #include <QGrpcHttp2Channel>
 #include <QtConcurrent/QtConcurrent>
+
+#include <openssl/x509.h>
+#include <openssl/pem.h>
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+#include <openssl/x509v3.h>
+#include <openssl/pem.h>
 
 #include "NextAppCore.h"
 
@@ -659,6 +666,18 @@ void ServerComm::setSignupServerAddress(const QString &address)
     }
 }
 
+void ServerComm::signup(const QString &name, const QString &email)
+{
+    // Create CSR
+    // Send signup request
+    signup_status_ = SignupStatus::SIGNUP_SIGNING_UP;
+    emit signupStatusChanged();
+
+    auto [csr, key] = createCsr();
+
+    LOG_DEBUG << "Have created CSR: " << csr.size() << " bytes";
+}
+
 void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings)
 {
     LOG_DEBUG_N << "Saving global user-settings";
@@ -843,4 +862,116 @@ void ServerComm::connectToSignupServer()
         signup_info_ = info;
         emit signupInfoChanged();
      }, GrpcCallOptions{false, false, true});
+}
+namespace {
+struct X509ReqDeleter {
+    void operator()(X509_REQ* x) const {
+        X509_REQ_free(x);
+    }
+};
+
+using X509Req_Ptr = std::unique_ptr<X509_REQ, X509ReqDeleter>;
+
+struct EVP_PKEY_Deleter {
+    void operator()(EVP_PKEY* p) const {
+        EVP_PKEY_free(p);
+    }
+};
+
+using EVP_PKEY_Ptr = std::unique_ptr<EVP_PKEY, EVP_PKEY_Deleter>;
+
+template <typename T>
+void setSubjects(X509_REQ *cert, const T& subjects) {
+    if (auto name = X509_NAME_new()) {
+
+        ScopedExit cleaner{[name] {
+            X509_NAME_free(name);
+        }};
+
+        int loc = 0;
+        for(const auto [subj, section] : subjects) {
+            X509_NAME_add_entry_by_txt(
+                name, section.c_str(), MBSTRING_ASC,
+                reinterpret_cast<const unsigned char *>(subj.data()), subj.size(), loc++, 0);
+        }
+
+        X509_REQ_set_subject_name(cert, name);
+        return;
+    }
+    throw runtime_error{"X509_get_subject_name"};
+}
+
+template <typename T, typename U>
+void toBuffer(const T& cert, U& dest) {
+    auto * bio = BIO_new(BIO_s_mem());
+    if (!bio) {
+        throw runtime_error{"BIO_new"};
+    }
+
+    ScopedExit scoped{ [bio] {
+            BIO_free(bio); }
+    };
+
+    if constexpr (is_same_v<T, X509_REQ>) {
+        PEM_write_bio_X509_REQ(bio, &cert);
+    } else if constexpr (is_same_v<T, EVP_PKEY>){
+        PEM_write_bio_PrivateKey(bio, &cert, NULL, NULL, 0, 0, NULL);
+    } else {
+        assert(false && "Unsupported type.");
+        throw runtime_error{"toBuffer: Unsupported type."};
+    }
+
+    char * data{};
+    if (const auto len = BIO_get_mem_data(bio, &data); len > 0) {
+        dest = {data, data + len};
+    } else {
+        throw runtime_error{"BIO_get_mem_data"};
+    }
+}
+} // anon ns
+
+std::pair<QString /* csr */, QString /* key */> ServerComm::createCsr()
+{
+    QUuid id = QUuid::createUuid();
+    const auto subjects = to_array<pair<string_view, string>>(
+        {{"CN", id.toString(QUuid::WithoutBraces).toStdString()},
+         {"O", "Nextapp"},
+         {"OU", "Nextapp"}});
+
+    if (auto req = X509_REQ_new()) {
+        X509Req_Ptr req_ptr{req};
+
+        X509_REQ_set_version(req, X509_VERSION_3);
+        setSubjects(req, subjects);
+
+        EVP_PKEY_Ptr rkey;
+        if (auto rsa_key = EVP_PKEY_new()) {
+            rkey.reset(rsa_key);
+
+            if (auto ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL)) {
+                ScopedExit ctx_cleanup{[&ctx] {
+                    EVP_PKEY_CTX_free(ctx);
+                }};
+
+                EVP_PKEY_keygen_init(ctx);
+                EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 4096);
+                if (EVP_PKEY_keygen(ctx, &rsa_key) <= 0) {
+                    throw runtime_error{"Error generating EVP_PKEY_RSA key for the certificate request."};
+                }
+            } else {
+                throw runtime_error{"EVP_PKEY_CTX_new_id"};
+            }
+
+            X509_REQ_set_pubkey(req, rsa_key);
+
+            QString csr, key;
+            toBuffer(req, csr);
+            toBuffer(rsa_key, key);
+            return {csr, key};
+        } else {
+            throw runtime_error{"EVP_PKEY_new()"};
+        }
+    }
+
+    throw runtime_error{"X509_REQ"};
 }

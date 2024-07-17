@@ -109,6 +109,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 if (NOT ANDROID)
     find_package(Boost REQUIRED)
+    find_package(OpenSSL REQUIRED)
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
     target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_85_0)
@@ -298,6 +299,9 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Test
         NextappGrpcClient
         NextappProtoMessageLib
+        OpenSSL::SSL
+        OpenSSL::Crypto
+
 )
 
 if(NOT ANDROID)
