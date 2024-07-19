@@ -131,15 +131,15 @@ int main(int argc, char* argv[]) {
         svr.add_options()
             ("io-threads", po::value(&config.svr.io_threads)->default_value(config.svr.io_threads),
              "Number of worker-threads to start for IO")
-            ("grpc-address,g", po::value(&config.grpc.address)->default_value(config.grpc.address),
+            ("grpc-address,g", po::value(&config.grpc_signup.address)->default_value(config.grpc_signup.address),
              "Address and port to use for gRPC")
-            ("grpc-tls-mode", po::value(&config.grpc.tls_mode)->default_value(config.grpc.tls_mode),
+            ("grpc-tls-mode", po::value(&config.grpc_signup.tls_mode)->default_value(config.grpc_signup.tls_mode),
              "TLS mode; one of 'ca' or 'none'. Ca will use a self-signed server cert.")
-            ("grpc-ca-cert", po::value(&config.grpc.ca_cert),
+            ("grpc-server-ca-cert", po::value(&config.grpc_signup.ca_cert),
              "Path to the CA certificate")
-            ("grpc-server-cert", po::value(&config.grpc.server_cert),
+            ("grpc-server-cert", po::value(&config.grpc_signup.server_cert),
              "Path to the server certificate")
-            ("grpc-server-key", po::value(&config.grpc.server_key),
+            ("grpc-server-key", po::value(&config.grpc_signup.server_key),
              "Path to the server key")
             ;
 
@@ -151,6 +151,14 @@ int main(int argc, char* argv[]) {
              "Path to the welcome page")
             ("eula", po::value(&config.cluster.eula_path),
              "Path to the EULA page")
+            ("nextapp-address,n", po::value(&config.grpc_nextapp.address)->default_value(config.grpc_nextapp.address),
+             "Address and port to use for gRPC client-connectiopn to NextApp")
+            ("grpc-client-ca-cert", po::value(&config.grpc_nextapp.ca_cert),
+             "Path to the CA certificate")
+            ("grpc-client-cert", po::value(&config.grpc_nextapp.server_cert),
+             "Path to the server certificate")
+            ("grpc-client-key", po::value(&config.grpc_nextapp.server_key),
+             "Path to the server key")
             ;
 
         po::options_description cmdline_options;

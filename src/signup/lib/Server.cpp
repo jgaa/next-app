@@ -60,13 +60,13 @@ void Server::init()
 void Server::run()
 {
     asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-            co_await startGrpcService();
-        },
-        [](std::exception_ptr ptr) {
-            if (ptr) {
-                std::rethrow_exception(ptr);
+            try {
+                co_await startGrpcService();
+            } catch (const std::exception& ex) {
+                LOG_ERROR << "Failed to start gRPC service: " << ex.what();
+                co_return;
             }
-        });
+    }, asio::use_future).get();
 
     LOG_DEBUG_N << "Main thread joins the IO thread pool...";
     runIoThread(0);

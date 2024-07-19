@@ -52,14 +52,22 @@ ServerComm::ServerComm()
 
     instance_ = this;
 
+    QSettings settings;
+    device_uuid_ = settings.value("device/uuid", QUuid{}).toUuid();
+    if (device_uuid_.isNull()) {
+        device_uuid_ = QUuid::createUuid();
+        settings.setValue("device/uuid", device_uuid_);
+        LOG_INFO << "Created new device-uuid for this device: " << device_uuid_.toString();
+    }
+
     connect(client_.get(), &nextapp::pb::Nextapp::Client::errorOccurred,
             this, &ServerComm::errorOccurred);
 
     setDefaulValuesInUserSettings();
 
-    if (QSettings{}.value("onboarding", false).toBool()
-        && !QSettings{}.value("serverAddress", getDefaultServerAddress()).toString().isEmpty()) {
-        if (QSettings{}.value("server/auto_login", true).toBool()) {
+    if (settings.value("onboarding", false).toBool()
+        && !settings.value("serverAddress", getDefaultServerAddress()).toString().isEmpty()) {
+        if (settings.value("server/auto_login", true).toBool()) {
             LOG_DEBUG << "Auto-login is enabled. Starting the server comm...";
             start();
         }
@@ -98,7 +106,7 @@ void ServerComm::start()
 #else
     auto channelOptions = QGrpcChannelOptions{}
                               .setMetadata(metadata)
-                              .withSslConfiguration(sslConfig);
+                              .setSslConfiguration(sslConfig);
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(current_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
@@ -647,6 +655,12 @@ void ServerComm::setStatus(Status status) {
     }
 }
 
+const QUuid &ServerComm::deviceUuid() const
+{
+    assert(!device_uuid_.isNull());
+    return device_uuid_;
+}
+
 nextapp::pb::UserGlobalSettings ServerComm::getGlobalSettings() const
 {
     return userGlobalSettings_;
@@ -673,9 +687,70 @@ void ServerComm::signup(const QString &name, const QString &email)
     signup_status_ = SignupStatus::SIGNUP_SIGNING_UP;
     emit signupStatusChanged();
 
-    auto [csr, key] = createCsr();
+    setMessage(tr("Creating client TLS cert..."));
 
-    LOG_DEBUG << "Have created CSR: " << csr.size() << " bytes";
+    signup::pb::SignUpRequest req;
+    QString key, csr;
+
+    try {
+        tie(csr, key) = createCsr();
+        LOG_DEBUG << "Have created CSR: " << csr.size() << " bytes";
+    } catch (const exception& ex) {
+        LOG_ERROR << "Failed to create CSR: " << ex.what();
+        signup_status_ = SignupStatus::SIGNUP_ERROR;
+        emit signupStatusChanged();
+        return;
+    }
+
+    auto& dev = req.device();
+    dev.setUuid(deviceUuid().toString(QUuid::WithoutBraces));
+    dev.setHostName(QSysInfo::machineHostName());
+    dev.setOs(QSysInfo::kernelType());
+    dev.setOsVersion(QSysInfo::kernelVersion());
+    dev.setAppVersion(NEXTAPP_VERSION);
+    dev.setCsr(csr);
+    dev.setProductType(QSysInfo::productType());
+    dev.setProductVersion(QSysInfo::productVersion());
+    dev.setArch(QSysInfo::currentCpuArchitecture());
+    dev.setPrettyName(QSysInfo::prettyProductName());
+
+    addMessage(tr("Contacting the sign-up server..."));
+
+    callRpc<signup::pb::SignUpResponse>([this, req, key]() {
+        return signup_client_->SignUp(req);
+    }, [this](const signup::pb::SignUpResponse& su) {
+        LOG_DEBUG << "Received signup response from server ";
+
+        switch(su.status()) {
+            case signup::pb::SignUpResponse::Status::OK:
+                signup_status_ = SignupStatus::SIGNUP_OK;
+                addMessage(tr("Your account was successfully created!"));
+                break;
+            case signup::pb::SignUpResponse::Status::EMAIL_ALREADY_EXISTS:
+                signup_status_ = SignupStatus::SIGNUP_ERROR;
+                addMessage(tr("Your email is already in use for an account."));
+                break;
+            case signup::pb::SignUpResponse::Status::INVALID_CSR:
+                signup_status_ = SignupStatus::SIGNUP_ERROR;
+                addMessage(tr("Invalid Certificate Request."));
+                break;
+            case signup::pb::SignUpResponse::Status::REJECTED:
+                signup_status_ = SignupStatus::SIGNUP_ERROR;
+                addMessage(tr("Your request was rejected: %1").arg(su.message()));
+                break;
+            case signup::pb::SignUpResponse::Status::TRY_AGAIN_LATER:
+                signup_status_ = SignupStatus::SIGNUP_ERROR;
+                addMessage(tr("The server asks us to try again later."));
+                break;
+            default:
+                signup_status_ = SignupStatus::SIGNUP_ERROR;
+                addMessage(tr("Unknown error: %1").arg(su.message()));
+                break;
+        }
+
+        emit signupStatusChanged();
+
+    }, GrpcCallOptions{false, false, true});
 }
 
 void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings)
@@ -833,9 +908,14 @@ void ServerComm::connectToSignupServer()
 {
     QGrpcMetadata metadata;
     metadata.emplace("session-id", session_id_.toLatin1());
-    QSslConfiguration sslConfig;
+    QSslConfiguration sslConfig{QSslConfiguration::defaultConfiguration()};
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
     sslConfig.setProtocol(QSsl::TlsV1_3);
+
+    LOG_TRACE_N << "CA certs: ";
+    for(const auto& c : sslConfig.caCertificates()) {
+        LOG_TRACE_N << "  " << c.subjectDisplayName();
+    }
 
     // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
     // it only support https/2.
@@ -849,7 +929,7 @@ void ServerComm::connectToSignupServer()
 #else
     auto channelOptions = QGrpcChannelOptions{}
                               .setMetadata(metadata)
-                              .withSslConfiguration(sslConfig);
+                              .setSslConfiguration(sslConfig);
     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(signup_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
@@ -863,6 +943,28 @@ void ServerComm::connectToSignupServer()
         emit signupInfoChanged();
      }, GrpcCallOptions{false, false, true});
 }
+
+void ServerComm::clearMessages()
+{
+    messages_.clear();
+    emit messagesChanged();
+}
+
+void ServerComm::addMessage(const QString &msg)
+{
+    if (!messages_.isEmpty()) {
+        messages_ += "\n";
+    }
+    messages_ += msg;
+    emit messagesChanged();
+}
+
+void ServerComm::setMessage(const QString &msg)
+{
+    messages_ = msg;
+    emit messagesChanged();
+}
+
 namespace {
 struct X509ReqDeleter {
     void operator()(X509_REQ* x) const {
@@ -913,7 +1015,10 @@ void toBuffer(const T& cert, U& dest) {
     };
 
     if constexpr (is_same_v<T, X509_REQ>) {
-        PEM_write_bio_X509_REQ(bio, &cert);
+        auto rval = PEM_write_bio_X509_REQ(bio, &cert);
+        if (rval == 0) {
+            throw runtime_error{"PEM_write_bio_X509_REQ"};
+        }
     } else if constexpr (is_same_v<T, EVP_PKEY>){
         PEM_write_bio_PrivateKey(bio, &cert, NULL, NULL, 0, 0, NULL);
     } else {
@@ -932,9 +1037,8 @@ void toBuffer(const T& cert, U& dest) {
 
 std::pair<QString /* csr */, QString /* key */> ServerComm::createCsr()
 {
-    QUuid id = QUuid::createUuid();
     const auto subjects = to_array<pair<string_view, string>>(
-        {{"CN", id.toString(QUuid::WithoutBraces).toStdString()},
+        {{"CN", deviceUuid().toString(QUuid::WithoutBraces).toStdString()},
          {"O", "Nextapp"},
          {"OU", "Nextapp"}});
 
@@ -963,10 +1067,13 @@ std::pair<QString /* csr */, QString /* key */> ServerComm::createCsr()
             }
 
             X509_REQ_set_pubkey(req, rsa_key);
+            if (X509_REQ_sign(req, rsa_key, EVP_sha256()) <= 0) {
+                throw runtime_error{"Error signing the certificate request."};
+            }
 
             QString csr, key;
-            toBuffer(req, csr);
-            toBuffer(rsa_key, key);
+            toBuffer(*req, csr);
+            toBuffer(*rsa_key, key);
             return {csr, key};
         } else {
             throw runtime_error{"EVP_PKEY_new()"};

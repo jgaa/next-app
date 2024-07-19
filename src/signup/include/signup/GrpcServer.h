@@ -12,7 +12,7 @@
 #include "signup/Server.h"
 #include "signup/config.h"
 // #include "nextapp.pb.h"
-// #include "nextapp.grpc.pb.h"
+// #include "nextapp.grpc_signup.pb.h"
 // #include "nextapp/logging.h"
 // #include "nextapp/errors.h"
 // #include "nextapp/UserContext.h"
@@ -20,6 +20,7 @@
 
 #include "signup.pb.h"
 #include "signup.grpc.pb.h"
+#include "nextapp.grpc.pb.h"
 
 #include "nextapp/util.h"
 
@@ -59,6 +60,45 @@ public:
         const size_t client_id_ = getNewClientId();
     };
 
+    template <typename replyT, typename reqT, typename T>
+    struct CallData {
+        CallData(reqT && req, T& self)
+            : req{std::move(req)}, self_{std::move(self)} {}
+        reqT req;
+        ::grpc::ClientContext ctx;
+        replyT reply;
+        std::remove_cvref_t<T> self_;
+    };
+
+    template <ProtoMessage replyT, ProtoMessage reqT, typename CompletionToken>
+    auto callRpc(reqT request,
+        void (::nextapp::pb::Nextapp::Stub::async::*call)(::grpc::ClientContext* context, const reqT* request, replyT* response, std::function<void(::grpc::Status)>),
+                 CompletionToken&& token) {
+
+        return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, replyT)>(
+            [this, request=std::move(request), call](auto& self) mutable {
+                auto cd = std::make_shared<CallData<replyT, reqT, decltype(self)>>(std::move(request), self);
+
+                // TODO: Find a better way! We are using a shared pointer here, which is not good.
+                auto fn = [this, cd](const ::grpc::Status& status) mutable {
+                    boost::system::error_code ec;
+                    if (!status.ok()) {
+                        ec = boost::system::error_code{status.error_code(), boost::system::system_category()};
+                    }
+
+                    LOG_TRACE << "RPC call completed. Status: " << status.error_message();
+                    LOG_TRACE << "Reply: " << toJsonForLog(cd->reply);
+                    cd->self_.complete(ec, cd->reply);
+                };
+
+                (nextapp_stub_->async()->*call)(&cd->ctx, &cd->req, &cd->reply,
+                                                [fn=std::move(fn)](const ::grpc::Status& status) mutable {
+                    fn(status);
+                });
+
+        }, token);
+    }
+
     template <typename T, typename... Args>
     static auto createNew(GrpcServer& parent, Args... args) {
 
@@ -87,6 +127,12 @@ public:
         ::grpc::ServerUnaryReactor * GetInfo(::grpc::CallbackServerContext *ctx,
                                             const signup::pb::GetInfoRequest *req,
                                             signup::pb::GetInfoResponse *reply) override;
+
+
+        ::grpc::ServerUnaryReactor * SignUp(::grpc::CallbackServerContext *ctx,
+                                            const signup::pb::SignUpRequest *req,
+                                            signup::pb::SignUpResponse *reply) override;
+
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
@@ -129,13 +175,20 @@ public:
 
     void stop();
 
-    const GrpcConfig& config() const noexcept {
-        return server_.config().grpc;
+    const GrpcConfig& signup_config() const noexcept {
+        return server_.config().grpc_signup;
+    }
+
+    const GrpcConfig& nextapp_config() const noexcept {
+        return server_.config().grpc_nextapp;
     }
 
 private:
     // The Server instance where we get objects in the application, like config and database
     Server& server_;
+
+    void startNextapp();
+    void startSignup();
 
     // Thread-safe method to get a unique client-id for a new RPC.
     static size_t getNewClientId() {
@@ -151,6 +204,7 @@ private:
 
     mutable std::mutex mutex_;
     std::atomic_bool active_{false};
+    std::unique_ptr<nextapp::pb::Nextapp::Stub> nextapp_stub_;
 };
 
 } // ns

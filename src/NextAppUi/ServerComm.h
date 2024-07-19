@@ -53,6 +53,7 @@ private:
                 NOTIFY globalSettingsChanged)
     Q_PROPERTY(signup::pb::GetInfoResponse signupInfo READ getSignupInfo NOTIFY signupInfoChanged)
     Q_PROPERTY(SignupStatus SignupStatus MEMBER signup_status_ NOTIFY signupStatusChanged)
+    Q_PROPERTY(QString messages MEMBER messages_ NOTIFY messagesChanged)
 
 public:
     struct CbError {
@@ -161,6 +162,8 @@ public:
 
     void setStatus(Status status);
 
+    const QUuid& deviceUuid() const;
+
 signals:
     void versionChanged();
     void connectedChanged();
@@ -192,6 +195,7 @@ signals:
     // Triggered on all updates from the server
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void signupStatusChanged();
+    void messagesChanged();
 
 private:
     void errorOccurred(const QGrpcStatus &status);
@@ -202,6 +206,10 @@ private:
     void setDefaulValuesInUserSettings();
     void scheduleReconnect();
     void connectToSignupServer();
+
+    void clearMessages();
+    void addMessage(const QString &msg);
+    void setMessage(const QString &msg);
 
     struct GrpcCallOptions {
         bool enable_queue = true;
@@ -248,7 +256,7 @@ private:
                 }
             },
             [this](QGrpcStatus status) {
-                LOG_ERROR << "callRpc_ Comm error: " << status.message();
+                LOG_ERROR << "callRpc_ Comm error code=" << static_cast<unsigned>(status.code()) << ": " << status.message();
             });
         };
 
@@ -283,7 +291,7 @@ private:
         callRpc_<respT>(std::move(call), false, opts, arg...);
     }
 
-    static std::pair<QString, QString> createCsr();
+    std::pair<QString, QString> createCsr();
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     std::unique_ptr<signup::pb::SignUp::Client> signup_client_;
@@ -301,4 +309,6 @@ private:
     QString signup_server_address_;
     signup::pb::GetInfoResponse signup_info_;
     SignupStatus signup_status_{SIGNUP_NOT_STARTED};
+    QUuid device_uuid_;
+    QString messages_;
 };

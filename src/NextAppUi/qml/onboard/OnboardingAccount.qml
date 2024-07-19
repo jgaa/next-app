@@ -57,26 +57,47 @@ ColumnLayout  {
         }
     }
 
-    Rectangle {
-        id: loadingIndicator
-        width: 50
-        height: 50
-        radius: 20
-        color: "transparent"
-        border.color: "green"
-        border.width: 3
-        visible: false
-        anchors.centerIn: parent
+    RowLayout {
+        spacing: 20
 
-        RotationAnimation {
-            id: spinAnimation
-            target: loadingIndicator
-            property: "rotation"
-            from: 0
-            to: 360
-            duration: 2000
-            running: loadingIndicator.visible
-            loops: Animation.Infinite
+        Item {Layout.fillWidth: true }
+
+        Rectangle {
+            id: loadingIndicator
+            width: 50
+            height: 50
+            radius: 20
+            color: "transparent"
+            border.color: "green"
+            border.width: 3
+            visible: false
+            //anchors.centerIn: parent
+
+            RotationAnimation {
+                id: spinAnimation
+                target: loadingIndicator
+                property: "rotation"
+                from: 0
+                to: 360
+                duration: 2000
+                running: loadingIndicator.visible
+                loops: Animation.Infinite
+            }
+        }
+
+        Item {Layout.fillWidth: true }
+    }
+
+    ScrollView {
+        Layout.leftMargin: 20
+        Layout.rightMargin: 20
+        Layout.preferredHeight: 200
+        Layout.fillWidth: true
+
+        Text {
+            text: NaComm.messages
+            wrapMode: Text.Wrap
+            color: MaterialDesignStyling.onSurface
         }
     }
 
