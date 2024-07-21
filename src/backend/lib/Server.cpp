@@ -595,6 +595,37 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v9_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        "ALTER TABLE tenant ADD COLUMN IF NOT EXISTS state ENUM('pending_activation', 'active', 'suspended') "
+          "NOT NULL DEFAULT 'pending_activation'",
+
+        "ALTER TABLE tenant DROP COLUMN IF EXISTS active",
+
+        "UPDATE tenant SET state = 'active'",
+
+        R"(CREATE OR REPLACE TABLE device (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            user UUID NOT NULL,
+            created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
+            hostName VARCHAR(256),
+            os VARCHAR(128),
+            osVersion VARCHAR(32),
+            appVersion VARCHAR(32),
+            productType VARCHAR(32),
+            productVersion VARCHAR(32),
+            arch VARCHAR(32),
+            prettyName VARCHAR(256),
+            certHash BLOB,
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        "CREATE INDEX device_ix1 ON device (user, created)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -603,7 +634,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v5_upgrade,
         v6_upgrade,
         v7_upgrade,
-        v8_upgrade
+        v8_upgrade,
+        v9_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

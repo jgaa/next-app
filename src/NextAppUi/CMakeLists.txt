@@ -66,11 +66,15 @@ endif()
 
 set (protofile_nextapp "${CMAKE_CURRENT_SOURCE_DIR}/../proto/nextapp.proto")
 set (protofile_signup "${CMAKE_CURRENT_SOURCE_DIR}/../proto/signup.proto")
+set (protofile_common "${CMAKE_CURRENT_SOURCE_DIR}/../proto/common.proto")
 
 qt_add_protobuf(NextappProtoMessageLib
     QML
     QML_URI nextapp.pb
-    PROTO_FILES ${protofile_nextapp} ${protofile_signup}
+    PROTO_FILES
+        ${protofile_nextapp}
+        ${protofile_signup}
+        ${protofile_common}
 )
 
 

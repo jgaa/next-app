@@ -129,7 +129,15 @@ auto toBlob(const T& msg) {
     if (!msg.SerializeToArray(blob.data(), blob.size())) {
         throw runtime_error{"Failed to serialize protobuf message"};
     }
-    return std::move(blob);
+    return blob;
+}
+
+template <range_of<char> T>
+auto toBlob(const T& buffer) {
+    boost::mysql::blob blob;
+    blob.resize(buffer.size());
+    std::copy(buffer.begin(), buffer.end(), blob.begin());
+    return blob;
 }
 
 } // ns

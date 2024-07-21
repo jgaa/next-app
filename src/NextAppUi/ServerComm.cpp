@@ -676,11 +676,16 @@ void ServerComm::setSignupServerAddress(const QString &address)
         signup_server_address_ = address;
         signup_info_ = {};
         emit signupInfoChanged();
-        connectToSignupServer();
+
+        signup_status_ = SignupStatus::SIGNUP_NOT_STARTED;
+        emit signupStatusChanged();
     }
+
+    clearMessages();
+    connectToSignupServer();
 }
 
-void ServerComm::signup(const QString &name, const QString &email)
+void ServerComm::signup(const QString &name, const QString &email, const QString &company)
 {
     // Create CSR
     // Send signup request
@@ -691,6 +696,16 @@ void ServerComm::signup(const QString &name, const QString &email)
 
     signup::pb::SignUpRequest req;
     QString key, csr;
+
+    req.setUserName(name);
+    req.setEmail(email);
+
+    if (company.isEmpty()) {
+        auto uuid = QUuid::createUuid();
+        req.setTenantName("NonCompany " + uuid.toString(QUuid::WithoutBraces));
+    } else {
+        req.setTenantName(company);
+    }
 
     try {
         tie(csr, key) = createCsr();
@@ -716,35 +731,33 @@ void ServerComm::signup(const QString &name, const QString &email)
 
     addMessage(tr("Contacting the sign-up server..."));
 
-    callRpc<signup::pb::SignUpResponse>([this, req, key]() {
+    callRpc<signup::pb::Reply>([this, req, key]() {
         return signup_client_->SignUp(req);
-    }, [this](const signup::pb::SignUpResponse& su) {
+    }, [this, key](const signup::pb::Reply& su) {
         LOG_DEBUG << "Received signup response from server ";
 
-        switch(su.status()) {
-            case signup::pb::SignUpResponse::Status::OK:
+        QSettings settings;
+
+        switch(su.error()) {
+            case signup::pb::ErrorGadget::OK:
                 signup_status_ = SignupStatus::SIGNUP_OK;
+                assert(su.hasSignUpResponse());
+                settings.setValue("onboarding", true);
+                settings.setValue("server/url", su.signUpResponse().serverUrl());
+                settings.setValue("server/auto_login", true);
+                settings.setValue("server/clientCert", su.signUpResponse().cert());
+                settings.setValue("server/clientKey", key);
                 addMessage(tr("Your account was successfully created!"));
+                signup_status_ = SignupStatus::SIGNUP_OK;
+                // TODO: Log on
                 break;
-            case signup::pb::SignUpResponse::Status::EMAIL_ALREADY_EXISTS:
+            case signup::pb::ErrorGadget::EMAIL_ALREADY_EXISTS:
                 signup_status_ = SignupStatus::SIGNUP_ERROR;
                 addMessage(tr("Your email is already in use for an account."));
                 break;
-            case signup::pb::SignUpResponse::Status::INVALID_CSR:
-                signup_status_ = SignupStatus::SIGNUP_ERROR;
-                addMessage(tr("Invalid Certificate Request."));
-                break;
-            case signup::pb::SignUpResponse::Status::REJECTED:
-                signup_status_ = SignupStatus::SIGNUP_ERROR;
-                addMessage(tr("Your request was rejected: %1").arg(su.message()));
-                break;
-            case signup::pb::SignUpResponse::Status::TRY_AGAIN_LATER:
-                signup_status_ = SignupStatus::SIGNUP_ERROR;
-                addMessage(tr("The server asks us to try again later."));
-                break;
             default:
                 signup_status_ = SignupStatus::SIGNUP_ERROR;
-                addMessage(tr("Unknown error: %1").arg(su.message()));
+                addMessage(tr("Failed to create your account. Error: %1").arg(su.message()));
                 break;
         }
 
@@ -904,6 +917,34 @@ void ServerComm::scheduleReconnect()
     QTimer::singleShot(reconnect_after_seconds_ * 1000, this, &ServerComm::start);
 }
 
+QString ServerComm::toString(const QGrpcStatus& status) {
+    static const auto errors = to_array<QString>({
+        tr("OK"),
+        tr("CANCELLED"),
+        tr("UNKNOWN"),
+        tr("INVALID_ARGUMENT"),
+        tr("DEADLINE_EXCEEDED"),
+        tr("NOT_FOUND"),
+        tr("ALREADY_EXISTS"),
+        tr("PERMISSION_DENIED"),
+        tr("RESOURCE_EXHAUSTED"),
+        tr("FAILED_PRECONDITION"),
+        tr("ABORTED"),
+        tr("OUT_OF_RANGE"),
+        tr("UNIMPLEMENTED"),
+        tr("INTERNAL"),
+        tr("UNAVAILABLE"),
+        tr("DATA_LOSS"),
+        tr("UNAUTHENTICATED"),
+    });
+
+    if (status.code() < errors.size()) {
+        return errors[status.code()] + ": " + status.message();
+    }
+
+    return tr("UNKNOWN (code=%1): %2").arg(status.code()).arg(status.message());
+}
+
 void ServerComm::connectToSignupServer()
 {
     QGrpcMetadata metadata;
@@ -933,20 +974,37 @@ void ServerComm::connectToSignupServer()
     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(signup_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
+    connect(signup_client_.get(), &signup::pb::SignUp::Client::errorOccurred, [this](const QGrpcStatus &status) {
+        LOG_ERROR_N << "Connection to signup server failed: " << status.message();
+        addMessage(tr("Connection to signup server failed: %1").arg(toString(status)));
+        signup_status_ = SignupStatus::SIGNUP_ERROR;
+        emit signupStatusChanged();
+    });
+
     LOG_INFO << "Using signup server at " << signup_server_address_;
 
-    callRpc<signup::pb::GetInfoResponse>([this]() {
+    callRpc<signup::pb::Reply>([this]() {
+        setMessage(tr("Connecting to server ..."));
         return signup_client_->GetInfo({});
-    }, [this](const signup::pb::GetInfoResponse& info) {
-        LOG_DEBUG << "Received signup info from server ";
-        signup_info_ = info;
-        emit signupInfoChanged();
+    }, [this](const signup::pb::Reply& reply) {
+        if (reply.hasGetInfoResponse() && reply.error() == signup::pb::ErrorGadget::OK) {
+            LOG_DEBUG << "Received signup info from server ";
+            signup_info_ = reply.getInfoResponse();
+            signup_status_ = SignupStatus::SIGNUP_HAVE_INFO;
+            emit signupInfoChanged();
+            emit signupStatusChanged();
+            addMessage(tr("Connected to signup server!"));
+        } else {
+            setMessage(tr("Failed to get server information"));
+            signup_status_ = SignupStatus::SIGNUP_ERROR;
+            emit signupStatusChanged();
+        }
      }, GrpcCallOptions{false, false, true});
 }
 
 void ServerComm::clearMessages()
 {
-    messages_.clear();
+    messages_ = "";
     emit messagesChanged();
 }
 

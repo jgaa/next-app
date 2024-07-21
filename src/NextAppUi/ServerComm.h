@@ -30,6 +30,7 @@ public:
 
     enum SignupStatus {
         SIGNUP_NOT_STARTED,
+        SIGNUP_HAVE_INFO,
         SIGNUP_SIGNING_UP,
         SIGNUP_OK,
         SIGNUP_ERROR
@@ -38,6 +39,7 @@ public:
 private:
     Q_OBJECT
     Q_ENUM(Status)
+    Q_ENUM(SignupStatus)
     QML_ELEMENT
 
     Q_PROPERTY(QString version
@@ -52,7 +54,7 @@ private:
                 READ getGlobalSettings
                 NOTIFY globalSettingsChanged)
     Q_PROPERTY(signup::pb::GetInfoResponse signupInfo READ getSignupInfo NOTIFY signupInfoChanged)
-    Q_PROPERTY(SignupStatus SignupStatus MEMBER signup_status_ NOTIFY signupStatusChanged)
+    Q_PROPERTY(SignupStatus signupStatus MEMBER signup_status_ NOTIFY signupStatusChanged)
     Q_PROPERTY(QString messages MEMBER messages_ NOTIFY messagesChanged)
 
 public:
@@ -91,7 +93,7 @@ public:
     Q_INVOKABLE nextapp::pb::UserGlobalSettings getGlobalSettings() const;
     signup::pb::GetInfoResponse getSignupInfo() const;
     Q_INVOKABLE void setSignupServerAddress(const QString &address);
-    Q_INVOKABLE void signup(const QString &name, const QString &email);
+    Q_INVOKABLE void signup(const QString &name, const QString &email, const QString &company);
 
     static ServerComm& instance() noexcept {
         assert(instance_);
@@ -292,6 +294,7 @@ private:
     }
 
     std::pair<QString, QString> createCsr();
+    QString toString(const QGrpcStatus& ex);
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     std::unique_ptr<signup::pb::SignUp::Client> signup_client_;

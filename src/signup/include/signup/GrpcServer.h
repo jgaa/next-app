@@ -28,8 +28,25 @@
 namespace nextapp::grpc {
 
 
+signup::pb::Error translateError(const nextapp::pb::Error& e);
+
 class GrpcServer {
 public:
+
+    class Error : public std::runtime_error {
+    public:
+        Error(nextapp::pb::Error err, const std::string& what)
+            : std::runtime_error(what), error_{err} {}
+        Error(nextapp::pb::Error err, std::string_view what) noexcept
+            : std::runtime_error(what.data()), error_{err} {}
+
+        auto error() const noexcept {
+            return error_;
+        }
+
+    private:
+        nextapp::pb::Error error_{nextapp::pb::Error::GENERIC_ERROR};
+    };
 
     template <ProtoMessage T>
     std::string toJsonForLog(const T& obj) {
@@ -60,10 +77,10 @@ public:
         const size_t client_id_ = getNewClientId();
     };
 
-    template <typename replyT, typename reqT, typename T>
+    template <ProtoMessage replyT, ProtoMessage reqT, typename T>
     struct CallData {
         CallData(reqT && req, T& self)
-            : req{std::move(req)}, self_{std::move(self)} {}
+            : req{std::forward<reqT>(req)}, self_{std::move(self)} {}
         reqT req;
         ::grpc::ClientContext ctx;
         replyT reply;
@@ -126,12 +143,12 @@ public:
 
         ::grpc::ServerUnaryReactor * GetInfo(::grpc::CallbackServerContext *ctx,
                                             const signup::pb::GetInfoRequest *req,
-                                            signup::pb::GetInfoResponse *reply) override;
+                                            signup::pb::Reply *reply) override;
 
 
         ::grpc::ServerUnaryReactor * SignUp(::grpc::CallbackServerContext *ctx,
                                             const signup::pb::SignUpRequest *req,
-                                            signup::pb::SignUpResponse *reply) override;
+                                            signup::pb::Reply *reply) override;
 
 
     private:
@@ -150,9 +167,17 @@ public:
                     co_await fn(reply);
                     LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(*reply);
                     reactor->Finish(::grpc::Status::OK);
+                } catch (const Error& ex) {
+                    LOG_WARN << "Request [" << name << "] Caught Error exception while handling grpc request coro: "
+                             << ex.error() << ' ' << ex.what();
+                    reply->set_error(translateError(ex.error()));
+                    reply->set_message(ex.what());
+                    reactor->Finish(::grpc::Status::OK);
                 } catch (const std::exception& ex) {
                     LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
-                    reactor->Finish(::grpc::Status::CANCELLED);
+                    reply->set_error(signup::pb::Error::GENERIC_ERROR);
+                    reply->set_message("Something went wrong. May be try again later.");
+                    reactor->Finish(::grpc::Status::OK);
                 }
 
                 LOG_TRACE << "Request [" << name << "] Exiting unary handler.";

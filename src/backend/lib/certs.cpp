@@ -28,7 +28,8 @@ namespace nextapp {
 
 namespace {
 
-void setIssuerOrg(X509 *cert, const std::string& issuerOrg) {
+template <typename T>
+void setIssuerOrg(T *cert, const std::string& issuerOrg) {
     if (auto ca_name = X509_NAME_new()) {
 
         ScopedExit cleaner{[ca_name] {
@@ -113,19 +114,32 @@ void addExt(X509 *cert, int nid, const char *value)
     }
 }
 
-// struct X509_Deleter {
-//     void operator()(X509* x) const {
-//         X509_free(x);
-//     }
-// };
+template <typename T, IntOrUUID U>
+void setSerial(T *cert, const U serial) {
+    if constexpr (std::is_same_v<U, int> || std::is_same_v<U, long>) {
+        ASN1_INTEGER_set(X509_get_serialNumber(cert), serial);
+    } else if constexpr (is_same_v<U, boost::uuids::uuid>) {
+        if (BIGNUM* bn = BN_new()) {
+            ScopedExit bn_cleanup{[bn] {
+                BN_free(bn);
+            }};
+            BN_bin2bn(serial.data, serial.size(), bn);
+            if (ASN1_INTEGER* asn1_serial = BN_to_ASN1_INTEGER(bn, nullptr)) {
+                ScopedExit asn1_serial_cleanup{[asn1_serial] {
+                    ASN1_INTEGER_free(asn1_serial);
+                }};
+                X509_set_serialNumber(cert, asn1_serial);
+            } else {
+                throw runtime_error{"BN_to_ASN1_INTEGER failed"};
+            }
+        } else {
+            throw runtime_error{"BN_new failed"};
+        }
+    } else {
+        assert(false && "Unsupported type.");
+    }
+}
 
-// using X509_Ptr = std::unique_ptr<X509, X509_Deleter>;
-
-// struct EVP_PKEY_Deleter {
-//     void operator()(EVP_PKEY* p) const { EVP_PKEY_free(p); }
-// };
-
-// using EVP_PKEY_Ptr = std::unique_ptr<EVP_PKEY, EVP_PKEY_Deleter>;
 
 template <typename T, IntOrUUID U>
 std::pair<X509_Ptr, EVP_PKEY_Ptr> createCert(
@@ -140,28 +154,29 @@ std::pair<X509_Ptr, EVP_PKEY_Ptr> createCert(
         X509_Ptr rcert{cert};
 
         // Set cert serial
-        if constexpr (std::is_same_v<U, int> || std::is_same_v<U, long>) {
-            ASN1_INTEGER_set(X509_get_serialNumber(cert), serial);
-        } else if constexpr (is_same_v<U, boost::uuids::uuid>) {
-            if (BIGNUM* bn = BN_new()) {
-                ScopedExit bn_cleanup{[bn] {
-                    BN_free(bn);
-                }};
-                BN_bin2bn(serial.data, serial.size(), bn);
-                if (ASN1_INTEGER* asn1_serial = BN_to_ASN1_INTEGER(bn, nullptr)) {
-                    ScopedExit asn1_serial_cleanup{[asn1_serial] {
-                        ASN1_INTEGER_free(asn1_serial);
-                    }};
-                    X509_set_serialNumber(cert, asn1_serial);
-                } else {
-                    throw runtime_error{"BN_to_ASN1_INTEGER failed"};
-                }
-            } else {
-                throw runtime_error{"BN_new failed"};
-            }
-        } else {
-            assert(false && "Unsupported type.");
-        }
+        setSerial(cert, serial);
+        // if constexpr (std::is_same_v<U, int> || std::is_same_v<U, long>) {
+        //     ASN1_INTEGER_set(X509_get_serialNumber(cert), serial);
+        // } else if constexpr (is_same_v<U, boost::uuids::uuid>) {
+        //     if (BIGNUM* bn = BN_new()) {
+        //         ScopedExit bn_cleanup{[bn] {
+        //             BN_free(bn);
+        //         }};
+        //         BN_bin2bn(serial.data, serial.size(), bn);
+        //         if (ASN1_INTEGER* asn1_serial = BN_to_ASN1_INTEGER(bn, nullptr)) {
+        //             ScopedExit asn1_serial_cleanup{[asn1_serial] {
+        //                 ASN1_INTEGER_free(asn1_serial);
+        //             }};
+        //             X509_set_serialNumber(cert, asn1_serial);
+        //         } else {
+        //             throw runtime_error{"BN_to_ASN1_INTEGER failed"};
+        //         }
+        //     } else {
+        //         throw runtime_error{"BN_new failed"};
+        //     }
+        // } else {
+        //     assert(false && "Unsupported type.");
+        // }
 
         // set cert version
         X509_set_version(cert, X509_VERSION_3);
@@ -457,6 +472,91 @@ CertData CertAuthority::createClientCert(const std::string &subject)
     LOG_DEBUG_N << "Created client cert for " << subject << " with id " << rval.id
                 << " and " <<  options_.lifetime_days_certs << " days lifetime.";
     return rval;
+}
+
+CertData CertAuthority::signCert(const std::string_view &csr, const std::string& cSubject, std::string *certHash)
+{
+    auto req = loadReqFromBuffer(csr);
+
+    // Validate that the subject is the expected value
+    if (!cSubject.empty()) {
+        auto* subject_name = X509_REQ_get_subject_name(req.get());
+        if (!subject_name) {
+            throw runtime_error{"X509_REQ_get_subject_name"};
+        }
+
+        const int index = X509_NAME_get_index_by_NID(subject_name, NID_commonName, -1);
+        if (index < 0) {
+            throw runtime_error{"X509_NAME_get_index_by_NID"};
+        }
+
+        const auto* name_entry = X509_NAME_get_entry(subject_name, index);
+        if (!name_entry) {
+            throw runtime_error{"X509_NAME_get_entry"};
+        }
+
+        auto* ans1_str = X509_NAME_ENTRY_get_data(name_entry);
+        if (!ans1_str) {
+            throw runtime_error{"X509_NAME_ENTRY_get_data"};
+        }
+
+        unsigned char* utf8;
+        int length = ASN1_STRING_to_UTF8(&utf8, ans1_str);
+        if (length < 0) {
+            throw runtime_error{"ASN1_STRING_to_UTF8"};
+        }
+        ScopedExit utf8_cleanup{[utf8] {
+            OPENSSL_free(utf8);
+        }};
+
+        const string_view cn{reinterpret_cast<char*>(utf8), static_cast<size_t>(length)};
+        if (cn != cSubject) {
+            LOG_DEBUG_N << "CSR subject does not match expected value: " << cn << " != " << cSubject;
+            throw runtime_error{format("CSR subject does not match expected value: {} != {}",
+                                       cSubject, cn)};
+        }
+    }
+
+    X509_Ptr cert{X509_new()};
+    if (!cert) {
+        throw runtime_error{"X509_new"};
+    }
+
+    const auto uuid = newUuid();
+    X509_set_version(cert.get(), X509_VERSION_3);
+    setSerial(cert.get(), uuid);
+    const auto* subject = X509_REQ_get_subject_name(req.get());
+    assert(subject);
+    X509_set_subject_name(cert.get(), subject);
+
+    const auto issuer = X509_get_subject_name(rootCa_.get());
+    assert(issuer);
+    X509_set_issuer_name(cert.get(), issuer);
+
+    auto req_pubkey = X509_REQ_get_pubkey(req.get());
+    ScopedExit pkey_clean {[req_pubkey] { EVP_PKEY_free(req_pubkey); }};
+    X509_set_pubkey(cert.get(), req_pubkey);
+
+    X509_gmtime_adj(X509_get_notBefore(cert.get()), 0);
+    X509_gmtime_adj(X509_get_notAfter(cert.get()), (long)60*60*24*options_.lifetime_days_certs);
+
+    if (!X509_sign(cert.get(), rootKey_.get(), EVP_sha256())) {
+        throw runtime_error{"Error signing certificate."};
+    }
+
+    if (certHash) {
+        const auto hash = X509_get0_pubkey_bitstr(cert.get());
+        if (hash && hash->length > 0) {
+            certHash->assign(reinterpret_cast<const char *>(hash->data), hash->length);
+        } else {
+            throw runtime_error{"X509_get0_pubkey_bitstr"};
+        }
+    }
+
+    string rval;
+    toBuffer(cert.get(), rval);
+
+    return {uuid, rval, nullptr};
 }
 
 } // ns

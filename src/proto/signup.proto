@@ -2,50 +2,49 @@ syntax = "proto3";
 
 package signup.pb;
 
-message GetInfoRequest {
+import "common.proto";
+
+enum Error {
+  OK = 0;
+  GENERIC_ERROR = 1;
+  MISSING_CSR = 2;
+  INVALID_CSR = 3;
+  INVALID_EMAIL = 4;
+  EMAIL_ALREADY_EXISTS = 5;
+  MISSING_EMAIL = 6;
 }
+
+message GetInfoRequest {}
 
 message GetInfoResponse {
   string eula = 1;
   string greeting = 2;
 }
 
-message Device {
-  string uuid = 1; // Device uuid
-  string hostName = 2;
-  string os = 4;
-  string osVersion = 5;
-  string appVersion = 6;
-  string csr = 7; // Certificate Signing Request
-  string language = 8;
-  string productType = 9;
-  string productVersion = 10;
-  string arch = 11;
-  string prettyName = 12;
-}
-
 message SignUpRequest {
   string email = 1;
   string userName = 2;
-  Device device = 3;
+  string tenantName = 3;
+  common.Device device = 4;
 }
 
 message SignUpResponse {
-    enum Status {
-        OK = 0;
-        EMAIL_ALREADY_EXISTS = 1;
-        INVALID_CSR = 2;
-        REJECTED = 3;
-        TRY_AGAIN_LATER = 4;
-    }
-
     string uuid = 1; // Device uuid
-    string message = 2;  // Optional message
-    Status status = 3;
     string cert = 4; // PEM encoded signed certificate
+    string serverUrl = 5; // Nextapp gRPC URL
+}
+
+message Reply {
+    string message = 1;
+    Error error = 2;
+
+    oneof payload {
+        GetInfoResponse getInfoResponse = 10;
+        SignUpResponse signUpResponse = 11;
+    }
 }
 
 service SignUp {
-  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {}
-  rpc SignUp(SignUpRequest) returns (SignUpResponse) {}
+  rpc GetInfo(GetInfoRequest) returns (Reply) {}
+  rpc SignUp(SignUpRequest) returns (Reply) {}
 }

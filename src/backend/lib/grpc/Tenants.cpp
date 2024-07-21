@@ -32,9 +32,9 @@ namespace {
     LOG_DEBUG_N << "Request to create tenant " << req->tenant().name();
 
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             pb::Tenant tenant{req->tenant()};
@@ -51,13 +51,15 @@ namespace {
                 tenant.set_kind(pb::Tenant::Tenant::Kind::Tenant_Kind_Guest);
             }
 
+            auto trx = co_await rctx.dbh->transaction();
+
             co_await owner_.server().db().exec(
-                "INSERT INTO tenant (id, name, kind, descr, active, properties) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO tenant (id, name, kind, descr, state, properties) VALUES (?, ?, ?, ?, ?, ?)",
                 tenant.uuid(),
                 tenant.name(),
-                pb::Tenant::Kind_Name(tenant.kind()),
+                toLower(pb::Tenant::Kind_Name(tenant.kind())),
                 tenant.descr(),
-                tenant.active(),
+                toLower(pb::Tenant::State_Name(tenant.state())),
                 properties);
 
             LOG_INFO << "User " << cuser
@@ -98,14 +100,97 @@ namespace {
                          << " has created user name=" << user.name() << ", id=" << user.uuid()
                          << ", kind=" << pb::User::Kind_Name(user.kind())
                          << ", tenant=" << user.tenant();
-            }
 
-            // TODO: Publish the new tenant and users
+                tenant.add_users()->CopyFrom(user);            }
+
+            // TODO: Publish the creation of tenant and users to ant logged in admins
+            // TODO: Add the creations to an event-log available for admins
 
             *reply->mutable_tenant() = tenant;
 
+            co_await trx.commit();
+
             co_return;
         }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateDevice(::grpc::CallbackServerContext *ctx, const pb::CreateDeviceReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+
+            auto device = req->device();
+
+            if (device.csr().empty()) {
+                throw db_err{nextapp::pb::Error::MISSING_CSR, "Missing CSR"};
+            }
+
+            if (device.uuid().empty()) {
+                device.set_uuid(newUuidStr());
+            } else {
+                validatedUuid(device.uuid());
+            }
+
+            // Check if the device already exists
+            auto res = co_await rctx.dbh->exec("SELECT user FROM device WHERE id=?", device.uuid());
+            if (!res.rows().empty()) {
+                const auto uid = res.rows().front().at(0).as_string();
+
+                if (uid != cuser) {
+                    LOG_WARN << "Rejecting re-create of device " << device.uuid()
+                             << "for user " << uid << " (not the owner)";
+                    throw db_err{nextapp::pb::Error::ALREADY_EXIST, "Device already exists"};
+                }
+
+                res = co_await rctx.dbh->exec(
+                    "SELECT t.id, u.active, t.state FROM tenant t JOIN user u on u.tenant = t.id WHERE u.id=?", device.uuid());
+                if (!res.rows().empty()) {
+                    enum Cols { TENANT, ACTIVE, STATE };
+
+                    const auto tid = res.rows().front().at(TENANT).as_string();
+                    const auto active = res.rows().front().at(ACTIVE).as_int64();
+                    const auto state = res.rows().front().at(STATE).as_string();
+
+                    if (state == "pending_activation") {
+                        // This is OK. The device is re-created during pre-activation
+                        LOG_DEBUG << "Device " << device.uuid() << " is re-created in pending_activation state";
+                    } else {
+                        LOG_INFO << "Rejecting re-create of device " << device.uuid()
+                                 << "for user " << uid << ", tenant" << tid << " in state " << state;
+                        throw db_err{nextapp::pb::Error::ALREADY_EXIST, "Device already exists"};
+                    }
+                }
+            }
+
+            pb::CreateDeviceResp resp;
+            string cert_hash;
+            resp.set_deviceid(device.uuid());
+            try {
+                const auto cert = owner_.server().ca().signCert(device.csr(), device.uuid(), &cert_hash);
+                assert(!cert.cert.empty());
+                resp.set_cert(cert.cert);
+            } catch (const std::exception& ex) {
+                LOG_WARN << "Failed to sign certificate for device " << device.uuid() << ": " << ex.what();
+                throw db_err{nextapp::pb::Error::INVALID_CSR, ex.what()};
+            }
+
+            // Save the device
+            res = co_await rctx.dbh->exec(
+                R"(INSERT INTO device
+                    (id, user, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, certHash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                rctx.uctx->dbOptions(),
+                device.uuid(), cuser, device.hostname(), device.os(), device.osversion(),
+                device.appversion(), device.producttype(), device.productversion(),
+                device.arch(), device.prettyname(), toBlob(cert_hash));
+
+            if (auto *response = reply->mutable_createdeviceresp()) {
+                response->CopyFrom(resp);
+            } else {
+                throw runtime_error{"Failed to set response"};
+            }
+    });
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetUserGlobalSettings(::grpc::CallbackServerContext *ctx,

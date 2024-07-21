@@ -25,7 +25,7 @@ ColumnLayout  {
         Layout.margins: 20
 
         Label {
-            text: qsTr("Name")
+            text: qsTr("Your Name")
             color: MaterialDesignStyling.onSurfaceVariant
         }
 
@@ -39,6 +39,23 @@ ColumnLayout  {
                 validate()
             }
         }
+
+        Label {
+            text: qsTr("Company Name (leave blank if none)")
+            color: MaterialDesignStyling.onSurfaceVariant
+        }
+
+        TextField {
+            id: company
+            Layout.fillWidth: true
+            text: settings.companyName
+            //color: MaterialDesignStyling.onSurface
+            onTextChanged: {
+                settings.companyName = name.text
+                validate()
+            }
+        }
+
 
         Label {
             text: qsTr("Email")
@@ -122,7 +139,7 @@ ColumnLayout  {
                 //nextClicked()
                 loadingIndicator.visible = true;
                 createCtl.enabled = false
-                NaComm.signup(email.text, name.text)
+                NaComm.signup(email.text, name.text, company.text)
             }
         }
         Item {

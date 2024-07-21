@@ -6,6 +6,7 @@ set(GRPC_SRC_FILES nextapp.proto signup.proto)
 
 set(PROTO_FILES
    ${GRPC_SRC_FILES}
+   common.proto
 )
 
 add_library(proto ${PROTO_FILES})

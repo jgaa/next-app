@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "common.proto";
+
 package nextapp.pb;
 
 enum Error {
@@ -21,6 +23,8 @@ enum Error {
     PAGE_SIZE_TOO_SMALL = 15;
     AUTH_MISSING_SESSION_ID = 16;
     NO_RELEVANT_DATA = 17;
+    MISSING_CSR = 18;
+    INVALID_CSR = 19;
 }
 
 message Page {
@@ -45,21 +49,6 @@ message ServerInfo {
     repeated KeyValue properties = 1;
 }
 
-message Tenant {
-    enum Kind {
-        Super = 0;
-        Regular = 1;
-        Guest = 2;
-    }
-
-    string uuid = 1;
-    string name = 2;
-    optional Kind kind = 3;
-    bool active = 4;
-    string descr = 5;
-    map<string, string> properties = 6;
-}
-
 message User {
     enum Kind {
         Super = 0;
@@ -74,6 +63,28 @@ message User {
     optional bool active = 6;
     string descr = 7;
     map<string, string> properties = 8;
+}
+
+message Tenant {
+    enum Kind {
+        Super = 0;
+        Regular = 1;
+        Guest = 2;
+    }
+
+    enum State {
+        PENDING_ACTIVATION = 0; // Will be activated the first time a user connects
+        ACTIVE = 1;
+        SUSPENDED = 2;
+    }
+
+    string uuid = 1;
+    string name = 2;
+    optional Kind kind = 3;
+    State state = 4;
+    string descr = 5;
+    map<string, string> properties = 6;
+    repeated User users = 7;
 }
 
 message WorkHours {
@@ -139,7 +150,6 @@ message WorkEvent {
     optional string name = 7;
     optional string notes = 8;
 }
-
 message WorkSession {
     enum State {
         ACTIVE = 0;
@@ -494,6 +504,16 @@ message DeleteActionCategoryReq {
     string id = 1;
 }
 
+message CreateDeviceReq {
+    common.Device device = 1;
+    string userId = 2;
+}
+
+message CreateDeviceResp {
+    string deviceId = 1;
+    string cert = 2;
+}
+
 message Update {
     Timestamp when = 1;
 
@@ -675,6 +695,7 @@ message Status {
         CalendarEvents calendarEvents = 22;
         ActionCategory actionCategory = 23;
         ActionCategories actionCategories = 24;
+        CreateDeviceResp createDeviceResp = 25;
     }
 }
 
@@ -692,6 +713,8 @@ service Nextapp {
 
     // If called by a super-user, user.uuid can point to any tenant. If unset, the logged-in tenant is used.
     rpc CreateUser(User) returns (Status) {}
+
+    rpc CreateDevice(CreateDeviceReq) returns (Status) {}
 
     rpc CreateNode(CreateNodeReq) returns (Status) {}
     rpc UpdateNode(Node) returns (Status) {}

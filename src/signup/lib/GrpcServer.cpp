@@ -32,12 +32,18 @@ GrpcServer::GrpcServer(Server &server)
 ::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::GetInfo(
     ::grpc::CallbackServerContext *ctx,
     const GetInfoRequest *req,
-    GetInfoResponse *reply)
+    Reply *reply)
 {
-    return unaryHandler(ctx, req, reply, [this, req, ctx](GetInfoResponse *reply) -> boost::asio::awaitable<void> {
+    return unaryHandler(ctx, req, reply, [this, req, ctx](Reply *reply) -> boost::asio::awaitable<void> {
         LOG_DEBUG << "Saying hello to client at " << ctx->peer();
-        reply->set_greeting(owner_.server().getWelcomeText(*req));
-        reply->set_eula(owner_.server().getEulaText(*req));
+
+        if (auto * response = reply->mutable_getinforesponse()) {
+            assert(response);
+            response->set_greeting(owner_.server().getWelcomeText(*req));
+            response->set_eula(owner_.server().getEulaText(*req));
+        } else {
+            throw runtime_error{"Failed to create getinforesponse object"};
+        }
         co_return;
     }, __func__);
 }
@@ -45,12 +51,105 @@ GrpcServer::GrpcServer(Server &server)
 ::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::SignUp(
     ::grpc::CallbackServerContext *ctx,
     const signup::pb::SignUpRequest *req,
-    signup::pb::SignUpResponse *reply)
+    signup::pb::Reply *reply)
 {
-    return unaryHandler(ctx, req, reply, [this, req, ctx](SignUpResponse *reply) -> boost::asio::awaitable<void> {
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
         LOG_DEBUG << "Signup request from client at " << ctx->peer();
 
+        // Validate the information in the request
 
+        // TODO: Add support for a cluster of nextapp servers. For now we only have one.
+
+        // Ask the nextapp server to create the tenant and user.
+        nextapp::pb::Tenant newTenant;
+        {
+            nextapp::pb::CreateTenantReq tenant_req;
+            auto *tenant = tenant_req.mutable_tenant();
+            if (!tenant) {
+                throw runtime_error{"Failed to create tenant object"};
+            }
+            auto * user = tenant_req.add_users();
+            if (!user) {
+                throw runtime_error{"Failed to create user object"};
+            }
+
+            tenant->set_name(req->tenantname());
+            tenant->set_kind(nextapp::pb::Tenant::Kind::Tenant_Kind_Regular);
+            tenant->set_state(nextapp::pb::Tenant::State::Tenant_State_PENDING_ACTIVATION);
+
+            user->set_name(req->username());
+            user->set_email(req->email());
+            user->set_kind(nextapp::pb::User::Kind::User_Kind_Regular);
+            user->set_active(true);
+
+            auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
+                tenant_req,
+                &stub_t::async::CreateTenant,
+                asio::use_awaitable);
+
+            if (resp.error() != nextapp::pb::Error::OK) {
+                LOG_WARN << "Failed to create tenant and user at nextapp-server: " << resp.message();
+                throw Error{resp.error(), format("Failed to create tenant and/or user: {}", resp.message())};
+            }
+
+            if (resp.has_tenant()) {
+                newTenant = resp.tenant();
+            } else {
+                throw runtime_error{"Failed to get tenant from nextapp-server's reply"};
+            }
+        }
+
+        // We now have a tenant and user in a pending state.
+        // Create the device and get the signed certificate
+
+        {
+            nextapp::pb::CreateDeviceReq device_req;
+            if (auto *dev = device_req.mutable_device()) {
+                dev->CopyFrom(req->device());
+            } else {
+                throw runtime_error{"Failed to create device object"};
+            }
+
+            if (newTenant.users_size() != 1) {
+                throw runtime_error{"I expected one user to be created with the tenant. I got"
+                                    + to_string(newTenant.users().size())};
+            }
+
+            device_req.set_userid(newTenant.users(0).uuid());
+
+            auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
+                device_req,
+                &stub_t::async::CreateDevice,
+                asio::use_awaitable);
+
+            if (resp.error() != nextapp::pb::Error::OK) {
+                LOG_WARN << "Failed to create device at nextapp-server: " << resp.message();
+                throw Error{resp.error(), format("Failed to create device: {}", resp.message())};
+            }
+
+            if (!resp.has_createdeviceresp()) {
+                throw runtime_error{"Failed to get device from nextapp-server's reply"};
+            }
+
+            const auto& dresp = resp.createdeviceresp();
+
+            if (auto* response = reply->mutable_signupresponse()) {
+                assert(response);
+
+                response->set_uuid(dresp.deviceid());
+                response->set_cert(dresp.cert());
+                assert(!owner_.server().config().cluster.backends.empty());
+                response->set_serverurl(owner_.server().config().cluster.backends.front());
+            } else {
+                throw runtime_error{"Failed to create signupresponse object"};
+            }
+        }
+
+        // At this time the user is created, but not activated.
+        // It will be activated the first time the devcice connects to the server.
+        // If the user tries to create a new account now, the non-active account will be
+        // replaced wit the new one. The only stable identifiers at this time is the device uuid
+        // and the email.
 
         co_return;
     }, __func__);
@@ -164,6 +263,21 @@ void GrpcServer::startSignup()
     grpc_server_ = builder.BuildAndStart();
     LOG_INFO << "Signup-server listening on " << signup_config().address;
     active_ = true;
+}
+
+signup::pb::Error translateError(const pb::Error &e) {
+    switch (e) {
+    case nextapp::pb::Error::MISSING_CSR:
+        return signup::pb::Error::MISSING_CSR;
+    case nextapp::pb::Error::INVALID_CSR:
+        return signup::pb::Error::INVALID_CSR;
+    case nextapp::pb::Error::ALREADY_EXIST:
+        return signup::pb::Error::EMAIL_ALREADY_EXISTS;
+    case nextapp::pb::Error::MISSING_USER_EMAIL:
+        return signup::pb::Error::MISSING_EMAIL;
+    default:
+        return signup::pb::Error::GENERIC_ERROR;
+    }
 }
 
 } // ns

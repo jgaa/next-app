@@ -11,7 +11,7 @@ ColumnLayout  {
     anchors.fill: parent
     spacing: 20
     signal nextClicked()
-    signal backClicked
+    signal backClicked()
 
     Settings {
         id: settings
@@ -41,6 +41,19 @@ ColumnLayout  {
         color: MaterialDesignStyling.onSurface
         background: Rectangle {
             color: "transparent"
+        }
+    }
+
+    ScrollView {
+        Layout.leftMargin: 20
+        Layout.rightMargin: 20
+        Layout.preferredHeight: 50
+        Layout.fillWidth: true
+
+        Text {
+            text: NaComm.messages
+            wrapMode: Text.Wrap
+            color: MaterialDesignStyling.onSurface
         }
     }
 
@@ -80,13 +93,23 @@ ColumnLayout  {
         }
 
         Button {
-            text: qsTr("Next")
+            text: qsTr("Connect")
+            visible: !nextBtn.visible
             onClicked: {
                 settings.serverAddress = address.text
                 NaComm.setSignupServerAddress(settings.serverAddress)
+            }
+        }
+
+        Button {
+            id: nextBtn
+            text: qsTr("Next")
+            visible: NaComm.signupStatus === 1
+            onClicked: {
                 nextClicked()
             }
         }
+
         Item {
             Layout.fillWidth: true
         }

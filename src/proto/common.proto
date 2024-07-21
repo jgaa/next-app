@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package common;
+
+message Device {
+  string uuid = 1; // Device uuid
+  string hostName = 2;
+  string os = 4;
+  string osVersion = 5;
+  string appVersion = 6;
+  string csr = 7; // Certificate Signing Request
+  string language = 8;
+  string productType = 9;
+  string productVersion = 10;
+  string arch = 11;
+  string prettyName = 12;
+  uint64 createdTime = 13;
+}
+
