@@ -6,6 +6,7 @@ import NextAppUi
 import Nextapp.Models
 
 Window  {
+    id: root
     width: Math.min(600, NaCore.width, Screen.width)
     height: Math.min(800, NaCore.height, Screen.height)
     visible: true
@@ -65,8 +66,10 @@ Window  {
                     onboardingDone()
                     // Switch to the main UI
                     stackView.clear()
-                    settings.onboarding = true
-                    close()
+                    NaComm.signupDone();
+                    console.log("Closing window")
+                    root.close()
+                    root.destroy()
                 }
             }
         }

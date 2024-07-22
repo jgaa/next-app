@@ -68,9 +68,11 @@ ServerComm::ServerComm()
     setDefaulValuesInUserSettings();
 
     if (settings.value("onboarding", false).toBool()
-        && !settings.value("serverAddress", getDefaultServerAddress()).toString().isEmpty()) {
+        && !settings.value("server/url", QString{}).toString().isEmpty()) {
         if (settings.value("server/auto_login", true).toBool()) {
             LOG_DEBUG << "Auto-login is enabled. Starting the server comm...";
+            signup_status_ = SignupStatus::SIGNUP_OK;
+            emit signupStatusChanged();
             start();
         }
     } else {
@@ -757,7 +759,7 @@ void ServerComm::signup(const QString &name, const QString &email, const QString
                 settings.setValue("server/clientCert", su.signUpResponse().cert());
                 settings.setValue("server/clientKey", key);
                 addMessage(tr("Your account was successfully created!"));
-                signup_status_ = SignupStatus::SIGNUP_OK;
+                signup_status_ = SignupStatus::SIGNUP_SUCCESS;
                 QMetaObject::invokeMethod(qApp, [this]() {
                     start();
                 }, Qt::QueuedConnection);
@@ -775,6 +777,14 @@ void ServerComm::signup(const QString &name, const QString &email, const QString
         emit signupStatusChanged();
 
     }, GrpcCallOptions{false, false, true});
+}
+
+void ServerComm::signupDone()
+{
+    if (signup_status_ == SignupStatus::SIGNUP_SUCCESS) {
+        signup_status_ = SignupStatus::SIGNUP_OK;
+        emit signupStatusChanged();
+    }
 }
 
 void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings)

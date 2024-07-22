@@ -9,7 +9,7 @@ ApplicationWindow {
     id: root
     width: 1700
     height: 900
-    visible: settings.onboarding
+    visible: NaComm.signupStatus == NaComm.SIGNUP_OK
     title: NaCore.develBuild ? "Next-app --Developer Edition--" : qsTr("Next-app: Your Personal Organizer")
     color: MaterialDesignStyling.surface
     flags: Qt.Window //| Qt.FramelessWindowHint

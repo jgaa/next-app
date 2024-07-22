@@ -76,12 +76,12 @@ ColumnLayout  {
 
     RowLayout {
         spacing: 20
+        visible: NaComm.signupStatus === NaComm.SIGNUP_SIGNING_UP
 
         Item {Layout.fillWidth: true }
 
         Rectangle {
             id: loadingIndicator
-            visible: NaComm.signupStatus === 2
             width: 50
             height: 50
             radius: 20
@@ -134,7 +134,7 @@ ColumnLayout  {
             id: createCtl
             text: qsTr("Create Account")
             enabled: accepted
-            visible: NaComm.signupStatus !== 3
+            visible: NaComm.signupStatus !== NaComm.SIGNUP_SUCCESS
             onClicked: {
                 //nextClicked()
                 loadingIndicator.visible = true;

@@ -32,6 +32,7 @@ public:
         SIGNUP_NOT_STARTED,
         SIGNUP_HAVE_INFO,
         SIGNUP_SIGNING_UP,
+        SIGNUP_SUCCESS,
         SIGNUP_OK,
         SIGNUP_ERROR
     };
@@ -94,6 +95,7 @@ public:
     signup::pb::GetInfoResponse getSignupInfo() const;
     Q_INVOKABLE void setSignupServerAddress(const QString &address);
     Q_INVOKABLE void signup(const QString &name, const QString &email, const QString &company);
+    Q_INVOKABLE void signupDone();
 
     static ServerComm& instance() noexcept {
         assert(instance_);
