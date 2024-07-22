@@ -74,12 +74,12 @@ GrpcServer::GrpcServer(Server &server)
             }
 
             tenant->set_name(req->tenantname());
-            tenant->set_kind(nextapp::pb::Tenant::Kind::Tenant_Kind_Regular);
+            tenant->set_kind(nextapp::pb::Tenant::Kind::Tenant_Kind_SUPER);
             tenant->set_state(nextapp::pb::Tenant::State::Tenant_State_PENDING_ACTIVATION);
 
             user->set_name(req->username());
             user->set_email(req->email());
-            user->set_kind(nextapp::pb::User::Kind::User_Kind_Regular);
+            user->set_kind(nextapp::pb::User::Kind::User_Kind_REGULAR);
             user->set_active(true);
 
             auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
@@ -138,8 +138,7 @@ GrpcServer::GrpcServer(Server &server)
 
                 response->set_uuid(dresp.deviceid());
                 response->set_cert(dresp.cert());
-                assert(!owner_.server().config().cluster.backends.empty());
-                response->set_serverurl(owner_.server().config().cluster.backends.front());
+                response->set_serverurl(owner_.server().config().grpc_nextapp.address);
             } else {
                 throw runtime_error{"Failed to create signupresponse object"};
             }
@@ -174,24 +173,41 @@ void GrpcServer::stop() {
 
 void GrpcServer::startNextapp()
 {
+    const auto server_url = nextapp_config().address;
+
     LOG_INFO << "Connecting to NextApp gRPC endpoint at "
-             << nextapp_config().address;
+             << server_url;
+    const bool use_tls = server_url.starts_with("https://");
+
+    auto server_address = server_url;
+    if (auto pos = server_address.find("://"); pos != string::npos) {
+        server_address = server_address.substr(pos + 3);
+    }
 
     // Create a gRPC channel to the NextApp service.
     // Set up TLS credentials with our own certificate.
-    decltype(::grpc::InsecureChannelCredentials()) creds;
-    if (!nextapp_config().server_cert.empty()) {
+    std::shared_ptr<::grpc::ChannelCredentials> creds;
+    if (use_tls) {
         ::grpc::SslCredentialsOptions ssl_opts;
         if (!nextapp_config().ca_cert.empty()) {
             ssl_opts.pem_root_certs = readFileToBuffer(nextapp_config().ca_cert);
         }
-        ssl_opts.pem_private_key = readFileToBuffer(nextapp_config().server_key);
-        ssl_opts.pem_cert_chain = readFileToBuffer(nextapp_config().server_cert);
-        auto creds = ::grpc::SslCredentials(ssl_opts);
-        LOG_DEBUG_N << "Using client-cert from " << nextapp_config().server_cert;
+        if (!nextapp_config().server_cert.empty() && !nextapp_config().server_key.empty()) {
+            // Load our own certificate and private key (for client auth)
+            ssl_opts.pem_private_key = readFileToBuffer(nextapp_config().server_key);
+            ssl_opts.pem_cert_chain = readFileToBuffer(nextapp_config().server_cert);
+            LOG_DEBUG_N << "Using client-cert from " << nextapp_config().server_cert;
+            creds = ::grpc::SslCredentials(ssl_opts);
+        } else {
+            LOG_WARN_N << "No TLS cert provided. Proceeding without client cert.";
+            ::grpc::experimental::TlsChannelCredentialsOptions tls_opts;
+            tls_opts.set_verify_server_certs(false);
+            creds = ::grpc::experimental::TlsCredentials(tls_opts);
+        }
+
     } else {
+        LOG_WARN_N << "Not using TLS on nextapp grpc connection. Don't do this over a public network!!";
         creds = ::grpc::InsecureChannelCredentials();
-        LOG_WARN_N << "No TLS cert provided. Proceeding without client cert.";
     }
     assert(creds);
     if (!creds) {
@@ -199,7 +215,7 @@ void GrpcServer::startNextapp()
         throw runtime_error{"Failed to create gRPC channel credentials."};
     }
 
-    auto channel = ::grpc::CreateChannel(nextapp_config().address, creds);
+    auto channel = ::grpc::CreateChannel(server_address, creds);
     nextapp_stub_ = nextapp::pb::Nextapp::NewStub(channel);
 
     // Test the connection to the NextApp server.

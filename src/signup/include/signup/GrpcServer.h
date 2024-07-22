@@ -108,6 +108,8 @@ public:
                     cd->self_.complete(ec, cd->reply);
                 };
 
+                cd->ctx.AddMetadata("session-id", session_id);
+
                 (nextapp_stub_->async()->*call)(&cd->ctx, &cd->req, &cd->reply,
                                                 [fn=std::move(fn)](const ::grpc::Status& status) mutable {
                     fn(status);
@@ -230,6 +232,7 @@ private:
     mutable std::mutex mutex_;
     std::atomic_bool active_{false};
     std::unique_ptr<nextapp::pb::Nextapp::Stub> nextapp_stub_;
+    std::string session_id = newUuidStr();
 };
 
 } // ns

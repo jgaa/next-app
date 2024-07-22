@@ -124,7 +124,7 @@ optional<string> toAnsiTime(time_t time, const std::chrono::time_zone& ts, bool 
 
     if (time == 0) {
         if (required) {
-            throw db_err{pb::Error::CONSTRAINT_FAILED, "datetime is required"};
+            throw server_err{pb::Error::CONSTRAINT_FAILED, "datetime is required"};
         }
         return {};
     }
@@ -140,7 +140,7 @@ std::optional<string> toAnsiTime(time_t time, bool required)
     using namespace std::chrono;
     if (time == 0) {
         if (required) {
-            throw db_err{pb::Error::CONSTRAINT_FAILED, "datetime is required"};
+            throw server_err{pb::Error::CONSTRAINT_FAILED, "datetime is required"};
         }
         return {};
     }

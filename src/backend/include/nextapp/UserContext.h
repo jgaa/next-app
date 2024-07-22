@@ -18,6 +18,7 @@ public:
                 bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions);
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid,
+                pb::User::Kind kind,
                 const pb::UserGlobalSettings& settings, boost::uuids::uuid sessionId = newUuid());
 
     ~UserContext() = default;
@@ -51,6 +52,14 @@ public:
         return settings_;
     }
 
+    bool isAdmin() const noexcept {
+        return kind_ == pb::User::Kind::User_Kind_SUPER;
+    }
+
+    auto kind() const noexcept {
+        return kind_;
+    }
+
 private:
     static boost::uuids::uuid newUuid();
 
@@ -60,6 +69,7 @@ private:
     jgaa::mysqlpool::Options db_options_;
     const boost::uuids::uuid sessionid_ = newUuid();
     pb::UserGlobalSettings settings_;
+    pb::User::Kind kind_{pb::User::Kind::User_Kind_REGULAR};
 };
 
 

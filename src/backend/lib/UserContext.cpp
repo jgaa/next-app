@@ -26,8 +26,10 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
 }
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid,
+                         pb::User::Kind kind,
                          const pb::UserGlobalSettings &settings, boost::uuids::uuid sessionId)
-    : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings), sessionid_{sessionId} {
+    : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings), sessionid_{sessionId}
+    , kind_{kind} {
     try {
         if (settings_.timezone().empty()) [[unlikely]] {
             tz_ = std::chrono::current_zone();

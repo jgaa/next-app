@@ -622,6 +622,9 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         "CREATE INDEX device_ix1 ON device (user, created)",
 
+        "ALTER TABLE user DROP FOREIGN KEY user_ibfk_1",
+        "ALTER TABLE user ADD CONSTRAINT user_ibfk_1 FOREIGN KEY (tenant) REFERENCES tenant(id) ON DELETE CASCADE ON UPDATE RESTRICT",
+
         "SET FOREIGN_KEY_CHECKS=1"
     });
 

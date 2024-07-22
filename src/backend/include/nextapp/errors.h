@@ -17,9 +17,9 @@ struct aborted : public std::runtime_error {
     aborted(T message) : std::runtime_error{message} {};
 };
 
-struct db_err : public std::runtime_error {
+struct server_err : public std::runtime_error {
 
-    db_err(pb::Error error, std::string message) noexcept
+    server_err(pb::Error error, std::string message) noexcept
         :  std::runtime_error{std::move(message)}, error_{error} {}
 
     pb::Error error() const noexcept {

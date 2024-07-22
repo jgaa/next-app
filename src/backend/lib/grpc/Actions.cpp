@@ -545,12 +545,12 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
 
             auto existing_res = co_await rctx.dbh->exec("SELECT node FROM action WHERE id=? AND user=?", uuid, cuser);
             if (existing_res.empty() || existing_res.rows().empty()) {
-                throw db_err{pb::Error::NOT_FOUND, "Action does not exist"};
+                throw server_err{pb::Error::NOT_FOUND, "Action does not exist"};
             }
 
             const auto current_node = existing_res.rows().front().at(0).as_string();
             if (current_node != req->node()) {
-                throw db_err(pb::Error::CONSTRAINT_FAILED, "UpdateAction cannot change the node. Use MoveAction for that.");
+                throw server_err(pb::Error::CONSTRAINT_FAILED, "UpdateAction cannot change the node. Use MoveAction for that.");
             }
 
             co_await owner_.validateNode(*rctx.dbh, req->node(), cuser);
@@ -720,7 +720,7 @@ boost::asio::awaitable<void> GrpcServer::validateAction(jgaa::mysqlpool::Mysqlpo
 {
     auto res = co_await handle.exec("SELECT id, name FROM action where id=? and user=?", actionId, userUuid);
     if (!res.has_value() && !res.rows().empty()) {
-        throw db_err{pb::Error::INVALID_ACTION, "Action not found for the current user"};
+        throw server_err{pb::Error::INVALID_ACTION, "Action not found for the current user"};
     }
 
     if (name) {

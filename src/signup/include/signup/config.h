@@ -46,7 +46,7 @@ struct Cluster {
 struct Config {
     ServerConfig svr;
     GrpcConfig grpc_signup{"localhost:10322"};
-    GrpcConfig grpc_nextapp{"localhost:10321"};
+    GrpcConfig grpc_nextapp{"https://localhost:10321"};
     ServerOptions options;
     Cluster cluster;
 };

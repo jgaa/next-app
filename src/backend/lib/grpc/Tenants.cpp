@@ -37,6 +37,11 @@ namespace {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
+            if (!uctx->isAdmin()) {
+                // TODO: Enable when sessions works
+                //throw server_err{nextapp::pb::Error::PERMISSION_DENIED, "Permission denied"};
+            }
+
             pb::Tenant tenant{req->tenant()};
 
             if (tenant.uuid().empty()) {
@@ -46,9 +51,55 @@ namespace {
                 tenant.mutable_properties();
             }
 
+            // TODO: Serialize this so that only one operation on one Tenant can be doing at a time.
+            //       We don't want a race-condition where two users are contending to create the same tenant name or email name.
+
+            // See if the tenant name or any emails are already in use.
+            auto res = co_await rctx.dbh->exec(
+                "SELECT id, state FROM tenant WHERE name=?",
+                rctx.uctx->dbOptions(), tenant.name());
+            if (!res.rows().empty()) {
+                enum Cols {ID, STATE};
+                pb::Tenant::State state = pb::Tenant::State::Tenant_State_SUSPENDED;
+                auto tid = res.rows().front().at(ID).as_string();
+                pb::Tenant::State_Parse(res.rows().front().at(STATE).as_string(), &state);
+                if (state == pb::Tenant::State::Tenant_State_PENDING_ACTIVATION) {
+                    // Remove it.
+                    LOG_DEBUG << "Removing tenant " << tid << " in pending state because of new tenant creation re-using name "
+                              << tenant.name();
+                    co_await rctx.dbh->exec("DELETE FROM tenant WHERE id = ?", tid);
+                }
+            }
+
+            set<string> removed_tenants;
+            for(const auto& u : req->users()) {
+                res = co_await rctx.dbh->exec(
+                    "SELECT t.id, t.state, u.id FROM user u JOIN tenant t on t.id = u.tenant where u.email=?",
+                        rctx.uctx->dbOptions(), u.email());
+                for(auto r : res.rows()) {
+                    enum Cols { TENANT, STATE, USER };
+                    auto tid = r.at(TENANT).as_string();
+                    pb::Tenant::State state = pb::Tenant::State::Tenant_State_SUSPENDED;
+                    const auto state_name = r.at(STATE).as_string();
+                    pb::Tenant::State_Parse(toUpper(state_name), &state);
+                    auto uid = r.at(USER).as_string();
+                    if (state == pb::Tenant::State::Tenant_State_PENDING_ACTIVATION) {
+                        if (removed_tenants.insert(tid).second) {
+                            // Remove it.
+                            LOG_DEBUG << "Removing tenant " << tid << " in pending state because of new tenant creation re-using email "
+                                      << u.email();
+                            co_await rctx.dbh->exec("DELETE FROM tenant WHERE id = ?", tid);
+                        }
+                    } else {
+                        throw server_err{nextapp::pb::Error::ALREADY_EXIST, "User already exists"};
+                    }
+                }
+            }
+
+
             const auto properties = toJson(*tenant.mutable_properties());
             if (!tenant.has_kind()) {
-                tenant.set_kind(pb::Tenant::Tenant::Kind::Tenant_Kind_Guest);
+                tenant.set_kind(pb::Tenant::Tenant::Kind::Tenant_Kind_GUEST);
             }
 
             auto trx = co_await rctx.dbh->transaction();
@@ -77,7 +128,12 @@ namespace {
                 user.set_tenant(tenant.uuid());
                 auto kind = user.kind();
                 if (!user.has_kind()) {
-                    user.set_kind(pb::User::Kind::User_Kind_Regular);
+                    user.set_kind(pb::User::Kind::User_Kind_REGULAR);
+                } else if (kind == pb::User::Kind::User_Kind_SUPER) {
+                    if (tenant.kind() == pb::Tenant::Kind::Tenant_Kind_SUPER) {
+                        throw server_err{nextapp::pb::Error::PERMISSION_DENIED,
+                                         "Only Super Tenants can create Super users!"};
+                    }
                 }
 
                 if (!user.has_active()) {
@@ -103,7 +159,7 @@ namespace {
 
                 tenant.add_users()->CopyFrom(user);            }
 
-            // TODO: Publish the creation of tenant and users to ant logged in admins
+            // TODO: Publish the creation of tenant and users to and logged in admins
             // TODO: Add the creations to an event-log available for admins
 
             *reply->mutable_tenant() = tenant;
@@ -120,10 +176,14 @@ namespace {
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
+            if (!rctx.uctx->isAdmin()) {
+                throw server_err{nextapp::pb::Error::PERMISSION_DENIED, "Only Admin users can create devices"};
+            }
+
             auto device = req->device();
 
             if (device.csr().empty()) {
-                throw db_err{nextapp::pb::Error::MISSING_CSR, "Missing CSR"};
+                throw server_err{nextapp::pb::Error::MISSING_CSR, "Missing CSR"};
             }
 
             if (device.uuid().empty()) {
@@ -131,6 +191,13 @@ namespace {
             } else {
                 validatedUuid(device.uuid());
             }
+
+            auto user_id = req->userid();
+            if (user_id.empty()) {
+                throw server_err{pb::Error::MISSING_USER_ID, "Missing User ID"};
+            }
+
+            validatedUuid(user_id);
 
             // Check if the device already exists
             auto res = co_await rctx.dbh->exec("SELECT user FROM device WHERE id=?", device.uuid());
@@ -140,7 +207,7 @@ namespace {
                 if (uid != cuser) {
                     LOG_WARN << "Rejecting re-create of device " << device.uuid()
                              << "for user " << uid << " (not the owner)";
-                    throw db_err{nextapp::pb::Error::ALREADY_EXIST, "Device already exists"};
+                    throw server_err{nextapp::pb::Error::ALREADY_EXIST, "Device already exists"};
                 }
 
                 res = co_await rctx.dbh->exec(
@@ -155,10 +222,11 @@ namespace {
                     if (state == "pending_activation") {
                         // This is OK. The device is re-created during pre-activation
                         LOG_DEBUG << "Device " << device.uuid() << " is re-created in pending_activation state";
+                        co_await rctx.dbh->exec("DELETE FROM device WHERE id=?", device.uuid());
                     } else {
                         LOG_INFO << "Rejecting re-create of device " << device.uuid()
                                  << "for user " << uid << ", tenant" << tid << " in state " << state;
-                        throw db_err{nextapp::pb::Error::ALREADY_EXIST, "Device already exists"};
+                        throw server_err{nextapp::pb::Error::ALREADY_EXIST, "Device already exists"};
                     }
                 }
             }
@@ -172,16 +240,16 @@ namespace {
                 resp.set_cert(cert.cert);
             } catch (const std::exception& ex) {
                 LOG_WARN << "Failed to sign certificate for device " << device.uuid() << ": " << ex.what();
-                throw db_err{nextapp::pb::Error::INVALID_CSR, ex.what()};
+                throw server_err{nextapp::pb::Error::INVALID_CSR, ex.what()};
             }
 
             // Save the device
             res = co_await rctx.dbh->exec(
                 R"(INSERT INTO device
                     (id, user, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, certHash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
                 rctx.uctx->dbOptions(),
-                device.uuid(), cuser, device.hostname(), device.os(), device.osversion(),
+                device.uuid(), user_id, device.hostname(), device.os(), device.osversion(),
                 device.appversion(), device.producttype(), device.productversion(),
                 device.arch(), device.prettyname(), toBlob(cert_hash));
 
@@ -190,7 +258,7 @@ namespace {
             } else {
                 throw runtime_error{"Failed to set response"};
             }
-    });
+    }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetUserGlobalSettings(::grpc::CallbackServerContext *ctx,

@@ -478,6 +478,11 @@ CertData CertAuthority::signCert(const std::string_view &csr, const std::string&
 {
     auto req = loadReqFromBuffer(csr);
 
+    {
+        ofstream out{"/tmp/csr.pem"};
+        out << csr;
+    }
+
     // Validate that the subject is the expected value
     if (!cSubject.empty()) {
         auto* subject_name = X509_REQ_get_subject_name(req.get());
@@ -554,9 +559,9 @@ CertData CertAuthority::signCert(const std::string_view &csr, const std::string&
     }
 
     string rval;
-    toBuffer(cert.get(), rval);
+    toBuffer(*cert, rval);
 
-    return {uuid, rval, nullptr};
+    return {uuid, rval, {}};
 }
 
 } // ns

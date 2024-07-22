@@ -25,6 +25,10 @@ enum Error {
     NO_RELEVANT_DATA = 17;
     MISSING_CSR = 18;
     INVALID_CSR = 19;
+    PERMISSION_DENIED = 20;
+    TENANT_SUSPENDED = 21;
+    USER_SUSPENDED = 22;
+    MISSING_USER_ID = 23;
 }
 
 message Page {
@@ -51,8 +55,8 @@ message ServerInfo {
 
 message User {
     enum Kind {
-        Super = 0;
-        Regular = 1;
+        SUPER = 0;
+        REGULAR = 1;
     }
 
     string uuid = 1;
@@ -67,9 +71,9 @@ message User {
 
 message Tenant {
     enum Kind {
-        Super = 0;
-        Regular = 1;
-        Guest = 2;
+        SUPER = 0;
+        REGULAR = 1;
+        GUEST = 2;
     }
 
     enum State {

@@ -125,7 +125,7 @@ struct ToNode {
 
                 // Check if the parent has changed.
                 if (req->parent() != existing.parent()) {
-                    throw db_err{pb::Error::DIFFEREENT_PARENT, "UpdateNode cannot move nodes in the tree"};
+                    throw server_err{pb::Error::DIFFEREENT_PARENT, "UpdateNode cannot move nodes in the tree"};
                 }
 
                 // Update the data, if version is unchanged
@@ -147,7 +147,7 @@ struct ToNode {
 
                 LOG_DEBUG << "updateNode: Failed to update. Looping for retry.";
                 if (retry >= 5) {
-                    throw db_err(pb::Error::DATABASE_UPDATE_FAILED, "I failed to update, despite retrying");
+                    throw server_err(pb::Error::DATABASE_UPDATE_FAILED, "I failed to update, despite retrying");
                 }
 
                 boost::asio::steady_timer timer{owner_.server().ctx()};
@@ -222,7 +222,7 @@ struct ToNode {
 
                 LOG_DEBUG << "updateNode: Failed to update. Looping for retry.";
                 if (retry >= 5) {
-                    throw db_err(pb::Error::DATABASE_UPDATE_FAILED, "I failed to update, despite retrying");
+                    throw server_err(pb::Error::DATABASE_UPDATE_FAILED, "I failed to update, despite retrying");
                 }
 
                 boost::asio::steady_timer timer{owner_.server().ctx()};
@@ -264,7 +264,7 @@ struct ToNode {
                                                           req->uuid(), cuser);
 
             if (!res.has_value() || res.affected_rows() == 0) {
-                throw db_err{pb::Error::NOT_FOUND, format("Node {} not found", req->uuid())};
+                throw server_err{pb::Error::NOT_FOUND, format("Node {} not found", req->uuid())};
             }
 
             reply->set_error(pb::Error::OK);
@@ -349,7 +349,7 @@ boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, c
     auto res = co_await server().db().exec(format("SELECT {} from node where id=? and user=?", ToNode::selectCols),
                                            uuid, userUuid);
     if (!res.has_value()) {
-        throw db_err{pb::Error::NOT_FOUND, format("Node {} not found", uuid)};
+        throw server_err{pb::Error::NOT_FOUND, format("Node {} not found", uuid)};
     }
 
     pb::Node rval;
@@ -367,7 +367,7 @@ boost::asio::awaitable<void> GrpcServer::validateNode(jgaa::mysqlpool::Mysqlpool
 {
     auto res = co_await handle.exec("SELECT id FROM node where id=? and user=?", parentUuid, userUuid);
     if (!res.has_value()) {
-        throw db_err{pb::Error::INVALID_PARENT, "Node id must exist and be owned by the user"};
+        throw server_err{pb::Error::INVALID_PARENT, "Node id must exist and be owned by the user"};
     }
 }
 

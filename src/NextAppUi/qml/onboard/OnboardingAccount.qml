@@ -81,14 +81,13 @@ ColumnLayout  {
 
         Rectangle {
             id: loadingIndicator
+            visible: NaComm.signupStatus === 2
             width: 50
             height: 50
             radius: 20
             color: "transparent"
             border.color: "green"
             border.width: 3
-            visible: false
-            //anchors.centerIn: parent
 
             RotationAnimation {
                 id: spinAnimation
@@ -135,13 +134,23 @@ ColumnLayout  {
             id: createCtl
             text: qsTr("Create Account")
             enabled: accepted
+            visible: NaComm.signupStatus !== 3
             onClicked: {
                 //nextClicked()
                 loadingIndicator.visible = true;
                 createCtl.enabled = false
-                NaComm.signup(email.text, name.text, company.text)
+                NaComm.signup(name.text, email.text, company.text)
             }
         }
+
+        Button {
+            visible: !createCtl.visible
+            text: qsTr("Next")
+            onClicked: {
+                nextClicked()
+            }
+        }
+
         Item {
             Layout.fillWidth: true
         }

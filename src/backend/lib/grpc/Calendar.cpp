@@ -49,7 +49,7 @@ struct ToTimeBlock {
             const auto blob = row.at(ACTIONS).as_blob();
             if (!tba.ParseFromArray(blob.data(), blob.size())) {
                 LOG_WARN_N << "Failed to parse actions for time block rom stored protobuf message: " << tb.id();
-                throw db_err(pb::Error::GENERIC_ERROR, "Failed to parse time_block.actions from saved protobuf message");
+                throw server_err(pb::Error::GENERIC_ERROR, "Failed to parse time_block.actions from saved protobuf message");
             }
         }
 
@@ -61,21 +61,21 @@ struct ToTimeBlock {
 void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 {
     if (!tb.has_timespan()) {
-        throw db_err(pb::Error::CONSTRAINT_FAILED, "TimeBlock must have a time-span");
+        throw server_err(pb::Error::CONSTRAINT_FAILED, "TimeBlock must have a time-span");
     }
 
     // check if the start-time is before the end-time
     if (tb.timespan().start() >= tb.timespan().end()) {
-        throw db_err(pb::Error::CONSTRAINT_FAILED, "Start time must be before end time");
+        throw server_err(pb::Error::CONSTRAINT_FAILED, "Start time must be before end time");
     }
 
     // Check that the start-time and the end-time are ate the same date, using the users timezone in uctx
     if (toYearMonthDay(tb.timespan().start(), uctx.tz()) != toYearMonthDay(tb.timespan().end(), uctx.tz())) {
-        throw db_err(pb::Error::CONSTRAINT_FAILED, "Start and end time must be on the same day");
+        throw server_err(pb::Error::CONSTRAINT_FAILED, "Start and end time must be on the same day");
     }
 
     if (tb.timespan().start() >= tb.timespan().end()) {
-        throw db_err(pb::Error::CONSTRAINT_FAILED, "Start time must be before end time");
+        throw server_err(pb::Error::CONSTRAINT_FAILED, "Start time must be before end time");
     }
 }
 
@@ -91,7 +91,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
             validate(*req, *rctx.uctx);
 
             if (!req->actions().list().empty()) {
-                throw db_err(pb::CONSTRAINT_FAILED, "Cannot create a time block with actions. Add the actions later.");
+                throw server_err(pb::CONSTRAINT_FAILED, "Cannot create a time block with actions. Add the actions later.");
             }
 
             auto res = co_await rctx.dbh->exec(
@@ -127,7 +127,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
             validate(*req, *rctx.uctx);
 
             if (req->actions().list().size() > owner_.server_.config().svr.time_block_max_actions) [[unlikely]] {
-                throw db_err{pb::Error::CONSTRAINT_FAILED,
+                throw server_err{pb::Error::CONSTRAINT_FAILED,
                              format("Too many actions. The limit is {}", owner_.server_.config().svr.time_block_max_actions)};
             }
 
@@ -246,7 +246,7 @@ boost::asio::awaitable<void> GrpcServer::validateTimeBlock(jgaa::mysqlpool::Mysq
 {
     auto res = co_await handle.exec("SELECT COUNT(*), name FROM time_block where id=? and user=?", timeBlockId, userUuid);
     if (!res.has_value()) {
-        throw db_err{pb::Error::INVALID_ACTION, "TimeBlock not found for the current user"};
+        throw server_err{pb::Error::INVALID_ACTION, "TimeBlock not found for the current user"};
     }
 
     co_return;

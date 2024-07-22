@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
             ("eula", po::value(&config.cluster.eula_path),
              "Path to the EULA page")
             ("nextapp-address,n", po::value(&config.grpc_nextapp.address)->default_value(config.grpc_nextapp.address),
-             "Address and port to use for gRPC client-connectiopn to NextApp")
+             "Protocol, address and port to use for gRPC client-connectiopn to NextApp")
             ("grpc-client-ca-cert", po::value(&config.grpc_nextapp.ca_cert),
              "Path to the CA certificate")
             ("grpc-client-cert", po::value(&config.grpc_nextapp.server_cert),

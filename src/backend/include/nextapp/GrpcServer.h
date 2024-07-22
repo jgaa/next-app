@@ -199,15 +199,15 @@ public:
                         }
                         LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(*reply);
                         reactor->Finish(::grpc::Status::OK);
-                    } catch (const db_err& ex) {
+                    } catch (const server_err& ex) {
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
-                            LOG_DEBUG << "Request [" << name << "] Caught db_err exception while handling grpc request: " << ex.what();
+                            LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
                             reply->Clear();
                             reply->set_error(ex.error());
                             reply->set_message(ex.what());
                             reactor->Finish(::grpc::Status::OK);
                         } else {
-                            LOG_WARN << "Request [" << name << "] Caught db_err exception while handling grpc request coro: " << ex.what();
+                            LOG_WARN << "Request [" << name << "] Caught server_err exception while handling grpc request coro: " << ex.what();
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
                     } catch (const std::exception& ex) {

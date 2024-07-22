@@ -6,6 +6,8 @@
 #include <QSettings>
 #include <QGrpcHttp2Channel>
 #include <QtConcurrent/QtConcurrent>
+#include <QSslKey>
+#include <QSslCertificate>
 
 #include <openssl/x509.h>
 #include <openssl/pem.h>
@@ -83,8 +85,9 @@ ServerComm::~ServerComm()
 
 void ServerComm::start()
 {
+    QSettings settings;
     session_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    current_server_address_ = QSettings{}.value("serverAddress", getDefaultServerAddress()).toString();
+    current_server_address_ = settings.value("server/url", QString{}).toString();
 
     QGrpcMetadata metadata;
     metadata.emplace("session-id", session_id_.toLatin1());
@@ -93,6 +96,12 @@ void ServerComm::start()
     sslConfig.setPeerVerifyMode(QSslSocket::QueryPeer);
     //sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     sslConfig.setProtocol(QSsl::TlsV1_3);
+
+    if (auto cert = settings.value("server/clientCert").toString(); !cert.isEmpty()) {
+        LOG_DEBUG_N << "Loading our private client cert/key.";
+        sslConfig.setLocalCertificate(QSslCertificate{cert.toUtf8()});
+        sslConfig.setPrivateKey(QSslKey{settings.value("server/clientKey").toByteArray(), QSsl::Rsa});
+    }
 
     // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
     // it only support https/2.
@@ -749,7 +758,9 @@ void ServerComm::signup(const QString &name, const QString &email, const QString
                 settings.setValue("server/clientKey", key);
                 addMessage(tr("Your account was successfully created!"));
                 signup_status_ = SignupStatus::SIGNUP_OK;
-                // TODO: Log on
+                QMetaObject::invokeMethod(qApp, [this]() {
+                    start();
+                }, Qt::QueuedConnection);
                 break;
             case signup::pb::ErrorGadget::EMAIL_ALREADY_EXISTS:
                 signup_status_ = SignupStatus::SIGNUP_ERROR;
@@ -772,10 +783,7 @@ void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &setti
     callRpc<nextapp::pb::Status>([this, settings]() {
         return client_->SetUserGlobalSettings(settings);
     }, [this](const nextapp::pb::Status& status) {
-        // if (status.hasUserGlobalSettings()) {
-        //     userGlobalSettings_ = status.userGlobalSettings();
-        //     emit globalSettingsChanged();
-        // }
+        ;
     });
 }
 
@@ -962,6 +970,8 @@ void ServerComm::connectToSignupServer()
     // it only support https/2.
     sslConfig.setAllowedNextProtocols({{"h2"}});
 
+    const bool use_tls = signup_server_address_.startsWith("https://");
+
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     auto channelOptions = QGrpcChannelOptions{QUrl(signup_server_address_, QUrl::StrictMode)}
                               .withMetadata(metadata)
@@ -969,8 +979,10 @@ void ServerComm::connectToSignupServer()
     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else
     auto channelOptions = QGrpcChannelOptions{}
-                              .setMetadata(metadata)
-                              .setSslConfiguration(sslConfig);
+                              .setMetadata(metadata);
+    if (use_tls) {
+        channelOptions.setSslConfiguration(sslConfig);
+    }
     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(signup_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
@@ -1049,16 +1061,23 @@ void setSubjects(X509_REQ *cert, const T& subjects) {
         }};
 
         int loc = 0;
-        for(const auto [subj, section] : subjects) {
-            X509_NAME_add_entry_by_txt(
+        for(const auto& [section, subj] : subjects) {
+            LOG_DEBUG << "Adding subject: " << subj << " in section: " << section;
+            const auto res = X509_NAME_add_entry_by_txt(
                 name, section.c_str(), MBSTRING_ASC,
                 reinterpret_cast<const unsigned char *>(subj.data()), subj.size(), loc++, 0);
+            if (!res) {
+                throw runtime_error{"X509_NAME_add_entry_by_txt"};
+            }
         }
 
-        X509_REQ_set_subject_name(cert, name);
+        const auto res = X509_REQ_set_subject_name(cert, name);
+        if (!res) {
+            throw runtime_error{"X509_REQ_set_subject_name"};
+        }
         return;
     }
-    throw runtime_error{"X509_get_subject_name"};
+    throw runtime_error{"X509_NAME_new"};
 }
 
 template <typename T, typename U>
@@ -1095,7 +1114,7 @@ void toBuffer(const T& cert, U& dest) {
 
 std::pair<QString /* csr */, QString /* key */> ServerComm::createCsr()
 {
-    const auto subjects = to_array<pair<string_view, string>>(
+    const auto subjects = to_array<pair<string, string>>(
         {{"CN", deviceUuid().toString(QUuid::WithoutBraces).toStdString()},
          {"O", "Nextapp"},
          {"OU", "Nextapp"}});

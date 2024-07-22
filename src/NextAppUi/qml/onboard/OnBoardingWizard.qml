@@ -9,12 +9,12 @@ Window  {
     width: Math.min(600, NaCore.width, Screen.width)
     height: Math.min(800, NaCore.height, Screen.height)
     visible: true
+    signal onboardingDone()
 
     Rectangle {
         anchors.fill: parent
         color: MaterialDesignStyling.surface
         border.color: MaterialDesignStyling.outline
-        signal onboardingDone()
 
         Settings {
             id: settings

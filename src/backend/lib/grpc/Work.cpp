@@ -120,7 +120,7 @@ struct ToWorkSession {
             }
 
             if (actions.empty()) {
-                throw db_err{pb::Error::NO_RELEVANT_DATA, "No new actions to add to work sessions"};
+                throw server_err{pb::Error::NO_RELEVANT_DATA, "No new actions to add to work sessions"};
             }
 
             rctx.updates.reserve(actions.size());
@@ -175,10 +175,10 @@ struct ToWorkSession {
                 // Here we do the logic. When the sitch exits, `work` is assumed to be updated
                 switch(event.kind()) {
                 case pb::WorkEvent::Kind::WorkEvent_Kind_START:
-                    throw db_err{pb::Error::INVALID_REQUEST, "Use CreateWorkSession to start a new session"};
+                    throw server_err{pb::Error::INVALID_REQUEST, "Use CreateWorkSession to start a new session"};
                 case pb::WorkEvent::Kind::WorkEvent_Kind_STOP:
                     if (work.state() == pb::WorkSession_State::WorkSession_State_DONE) {
-                        throw db_err{pb::Error::INVALID_REQUEST, "Session is already stopped"};
+                        throw server_err{pb::Error::INVALID_REQUEST, "Session is already stopped"};
                     }
                     if (work.has_end()) {
                         LOG_ERROR << "Work-Session " << work.id() << " already has an end time, but it is not DONE.";
@@ -190,13 +190,13 @@ struct ToWorkSession {
                     break;
                 case pb::WorkEvent::Kind::WorkEvent_Kind_PAUSE:
                     if (work.state() != pb::WorkSession_State::WorkSession_State_ACTIVE) {
-                        throw db_err{pb::Error::INVALID_REQUEST, "Session must be active to pause"};
+                        throw server_err{pb::Error::INVALID_REQUEST, "Session must be active to pause"};
                     }
                     co_await owner_.pauseWorkSession(work, rctx);
                     break;
                 case pb::WorkEvent::Kind::WorkEvent_Kind_RESUME:
                     if (work.state() != pb::WorkSession_State::WorkSession_State_PAUSED) {
-                        throw db_err{pb::Error::INVALID_REQUEST, "Session must be paused to resume"};
+                        throw server_err{pb::Error::INVALID_REQUEST, "Session must be paused to resume"};
                     }
                     co_await owner_.resumeWorkSession(work, rctx);
                     break;
@@ -215,7 +215,7 @@ struct ToWorkSession {
                     }
                     if (event.has_end()) {
                         if (work.state() != pb::WorkSession_State::WorkSession_State_DONE) {
-                            throw db_err{pb::Error::INVALID_REQUEST, "Can not correct end time on an active session"};
+                            throw server_err{pb::Error::INVALID_REQUEST, "Can not correct end time on an active session"};
                         }
                         ne.set_end(event.end());
                     }
@@ -240,7 +240,7 @@ struct ToWorkSession {
                 } break;
                 default:
                     assert(false);
-                    throw db_err{pb::Error::INVALID_REQUEST, "Invalid WorkEvent.Kind"};
+                    throw server_err{pb::Error::INVALID_REQUEST, "Invalid WorkEvent.Kind"};
                 }
             } // events
 
@@ -364,7 +364,7 @@ struct ToWorkSession {
                 sortcol = "UNIX_TIMESTAMP(ws.touch_time)";
                 break;
             default:
-                throw db_err{pb::Error::INVALID_REQUEST, "Invalid sort column: #"s + to_string(req->sortcols())};
+                throw server_err{pb::Error::INVALID_REQUEST, "Invalid sort column: #"s + to_string(req->sortcols())};
         }
 
         if (req->has_nodeid()) {
@@ -430,7 +430,7 @@ struct ToWorkSession {
 
                         if (ws.start() == req->page().prevtime()) {
                             // Avoid an endless request-loop over the same timestamp, if the user has re-used it for more sessions than the page size!
-                            throw db_err{pb::Error::PAGE_SIZE_TOO_SMALL, "There are more rows with the same start_time than the page size"};
+                            throw server_err{pb::Error::PAGE_SIZE_TOO_SMALL, "There are more rows with the same start_time than the page size"};
                         }
                     }
 
@@ -493,7 +493,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
             string action_name;
             co_await owner_.validateAction(*rctx.dbh, work.action(), cuser, &action_name);
             if (!work.user().empty() && work.user() != cuser) {
-                throw db_err{pb::Error::INVALID_REQUEST, "Invalid user"};
+                throw server_err{pb::Error::INVALID_REQUEST, "Invalid user"};
             }
             work.set_user(cuser);
             if (work.name().empty()) {
@@ -503,7 +503,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
             // Re-use our method to add a work-session to the database.
             auto res = co_await owner_.insertWork(work, rctx, false /* don't add start event */);
             if (!res.has_value() || res.rows().empty()) {
-                throw db_err{pb::Error::GENERIC_ERROR, "Failed to fetch inserted work session"};
+                throw server_err{pb::Error::GENERIC_ERROR, "Failed to fetch inserted work session"};
             }
 
             // Pause in a "fixed" session without a series of events must be added as a correction
@@ -578,7 +578,7 @@ boost::asio::awaitable<pb::WorkSession> GrpcServer::fetchWorkSession(const std::
         format("SELECT {} from work_session where id=? and user = ?",
                ToWorkSession::selectCols), uuid, rctx.uctx->userUuid());
     if (!res.has_value() || res.rows().empty()) {
-        throw db_err{pb::Error::NOT_FOUND, format("Work session {} not found", uuid)};
+        throw server_err{pb::Error::NOT_FOUND, format("Work session {} not found", uuid)};
     }
 
     pb::WorkSession rval;
@@ -814,7 +814,7 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)
             }
             if (event.has_end()) {
                 if (work.state() != pb::WorkSession_State::WorkSession_State_DONE) {
-                    throw db_err{pb::Error::INVALID_REQUEST, "Cannot correct end time of an active session"};
+                    throw server_err{pb::Error::INVALID_REQUEST, "Cannot correct end time of an active session"};
                 }
                 work.set_end(event.end());
             }

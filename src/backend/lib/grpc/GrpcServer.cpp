@@ -261,30 +261,65 @@ const std::shared_ptr<UserContext> GrpcServer::userContext(::grpc::CallbackServe
 
     pb::UserGlobalSettings settings;
     settings.set_timezone(string{chrono::current_zone()->name()});
+    pb::User::Kind kind = pb::User::Kind::User_Kind_REGULAR;
+    string tenant;
+
+    const auto uid = system_user;
 
     // TODO: Remove this when we have proper authentication.
     boost::asio::co_spawn(server_.ctx(), [&]() -> boost::asio::awaitable<void> {
             auto res = co_await server_.db().exec(
-                "SELECT settings FROM user_settings WHERE user = ?",
-                system_user);
+                "SELECT u.tenant, t.kind, u.kind, t.state, u.active, s.settings FROM user u "
+                "JOIN tenant t on t.id=u.tenant "
+                "JOIN user_settings s on s.user=u.id WHERE u.id=?",
+                uid);
 
-            enum Cols { SETTINGS };
+            enum Cols { TENANT, TENANT_KIND, USER_KIND, TENANT_STATE, USER_ACTIVE, SETTINGS };
             if (!res.rows().empty()) {
                 const auto& row = res.rows().front();
+                pb::Tenant::State tenant_state;
+                if (!pb::Tenant::State_Parse(toUpper(row.at(TENANT_STATE).as_string()), &tenant_state)) {
+                    LOG_WARN_N << "Failed to parse Tenant::State from " << row.at(TENANT_STATE).as_string();
+                    throw runtime_error{"Failed to parse Tenant::State"};
+                }
+                if (tenant_state == pb::Tenant::State::Tenant_State_SUSPENDED) {
+                    throw server_err{pb::Error::TENANT_SUSPENDED, "Tenant account is suspended"};
+                }
+                bool active = row.at(USER_ACTIVE).as_int64() != 0;
+                if (!active) {
+                    throw server_err{pb::Error::USER_SUSPENDED, "User account is inactive"};
+                }
+                tenant = row.at(TENANT).as_string();
+                if (!pb::User::Kind_Parse(toUpper(row.at(USER_KIND).as_string()), &kind)) {
+                    LOG_WARN_N << "Failed to parse User::Kind from " << row.at(USER_KIND).as_string();
+                    throw runtime_error{"Failed to parse User::Kind"};
+                }
+                if (kind == pb::User::Kind::User_Kind_SUPER) {
+                    pb::Tenant::Kind tenant_kind;
+                    if (!pb::Tenant::Kind_Parse(toUpper(row.at(TENANT_KIND).as_string()), &tenant_kind)) {
+                        LOG_WARN_N << "Failed to parse Tenant::Kind from " << row.at(TENANT_KIND).as_string();
+                        throw runtime_error{"Failed to parse Tenant::Kind"};
+                    }
+                    if (tenant_kind != pb::Tenant::Kind::Tenant_Kind_SUPER) {
+                        LOG_WARN_N << "Tenant " << tenant << " is not a system tenant. "
+                                                             " Downgrading user " << uid << " to regular user.";
+                        kind = pb::User::Kind::User_Kind_REGULAR;
+                    }
+                }
                 auto blob = row.at(SETTINGS).as_blob();
                 pb::UserGlobalSettings tmp_settings;
                 if (tmp_settings.ParseFromArray(blob.data(), blob.size())) {
-                    LOG_DEBUG_N << "Loaded UserGlobalSettings for user " << system_user;
+                    LOG_DEBUG_N << "Loaded UserGlobalSettings for user " << uid;
                     settings = tmp_settings;
                 } else {
-                    LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << system_user;
+                    LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << uid;
                     throw runtime_error{"Failed to parse UserGlobalSettings"};
                 }
             }
             co_return;
     }, boost::asio::use_future).get();
 
-    auto ux = make_shared<UserContext>(system_tenant, system_user, settings, sid);
+    auto ux = make_shared<UserContext>(tenant, uid, kind, settings, sid);
     sessions_[sid] = ux;
     return ux;
 }
@@ -304,7 +339,8 @@ void GrpcServer::updateSessionSettingsForUser(const pb::UserGlobalSettings &sett
 
     for(const auto& [id, session] : obsolete) {
         if (session->userUuid() == system_user) {
-            sessions_[id] = make_shared<UserContext>(system_tenant, system_user, settings, id);
+            auto kind = session->kind();
+            sessions_[id] = make_shared<UserContext>(system_tenant, system_user, kind, settings, id);
         }
     }
 }
@@ -314,7 +350,7 @@ boost::uuids::uuid GrpcServer::getSessionId(::grpc::CallbackServerContext *ctx) 
     auto session_id = ctx->client_metadata().find("session-id");
     if (session_id == ctx->client_metadata().end()) {
         LOG_WARN_N << "No session-id in metadata from peer: " << ctx->peer();
-        throw db_err{pb::Error::AUTH_MISSING_SESSION_ID, "Missing session-id in gRPC request"};
+        //throw server_err{pb::Error::AUTH_MISSING_SESSION_ID, "Missing session-id in gRPC request"};
     }
 
     return toUuid({session_id->second.data(), session_id->second.size()});
