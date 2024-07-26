@@ -110,21 +110,64 @@ void Server::bootstrap(const BootstrapOptions& opts)
     LOG_INFO << "Bootstrapping is complete";
 }
 
-void Server::bootstrapCa()
+void Server::createClientCert(const std::string &fileName, const boost::uuids::uuid &user)
 {
-    // Create CA cert
-    auto cert = createCaCert();
+    init();
 
-    // Save CA cert in the database
+    ScopedExit se([this] {
+        stop();
+    });
 
-    // Create server cert
-    CertAuthority ca{cert, config().ca};
-    auto serverCert = ca.createServerCert(config().options.fqdn);
+    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
 
-    LOG_INFO << "Created CA";
-    LOG_INFO << "Created server cert for fqdn " << config().options.fqdn;
+        filesystem::path cert_name = fileName + "-cert.pem";
+        filesystem::path key_name = fileName + "-key.pem";
+        filesystem::path ca_name = fileName + "-ca.pem";
 
-    // Save server cert in the database
+        std::ofstream cert_file(cert_name);
+        std::ofstream key_file(key_name);
+        std::ofstream ca_file(ca_name);
+
+        if (!cert_file.is_open() || !key_file.is_open()) {
+            throw std::runtime_error("Failed to open cert or key file for writing");
+        }
+        if (!ca_file.is_open()) {
+            throw std::runtime_error("Failed to open ca file for writing");
+        }
+
+        co_await loadCertAuthority();
+        auto subject = newUuidStr();
+        auto cert = ca().createClientCert(subject, to_string(user));
+        co_await db().exec("INSERT INTO device (id, user, certHash, name) VALUES (?, ?, ?, '')",
+                           subject, to_string(user), cert.hash);
+
+        cert_file << cert.cert;
+        key_file << cert.key;
+        ca_file << ca().rootCert();
+
+        LOG_INFO << "Created client cert for user " << user << " with 'deviceid' " << subject
+                 << " and saved the cert to " << cert_name << " and the key to " << key_name
+                 << ". The CA cert is saved to " << ca_name;
+
+    }, boost::asio::use_future).get();
+
+}
+
+void Server::recreateServerCert()
+{
+    init();
+
+    ScopedExit se([this] {
+        stop();
+    });
+
+    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        LOG_INFO << "Creating new server-cert for " << config().options.server_cert_dns_names.front()
+                 << " with " << config().options.server_cert_dns_names.size() << " DNS entries";
+        co_await db().exec("DELETE FROM cert WHERE id='grpc-server'");
+        co_await loadCertAuthority();
+        co_await getCert("grpc-server", WithMissingCert::CREATE_SERVER);
+    },  boost::asio::use_future).get();
 }
 
 boost::asio::awaitable<CertData> Server::getCert(std::string_view id, WithMissingCert what)
@@ -146,14 +189,14 @@ boost::asio::awaitable<CertData> Server::getCert(std::string_view id, WithMissin
         case WithMissingCert::FAIL:
             co_return cd;
         case WithMissingCert::CREATE_SERVER:
-            LOG_INFO << "Creating server cert for " << config().options.fqdn;
-            cd = ca().createServerCert(config().options.fqdn);
+            LOG_INFO << "Creating server cert for " << config().options.server_cert_dns_names.front();
+            cd = ca().createServerCert(config().options.server_cert_dns_names);
             break;
-        case WithMissingCert::CREATE_CLIENT:
-            // This is for creating a client cert with a name (id). Users devices will not use this.
-            LOG_INFO << "Creating client cert for " << id;
-            cd = ca().createClientCert(string{id});
-            break;
+        // case WithMissingCert::CREATE_CLIENT:
+        //     // This is for creating a client cert with a name (id). Users devices will not use this.
+        //     LOG_INFO << "Creating client cert for " << id;
+        //     cd = ca().createClientCert(string{id});
+        //     break;
         default:
             break;
         }
@@ -608,6 +651,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         R"(CREATE OR REPLACE TABLE device (
             id UUID not NULL default UUID() PRIMARY KEY,
             user UUID NOT NULL,
+            name VARCHAR(256) NOT NULL,
             created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
             hostName VARCHAR(256),
             os VARCHAR(128),

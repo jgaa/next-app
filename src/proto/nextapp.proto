@@ -29,6 +29,8 @@ enum Error {
     TENANT_SUSPENDED = 21;
     USER_SUSPENDED = 22;
     MISSING_USER_ID = 23;
+    AUTH_FAILED = 24;
+    CONFLICT = 25;
 }
 
 message Page {
@@ -516,6 +518,7 @@ message CreateDeviceReq {
 message CreateDeviceResp {
     string deviceId = 1;
     string cert = 2;
+    string caCert = 3;
 }
 
 message Update {

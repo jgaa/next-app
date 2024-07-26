@@ -327,8 +327,8 @@ boost::asio::awaitable<void>
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetActions(::grpc::CallbackServerContext *ctx, const pb::GetActionsReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             const auto& dbopts = uctx->dbOptions();
 
@@ -446,8 +446,8 @@ boost::asio::awaitable<void>
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetAction(::grpc::CallbackServerContext *ctx, const pb::GetActionReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             const auto& uuid = validatedUuid(req->uuid());
             const auto& dbopts = uctx->dbOptions();
@@ -589,7 +589,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             const auto& uuid = validatedUuid(req->actionid());
 
@@ -652,7 +652,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             const auto& uuid = validatedUuid(req->uuid());
             const auto dbopts = uctx->dbOptions();
@@ -679,9 +679,9 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetFavoriteActions(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, ctx] (auto *reply) -> boost::asio::awaitable<void> {
+        [this, ctx] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
@@ -1355,8 +1355,8 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetActionCategories(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) {
     return unaryHandler(ctx, req, reply,
-        [this, ctx] (auto *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+        [this, ctx] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(

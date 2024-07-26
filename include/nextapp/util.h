@@ -12,6 +12,7 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/string_generator.hpp>
+#include <boost/functional/hash.hpp>
 
 #include "google/protobuf/util/json_util.h"
 
@@ -84,6 +85,12 @@ boost::uuids::uuid newUuid();
 std::string newUuidStr();
 const std::string& validatedUuid(const std::string& uuid);
 boost::uuids::uuid toUuid(std::string_view uuid);
+
+struct UuidHash {
+    size_t operator()(const boost::uuids::uuid& uuid) const {
+        return boost::hash_value(uuid);
+    }
+};
 
 template <typename T>
 concept ProtoMessage = std::is_base_of_v<google::protobuf::Message, T>;

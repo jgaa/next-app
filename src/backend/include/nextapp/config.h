@@ -30,7 +30,8 @@ struct ServerOptions {
     /*! Maximum page size for paginated results */
     size_t max_page_size = 250;
 
-    std::string fqdn = "localhost";
+    /*! DNS names in the self-signed server cert for grpc */
+    std::vector<std::string> server_cert_dns_names;
 };
 
 struct Config {

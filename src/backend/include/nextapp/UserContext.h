@@ -3,15 +3,60 @@
 
 #include <string>
 #include <chrono>
+#include <memory>
+#include <shared_mutex>
+
+#include <boost/asio.hpp>
+#include <grpcpp/server_context.h>
 
 #include "mysqlpool/mysqlpool.h"
 #include "nextapp.pb.h"
-#include "nextapp/logging.h"
+#include "nextapp/util.h"
+//#include "nextapp/logging.h"
 
 namespace nextapp {
 
-class UserContext {
+class Server;
+
+class Publisher {
 public:
+    virtual ~Publisher() = default;
+
+    virtual void publish(const std::shared_ptr<pb::Update>& message) = 0;
+    virtual void close() = 0;
+
+    auto& uuid() const noexcept {
+        return uuid_;
+    }
+
+private:
+    const boost::uuids::uuid uuid_ = newUuid();
+};
+
+class UserContext : public std::enable_shared_from_this<UserContext> {
+public:
+    class Session : public std::enable_shared_from_this<Session> {
+    public:
+
+        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid uuid)
+            : user_(user), sessionid_{uuid} {
+        }
+
+        const boost::uuids::uuid& sessionId() const noexcept {
+            return sessionid_;
+        }
+
+        UserContext& user() noexcept {
+            assert(user_);
+            return *user_;
+        }
+
+    private:
+        std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
+        const boost::uuids::uuid sessionid_;
+    };
+
+
     UserContext() = default;
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid, const std::string_view timeZone,
@@ -19,7 +64,7 @@ public:
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid,
                 pb::User::Kind kind,
-                const pb::UserGlobalSettings& settings, boost::uuids::uuid sessionId = newUuid());
+                const pb::UserGlobalSettings& settings);
 
     ~UserContext() = default;
 
@@ -44,10 +89,6 @@ public:
         return db_options_;
     }
 
-    const boost::uuids::uuid& sessionId() const noexcept {
-        return sessionid_;
-    }
-
     const pb::UserGlobalSettings& settings() const noexcept {
         return settings_;
     }
@@ -60,6 +101,18 @@ public:
         return kind_;
     }
 
+    void addSession(std::shared_ptr<Session> session) {
+        sessions_.push_back(std::move(session));
+    }
+
+    void setSettings(pb::UserGlobalSettings settings) {
+        settings_ = std::move(settings);
+    }
+
+    void addPublisher(const std::shared_ptr<Publisher>& publisher);
+    void removePublisher(const boost::uuids::uuid& uuid);
+    void publish(const std::shared_ptr<pb::Update>& message);
+
 private:
     static boost::uuids::uuid newUuid();
 
@@ -67,11 +120,38 @@ private:
     std::string tenant_uuid_;
     const std::chrono::time_zone* tz_{};
     jgaa::mysqlpool::Options db_options_;
-    const boost::uuids::uuid sessionid_ = newUuid();
     pb::UserGlobalSettings settings_;
     pb::User::Kind kind_{pb::User::Kind::User_Kind_REGULAR};
+    std::vector<std::shared_ptr<Session>> sessions_; // NB: Circular reference.
+    std::vector<std::weak_ptr<Publisher>> publishers_;
+    std::shared_mutex mutex_;
 };
 
 
+class SessionManager {
+public:
+    SessionManager(Server& server)
+        : server_{server} {}
+
+    ~SessionManager() = default;
+
+    // Creates or fetches existing session.
+    // Throws on error, or if the user or tenant is not active.
+    boost::asio::awaitable<std::shared_ptr<UserContext::Session>> getSession(const ::grpc::ServerContextBase* context);
+
+    std::shared_ptr<UserContext::Session> getExistingSession(const ::grpc::ServerContextBase *context);
+
+    void removeSession(const boost::uuids::uuid& sessionId);
+
+    void setUserSettings(const boost::uuids::uuid& userUuid, pb::UserGlobalSettings settings);
+
+private:
+     boost::asio::awaitable<std::shared_ptr<UserContext>> getUserContext(const boost::uuids::uuid& deviceId, const ::grpc::ServerContextBase* context);
+
+    std::shared_mutex mutex_;
+    std::unordered_map<boost::uuids::uuid, UserContext::Session *, UuidHash> sessions_;
+    std::unordered_map<boost::uuids::uuid, std::shared_ptr<UserContext>, UuidHash> users_;
+    Server& server_;
+};
 
 } // ns

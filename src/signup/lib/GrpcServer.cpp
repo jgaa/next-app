@@ -74,7 +74,7 @@ GrpcServer::GrpcServer(Server &server)
             }
 
             tenant->set_name(req->tenantname());
-            tenant->set_kind(nextapp::pb::Tenant::Kind::Tenant_Kind_SUPER);
+            tenant->set_kind(nextapp::pb::Tenant::Kind::Tenant_Kind_REGULAR);
             tenant->set_state(nextapp::pb::Tenant::State::Tenant_State_PENDING_ACTIVATION);
 
             user->set_name(req->username());
@@ -139,6 +139,8 @@ GrpcServer::GrpcServer(Server &server)
                 response->set_uuid(dresp.deviceid());
                 response->set_cert(dresp.cert());
                 response->set_serverurl(owner_.server().config().grpc_nextapp.address);
+                response->set_cacert(dresp.cacert());
+                assert(!response->cacert().empty());
             } else {
                 throw runtime_error{"Failed to create signupresponse object"};
             }
@@ -191,6 +193,7 @@ void GrpcServer::startNextapp()
         ::grpc::SslCredentialsOptions ssl_opts;
         if (!nextapp_config().ca_cert.empty()) {
             ssl_opts.pem_root_certs = readFileToBuffer(nextapp_config().ca_cert);
+            LOG_DEBUG_N << "Using ca-cert from " << nextapp_config().ca_cert;
         }
         if (!nextapp_config().server_cert.empty() && !nextapp_config().server_key.empty()) {
             // Load our own certificate and private key (for client auth)

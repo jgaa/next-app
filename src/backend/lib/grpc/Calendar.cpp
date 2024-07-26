@@ -110,7 +110,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
             if (!res.empty() && !res.rows().empty()) [[likely]] {
                 pb::TimeBlock tb;
                 ToTimeBlock::assign(res.rows().front(), tb, *rctx.uctx);
-                owner_.publish(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_ADDED));
+                rctx.publishLater(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_ADDED));
             }
 
             co_return;
@@ -158,7 +158,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
             assert(!res.empty());
 
             if (!res.empty()) [[likely]] {
-                owner_.publish(createCalendarEventUpdate(*req, pb::Update::Operation::Update_Operation_UPDATED));
+                rctx.publishLater(createCalendarEventUpdate(*req, pb::Update::Operation::Update_Operation_UPDATED));
             }
 
             co_return;
@@ -181,7 +181,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
             if (!res.empty() && res.affected_rows() > 0) [[likely]] {
                 pb::TimeBlock tb;
                 tb.set_id(id);
-                owner_.publish(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_DELETED));
+                rctx.publishLater(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_DELETED));
             }
 
             co_return;

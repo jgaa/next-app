@@ -5,6 +5,7 @@ package common;
 message Device {
   string uuid = 1; // Device uuid
   string hostName = 2;
+  string name = 3; // Device name
   string os = 4;
   string osVersion = 5;
   string appVersion = 6;

@@ -32,6 +32,7 @@ message SignUpResponse {
     string uuid = 1; // Device uuid
     string cert = 4; // PEM encoded signed certificate
     string serverUrl = 5; // Nextapp gRPC URL
+    string caCert = 6; // PEM encoded server CA certificate
 }
 
 message Reply {

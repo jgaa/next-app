@@ -67,6 +67,19 @@ void setSubjects(X509 *cert, const T& subjects) {
     throw runtime_error{"X509_get_subject_name"};
 }
 
+string getTextField(const X509& cert, int nid) {
+    if (auto name = X509_get_subject_name(&cert)) {
+        array<char, 4096> buf{};
+        if (auto res = X509_NAME_get_text_by_NID(name, nid, buf.data(), buf.size()); res >= 0) {
+            return string{buf.data()};
+        } else {
+            throw runtime_error{"X509_NAME_get_text_by_NID"};
+        }
+    } else {
+        throw runtime_error{"X509_get_subject_name"};
+    }
+}
+
 // auto openFile(const std::filesystem::path& path) {
 
 //     struct Closer {
@@ -143,7 +156,7 @@ void setSerial(T *cert, const U serial) {
 
 template <typename T, IntOrUUID U>
 std::pair<X509_Ptr, EVP_PKEY_Ptr> createCert(
-    const std::string& caName,
+    const X509_NAME* issuer,
     const U serial,
     unsigned lifetimeDays,
     unsigned keyBytes,
@@ -155,28 +168,6 @@ std::pair<X509_Ptr, EVP_PKEY_Ptr> createCert(
 
         // Set cert serial
         setSerial(cert, serial);
-        // if constexpr (std::is_same_v<U, int> || std::is_same_v<U, long>) {
-        //     ASN1_INTEGER_set(X509_get_serialNumber(cert), serial);
-        // } else if constexpr (is_same_v<U, boost::uuids::uuid>) {
-        //     if (BIGNUM* bn = BN_new()) {
-        //         ScopedExit bn_cleanup{[bn] {
-        //             BN_free(bn);
-        //         }};
-        //         BN_bin2bn(serial.data, serial.size(), bn);
-        //         if (ASN1_INTEGER* asn1_serial = BN_to_ASN1_INTEGER(bn, nullptr)) {
-        //             ScopedExit asn1_serial_cleanup{[asn1_serial] {
-        //                 ASN1_INTEGER_free(asn1_serial);
-        //             }};
-        //             X509_set_serialNumber(cert, asn1_serial);
-        //         } else {
-        //             throw runtime_error{"BN_to_ASN1_INTEGER failed"};
-        //         }
-        //     } else {
-        //         throw runtime_error{"BN_new failed"};
-        //     }
-        // } else {
-        //     assert(false && "Unsupported type.");
-        // }
 
         // set cert version
         X509_set_version(cert, X509_VERSION_3);
@@ -188,7 +179,9 @@ std::pair<X509_Ptr, EVP_PKEY_Ptr> createCert(
         // To ...
         X509_gmtime_adj(X509_get_notAfter(cert), 60 * 60 * 24 * lifetimeDays);
 
-        setIssuerOrg(cert, caName);
+        if (issuer) {
+            X509_set_issuer_name(cert, issuer);
+        }
 
         setSubjects(cert, subjects);
 
@@ -234,11 +227,17 @@ std::pair<X509_Ptr, EVP_PKEY_Ptr> createCaCert(
         make_pair(caName, "O"s),
     };
 
-    auto [cert, key] = createCert(caName, 1, lifetimeDays, keyBytes, s);
+    auto [cert, key] = createCert({}, 1, lifetimeDays, keyBytes, s);
 
     addExt(cert.get(), NID_basic_constraints, "critical,CA:TRUE");
     addExt(cert.get(), NID_key_usage, "critical,keyCertSign,cRLSign");
     addExt(cert.get(), NID_subject_key_identifier, "hash");
+
+    if (auto name = X509_get_subject_name(cert.get())) {
+        X509_set_issuer_name(cert.get(), name);
+    } else {
+        throw runtime_error{"X509_get_subject_name"};
+    }
 
     if (!X509_sign(cert.get(), key.get(), EVP_sha256())) {
         throw runtime_error{"Error signing CA certificate."};
@@ -256,53 +255,6 @@ std::pair<X509_Ptr, EVP_PKEY_Ptr> createCaCert(
     return make_pair(std::move(cert), std::move(key));
 }
 
-void createClientCert(const std::string& caName,
-                      const std::string& name,
-                      EVP_PKEY *ca_rsa_key,
-                      long serial,
-                      unsigned lifetimeDays,
-                      unsigned keyBytes,
-                      const std::filesystem::path& keyPath,
-                      const std::filesystem::path& certPath) {
-
-    const array<pair<const string&, const string&>, 2> s = {
-        make_pair(caName, "O"s),
-        make_pair(name, "CN"s)
-    };
-
-    auto [cert, key] = createCert(caName, serial, lifetimeDays, keyBytes, s);
-
-    if (!X509_sign(cert.get(), ca_rsa_key, EVP_sha256())) {
-        throw runtime_error{format("Error signing client certificate {}.", serial)};
-    }
-
-    // PEM_write_PrivateKey(openFile(keyPath).get(), key.get(), NULL, NULL, 0, 0, NULL);
-    // PEM_write_X509(openFile(certPath).get(), cert.get());
-}
-
-void createServerCert(const std::string& caName,
-                      const std::string& subject,
-                      EVP_PKEY *ca_rsa_key,
-                      long serial,
-                      unsigned lifetimeDays,
-                      unsigned keyBytes,
-                      const std::filesystem::path& keyPath,
-                      const std::filesystem::path& certPath) {
-
-    const array<pair<const string&, const string&>, 2> s = {
-        make_pair(caName, "O"s),
-        make_pair(subject, "CN"s)
-    };
-
-    auto [cert, key] = createCert(caName, serial, lifetimeDays, keyBytes, s);
-
-    if (!X509_sign(cert.get(), ca_rsa_key, EVP_sha256())) {
-        throw runtime_error{format("Error signing client certificate {}.", serial)};
-    }
-
-    // PEM_write_PrivateKey(openFile(keyPath).get(), key.get(), NULL, NULL, 0, 0, NULL);
-    // PEM_write_X509(openFile(certPath).get(), cert.get());
-}
 
 string expand(string what, bool kindIsCert, unsigned count = 0) {
     static const array<string_view, 2> kind = {"cert", "key"};
@@ -341,42 +293,10 @@ void toBuffer(const T& cert, U& dest) {
     }
 }
 
-// X509_Ptr loadCertFromBuffer(const auto& buffer) {
-//     if (auto* bio = BIO_new_mem_buf(buffer.data(), buffer.size())) {
-//         ScopedExit bio_cleanup{[bio] {
-//             BIO_free(bio);
-//         }};
-//         if (auto cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr)) {
-//             return X509_Ptr{cert};
-//         } else {
-//             throw runtime_error{"PEM_read_bio_X509"};
-//         }
-//     } else {
-//         throw runtime_error{"BIO_new_mem_buf"};
-//     }
-// }
-
-// EVP_PKEY_Ptr loadKeyFromBuffer(const auto& buffer) {
-//     if (auto* bio = BIO_new_mem_buf(buffer.data(), buffer.size())) {
-//         ScopedExit bio_cleanup{[bio] {
-//             BIO_free(bio);
-//         }};
-//         if (auto key = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr)) {
-//             return EVP_PKEY_Ptr{key};
-//         } else {
-//             throw runtime_error{"PEM_read_bio_X509"};
-//         }
-//     } else {
-//         throw runtime_error{"BIO_new_mem_buf"};
-//     }
-// }
-
 string getSubject(const X509& cert) {
     if (auto sname = X509_get_subject_name(&cert)) {
-        if (auto *name = X509_NAME_oneline(sname, nullptr, 0)) {
-            ScopedExit name_cleanup{[name] {
-                OPENSSL_free(name);
-            }};
+        array<char, 4096> buf{};
+        if (auto *name = X509_NAME_oneline(sname, buf.data(), buf.size())) {
             string rval{name};
             return rval;
         } else {
@@ -395,15 +315,22 @@ CertData createCaCert(
     unsigned lifetimeDays,
     unsigned keyBytes) {
 
-    const array<pair<const string&, const string&>, 1> s = {
+    const array<pair<const string, const string>, 2> s = {
         make_pair(caName, "O"s),
+        {"nextappd"s, "OU"s}
     };
 
-    auto [cert, key] = createCert(caName, 1, lifetimeDays, keyBytes, s);
+    auto [cert, key] = createCert({}, 1, lifetimeDays, keyBytes, s);
 
     addExt(cert.get(), NID_basic_constraints, "critical,CA:TRUE");
     addExt(cert.get(), NID_key_usage, "critical,keyCertSign,cRLSign");
     addExt(cert.get(), NID_subject_key_identifier, "hash");
+
+    if (auto name = X509_get_subject_name(cert.get())) {
+        X509_set_issuer_name(cert.get(), name);
+    } else {
+        throw runtime_error{"X509_get_subject_name"};
+    }
 
     if (!X509_sign(cert.get(), key.get(), EVP_sha256())) {
         throw runtime_error{"Error signing CA certificate."};
@@ -421,21 +348,43 @@ CertAuthority::CertAuthority(const CertData& rootCaCert, const CaOptions &option
 {
     rootCa_ = loadCertFromBuffer(rootCaCert.cert);
     rootKey_ = loadKeyFromBuffer(rootCaCert.key);
-    ca_name_ = getSubject(*rootCa_);
+    ca_name_ = getTextField(*rootCa_, NID_organizationName);
+    ca_issuer_ = X509_get_issuer_name(rootCa_.get());
     root_cert_ = rootCaCert.cert;
 }
 
-CertData CertAuthority::createServerCert(const std::string &subject)
+CertData CertAuthority::createServerCert(const std::vector<std::string>& serverSubjects)
 {
-    const array<pair<const string&, const string&>, 2> s = {
+    if (serverSubjects.empty()) {
+        throw runtime_error{"No subjects given for server cert!"};
+    }
+
+    const array<pair<const string, const string>, 2> s = {
         make_pair(ca_name_, "O"s),
-        make_pair(subject, "CN"s)
+        make_pair(serverSubjects.front(), "CN"s)
     };
 
     CertData rval;
     rval.id = newUuid();
 
-    auto [cert, key] = createCert(ca_name_, rval.id, options_.lifetime_days_certs, options_.key_bytes, s);
+    auto [cert, key] = createCert(ca_issuer_, rval.id, options_.lifetime_days_certs, options_.key_bytes, s);
+
+    STACK_OF(GENERAL_NAME)* san_names = sk_GENERAL_NAME_new_null();
+    ScopedExit san_cleanup{[san_names] {
+        sk_GENERAL_NAME_pop_free(san_names, GENERAL_NAME_free);
+    }};
+    for(const auto& dns : serverSubjects) {
+        auto san = GENERAL_NAME_new();
+        san->type = GEN_DNS;
+        san->d.dNSName = ASN1_IA5STRING_new();
+        ASN1_STRING_set(san->d.dNSName, dns.c_str(), dns.size());
+        sk_GENERAL_NAME_push(san_names, san);
+    }
+    X509_EXTENSION* ext = X509V3_EXT_i2d(NID_subject_alt_name, 0, san_names);
+    ScopedExit ext_cleanup{[ext] {
+        X509_EXTENSION_free(ext);
+    }};
+    X509_add_ext(cert.get(), ext, -1);
 
     if (!X509_sign(cert.get(), rootKey_.get(), EVP_sha256())) {
         throw runtime_error{format("Error signing server certificate {}.",
@@ -445,21 +394,22 @@ CertData CertAuthority::createServerCert(const std::string &subject)
     toBuffer(*cert, rval.cert);
     toBuffer(*key, rval.key);
 
-    LOG_DEBUG_N << "Created server cert for " << subject << " with id " << rval.id
+    LOG_DEBUG_N << "Created server cert for " << serverSubjects.front() << " with id " << rval.id
                 << " and " <<  options_.lifetime_days_certs << " days lifetime.";
     return rval;
 }
 
-CertData CertAuthority::createClientCert(const std::string &subject)
+CertData CertAuthority::createClientCert(const std::string &subject, const std::string &userUuid)
 {
-    const array<pair<const string&, const string&>, 2> s = {
+    const array<pair<const string, const string>, 3> s = {
         make_pair(ca_name_, "O"s),
-        make_pair(subject, "CN"s)
+        make_pair(subject, "CN"s),
+        make_pair(userUuid, "OU"s)
     };
 
     CertData rval;
     rval.id = newUuid();
-    auto [cert, key] = createCert(ca_name_, rval.id, options_.lifetime_days_certs, options_.key_bytes, s);
+    auto [cert, key] = createCert(ca_issuer_, rval.id, options_.lifetime_days_certs, options_.key_bytes, s);
 
     if (!X509_sign(cert.get(), rootKey_.get(), EVP_sha256())) {
         throw runtime_error{format("Error signing client certificate {}.",
@@ -469,6 +419,15 @@ CertData CertAuthority::createClientCert(const std::string &subject)
     toBuffer(*cert, rval.cert);
     toBuffer(*key, rval.key);
 
+    {
+        const auto hash = X509_get0_pubkey_bitstr(cert.get());
+        if (hash && hash->length > 0) {
+            rval.hash.assign(reinterpret_cast<const char *>(hash->data), hash->length);
+        } else {
+            throw runtime_error{"X509_get0_pubkey_bitstr"};
+        }
+    }
+
     LOG_DEBUG_N << "Created client cert for " << subject << " with id " << rval.id
                 << " and " <<  options_.lifetime_days_certs << " days lifetime.";
     return rval;
@@ -477,11 +436,6 @@ CertData CertAuthority::createClientCert(const std::string &subject)
 CertData CertAuthority::signCert(const std::string_view &csr, const std::string& cSubject, std::string *certHash)
 {
     auto req = loadReqFromBuffer(csr);
-
-    {
-        ofstream out{"/tmp/csr.pem"};
-        out << csr;
-    }
 
     // Validate that the subject is the expected value
     if (!cSubject.empty()) {

@@ -35,14 +35,10 @@ struct ToNode {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateNode(::grpc::CallbackServerContext *ctx, const pb::CreateNodeReq *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to create node " << req->node().uuid() << " for tenant "
-              << owner_.userContext(ctx)->tenantUuid();
-
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             auto dbopts = uctx->dbOptions();
 
@@ -91,7 +87,7 @@ struct ToNode {
             auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
             auto node = update->mutable_node();
             *node = reply->node();
-            owner_.publish(update);
+            rctx.publishLater(update);
 
             co_return;
         });
@@ -99,14 +95,11 @@ struct ToNode {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateNode(::grpc::CallbackServerContext *ctx, const pb::Node *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to update node " << req->uuid() << " for tenant "
-              << owner_.userContext(ctx)->tenantUuid();
-
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             // Get the existing node
 
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             const auto& dbopts = uctx->dbOptions();
 
@@ -166,7 +159,7 @@ struct ToNode {
             // Notify clients
             auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
             *update->mutable_node() = current;
-            owner_.publish(update);
+            rctx.publishLater(update);
 
             co_return;
         });
@@ -174,14 +167,11 @@ struct ToNode {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MoveNode(::grpc::CallbackServerContext *ctx, const pb::MoveNodeReq *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to move node " << req->uuid() << " for tenant "
-              << owner_.userContext(ctx)->tenantUuid();
-
-    return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+       return unaryHandler(ctx, req, reply,
+                        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             // Get the existing node
 
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             for(auto retry = 0;; ++retry) {
@@ -240,7 +230,7 @@ struct ToNode {
             // Notify clients
             auto update = newUpdate(pb::Update::Operation::Update_Operation_MOVED);
             *update->mutable_node() = current;
-            owner_.publish(update);
+            rctx.publishLater(update);
 
             co_return;
         });
@@ -248,14 +238,11 @@ struct ToNode {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteNode(::grpc::CallbackServerContext *ctx, const pb::DeleteNodeReq *req, pb::Status *reply)
 {
-    LOG_DEBUG << "Request to delete node " << req->uuid() << " for tenant "
-              << owner_.userContext(ctx)->tenantUuid();
-
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             // Get the existing node
 
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             const auto node = co_await owner_.fetcNode(req->uuid(), cuser);
@@ -273,7 +260,7 @@ struct ToNode {
             // Notify clients
             auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
             *update->mutable_node() = node;
-            owner_.publish(update);
+            rctx.publishLater(update);
 
             co_return;
         });
@@ -284,8 +271,8 @@ struct ToNode {
                                                               pb::NodeTree *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::NodeTree *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+        [this, req, ctx] (pb::NodeTree *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             const auto& dbopts = uctx->dbOptions();
 

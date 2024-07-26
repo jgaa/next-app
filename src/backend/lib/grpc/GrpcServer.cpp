@@ -8,11 +8,94 @@ using namespace std;
 namespace json = boost::json;
 namespace asio = boost::asio;
 
+//#include <grpcpp/security/auth_metadata_processor.h>
+#include <grpcpp/support/server_interceptor.h>
+
 namespace nextapp::grpc {
 
 namespace {
-    static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";
-    static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
+
+    // class CustomAuthProcessor : public ::grpc::AuthMetadataProcessor {
+    // public:
+    //     ::grpc::Status Process(
+    //         const ::grpc::AuthMetadataProcessor::InputMetadata& auth_metadata,
+    //         ::grpc::AuthContext* auth_context,
+    //         ::grpc::AuthMetadataProcessor::OutputMetadata* consumed_auth_metadata,
+    //         ::grpc::AuthMetadataProcessor::OutputMetadata* response_metadata
+    //         ) override {
+    //         auto peer_name = auth_context->FindPropertyValues(GRPC_X509_CN_PROPERTY_NAME);
+    //         LOG_DEBUG_N << "Peer name: " << string_view(reinterpret_cast<const char *>(peer_name.data()), peer_name.size());
+    //         if (!peer_name.empty()) {
+    //             // std:: user_identity = peer_cert.front();
+    //             // if (IsUserAllowed(user_identity)) {
+    //             //     return ::grpc::Status::OK;
+    //             // }
+    //         }
+    //         return ::grpc::Status(::grpc::StatusCode::PERMISSION_DENIED, "Unauthorized");
+    //     }
+
+    // private:
+    //     bool IsUserAllowed(const std::string& user_identity) {
+    //         // Implement your logic to determine if the user is allowed
+    //         // For example, check against a whitelist of allowed user identities
+    //         return true; // Replace with actual logic
+    //     }
+    // };
+
+    // using ::grpc::experimental::InterceptionHookPoints;
+    // using ::grpc::experimental::Interceptor;
+    // using ::grpc::experimental::InterceptorBatchMethods;
+    // using ::grpc::experimental::ServerInterceptorFactoryInterface;
+    // using ::grpc::experimental::ServerRpcInfo;
+
+    // class SessionInterceptor : public Interceptor {
+    // public:
+    //     explicit SessionInterceptor(GrpcServer& server)
+    //         : server_{server}
+    //     {
+    //     }
+
+    //     void Intercept(InterceptorBatchMethods* methods) override {
+    //         if (methods->QueryInterceptionHookPoint(InterceptionHookPoints::POST_RECV_INITIAL_METADATA)) {
+    //             // auto* user = server_.userContext(ctx);
+    //             // if (user) {
+    //             //     ctx->AddInitialMetadata("user-uuid", user->userUuid());
+    //             //     ctx->AddInitialMetadata("tenant-uuid", user->tenantUuid());
+    //             //     ctx->AddInitialMetadata("user-kind", pb::User::Kind_Name(user->kind()));
+    //             //     ctx->AddInitialMetadata("session-id", user->sessionId());
+    //             // }
+
+    //             //auto* context = methods->`
+
+    //             auto *meta = methods->GetRecvInitialMetadata();
+    //             for(const auto& [key, value]: *meta) {
+    //                 LOG_TRACE << "Metadata: " << key << " = " << value;
+    //             }
+
+    //             auto channel = methods->GetInterceptedChannel();
+
+    //         }
+    //         methods->Proceed();
+    //     }
+
+    // private:
+    //     GrpcServer& server_;
+    // };
+
+    // class SessionFactory : public ServerInterceptorFactoryInterface {
+    // public:
+    //     explicit SessionFactory(GrpcServer& server)
+    //         : server_{server}
+    //     {
+    //     }
+
+    //     Interceptor* CreateServerInterceptor(ServerRpcInfo* info) override {
+    //         return new SessionInterceptor(server_);
+    //     }
+
+    // private:
+    //     GrpcServer& server_;
+    // };
 
 } // anon ns
 
@@ -67,7 +150,18 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             // Tell owner about us
             LOG_DEBUG << "Remote client " << context_->peer() << " is subscribing to updates as subscriber " << uuid();
             self_ = shared_from_this();
-            owner_.addPublisher(self_);
+
+            try {
+                auto session = owner_.sessionManager().getExistingSession(context_);
+                assert(session);
+                session->user().addPublisher(self_);
+                session_ = session;
+            } catch (const server_err& err) {
+                LOG_WARN << "Caught server error when fetching session: " << err.what();
+                close();
+            }
+
+            //owner_.addPublisher(self_);
             reply();
         }
 
@@ -78,7 +172,10 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 state_ = State::DONE;
             }
 
-            owner_.removePublisher(uuid());
+            if (auto session = session_.lock()) {
+                session->user().removePublisher(uuid());
+            }
+
             self_.reset();
         }
 
@@ -140,6 +237,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         std::mutex mutex_;
         std::shared_ptr<ServerWriteReactorImpl> self_;
         ::grpc::CallbackServerContext *context_;
+        std::weak_ptr<UserContext::Session> session_;
     };
 
     try {
@@ -154,7 +252,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 }
 
 GrpcServer::GrpcServer(Server &server)
-    : server_{server}
+    : server_{server}, sessionManager_{server}
 {
 }
 
@@ -174,7 +272,8 @@ void GrpcServer::start() {
         builder.AddListeningPort(config().address, ::grpc::InsecureServerCredentials());
     } else if (config().tls_mode == "ca") {
         LOG_INFO << "Using CA mode for TLS on gRPC endpoint";
-        ::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY};
+        ::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY};
+        //::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY};
         //::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE};
         ssl_opts.pem_root_certs = server_.ca().rootCert();
         ssl_opts.pem_key_cert_pairs.push_back({cert_.key, cert_.cert});
@@ -186,6 +285,15 @@ void GrpcServer::start() {
     // Feed gRPC our implementation of the RPC's
     service_ = std::make_unique<NextappImpl>(*this);
     builder.RegisterService(service_.get());
+
+    // Set the custom auth processor
+    // auto auth_processor = std::make_unique<CustomAuthProcessor>();
+    // builder.SetAuthMetadataProcessor(std::move(auth_processor));
+
+    // // Set up interceptors
+    // std::vector<std::unique_ptr<ServerInterceptorFactoryInterface>> creators;
+    // creators.push_back(std::unique_ptr<ServerInterceptorFactoryInterface>(new SessionFactory(*this)));
+    // builder.experimental().SetInterceptorCreators(std::move(creators));
 
     // Finally assemble the server.
     grpc_server_ = builder.BuildAndStart();
@@ -216,149 +324,9 @@ void GrpcServer::stop() {
     LOG_DEBUG << "GrpcServer is done.";
 }
 
-void GrpcServer::addPublisher(const std::shared_ptr<Publisher> &publisher)
-{
-    LOG_TRACE_N << "Adding publisher " << publisher->uuid();
-    scoped_lock lock{mutex_};
-    publishers_[publisher->uuid()] = publisher;
-}
-
-void GrpcServer::removePublisher(const boost::uuids::uuid &uuid)
-{
-    LOG_TRACE_N << "Removing publisher " << uuid;
-    scoped_lock lock{mutex_};
-    publishers_.erase(uuid);
-}
-
-void GrpcServer::publish(const std::shared_ptr<pb::Update>& update)
-{
-    scoped_lock lock{mutex_};
-
-    LOG_TRACE_N << "Publishing "
-                << pb::Update::Operation_Name(update->op())
-                << " update to " << publishers_.size() << " subscribers, Json: "
-                << toJsonForLog(*update);
-
-    for(auto& [uuid, weak_pub]: publishers_) {
-        if (auto pub = weak_pub.lock()) {
-            pub->publish(update);
-        } else {
-            LOG_WARN_N << "Failed to get a pointer to publisher " << uuid;
-        }
-    }
-}
-
-
-const std::shared_ptr<UserContext> GrpcServer::userContext(::grpc::CallbackServerContext *ctx) const
-{
-    const auto sid = getSessionId(ctx);
-
-    // TODO: Implement real sessions and authentication
-    lock_guard lock{mutex_};
-    if (auto it = sessions_.find(sid); it != sessions_.end()) {
-        return it->second;
-    }
-
-    pb::UserGlobalSettings settings;
-    settings.set_timezone(string{chrono::current_zone()->name()});
-    pb::User::Kind kind = pb::User::Kind::User_Kind_REGULAR;
-    string tenant;
-
-    const auto uid = system_user;
-
-    // TODO: Remove this when we have proper authentication.
-    boost::asio::co_spawn(server_.ctx(), [&]() -> boost::asio::awaitable<void> {
-            auto res = co_await server_.db().exec(
-                "SELECT u.tenant, t.kind, u.kind, t.state, u.active, s.settings FROM user u "
-                "JOIN tenant t on t.id=u.tenant "
-                "JOIN user_settings s on s.user=u.id WHERE u.id=?",
-                uid);
-
-            enum Cols { TENANT, TENANT_KIND, USER_KIND, TENANT_STATE, USER_ACTIVE, SETTINGS };
-            if (!res.rows().empty()) {
-                const auto& row = res.rows().front();
-                pb::Tenant::State tenant_state;
-                if (!pb::Tenant::State_Parse(toUpper(row.at(TENANT_STATE).as_string()), &tenant_state)) {
-                    LOG_WARN_N << "Failed to parse Tenant::State from " << row.at(TENANT_STATE).as_string();
-                    throw runtime_error{"Failed to parse Tenant::State"};
-                }
-                if (tenant_state == pb::Tenant::State::Tenant_State_SUSPENDED) {
-                    throw server_err{pb::Error::TENANT_SUSPENDED, "Tenant account is suspended"};
-                }
-                bool active = row.at(USER_ACTIVE).as_int64() != 0;
-                if (!active) {
-                    throw server_err{pb::Error::USER_SUSPENDED, "User account is inactive"};
-                }
-                tenant = row.at(TENANT).as_string();
-                if (!pb::User::Kind_Parse(toUpper(row.at(USER_KIND).as_string()), &kind)) {
-                    LOG_WARN_N << "Failed to parse User::Kind from " << row.at(USER_KIND).as_string();
-                    throw runtime_error{"Failed to parse User::Kind"};
-                }
-                if (kind == pb::User::Kind::User_Kind_SUPER) {
-                    pb::Tenant::Kind tenant_kind;
-                    if (!pb::Tenant::Kind_Parse(toUpper(row.at(TENANT_KIND).as_string()), &tenant_kind)) {
-                        LOG_WARN_N << "Failed to parse Tenant::Kind from " << row.at(TENANT_KIND).as_string();
-                        throw runtime_error{"Failed to parse Tenant::Kind"};
-                    }
-                    if (tenant_kind != pb::Tenant::Kind::Tenant_Kind_SUPER) {
-                        LOG_WARN_N << "Tenant " << tenant << " is not a system tenant. "
-                                                             " Downgrading user " << uid << " to regular user.";
-                        kind = pb::User::Kind::User_Kind_REGULAR;
-                    }
-                }
-                auto blob = row.at(SETTINGS).as_blob();
-                pb::UserGlobalSettings tmp_settings;
-                if (tmp_settings.ParseFromArray(blob.data(), blob.size())) {
-                    LOG_DEBUG_N << "Loaded UserGlobalSettings for user " << uid;
-                    settings = tmp_settings;
-                } else {
-                    LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << uid;
-                    throw runtime_error{"Failed to parse UserGlobalSettings"};
-                }
-            }
-            co_return;
-    }, boost::asio::use_future).get();
-
-    auto ux = make_shared<UserContext>(tenant, uid, kind, settings, sid);
-    sessions_[sid] = ux;
-    return ux;
-}
-
-void GrpcServer::updateSessionSettingsForUser(const pb::UserGlobalSettings &settings, ::grpc::CallbackServerContext *ctx)
-{
-    assert(ctx);
-    const auto sid = getSessionId(ctx);
-
-    // TODO: Update the session data for all sessions from that user.
-    // TODO: Notify other servers about the change.
-
-    lock_guard lock{mutex_};
-
-    auto obsolete = std::move(sessions_);
-    sessions_.clear();
-
-    for(const auto& [id, session] : obsolete) {
-        if (session->userUuid() == system_user) {
-            auto kind = session->kind();
-            sessions_[id] = make_shared<UserContext>(system_tenant, system_user, kind, settings, id);
-        }
-    }
-}
-
-boost::uuids::uuid GrpcServer::getSessionId(::grpc::CallbackServerContext *ctx) const
-{
-    auto session_id = ctx->client_metadata().find("session-id");
-    if (session_id == ctx->client_metadata().end()) {
-        LOG_WARN_N << "No session-id in metadata from peer: " << ctx->peer();
-        //throw server_err{pb::Error::AUTH_MISSING_SESSION_ID, "Missing session-id in gRPC request"};
-    }
-
-    return toUuid({session_id->second.data(), session_id->second.size()});
-}
-
 boost::asio::awaitable<void> GrpcServer::loadCert()
 {
-    cert_ = co_await server_.getCert("grpc-server", Server::WithMissingCert::CREATE_SERVER   );
+    cert_ = co_await server_.getCert("grpc-server", Server::WithMissingCert::CREATE_SERVER);
     assert(!cert_.cert.empty());
     assert(!cert_.key.empty());
     co_return;

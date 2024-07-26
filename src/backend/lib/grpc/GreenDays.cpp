@@ -44,9 +44,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                                 pb::CompleteDay *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::CompleteDay *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::CompleteDay *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
@@ -89,9 +89,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetMonth(::grpc::CallbackServerContext *ctx, const pb::MonthReq *req, pb::Month *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Month *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Month *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
@@ -126,9 +126,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetColorOnDay(::grpc::CallbackServerContext *ctx, const pb::SetColorReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-            const auto uctx = owner_.userContext(ctx);
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             optional<string> color;
@@ -160,8 +160,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             *dc->mutable_date() = req->date();
             dc->set_user(cuser);
             dc->set_color(req->color());
-
-            owner_.publish(update);
+            rctx.publishLater(update);
             co_return;
         });
 }
@@ -169,8 +168,8 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetDay(::grpc::CallbackServerContext *ctx, const pb::CompleteDay *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (auto *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+        [this, req, ctx] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             optional<string> color;
@@ -211,7 +210,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                                         ? pb::Update::Operation::Update_Operation_ADDED
                                         : pb::Update::Operation::Update_Operation_UPDATED);
             *update->mutable_day() = *req;
-            owner_.publish(update);
+            rctx.publishLater(update);
             co_return;
         });
 }

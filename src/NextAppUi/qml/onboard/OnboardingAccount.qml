@@ -18,6 +18,8 @@ ColumnLayout  {
         id: settings
         property string userName: ""
         property string userEmail: ""
+        property string companyName: ""
+        property string deviceName: ""
     }
 
     GridLayout {
@@ -52,6 +54,22 @@ ColumnLayout  {
             //color: MaterialDesignStyling.onSurface
             onTextChanged: {
                 settings.companyName = name.text
+                validate()
+            }
+        }
+
+        Label {
+            text: qsTr("This device's name (so you can identify it later)")
+            color: MaterialDesignStyling.onSurfaceVariant
+        }
+
+        TextField {
+            id: deviceName
+            Layout.fillWidth: true
+            text: settings.deviceName
+            //color: MaterialDesignStyling.onSurface
+            onTextChanged: {
+                settings.deviceName = deviceName.text
                 validate()
             }
         }
@@ -139,7 +157,7 @@ ColumnLayout  {
                 //nextClicked()
                 loadingIndicator.visible = true;
                 createCtl.enabled = false
-                NaComm.signup(name.text, email.text, company.text)
+                NaComm.signup(name.text, email.text, company.text, deviceName.text)
             }
         }
 

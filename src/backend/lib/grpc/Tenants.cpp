@@ -7,7 +7,9 @@ namespace {
 
 } // anon ns
 
-::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateTenant(::grpc::CallbackServerContext *ctx, const pb::CreateTenantReq *req, pb::Status *reply)
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateTenant(::grpc::CallbackServerContext *ctx,
+                                                                  const pb::CreateTenantReq *req,
+                                                                  pb::Status *reply)
 {
     // Do some basic checks before we attempt to create anything...
     if (!req->has_tenant() || req->tenant().name().empty()) {
@@ -234,6 +236,7 @@ namespace {
             pb::CreateDeviceResp resp;
             string cert_hash;
             resp.set_deviceid(device.uuid());
+            resp.set_cacert(owner_.server().ca().rootCert());
             try {
                 const auto cert = owner_.server().ca().signCert(device.csr(), device.uuid(), &cert_hash);
                 assert(!cert.cert.empty());
@@ -246,12 +249,12 @@ namespace {
             // Save the device
             res = co_await rctx.dbh->exec(
                 R"(INSERT INTO device
-                    (id, user, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, certHash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
+                    (id, user, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, certHash, name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
                 rctx.uctx->dbOptions(),
                 device.uuid(), user_id, device.hostname(), device.os(), device.osversion(),
                 device.appversion(), device.producttype(), device.productversion(),
-                device.arch(), device.prettyname(), toBlob(cert_hash));
+                device.arch(), device.prettyname(), toBlob(cert_hash), device.name());
 
             if (auto *response = reply->mutable_createdeviceresp()) {
                 response->CopyFrom(resp);
@@ -307,6 +310,18 @@ namespace {
             const auto blob = toBlob(*req);
 
             auto res = co_await rctx.dbh->exec(
+                "SELECT version FROM user_settings where user = ?", cuser);
+            if (!res.rows().empty()) {
+                const auto old_version = res.rows().front().front().as_int64();
+                if (old_version >= req->version()) {
+                    throw server_err{pb::Error::CONFLICT,
+                                     format("Existing version {} is higher or equal than/to the 'new' version {}.",
+                                            old_version, req->version())};
+                    co_return;
+                }
+            }
+
+            res = co_await rctx.dbh->exec(
                 "INSERT INTO user_settings (user, settings) VALUES (?, ?) "
                 "ON DUPLICATE KEY UPDATE settings = ?",
                 rctx.uctx->dbOptions(), cuser, blob, blob);
@@ -316,12 +331,12 @@ namespace {
                                         : pb::Update::Operation::Update_Operation_UPDATED);
 
             *update->mutable_userglobalsettings() = *req;
-            owner_.publish(update);
+            rctx.publishLater(update);
 
             *reply->mutable_userglobalsettings() = *req;
 
-            // TODO: Signal other servers that the settings has changed
-            owner_.updateSessionSettingsForUser(*req, ctx);
+            // TODO: Cluster: Signal other servers that the settings has changed
+            owner_.sessionManager().setUserSettings(toUuid(cuser), *req);
 
             co_return;
         }, __func__);

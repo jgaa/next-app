@@ -43,7 +43,7 @@ auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind k
     return req;
 }
 
-} // anon ns
+} // anon nssu.signUpResponse()
 
 
 ServerComm *ServerComm::instance_;
@@ -55,10 +55,10 @@ ServerComm::ServerComm()
     instance_ = this;
 
     QSettings settings;
-    device_uuid_ = settings.value("device/uuid", QUuid{}).toUuid();
+    device_uuid_ = QUuid{settings.value("device/uuid", QString()).toString()};
     if (device_uuid_.isNull()) {
         device_uuid_ = QUuid::createUuid();
-        settings.setValue("device/uuid", device_uuid_);
+        settings.setValue("device/uuid", device_uuid_.toString());
         LOG_INFO << "Created new device-uuid for this device: " << device_uuid_.toString();
     }
 
@@ -66,6 +66,10 @@ ServerComm::ServerComm()
             this, &ServerComm::errorOccurred);
 
     setDefaulValuesInUserSettings();
+
+    if (!settings.contains("deviceName")) {
+        settings.setValue("deviceName", QSysInfo::machineHostName());
+    }
 
     if (settings.value("onboarding", false).toBool()
         && !settings.value("server/url", QString{}).toString().isEmpty()) {
@@ -103,6 +107,9 @@ void ServerComm::start()
         LOG_DEBUG_N << "Loading our private client cert/key.";
         sslConfig.setLocalCertificate(QSslCertificate{cert.toUtf8()});
         sslConfig.setPrivateKey(QSslKey{settings.value("server/clientKey").toByteArray(), QSsl::Rsa});
+        auto caCert = QSslCertificate{settings.value("server/caCert").toByteArray()};
+        sslConfig.setCaCertificates({caCert});
+        sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
     }
 
     // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
@@ -696,7 +703,8 @@ void ServerComm::setSignupServerAddress(const QString &address)
     connectToSignupServer();
 }
 
-void ServerComm::signup(const QString &name, const QString &email, const QString &company)
+void ServerComm::signup(const QString &name, const QString &email,
+                        const QString &company, const QString &deviceName)
 {
     // Create CSR
     // Send signup request
@@ -731,6 +739,7 @@ void ServerComm::signup(const QString &name, const QString &email, const QString
     auto& dev = req.device();
     dev.setUuid(deviceUuid().toString(QUuid::WithoutBraces));
     dev.setHostName(QSysInfo::machineHostName());
+    dev.setName(deviceName.isEmpty() ? dev.hostName() : deviceName);
     dev.setOs(QSysInfo::kernelType());
     dev.setOsVersion(QSysInfo::kernelVersion());
     dev.setAppVersion(NEXTAPP_VERSION);
@@ -758,6 +767,7 @@ void ServerComm::signup(const QString &name, const QString &email, const QString
                 settings.setValue("server/auto_login", true);
                 settings.setValue("server/clientCert", su.signUpResponse().cert());
                 settings.setValue("server/clientKey", key);
+                settings.setValue("server/caCert", su.signUpResponse().caCert());
                 addMessage(tr("Your account was successfully created!"));
                 signup_status_ = SignupStatus::SIGNUP_SUCCESS;
                 QMetaObject::invokeMethod(qApp, [this]() {

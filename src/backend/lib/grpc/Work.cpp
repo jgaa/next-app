@@ -257,8 +257,8 @@ struct ToWorkSession {
                                                                              const pb::Empty *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, ctx] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+        [this, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             // TODO: Handle overlap between days
@@ -311,8 +311,8 @@ struct ToWorkSession {
                                                                        const pb::DeleteWorkReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, ctx, req] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+        [this, ctx, req] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             auto dbopts = uctx->dbOptions();
             dbopts.reconnect_and_retry_query = false;
@@ -325,8 +325,7 @@ struct ToWorkSession {
                 ws.set_id(req->worksessionid());
                 auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
                 *update->mutable_work() = ws;
-                owner_.publish(update);
-
+                rctx.publishLater(update);
                 *reply->mutable_work() = ws;
             }
 
@@ -337,8 +336,8 @@ struct ToWorkSession {
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetWorkSessions(::grpc::CallbackServerContext *ctx, const pb::GetWorkSessionsReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, ctx, req] (pb::Status *reply) -> boost::asio::awaitable<void> {
-            const auto uctx = owner_.userContext(ctx);
+        [this, ctx, req] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             const auto &dbopts = uctx->dbOptions();
 

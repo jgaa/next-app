@@ -1,11 +1,28 @@
 
+
 #include "nextapp/UserContext.h"
 #include "nextapp/logging.h"
 #include "nextapp/util.h"
 
+#include "nextapp/Server.h"
+#include "nextapp/errors.h"
+#include "grpc/grpc_security_constants.h"
+
 using namespace std;
 
 namespace nextapp {
+
+namespace {
+
+auto to_string_view(::grpc::string_ref ref) {
+    return string_view{ref.data(), ref.size()};
+}
+
+auto to_string_view(const boost::mysql::blob_view& blob) {
+    return string_view{reinterpret_cast<const char *>(blob.data()), blob.size()};
+}
+
+} // anon ns
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone, bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions)
     : user_uuid_{userUuid},
@@ -27,8 +44,8 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid,
                          pb::User::Kind kind,
-                         const pb::UserGlobalSettings &settings, boost::uuids::uuid sessionId)
-    : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings), sessionid_{sessionId}
+                         const pb::UserGlobalSettings &settings)
+    : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings)
     , kind_{kind} {
     try {
         if (settings_.timezone().empty()) [[unlikely]] {
@@ -50,9 +67,217 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
     db_options_.reconnect_and_retry_query = true;
 }
 
+void UserContext::addPublisher(const std::shared_ptr<Publisher> &publisher)
+{
+    unique_lock lock{mutex_};
+    publishers_.push_back(publisher);
+}
+
+void UserContext::removePublisher(const boost::uuids::uuid &uuid)
+{
+    unique_lock lock{mutex_};
+    ranges::remove_if(publishers_, [uuid](const auto& p) {
+        if (auto pub = p.lock()) {
+            return pub->uuid() == uuid;
+        } else {
+            return true; // Always remove dangling pointers
+        }
+    });
+}
+
+void UserContext::publish(const std::shared_ptr<pb::Update> &update)
+{
+    LOG_TRACE_N << "Publishing "
+                << pb::Update::Operation_Name(update->op())
+                << " update to " << publishers_.size() << " subscribers";// , Json: "
+                //<< toJsonForLog(*update);
+
+    shared_lock lock{mutex_};
+
+    for(auto& weak_pub: publishers_) {
+        if (auto pub = weak_pub.lock()) {
+            pub->publish(update);
+        } else {
+            LOG_WARN_N << "Failed to get a pointer to a publisher ";
+        }
+    }
+}
+
 boost::uuids::uuid UserContext::newUuid()
 {
     return ::nextapp::newUuid();
+}
+
+boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::getSession(
+    const ::grpc::ServerContextBase* context)
+{
+    if (!context->auth_context()->IsPeerAuthenticated()) {
+        throw server_err{pb::Error::AUTH_FAILED, "Not authenticated by gRPC!"};
+    }
+
+    string_view device_id;
+    {
+        auto v = context->auth_context()->FindPropertyValues(GRPC_X509_CN_PROPERTY_NAME);
+        if (v.empty()) {
+            throw server_err{pb::Error::NOT_FOUND, "Missing device ID in client cert"};
+        }
+        device_id = to_string_view(v.front());
+    }
+
+    const auto device_uuid = toUuid(device_id);
+
+    {
+        // Happy path. Just return an existing session.
+        shared_lock lock{mutex_};
+        if (auto it = sessions_.find(device_uuid); it != sessions_.end()) {
+            co_return it->second->shared_from_this();
+        }
+    }
+
+    auto add_session = [this, context](shared_ptr<UserContext>& ux, const boost::uuids::uuid& devid) {
+        auto session = make_shared<UserContext::Session>(ux, devid);
+        sessions_[devid] = session.get();
+        ux->addSession(session);
+        LOG_INFO << "Added user-session << " << devid << " for user " << ux->userUuid()
+                  << " from IP " << context->peer();
+        return session;
+    };
+
+    // Fetch or create a user context.
+    auto ucx = co_await getUserContext(device_uuid, context);
+    assert(ucx);
+
+    auto session = make_shared<UserContext::Session>(ucx, device_uuid);
+    {
+        unique_lock lock{mutex_};
+        sessions_[device_uuid] = session.get();
+        ucx->addSession(session);
+    }
+    LOG_INFO << "Added user-session << " << device_uuid << " for user " << ucx->userUuid()
+             << " from IP " << context->peer();
+    co_return session;
+}
+
+std::shared_ptr<UserContext::Session> SessionManager::getExistingSession(const ::grpc::ServerContextBase *context)
+{
+    if (!context->auth_context()->IsPeerAuthenticated()) {
+        throw server_err{pb::Error::AUTH_FAILED, "Not authenticated by gRPC!"};
+    }
+    auto v = context->auth_context()->FindPropertyValues(GRPC_X509_CN_PROPERTY_NAME);
+    auto device_id = to_string_view(v.front());
+    const auto device_uuid = toUuid(device_id);
+
+    shared_lock lock{mutex_};
+    if (auto it = sessions_.find(device_uuid); it != sessions_.end()) {
+        return it->second->shared_from_this();
+    }
+
+    throw server_err{pb::Error::AUTH_FAILED, "Session not found"};
+}
+
+void SessionManager::setUserSettings(const boost::uuids::uuid &userUuid, pb::UserGlobalSettings settings)
+{
+    unique_lock lock{mutex_};
+    if (auto it = users_.find(userUuid); it != users_.end()) {
+        it->second->setSettings(settings);
+    } else {
+        LOG_WARN_N << "User " << userUuid << " not found in cache";
+    }
+}
+
+boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserContext(
+    const boost::uuids::uuid &deviceId,
+    const ::grpc::ServerContextBase *context)
+{
+
+    auto db = co_await server_.db().getConnection();
+
+    const auto devid = to_string(deviceId);
+
+    string uid;
+
+    {
+        auto res = co_await db.exec(
+            "SELECT user, certHash FROM device where id=? ", devid);
+        if (res.rows().empty()) {
+            LOG_WARN << "Failed to lookup device " << devid << " in the database, although the user appears to have a signed cert with that ID.";
+            throw server_err{pb::Error::NOT_FOUND, "Device not found"};
+        }
+        enum Cols { USER, CERT_HASH };
+
+        const auto& row = res.rows().front();
+        uid = row.at(USER).as_string();
+
+        {
+            // Happy path
+            shared_lock lock{mutex_};
+            if (auto id = users_.find(deviceId) ; id != users_.end()) {
+                LOG_TRACE << "UserContext: Found user " << uid << " in cache";
+                co_return id->second;
+            }
+        }
+
+        // TODO MAYBE: Validate the cert hash in the database aginst the presented certificate.
+        //             gRPC just validates the that the cert is signed. We could check the hash
+        //             to make 100% sure that the device match the presented cert.
+    }
+
+    auto res = co_await db.exec(
+        "SELECT u.tenant, t.kind, u.kind, t.state, u.active, s.settings FROM user u "
+        "JOIN tenant t on t.id=u.tenant "
+        "LEFT JOIN user_settings s on s.user=u.id "
+        "WHERE u.id=? ", uid);
+
+    enum Cols { TENANT, TENANT_KIND, USER_KIND, TENANT_STATE, USER_ACTIVE, SETTINGS };
+    if (res.rows().empty()) [[unlikely]] {
+        LOG_ERROR << "Database inconsistency found. A device " << devid
+                  << " is linked to a user " << uid << " that does not exist.";
+        throw server_err{pb::Error::AUTH_FAILED, "User not found"};
+    } else {
+        const auto& row = res.rows().front();
+        const auto tenant = row.at(TENANT).as_string();
+        pb::Tenant::State tenant_state;
+        if (!pb::Tenant::State_Parse(toUpper(row.at(TENANT_STATE).as_string()), &tenant_state)) {
+            LOG_WARN_N << "Failed to parse Tenant::State from " << row.at(TENANT_STATE).as_string();
+            throw runtime_error{"Failed to parse Tenant::State"};
+        }
+        if (tenant_state == pb::Tenant::State::Tenant_State_SUSPENDED) {
+            throw server_err{pb::Error::TENANT_SUSPENDED, "Tenant account is suspended"};
+        }
+        bool active = row.at(USER_ACTIVE).as_int64() != 0;
+        if (!active) {
+            throw server_err{pb::Error::USER_SUSPENDED, "User account is inactive"};
+        }
+        pb::UserGlobalSettings tmp_settings;
+        if (row.at(SETTINGS).is_blob()) {
+            const auto blob = row.at(SETTINGS).as_blob();
+            if (!tmp_settings.ParseFromArray(blob.data(), blob.size())) {
+                LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << uid;
+                throw runtime_error{"Failed to parse UserGlobalSettings"};
+            }
+        }
+
+        pb::User::Kind ukind;
+        if (!pb::User::Kind_Parse(toUpper(row.at(USER_KIND).as_string()), &ukind)) {
+            LOG_WARN_N << "Failed to parse User::Kind from " << row.at(USER_KIND).as_string();
+            throw runtime_error{"Failed to parse User::Kind"};
+        }
+
+        if (tenant_state == pb::Tenant::State::Tenant_State_PENDING_ACTIVATION) {
+            co_await db.exec("UPDATE tenant SET state='active' WHERE id=?", tenant);
+            LOG_INFO << "Activated pending tenant " << tenant << " because user " << uid << " logged in.";
+        }
+
+        auto ucx = make_shared<UserContext>(tenant, uid, ukind, tmp_settings);
+        {
+            unique_lock lock{mutex_};
+            users_[toUuid(uid)] = ucx;
+        }
+        co_return ucx;
+    }
+
+    assert(false);
+    throw runtime_error{"Failed to create UserContext"};
 }
 
 

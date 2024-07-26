@@ -27,10 +27,19 @@ namespace nextapp::grpc {
 // Use this so that we don't forget to set the operation
 std::shared_ptr<nextapp::pb::Update> newUpdate(nextapp::pb::Update::Operation op);
 
-struct RequestCtx {
+class RequestCtx {
+public:
+    RequestCtx(std::shared_ptr<UserContext::Session> session)
+        : session_{std::move(session)}, uctx{&session->user()} {}
+
     std::optional<jgaa::mysqlpool::Mysqlpool::Handle> dbh;
-    std::shared_ptr<UserContext> uctx;
+    UserContext *uctx{};
     std::vector<std::shared_ptr<nextapp::pb::Update>> updates;
+
+    // UserContext& uctx() {
+    //     assert(session);
+    //     return session->user();
+    // }
 
     void publishLater(std::shared_ptr<nextapp::pb::Update> update) {
         updates.emplace_back(update);
@@ -39,6 +48,20 @@ struct RequestCtx {
     nextapp::pb::Update& publishLater(pb::Update::Operation op) {
         return *updates.emplace_back(newUpdate(op));
     }
+
+    UserContext::Session& session() const noexcept {
+        assert(session_);
+        return *session_;
+    }
+
+    UserContext::Session& session() noexcept {
+        assert(session_);
+        return *session_;
+    }
+
+
+private:
+    std::shared_ptr<UserContext::Session> session_;
 };
 
 template <typename T, typename Arg>
@@ -53,7 +76,6 @@ concept UnaryFnWithContext = requires (T fn, Arg *reply, RequestCtx& rctx) {
 
 class GrpcServer {
 public:
-
     template <ProtoMessage T>
     std::string toJsonForLog(const T& obj) {
         return toJson(obj, server().config().options.log_protobuf_messages);
@@ -97,21 +119,6 @@ public:
 
         abort();
     }
-
-    class Publisher {
-    public:
-        virtual ~Publisher() = default;
-
-        virtual void publish(const std::shared_ptr<pb::Update>& message) = 0;
-        virtual void close() = 0;
-
-        auto& uuid() const noexcept {
-            return uuid_;
-        }
-
-    private:
-        const boost::uuids::uuid uuid_ = newUuid();
-    };
 
     /*! RPC implementation
      *
@@ -176,22 +183,23 @@ public:
 
             auto* reactor = ctx->DefaultReactor();
 
-            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn=std::move(fn), name]() -> boost::asio::awaitable<void> {
+            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn=std::move(fn), name]() mutable -> boost::asio::awaitable<void> {
                     try {
                         LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
+
+                        RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx)};
 
                         if constexpr (UnaryFnWithoutContext<FnT, ReplyT>) {
                             co_await fn(reply);
                         } else if constexpr (UnaryFnWithContext<FnT, ReplyT>) {
-                            RequestCtx rctx;
-                            rctx.uctx = owner_.userContext(ctx);
                             rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
                             co_await fn(reply, rctx);
                             if (!rctx.updates.empty()) {
                                 LOG_TRACE << std::format("Publishing {} delayed updates to user {} for {}.",
                                                          rctx.updates.size(), name, rctx.uctx->userUuid());
+
                                 for (auto& update : rctx.updates) {
-                                    owner_.publish(update);
+                                    rctx.uctx->publish(update);
                                 }
                             }
                         } else if constexpr (!UnaryFnWithoutContext<FnT, ReplyT *> && !UnaryFnWithContext<FnT, ReplyT *>) {
@@ -239,9 +247,6 @@ public:
         return server_.config().grpc;
     }
 
-    void addPublisher(const std::shared_ptr<Publisher>& publisher);
-    void removePublisher(const boost::uuids::uuid& uuid);
-    void publish(const std::shared_ptr<pb::Update>& update);
     boost::asio::awaitable<void> validateNode(const std::string& parentUuid, const std::string& userUuid);
     boost::asio::awaitable<void> validateNode(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string& parentUuid, const std::string& userUuid);
     boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid, std::string *name = {});
@@ -256,7 +261,8 @@ public:
         return active_;
     }
 
-    const std::shared_ptr<UserContext> userContext(::grpc::CallbackServerContext *ctx) const;
+    //const std::shared_ptr<UserContext> userContext(::grpc::CallbackServerContext *ctx) const;
+    //boost::asio::awaitable<std::shared_ptr<UserContext>> userContext(::grpc::CallbackServerContext *ctx) const;
 
     // Called when an action change status to done
     boost::asio::awaitable<void> handleActionDone(const pb::Action& orig,
@@ -297,9 +303,13 @@ public:
     // The matching actions are inserted in events.
     boost::asio::awaitable<void> fetchActionsForCalendar(pb::CalendarEvents& events, RequestCtx& rctx, const time_t& day);
 
-    void updateSessionSettingsForUser(const pb::UserGlobalSettings& settings, ::grpc::CallbackServerContext *ctx);
+    void handleSession(::grpc::CallbackServerContext *ctx);
 
-    boost::uuids::uuid getSessionId(::grpc::CallbackServerContext *ctx) const;
+    SessionManager& sessionManager() {
+        return sessionManager_;
+    }
+
+    std::shared_ptr<UserContext::Session> session(::grpc::ServerContextBase& ctx);
 
 private:
     // The Server instance where we get objects in the application, like config and database
@@ -312,6 +322,8 @@ private:
     }
 
     boost::asio::awaitable<void> loadCert();
+
+    SessionManager sessionManager_;
 
     // An instance of our service, compiled from code generated by protoc
     std::unique_ptr<NextappImpl> service_;

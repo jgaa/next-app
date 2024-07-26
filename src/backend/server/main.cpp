@@ -23,6 +23,7 @@
 #include "nextapp/logging.h"
 #include "nextapp/Server.h"
 #include "nextapp/errors.h"
+#include "nextapp/GrpcServer.h"
 
 using namespace std;
 using namespace nextapp;
@@ -100,9 +101,12 @@ int main(int argc, char* argv[]) {
         string log_level_console = "info";
         string log_level = "info";
         string log_file;
+        string client_certs;
+        string client_cert_uuid;
         bool trunc_log = false;
         bool bootstrap = false;
-        bool bootstrap_ca = false;
+        bool admin_cert = false;
+        bool create_server_cert = false;
 
         general.add_options()
             ("help,h", "Print help and exit")
@@ -154,15 +158,25 @@ int main(int argc, char* argv[]) {
             ;
 
         po::options_description ca("Certs");
-        svr.add_options()
+        ca.add_options()
             ("cert-lifetime", po::value(&config.ca.lifetime_days_certs)->default_value(config.ca.lifetime_days_certs),
              "Life-time in days for self signed TLS certificates")
             ("cert-key-size", po::value(&config.ca.key_bytes)->default_value(config.ca.key_bytes),
              "Size of keys in self-signed carts (in bytes)")
-            ("server-fqdn", po::value(&config.options.fqdn)->default_value(config.options.fqdn),
-             "The fqdn to use in the server-certificate.")
-            ("bootstrap-ca", po::bool_switch(&bootstrap_ca),
-             "Bootstrap the CA. Creates a new CA certificate and and server certificate. Exits when done.")
+            ("server-fqdn", po::value(&config.options.server_cert_dns_names),
+             "The fqdn to use in the server-certificate. Can be repeated to allow multiple aliases. "
+             "The server cert is created if it is missing when the server starts, for example during initial bootstrap. "
+             "It is also created when the --create-server-cert option is used.")
+            ("create-server-cert", po::bool_switch(&create_server_cert),
+             "Re-creates the serverts TLS cert and key. Exits when done.")
+            ("create-client-cert", po::value(&client_certs),
+             "Create a client-certificate and key and store it files beginning with [name]. "
+             "The files will be overwritten if they exists. "
+             "Exits when done.")
+            ("with-user-uuid", po::value(&client_cert_uuid),
+             "Used with --create-client-cert to create a client-certificate for a specific user.")
+            ("admin-cert", po::bool_switch(&admin_cert),
+             "Used with --create-client-cert to create a client-certificate for the default admin user. For example for signupd.")
             ;
 
         po::options_description db("Database");
@@ -270,15 +284,36 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (bootstrap_ca) {
+        if (!client_certs.empty()) {
             LOG_INFO << appname << ' ' << APP_VERSION << ".";
             try {
                 Server server{config};
-                server.bootstrapCa();
+                boost::uuids::uuid userUuid;
+                if (admin_cert) {
+                    userUuid = toUuid(nextapp::Server::system_user);
+                } else if (!client_cert_uuid.empty()){
+                    userUuid = toUuid(client_cert_uuid);
+                } else {
+                    LOG_ERROR << "You must specify --with-user-uuid=uuid or --admin-cert to create a client-certificate.";
+                    return -7;
+                }
+                server.createClientCert(client_certs, userUuid);
                 return 0; // Done
             } catch (const exception& ex) {
-                LOG_ERROR << "Caught exception during bootstrapping CA: " << ex.what();
-                return -5;
+                LOG_ERROR << "Caught exception during client-certificate creation: " << ex.what();
+                return -6;
+            }
+        }
+
+        if (create_server_cert) {
+            LOG_INFO << appname << ' ' << APP_VERSION << ".";
+            try {
+                Server server{config};
+                server.recreateServerCert();
+                return 0; // Done
+            } catch (const exception& ex) {
+                LOG_ERROR << "Caught exception during server-certificate creation: " << ex.what();
+                return -8;
             }
         }
     }

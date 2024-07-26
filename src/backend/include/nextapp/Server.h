@@ -21,6 +21,8 @@ class GrpcServer;
 class Server {
 public:
     static constexpr uint latest_version = 9;
+    static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";
+    static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
 
     struct BootstrapOptions {
         bool drop_old_db = false;
@@ -39,7 +41,9 @@ public:
 
     void bootstrap(const BootstrapOptions& opts);
 
-    void bootstrapCa();
+    void createClientCert(const std::string& fileName, const boost::uuids::uuid& user);
+
+    void recreateServerCert();
 
     const auto& config() const noexcept {
         return config_;
@@ -70,8 +74,7 @@ public:
 
     enum class WithMissingCert {
         FAIL,
-        CREATE_SERVER,
-        CREATE_CLIENT
+        CREATE_SERVER
     };
 
     boost::asio::awaitable<CertData> getCert(std::string_view id, WithMissingCert what);
