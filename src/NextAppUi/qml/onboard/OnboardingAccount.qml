@@ -23,7 +23,7 @@ ColumnLayout  {
     }
 
     GridLayout {
-        columns: 2
+        columns: NaCore.isMobile ? 1 : 2
         Layout.margins: 20
 
         Label {
