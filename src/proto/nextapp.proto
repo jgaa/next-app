@@ -446,7 +446,9 @@ message SetColorReq {
     string color = 2; // empty string: unset the color
 }
 
-message Ping {}
+message PingReq {}
+
+message PingResp {}
 
 message Timestamp {
     uint64 seconds = 1; // C++ time_t UNIX timestamp.
@@ -534,7 +536,7 @@ message Update {
     Operation op = 2;
 
     oneof what {
-        Ping ping = 10;
+        PingResp ping = 10;
         CompleteDay day = 11;
         ColorAtDay DayColor = 12;
         Tenant tenant = 13;
@@ -703,11 +705,13 @@ message Status {
         ActionCategory actionCategory = 23;
         ActionCategories actionCategories = 24;
         CreateDeviceResp createDeviceResp = 25;
+        ServerInfo serverInfo = 26;
     }
 }
 
 service Nextapp {
-    rpc GetServerInfo(Empty) returns (ServerInfo) {}
+    rpc Ping(PingReq) returns (Status) {}
+    rpc GetServerInfo(Empty) returns (Status) {}
     rpc GetNodes(GetNodesReq) returns (NodeTree) {}
     //rpc NodeChanged(NodeUpdate) returns (Status) {}
     rpc GetDayColorDefinitions(Empty) returns (DayColorDefinitions) {}

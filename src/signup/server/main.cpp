@@ -141,6 +141,8 @@ int main(int argc, char* argv[]) {
              "Path to the server certificate")
             ("grpc-server-key", po::value(&config.grpc_signup.server_key),
              "Path to the server key")
+            ("timer-interval", po::value(&config.options.timer_interval_sec)->default_value(config.options.timer_interval_sec),
+             "Number seconds between the internal timer wakes up.")
             ;
 
         po::options_description cluster("Cluster");

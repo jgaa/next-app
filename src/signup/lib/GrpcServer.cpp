@@ -218,7 +218,11 @@ void GrpcServer::startNextapp()
         throw runtime_error{"Failed to create gRPC channel credentials."};
     }
 
-    auto channel = ::grpc::CreateChannel(server_address, creds);
+    ::grpc::ChannelArguments args;
+    args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, nextapp_config().keepalive_time_sec * 1000);
+    args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, nextapp_config().keepalive_timeout_sec * 1000);
+
+    auto channel = ::grpc::CreateCustomChannel(server_address, creds, args);
     nextapp_stub_ = nextapp::pb::Nextapp::NewStub(channel);
 
     // Test the connection to the NextApp server.
@@ -226,14 +230,16 @@ void GrpcServer::startNextapp()
     auto f = asio::co_spawn(server().ctx(), [this]() -> asio::awaitable<void> {
         ::grpc::ClientContext ctx;
 
-        auto resp = co_await callRpc<nextapp::pb::ServerInfo>(
+        auto resp = co_await callRpc<nextapp::pb::Status>(
             nextapp::pb::Empty{},
             &stub_t::async::GetServerInfo,
             asio::use_awaitable);
 
         LOG_INFO << "Connected to nextapp-server at " << nextapp_config().address;
-        for(const auto& kv : resp.properties()) {
-            LOG_INFO << kv.key() << ": " << kv.value();
+        if (resp.has_serverinfo()) {
+            for(const auto& kv : resp.serverinfo().properties()) {
+                LOG_INFO << kv.key() << ": " << kv.value();
+            }
         }
 
         co_return;
@@ -246,6 +252,8 @@ void GrpcServer::startNextapp()
         LOG_ERROR << "Failed to connect to NextApp server: " << ex.what();
         throw;
     }
+
+    startNextTimer(server_.config().options.timer_interval_sec);
 }
 
 void GrpcServer::startSignup()
@@ -274,6 +282,12 @@ void GrpcServer::startSignup()
         throw runtime_error{"Unknown signup-server TLS mode: " + signup_config().tls_mode};
     }
 
+    // Set up keepalive options
+    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, server_.config().grpc_signup.keepalive_time_sec * 1000);
+    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, server_.config().grpc_signup.keepalive_timeout_sec * 1000);
+    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+    builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 1);
+
     // Feed gRPC our implementation of the RPC's
     service_ = std::make_unique<SignupImpl>(*this);
     builder.RegisterService(service_.get());
@@ -299,4 +313,66 @@ signup::pb::Error translateError(const pb::Error &e) {
     }
 }
 
+void GrpcServer::startNextTimer(size_t seconds)
+{
+    if (!timer_) {
+        timer_.emplace(server_.ctx());
+    }
+
+    try {
+        timer_->expires_after(std::chrono::seconds(server_.config().options.timer_interval_sec));
+    } catch(const std::exception &ex) {
+        if (server_.is_done()) {
+            LOG_DEBUG_N << "Failed to set timer, but it appears as we are shutting down.";
+            return;
+        }
+        LOG_ERROR << "Failed to set timer: " << ex.what();
+        LOG_ERROR << "Shutting down!";
+        server_.stop();
+    }
+
+    timer_->async_wait([this](const boost::system::error_code &ec) {
+        if (ec) {
+            LOG_DEBUG_N << "Timer cancelled: " << ec.message();
+            return;
+        }
+        LOG_DEBUG << "Timer fired. Refreshing server info.";
+        try {
+            onTimer();
+        } catch(const std::exception &ex) {
+            LOG_ERROR << "Caught exceptin from onTimer(): " << ex.what();
+        }
+        startNextTimer(server_.config().options.timer_interval_sec);
+    });
+}
+
+void GrpcServer::onTimer()
+{
+    if (server_.is_done()) {
+        LOG_DEBUG_N << "Timer fired, but server is done. Ignoring.";
+        return;
+    }
+
+    // Test the connection to the NextApp server.
+    // Create asio C++20 coro scope
+    auto f = asio::co_spawn(server().ctx(), [this]() -> asio::awaitable<void> {
+        ::grpc::ClientContext ctx;
+
+        try {
+            auto resp = co_await callRpc<nextapp::pb::Status>(
+                nextapp::pb::PingReq{},
+                &stub_t::async::Ping,
+                asio::use_awaitable);
+
+            LOG_DEBUG_N << "Still connected to nextapp-server at " << nextapp_config().address;
+        } catch(const std::exception &ex) {
+            LOG_ERROR << "Failed to ping nextapp-server: " << ex.what();
+        }
+
+        co_return;
+
+    }, asio::use_future);
+}
+
 } // ns
+

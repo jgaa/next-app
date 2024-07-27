@@ -23,10 +23,9 @@
 #include "nextapp.grpc.pb.h"
 
 #include "nextapp/util.h"
-
+#include "nextapp/error_mapping.h"
 
 namespace nextapp::grpc {
-
 
 signup::pb::Error translateError(const nextapp::pb::Error& e);
 
@@ -100,7 +99,7 @@ public:
                 auto fn = [this, cd](const ::grpc::Status& status) mutable {
                     boost::system::error_code ec;
                     if (!status.ok()) {
-                        ec = boost::system::error_code{status.error_code(), boost::system::system_category()};
+                        ec = make_error_code(status.error_code());
                     }
 
                     LOG_TRACE << "RPC call completed. Status: " << status.error_message();
@@ -216,6 +215,8 @@ private:
 
     void startNextapp();
     void startSignup();
+    void startNextTimer(size_t seconds);
+    void onTimer();
 
     // Thread-safe method to get a unique client-id for a new RPC.
     static size_t getNewClientId() {
@@ -233,6 +234,7 @@ private:
     std::atomic_bool active_{false};
     std::unique_ptr<nextapp::pb::Nextapp::Stub> nextapp_stub_;
     std::string session_id = newUuidStr();
+    std::optional<boost::asio::steady_timer> timer_;
 };
 
 } // ns

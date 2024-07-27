@@ -99,25 +99,42 @@ namespace {
 
 } // anon ns
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::Ping(::grpc::CallbackServerContext *ctx, const pb::PingReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+    [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        LOG_DEBUG << "Ping from session " << rctx.session().sessionId() << " for user "  << rctx.uctx->userUuid() << " at " << ctx->peer();
+        co_return;
+    }, __func__);
+}
+
 ::grpc::ServerUnaryReactor *
 GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
-                                       const pb::Empty *,
-                                       pb::ServerInfo *reply)
+                                       const pb::Empty *req,
+                                       pb::Status *reply)
 {
     assert(ctx);
     assert(reply);
 
-    auto add = [&reply](string key, string value) {
-        auto prop = reply->mutable_properties()->Add();
-        prop->set_key(key);
-        prop->set_value(value);
-    };
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-    add("version", NEXTAPP_VERSION);
+        auto *si = reply->mutable_serverinfo();
 
-    auto* reactor = ctx->DefaultReactor();
-    reactor->Finish(::grpc::Status::OK);
-    return reactor;
+        if (!si) {
+            throw runtime_error{"Could not allocate serverinfo"};
+        }
+
+
+        auto add = [&reply, si](string key, string value) {
+            auto prop = si->mutable_properties()->Add();
+            prop->set_key(key);
+            prop->set_value(value);
+        };
+
+        add("version", NEXTAPP_VERSION);
+                            co_return;
+    }, __func__);
 }
 
 ::grpc::ServerWriteReactor<pb::Update> *GrpcServer::NextappImpl::SubscribeToUpdates(::grpc::CallbackServerContext *context, const pb::UpdatesReq *request)
@@ -281,6 +298,14 @@ void GrpcServer::start() {
     } else {
         throw runtime_error{"Unknown TLS mode: " + config().tls_mode};
     }
+
+    // Set up keepalive options
+    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, config().keepalive_time_sec * 1000);
+    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, config().keepalive_timeout_sec * 1000);
+    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+    builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, config().min_recv_ping_interval_without_cata_sec * 1000);
+    builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
+    builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, config().max_ping_strikes);
 
     // Feed gRPC our implementation of the RPC's
     service_ = std::make_unique<NextappImpl>(*this);

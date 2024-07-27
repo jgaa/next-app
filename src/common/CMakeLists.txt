@@ -4,7 +4,9 @@ project(common VERSION ${NEXTAPP_VERSION} LANGUAGES CXX)
 
 add_library(${PROJECT_NAME}
     ${NEXTAPP_ROOT}/include/nextapp/util.h
+    ${NEXTAPP_ROOT}/include/nextapp/error_mapping.h
     util.cpp
+    error_mapping.cpp
 )
 
 # clang complains about unknown g++ warnings enabled by the date library

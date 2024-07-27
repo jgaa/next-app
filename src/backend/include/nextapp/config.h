@@ -16,8 +16,13 @@ struct ServerConfig {
 
 struct GrpcConfig {
     std::string address = "127.0.0.1:10321";
-
     std::string tls_mode = "ca"; // ca | none
+
+    // Keepalive options
+    unsigned keepalive_time_sec = 10;
+    unsigned keepalive_timeout_sec = 20;
+    unsigned min_recv_ping_interval_without_cata_sec = 5;
+    unsigned max_ping_strikes = 7;
 };
 
 struct ServerOptions {

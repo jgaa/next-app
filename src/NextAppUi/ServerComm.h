@@ -11,6 +11,7 @@
 
 #include <QObject>
 #include <QUuid>
+#include <QTimer>
 #include "logging.h"
 
 template <typename T, typename... Y>
@@ -317,4 +318,5 @@ private:
     SignupStatus signup_status_{SIGNUP_NOT_STARTED};
     QUuid device_uuid_;
     QString messages_;
+    QTimer ping_timer_;
 };

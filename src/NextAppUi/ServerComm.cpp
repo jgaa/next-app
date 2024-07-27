@@ -82,6 +82,15 @@ ServerComm::ServerComm()
     } else {
         LOG_WARN << "Server address is unset.";
     }
+
+    connect(&ping_timer_, &QTimer::timeout, [this](const auto&) {
+        if (status_ == Status::ONLINE) {
+            nextapp::pb::PingReq req;
+            callRpc<nextapp::pb::Status>([this](nextapp::pb::PingReq req) {
+                return client_->Ping(req);
+            }, req);
+        }
+    });
 }
 
 ServerComm::~ServerComm()

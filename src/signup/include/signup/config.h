@@ -19,6 +19,10 @@ struct GrpcConfig {
     std::string ca_cert;
     std::string server_cert;
     std::string server_key;
+
+    // Keepalive options
+    unsigned keepalive_time_sec = 10;
+    unsigned keepalive_timeout_sec = 20;
 };
 
 struct ServerOptions {
@@ -32,6 +36,8 @@ struct ServerOptions {
     size_t max_page_size = 250;
 
     std::string fqdn = "localhost";
+
+    unsigned timer_interval_sec = 120;
 };
 
 struct Cluster {
