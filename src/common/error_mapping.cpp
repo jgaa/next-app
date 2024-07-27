@@ -35,7 +35,7 @@ string ErrorCategory::message(int ev) const
     });
 
     if (ev < 0 || static_cast<size_t>(ev) >= msgs.size()) {
-        return "Unknown error";
+        return format("Unknown error nextapp::pb::Error={}", ev);
     }
     return string{msgs[ev]};
 }
@@ -64,7 +64,7 @@ string GrpcStatusErrorCategory::message(int ev) const
     });
 
     if (ev < 0 || static_cast<size_t>(ev) >= msgs.size()) {
-        return "Unknown error";
+        return format("Unknown error ::grpc::StatusCode={}", ev);
     }
     return string{msgs[ev]};
 }

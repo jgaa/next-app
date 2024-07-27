@@ -117,6 +117,15 @@ if (NOT ANDROID)
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
     target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_85_0)
+    include(FetchContent)
+        FetchContent_Declare(
+            android_openssl
+            DOWNLOAD_EXTRACT_TIMESTAMP true
+            URL https://github.com/KDAB/android_openssl/archive/refs/heads/master.zip
+        )
+        FetchContent_MakeAvailable(android_openssl)
+        set(OPENSSL_INCLUDE "${android_openssl_SOURCE_DIR}/ssl_3/include")
+        include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
 endif()
 
 set_source_files_properties(qml/Colors.qml
@@ -288,7 +297,20 @@ if(NOT ANDROID)
 )
 endif()
 
-add_dependencies(${PROJECT_NAME} logfault NextappGrpcClient NextappProtoMessageLib)
+if (ANDROID)
+    message(STATUS "Compiling for Android")
+
+    add_android_openssl_libraries(${PROJECT_NAME})
+    get_target_property(QT_ANDROID_EXTRA_LIBS_VALUE ${PROJECT_NAME} QT_ANDROID_EXTRA_LIBS)
+
+    message("OPENSSL_INCLUDE: ${OPENSSL_INCLUDE}")
+    target_include_directories(${PROJECT_NAME} PRIVATE ${OPENSSL_INCLUDE})
+    set(OPEN_SSL_DEPS ${QT_ANDROID_EXTRA_LIBS_VALUE})
+else ()
+    set(OPEN_SSL_DEPS OpenSSL::SSL OpenSSL::Crypto)
+endif()
+
+add_dependencies(${PROJECT_NAME} logfault NextappGrpcClient NextappProtoMessageLib ${OPENSSL_TARGET})
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
@@ -303,12 +325,18 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Test
         NextappGrpcClient
         NextappProtoMessageLib
-        OpenSSL::SSL
-        OpenSSL::Crypto
-
+        ${OPEN_SSL_DEPS}
 )
 
-if(NOT ANDROID)
+if(ANDROID)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
+    include(GNUInstallDirs)
+    install(TARGETS ${PROJECT_NAME}
+        BUNDLE DESTINATION .
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+else()
     include(InstallRequiredSystemLibraries)
     set(CPACK_GENERATOR "TGZ")
     set(CPACK_PACKAGE_NAME "nextapp")
@@ -321,32 +349,3 @@ if(NOT ANDROID)
     include(CPack)
 endif()
 
-if (ANDROID)
-    message(STATUS "Compiling for Android")
-
-    if (ANDROID)
-        include(FetchContent)
-        # TODO: Build our own openssl for android
-        FetchContent_Declare(
-          android_openssl
-          DOWNLOAD_EXTRACT_TIMESTAMP true
-          URL      https://github.com/KDAB/android_openssl/archive/refs/heads/master.zip
-    #      URL_HASH MD5=c97d6ad774fab16be63b0ab40f78d945 #optional
-        )
-        FetchContent_MakeAvailable(android_openssl)
-        include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
-    endif()
-
-    if (ANDROID)
-        add_android_openssl_libraries(${PROJECT_NAME})
-    endif()
-
-    target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
-    include(GNUInstallDirs)
-    install(TARGETS ${PROJECT_NAME}
-        BUNDLE DESTINATION .
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-
-endif()

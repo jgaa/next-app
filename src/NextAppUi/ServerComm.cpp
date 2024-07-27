@@ -140,14 +140,25 @@ void ServerComm::start()
     LOG_INFO << "Using server at " << current_server_address_;
     setStatus(Status::CONNECTING);
 
-    callRpc<nextapp::pb::ServerInfo>([this]() {
+    callRpc<nextapp::pb::Status>([this]() {
         return client_->GetServerInfo({});
-    }, [this](const nextapp::pb::ServerInfo& se) {
-        if (!se.properties().empty()) {
-            setStatus(Status::INITIAL_SYNC);
-            // assert(se.properties().front().key() == "version");
-            server_version_ = se.properties().front().value();
-            LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
+    }, [this](const nextapp::pb::Status& status) {
+        if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
+            LOG_ERROR << "Failed to connect to server: " << status.message();
+            setStatus(Status::ERROR);
+            return;
+        }
+        if (status.hasServerInfo()) {
+            auto se = status.serverInfo();
+            if (!se.properties().empty()) {
+                setStatus(Status::INITIAL_SYNC);
+                // assert(se.properties().front().key() == "version");
+                server_version_ = se.properties().front().value();
+                LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
+            } else {
+                LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
+            }
+
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
             updates_ = client_->streamSubscribeToUpdates({});
 #else

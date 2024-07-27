@@ -38,7 +38,9 @@ message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
-find_package(OpenSSL REQUIRED)
+if (NOT ANDROID)
+    find_package(OpenSSL REQUIRED)
+endif()
 find_package(Doxygen)
 
 if(NOT DEFINED USE_BOOST_VERSION)

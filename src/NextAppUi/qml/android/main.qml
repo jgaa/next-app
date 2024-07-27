@@ -1,4 +1,5 @@
 import QtQuick
+import QtCore
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
@@ -9,11 +10,21 @@ import "../common.js" as Common
 
 ApplicationWindow {
     id: appWindow
-    visible: true
+    visible: NaComm.signupStatus == NaComm.SIGNUP_OK
     width: NaCore.width
     height: NaCore.height
-    // width: 350
-    // height: 750
+
+    Settings {
+        id: settings
+        property bool onboarding: false
+    }
+
+    Component.onCompleted: {
+        if (!settings.onboarding) {
+            console.log("Opening onboarding")
+            openWindow("onboard/OnBoardingWizard.qml");
+        }
+    }
 
     // Toolbar
     header: ToolBar {
@@ -102,5 +113,16 @@ ApplicationWindow {
 
     CommonElements {
         id: ce
+    }
+
+    function openWindow(name, args) {
+        var component = Qt.createComponent("qrc:/qt/qml/NextAppUi/qml/" + name);
+        if (component.status !== Component.Ready) {
+            if(component.status === Component.Error )
+                console.debug("Error:"+ component.errorString() );
+            return;
+        }
+        var win = component.createObject(appWindow, args);
+        win.show()
     }
 }
