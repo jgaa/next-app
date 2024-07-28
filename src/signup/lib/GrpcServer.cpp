@@ -157,7 +157,21 @@ GrpcServer::GrpcServer(Server &server)
 }
 
 void GrpcServer::start() {
-    startNextapp();
+    while(!server_.is_done()) {
+        try {
+            startNextapp();
+            break; // OK
+        } catch(const std::exception &ex) {
+            LOG_ERROR << "Caught exception while connecting to nextappd: " << ex.what();
+
+            if (const auto delay = server_.config().options.retry_connect_to_nextappd_secs) {
+                LOG_ERROR << "Retrying in " << delay << " seconds.";
+                std::this_thread::sleep_for(chrono::seconds(delay));
+            } else {
+                throw;
+            }
+        }
+    }
     startSignup();
 }
 

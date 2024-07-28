@@ -143,6 +143,9 @@ int main(int argc, char* argv[]) {
              "Path to the server key")
             ("timer-interval", po::value(&config.options.timer_interval_sec)->default_value(config.options.timer_interval_sec),
              "Number seconds between the internal timer wakes up.")
+            ("retry-connect-delay", po::value(&config.options.retry_connect_to_nextappd_secs)->
+                default_value(config.options.retry_connect_to_nextappd_secs),
+             "Number seconds to wait before re-trying the initial connect to nextappd. 0 to disale retrying.")
             ;
 
         po::options_description cluster("Cluster");

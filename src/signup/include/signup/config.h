@@ -38,6 +38,9 @@ struct ServerOptions {
     std::string fqdn = "localhost";
 
     unsigned timer_interval_sec = 120;
+
+    unsigned retry_connect_to_nextappd_secs = 2; // 0 to disable
+
 };
 
 struct Cluster {
