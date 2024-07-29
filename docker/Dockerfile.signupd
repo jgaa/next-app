@@ -1,7 +1,7 @@
 FROM ubuntu:noble
 LABEL maintainer="jgaa@jgaa.com"
 
-ENV USER_UID=999 USER_NAME=nextappd
+ENV USER_UID=999 USER_NAME=signupd
 
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
@@ -9,18 +9,18 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
         libssl3 libprotobuf32 libicu74 liblz4-1 libz3-4 libsnappy1v5 libgrpc++1.51t64 \
         libcurl4t64 tzdata
 
-COPY bin/nextappd /usr/local/bin/
+COPY bin/* /usr/local/bin/
 
 RUN groupadd -r -g ${USER_UID} ${USER_NAME} \
     && mkdir -m=755 -p /var/home/ \
     && useradd -r -m -k /dev/null -u ${USER_UID} -g ${USER_UID} -c "Nextapp user" \
     -d /var/home/${USER_NAME}/ -s /bin/false ${USER_NAME} \
-    && mkdir -m=755 -p /var/lib/nextappd && chown ${USER_NAME} /var/lib/nextappd \
-    && mkdir -m=755 -p /var/log/nextappd && chown ${USER_NAME} /var/log/nextappd \
-    && mkdir -m=755 -p /etc/nextappd
+    && mkdir -m=755 -p /var/lib/signupd && chown ${USER_NAME} /var/lib/signupd \
+    && mkdir -m=755 -p /var/log/signupd && chown ${USER_NAME} /var/log/signupd \
+    && mkdir -m=755 -p /etc/signupd
 
 RUN ldconfig
 
 USER ${USER_NAME}
 
-ENTRYPOINT ["/usr/local/bin/nextappd"]
+ENTRYPOINT ["/usr/local/bin/signupd"]

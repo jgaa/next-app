@@ -3,7 +3,13 @@
 ## General build script for a CMake project to
 ## build a container-image from the deliverables
 
-project=nextappd
+if [ -z ${BUILD_PROJECT+x} ]; then
+    echo "No BUILD_PROJECT envvar provided"
+    exit 1
+else
+    project=${BUILD_PROJECT}
+fi
+
 image_repro=jgaafromnorth
 
 docker_run_args=""

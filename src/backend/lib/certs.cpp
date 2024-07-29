@@ -80,32 +80,6 @@ string getTextField(const X509& cert, int nid) {
     }
 }
 
-// auto openFile(const std::filesystem::path& path) {
-
-//     struct Closer {
-//         void operator()(FILE *fp) const {
-//             fclose(fp);
-//         }
-//     };
-
-//     if (auto fp = fopen(path.c_str(), "wb")) {
-//         return unique_ptr<FILE, Closer>(fp);
-//     }
-
-//     const auto why = strerror(errno);
-
-//     throw runtime_error{format("Failed to open file {} for binary write: {}",
-//                                path.string(), why)};
-// }
-
-// auto openFile(std::filesystem::path path, const std::string& name) {
-//     path /= name;
-
-//     LOG_DEBUG << "Creating file: " << path;
-//     return openFile(path);
-// }
-
-
 // https://stackoverflow.com/questions/60476336/programmatically-generate-a-ca-certificate-with-openssl-in-c
 void addExt(X509 *cert, int nid, const char *value)
 {
@@ -223,7 +197,7 @@ std::pair<X509_Ptr, EVP_PKEY_Ptr> createCaCert(
     const std::filesystem::path& keyPath,
     const std::filesystem::path& certPath) {
 
-    const array<pair<const string&, const string&>, 1> s = {
+    const array<pair<string, string>, 1> s = {
         make_pair(caName, "O"s),
     };
 
@@ -242,15 +216,6 @@ std::pair<X509_Ptr, EVP_PKEY_Ptr> createCaCert(
     if (!X509_sign(cert.get(), key.get(), EVP_sha256())) {
         throw runtime_error{"Error signing CA certificate."};
     }
-
-    // // Write the CA cert
-    // PEM_write_X509(openFile(certPath).get(), cert.get());
-
-    // // Write the CA key, if we were given a path to it
-    // if (!keyPath.empty()) {
-    //     PEM_write_PrivateKey(openFile(keyPath).get(),
-    //                          key.get(), NULL, NULL, 0, 0, NULL);
-    // }
 
     return make_pair(std::move(cert), std::move(key));
 }
@@ -359,8 +324,8 @@ CertData CertAuthority::createServerCert(const std::vector<std::string>& serverS
         throw runtime_error{"No subjects given for server cert!"};
     }
 
-    const array<pair<const string, const string>, 2> s = {
-        make_pair(ca_name_, "O"s),
+    const array<pair<string, string>, 2> s = {
+        make_pair("Nextapp", "O"s),
         make_pair(serverSubjects.front(), "CN"s)
     };
 
