@@ -31,6 +31,8 @@ ColumnLayout  {
         }
     }
 
+    Item {Layout.fillHeight: true}
+
     RowLayout {
         Layout.fillWidth: true
         Item {

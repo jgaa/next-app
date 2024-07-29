@@ -31,14 +31,25 @@ Window  {
         Component {
             id: onboardingPage1
             OnboardingWelcome {
-               onNextClicked: stackView.push(onboardingPage2)
+                onNextClicked: {
+                    stackView.push(onboardingPage2)
+                }
+            }
+        }
+
+        Component {
+            id: addDevicePage1
+            AddDevicePage {
+                onNextClicked: stackView.push(onboardingPage5)
+                onBackClicked: stackView.pop()
             }
         }
 
         Component {
             id: onboardingPage2
             OnboardingServer {
-                onNextClicked: stackView.push(onboardingPage3)
+                onNextNewSubscrClicked: stackView.push(onboardingPage3)
+                onNextAddDeviceClicked: stackView.push(addDevicePage1)
                 onBackClicked: stackView.pop()
             }
         }

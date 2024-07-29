@@ -10,7 +10,8 @@ ColumnLayout  {
     id: root
     anchors.fill: parent
     spacing: 20
-    signal nextClicked()
+    signal nextNewSubscrClicked()
+    signal nextAddDeviceClicked()
     signal backClicked()
 
     Settings {
@@ -80,6 +81,24 @@ ColumnLayout  {
     }
 
     RowLayout {
+        Item {Layout.preferredWidth: 20}
+        ComboBox {
+            id: modeCtl
+            Layout.fillWidth: true
+            currentIndex: 0
+            model: ListModel {
+                ListElement { name: "New subscription" }
+                ListElement { name: "Add device to existing user" }
+            }
+            textRole: "name"
+        }
+        Item {Layout.preferredWidth: 20}
+    }
+
+    Item {Layout.preferredHeight: 20}
+
+
+    RowLayout {
         spacing: 20
 
         Layout.fillWidth: true
@@ -104,9 +123,13 @@ ColumnLayout  {
         Button {
             id: nextBtn
             text: qsTr("Next")
-            visible: NaComm.signupStatus === 1
+            visible: NaComm.signupStatus === NaComm.SIGNUP_HAVE_INFO
             onClicked: {
-                nextClicked()
+                if (modeCtl.currentIndex === 0) {
+                    nextNewSubscrClicked()
+                } else {
+                    nextAddDeviceClicked()
+                }
             }
         }
 

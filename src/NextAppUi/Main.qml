@@ -39,6 +39,12 @@ ApplicationWindow {
             }
 
             Action {
+                text: qsTr("Devices")
+                shortcut: StandardKey.ZoomIn
+                onTriggered: { openDialog("onboard/GetNewOtpForDevice.qml") }
+            }
+
+            Action {
                 text: qsTr("Categories")
                 onTriggered: { openDialog("categories/CategoriesMgr.qml") }
                 enabled: NaComm.connected

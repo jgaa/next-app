@@ -36,10 +36,15 @@ Server::~Server()
 
 }
 
+Server * Server::instance_;
+
 void Server::init()
 {
     handleSignals();
     initCtx(config().svr.io_threads);
+
+    assert(!instance_);
+    instance_ = this;
 
     db_.emplace(ctx_, config().db);
 }
@@ -665,6 +670,19 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         "CREATE INDEX device_ix1 ON device (user, created)",
+
+        // Hash is from string(id) + / + email + / + otp
+        R"(CREATE OR REPLACE TABLE otp (
+            id UUID not NULL default UUID() PRIMARY KEY,
+            user UUID NOT NULL,
+            otp_hash VARCHAR(256) NOT NULL,
+            email VARCHAR(256) NOT NULL,
+            kind ENUM ('new_device', 'new_user') NOT NULL,
+            created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        "CREATE INDEX otp_ix1 ON otp (user)",
+        "CREATE INDEX otp_ix2 ON otp (email)",
 
         "ALTER TABLE user DROP FOREIGN KEY user_ibfk_1",
         "ALTER TABLE user ADD CONSTRAINT user_ibfk_1 FOREIGN KEY (tenant) REFERENCES tenant(id) ON DELETE CASCADE ON UPDATE RESTRICT",

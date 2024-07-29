@@ -681,6 +681,14 @@ void ServerComm::deleteActionCategory(const QString &id, callback_t<nextapp::pb:
     }, std::move(done));
 }
 
+void ServerComm::requestOtp(callback_t<nextapp::pb::Status> &&done)
+{
+    callRpc<nextapp::pb::Status>([this]() {
+        nextapp::pb::OtpRequest req;
+        return client_->GetOtpForNewDevice(req);
+    }, std::move(done));
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;
@@ -726,6 +734,15 @@ void ServerComm::setSignupServerAddress(const QString &address)
 void ServerComm::signup(const QString &name, const QString &email,
                         const QString &company, const QString &deviceName)
 {
+    signupOrAdd(name, email, company, deviceName, {});
+}
+
+void ServerComm::signupOrAdd(const QString &name,
+                     const QString &email,
+                     const QString &company,
+                     const QString& deviceName,
+                     const QString &otp)
+{
     // Create CSR
     // Send signup request
     signup_status_ = SignupStatus::SIGNUP_SIGNING_UP;
@@ -733,18 +750,7 @@ void ServerComm::signup(const QString &name, const QString &email,
 
     setMessage(tr("Creating client TLS cert..."));
 
-    signup::pb::SignUpRequest req;
     QString key, csr;
-
-    req.setUserName(name);
-    req.setEmail(email);
-
-    if (company.isEmpty()) {
-        auto uuid = QUuid::createUuid();
-        req.setTenantName("NonCompany " + uuid.toString(QUuid::WithoutBraces));
-    } else {
-        req.setTenantName(company);
-    }
 
     try {
         tie(csr, key) = createCsr();
@@ -756,7 +762,7 @@ void ServerComm::signup(const QString &name, const QString &email,
         return;
     }
 
-    auto& dev = req.device();
+    common::Device dev;
     dev.setUuid(deviceUuid().toString(QUuid::WithoutBraces));
     dev.setHostName(QSysInfo::machineHostName());
     dev.setName(deviceName.isEmpty() ? dev.hostName() : deviceName);
@@ -769,44 +775,76 @@ void ServerComm::signup(const QString &name, const QString &email,
     dev.setArch(QSysInfo::currentCpuArchitecture());
     dev.setPrettyName(QSysInfo::prettyProductName());
 
-    addMessage(tr("Contacting the sign-up server..."));
-
-    callRpc<signup::pb::Reply>([this, req, key]() {
-        return signup_client_->SignUp(req);
-    }, [this, key](const signup::pb::Reply& su) {
+    auto finish = [this, key](const signup::pb::Reply& su) {
         LOG_DEBUG << "Received signup response from server ";
 
         QSettings settings;
 
         switch(su.error()) {
-            case signup::pb::ErrorGadget::OK:
-                signup_status_ = SignupStatus::SIGNUP_OK;
-                assert(su.hasSignUpResponse());
-                settings.setValue("onboarding", true);
-                settings.setValue("server/url", su.signUpResponse().serverUrl());
-                settings.setValue("server/auto_login", true);
-                settings.setValue("server/clientCert", su.signUpResponse().cert());
-                settings.setValue("server/clientKey", key);
-                settings.setValue("server/caCert", su.signUpResponse().caCert());
-                addMessage(tr("Your account was successfully created!"));
-                signup_status_ = SignupStatus::SIGNUP_SUCCESS;
-                QMetaObject::invokeMethod(qApp, [this]() {
-                    start();
-                }, Qt::QueuedConnection);
-                break;
-            case signup::pb::ErrorGadget::EMAIL_ALREADY_EXISTS:
-                signup_status_ = SignupStatus::SIGNUP_ERROR;
-                addMessage(tr("Your email is already in use for an account."));
-                break;
-            default:
-                signup_status_ = SignupStatus::SIGNUP_ERROR;
-                addMessage(tr("Failed to create your account. Error: %1").arg(su.message()));
-                break;
+        case signup::pb::ErrorGadget::OK:
+            signup_status_ = SignupStatus::SIGNUP_OK;
+            assert(su.hasSignUpResponse());
+            settings.setValue("onboarding", true);
+            settings.setValue("server/url", su.signUpResponse().serverUrl());
+            settings.setValue("server/auto_login", true);
+            settings.setValue("server/clientCert", su.signUpResponse().cert());
+            settings.setValue("server/clientKey", key);
+            settings.setValue("server/caCert", su.signUpResponse().caCert());
+            addMessage(tr("Your account was successfully created!"));
+            signup_status_ = SignupStatus::SIGNUP_SUCCESS;
+            QMetaObject::invokeMethod(qApp, [this]() {
+                start();
+            }, Qt::QueuedConnection);
+            break;
+        case signup::pb::ErrorGadget::EMAIL_ALREADY_EXISTS:
+            signup_status_ = SignupStatus::SIGNUP_ERROR;
+            addMessage(tr("Your email is already in use for an account."));
+            break;
+        default:
+            signup_status_ = SignupStatus::SIGNUP_ERROR;
+            addMessage(tr("Failed to create your account. Error: %1").arg(su.message()));
+            break;
         }
 
         emit signupStatusChanged();
+    };
 
-    }, GrpcCallOptions{false, false, true});
+    addMessage(tr("Contacting the sign-up server..."));
+
+    if (!otp.isEmpty()) {
+        signup::pb::CreateNewDeviceRequest add_device_req;
+        common::OtpAuth otp_auth;
+        otp_auth.setOtp(otp);
+        otp_auth.setEmail(email);
+        add_device_req.setOtpAuth(otp_auth);
+        add_device_req.setDevice(dev);
+
+        callRpc<signup::pb::Reply>([this, add_device_req, key]() {
+            return signup_client_->CreateNewDevice(add_device_req);
+        }, std::move(finish), GrpcCallOptions{false, false, true});
+    } else {
+         signup::pb::SignUpRequest signup_req;
+        signup_req.setUserName(name);
+        signup_req.setEmail(email);
+
+        if (company.isEmpty()) {
+            auto uuid = QUuid::createUuid();
+            signup_req.setTenantName("NonCompany " + uuid.toString(QUuid::WithoutBraces));
+        } else {
+            signup_req.setTenantName(company);
+        }
+
+        signup_req.setDevice(dev);
+
+        callRpc<signup::pb::Reply>([this, signup_req, key]() {
+            return signup_client_->SignUp(signup_req);
+        }, std::move(finish), GrpcCallOptions{false, false, true});
+    }
+}
+
+void ServerComm::addDeviceWithOtp(const QString &otp, const QString &email, const QString &deviceName)
+{
+    signupOrAdd({}, email, {}, deviceName, otp);
 }
 
 void ServerComm::signupDone()

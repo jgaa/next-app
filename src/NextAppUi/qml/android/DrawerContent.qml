@@ -191,6 +191,7 @@ Rectangle {
             Layout.leftMargin: 10
             Layout.rightMargin: 10
             Layout.fillWidth: true
+
             RoundButton {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillWidth: true
@@ -198,6 +199,15 @@ Rectangle {
                 checkable: false
                 text: qsTr("Settings")
                 onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/settings/SettingsDlg.qml", appWindow, {});
+            }
+
+            RoundButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/laptop.svg"
+                checkable: false
+                text: qsTr("Devices")
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/onboard/GetNewOtpForDevice.qml", appWindow, {});
             }
 
             RoundButton {

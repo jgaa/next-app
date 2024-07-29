@@ -69,12 +69,14 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
 
 void UserContext::addPublisher(const std::shared_ptr<Publisher> &publisher)
 {
+    LOG_TRACE_N << "Adding publisher " << publisher->uuid() << " to user context for user " << userUuid();
     unique_lock lock{mutex_};
     publishers_.push_back(publisher);
 }
 
 void UserContext::removePublisher(const boost::uuids::uuid &uuid)
 {
+    LOG_TRACE_N << "Removing publisher " << uuid << " from user context for user " << userUuid();
     unique_lock lock{mutex_};
     ranges::remove_if(publishers_, [uuid](const auto& p) {
         if (auto pub = p.lock()) {
@@ -89,13 +91,14 @@ void UserContext::publish(const std::shared_ptr<pb::Update> &update)
 {
     LOG_TRACE_N << "Publishing "
                 << pb::Update::Operation_Name(update->op())
-                << " update to " << publishers_.size() << " subscribers";// , Json: "
-                //<< toJsonForLog(*update);
+                << " update to " << publishers_.size() << " subscribers, Json: "
+                << toJsonForLog(*update);
 
     shared_lock lock{mutex_};
 
     for(auto& weak_pub: publishers_) {
         if (auto pub = weak_pub.lock()) {
+            LOG_TRACE_N << "Publish to " << pub->uuid();
             pub->publish(update);
         } else {
             LOG_WARN_N << "Failed to get a pointer to a publisher ";
@@ -211,7 +214,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         {
             // Happy path
             shared_lock lock{mutex_};
-            if (auto id = users_.find(deviceId) ; id != users_.end()) {
+            if (auto id = users_.find(toUuid(uid)) ; id != users_.end()) {
                 LOG_TRACE << "UserContext: Found user " << uid << " in cache";
                 co_return id->second;
             }

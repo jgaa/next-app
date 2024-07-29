@@ -172,6 +172,7 @@ public:
         ::grpc::ServerUnaryReactor *UpdateActionCategory(::grpc::CallbackServerContext *ctx, const pb::ActionCategory *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *DeleteActionCategory(::grpc::CallbackServerContext *ctx, const pb::DeleteActionCategoryReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetActionCategories(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetOtpForNewDevice(::grpc::CallbackServerContext *ctx, const pb::OtpRequest *req, pb::Status *reply) override;
 
 
     private:

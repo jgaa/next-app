@@ -1374,5 +1374,4 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
         }, __func__);
 }
 
-
 } // ns

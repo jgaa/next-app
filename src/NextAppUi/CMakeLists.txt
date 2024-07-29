@@ -189,6 +189,8 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/categories/ColorPicker.qml
         qml/categories/EditCategoryDlg.qml
         qml/common.js
+        qml/onboard/AddDevicePage.qml
+        qml/onboard/GetNewOtpForDevice.qml
         qml/onboard/OnBoardingWizard.qml
         qml/onboard/OnboardingAccept.qml
         qml/onboard/OnboardingAccount.qml
@@ -225,6 +227,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/folder-tree.svg
         icons/fontawsome/trash-can.svg
         icons/fontawsome/cloud-bolt.svg
+        icons/fontawsome/laptop.svg
         icons/fontawsome/hourglass-half.svg
         icons/fontawsome/arrows-up-down-left-right.svg
         icons/generic_file.svg
@@ -266,6 +269,8 @@ qt_add_qml_module(${PROJECT_NAME}
         MonthModel.h
         NextAppCore.cpp
         NextAppCore.h
+        OtpModel.cpp
+        OtpModel.h
         ServerComm.cpp
         ServerComm.h
         TimeBoxActionsModel.cpp

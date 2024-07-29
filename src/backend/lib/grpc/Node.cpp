@@ -281,9 +281,9 @@ struct ToNode {
                 SELECT * FROM node WHERE user=?
                 UNION
                 SELECT n.* FROM node AS n, tree AS p
-                WHERE n.parent = p.id or n.parent IS NULL
+                WHERE (n.parent = p.id or n.parent IS NULL) and n.user = ?
                 )
-                SELECT {} from tree ORDER BY parent, name)", ToNode::selectCols), dbopts, cuser);
+                SELECT {} from tree ORDER BY parent, name)", ToNode::selectCols), dbopts, cuser, cuser);
 
             std::deque<pb::NodeTreeItem> pending;
             map<string, pb::NodeTreeItem *> known;

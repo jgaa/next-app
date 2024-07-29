@@ -18,3 +18,7 @@ message Device {
   uint64 createdTime = 13;
 }
 
+message OtpAuth {
+    string email = 1;
+    string otp = 2;
+}

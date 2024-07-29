@@ -164,8 +164,6 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         }
 
         void start() {
-            // Tell owner about us
-            LOG_DEBUG << "Remote client " << context_->peer() << " is subscribing to updates as subscriber " << uuid();
             self_ = shared_from_this();
 
             try {
@@ -173,12 +171,16 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 assert(session);
                 session->user().addPublisher(self_);
                 session_ = session;
+                LOG_DEBUG << "Remote client " << context_->peer() << " is subscribing to updates as subscriber " << uuid()
+                          << " from session " << session->sessionId()
+                          << " for user " << session->user().userUuid();
             } catch (const server_err& err) {
-                LOG_WARN << "Caught server error when fetching session: " << err.what();
+                LOG_WARN << "Caught server error when fetching session for connection from "
+                         << context_->peer()
+                         << ": " << err.what();
                 close();
             }
 
-            //owner_.addPublisher(self_);
             reply();
         }
 
@@ -217,9 +219,14 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         }
 
         void publish(const std::shared_ptr<pb::Update>& message) override {
-            {
+            if (auto session = session_.lock()) {
+                LOG_TRACE_N << "Queued message for subscriber " << uuid() << " from session " << session->sessionId() << " for user " << session->user().userUuid();
                 scoped_lock lock{mutex_};
                 updates_.emplace(message);
+            } else {
+                LOG_DEBUG_N << "Session is gone for subscriber " << uuid() << ". Closing subscription.";
+                close();
+                return;
             }
 
             reply();

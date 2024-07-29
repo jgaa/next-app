@@ -5,6 +5,11 @@ namespace nextapp::grpc {
 
 namespace {
 
+string getOtpHash(string_view user, string_view uuid, string_view otp)
+{
+    return sha256(format("{}/{}/{}",user, uuid, otp), true);
+}
+
 } // anon ns
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateTenant(::grpc::CallbackServerContext *ctx,
@@ -176,6 +181,8 @@ namespace {
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+            // NB: This is the userid for the admin-account that is creating the device
             const auto& cuser = rctx.uctx->userUuid();
 
             if (!rctx.uctx->isAdmin()) {
@@ -194,9 +201,44 @@ namespace {
                 validatedUuid(device.uuid());
             }
 
-            auto user_id = req->userid();
+            // This is the user_id for the user owning the device
+            string user_id;
+            {
+                if (req->has_userid()) {
+                    user_id = req->userid();
+                } else if (req->has_otpauth()) {
+                    const auto& auth = req->otpauth();
+                    if (!isValidEmail(req->otpauth().email())) {
+                        throw server_err{pb::Error::CONSTRAINT_FAILED, "Invalid email"};
+                    }
+                    auto res = co_await rctx.dbh->exec(
+                        "SELECT id, user, otp_hash FROM otp WHERE email=? AND kind='new_device'",
+                        auth.email());
+                    if (res.rows().empty()) {
+                        LOG_DEBUG << "No 'new_device' OTP found for email " << auth.email();
+                        throw server_err{pb::Error::AUTH_FAILED, "Invalid OTP"};
+                    }
+                    enum Cols { ID, USER, OTP_HASH };
+                    const auto& row = res.rows().front();
+                    const auto otp_hash = row.at(OTP_HASH).as_string();
+                    user_id = row.at(USER).as_string();
+                    const auto id = row.at(ID).as_string();
+
+                    const auto hash = getOtpHash(user_id, id, auth.otp());
+                    if (hash != otp_hash) {
+                        LOG_INFO << "Invalid OTP for email " << auth.email();
+                        throw server_err{pb::Error::AUTH_FAILED, "Invalid OTP"};
+                    }
+
+                    co_await rctx.dbh->exec("DELETE FROM otp WHERE id=?", id);
+
+                } else {
+                    throw server_err{pb::Error::MISSING_AUTH, "Missing User ID or OTP Auth"};
+                }
+            }
+
             if (user_id.empty()) {
-                throw server_err{pb::Error::MISSING_USER_ID, "Missing User ID"};
+                throw server_err{pb::Error::MISSING_USER_ID, "Could not determine user ID"};
             }
 
             validatedUuid(user_id);
@@ -337,6 +379,42 @@ namespace {
 
             // TODO: Cluster: Signal other servers that the settings has changed
             owner_.sessionManager().setUserSettings(toUuid(cuser), *req);
+
+            co_return;
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetOtpForNewDevice(
+    ::grpc::CallbackServerContext *ctx, const pb::OtpRequest *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+
+            // Delete any existing OTP for this user
+            auto res = co_await rctx.dbh->exec(
+                "DELETE from otp WHERE user = ?", cuser);
+
+            res = co_await rctx.dbh->exec(
+                "SELECT email FROM user WHERE id = ?", cuser);
+            if (res.rows().empty()) {
+                throw server_err{pb::Error::MISSING_USER_EMAIL, "Email for the current user was not found"};
+            }
+
+            pb::OtpResponse resp;
+            resp.set_email(res.rows().front().front().as_string());
+
+            // Generate a new OTP
+            const auto otp = getRandomStr(8, "0123456789");
+            const auto uuid = newUuidStr();
+            auto hash = getOtpHash(cuser, uuid, otp);
+            co_await rctx.dbh->exec(
+                "INSERT INTO otp (id, user, otp_hash, email, kind) VALUES (?, ?, ?, ?, 'new_device') ",
+                rctx.uctx->dbOptions(), uuid, cuser, hash, resp.email());
+
+            LOG_DEBUG << "Generated OTP, for new device, with hash " << hash << ", for user " << cuser;
+            resp.set_otp(otp);
+            reply->mutable_otpresponse()->CopyFrom(resp);
 
             co_return;
         }, __func__);

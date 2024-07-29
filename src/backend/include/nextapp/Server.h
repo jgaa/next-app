@@ -79,6 +79,11 @@ public:
 
     boost::asio::awaitable<CertData> getCert(std::string_view id, WithMissingCert what);
 
+    static Server& instance() noexcept {
+        assert(instance_);
+        return *instance_;
+    }
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
@@ -100,6 +105,13 @@ private:
     std::atomic_bool done_{false};
     std::shared_ptr<grpc::GrpcServer> grpc_service_;
     std::optional<CertAuthority> ca_;
+    static Server *instance_;
 };
+
+template <ProtoMessage T>
+std::string toJsonForLog(const T& obj) {
+    return toJson(obj, Server::instance().config().options.log_protobuf_messages);
+}
+
 
 } // ns

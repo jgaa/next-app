@@ -13,9 +13,7 @@
 
 namespace nextapp {
 
-namespace grpc {
 class GrpcServer;
-}
 
 class Server {
 public:
@@ -67,7 +65,7 @@ private:
     Config config_;
     std::atomic_size_t running_io_threads_{0};
     std::atomic_bool done_{false};
-    std::shared_ptr<grpc::GrpcServer> grpc_service_;
+    std::shared_ptr<GrpcServer> grpc_service_;
     std::string welcome_text;
     std::string eula_text;
 };

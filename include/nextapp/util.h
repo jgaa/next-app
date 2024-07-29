@@ -6,6 +6,7 @@
 #include <optional>
 #include <ranges>
 #include <filesystem>
+#include <span>
 
 #include <boost/json.hpp>
 #include <boost/uuid/random_generator.hpp>
@@ -20,6 +21,16 @@
 #include "nextapp/logging.h"
 
 namespace nextapp {
+
+using span_t = std::span<const char>;
+
+uint64_t getRandomNumber64();
+uint32_t getRandomNumber32();
+uint16_t getRandomNumber16();
+std::string getRandomStr(size_t len);
+std::string getRandomStr(size_t len, std::string_view chars);
+
+bool isValidEmail(const std::string& email);
 
 // BOOST_SCOPE_EXIT confuses Clang-Tidy :/
 template <typename T>
@@ -143,7 +154,10 @@ std::optional<std::string> toStringOrNull(const T& val) {
     return std::string{val};
 }
 
+std::vector<char> base64Decode(const std::string_view in);
+std::string Base64Encode(const span_t in);
 
+std::string sha256(span_t what, bool encodeToBase64);
 
 } // ns
 

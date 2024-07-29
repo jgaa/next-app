@@ -97,6 +97,7 @@ public:
     Q_INVOKABLE void setSignupServerAddress(const QString &address);
     Q_INVOKABLE void signup(const QString &name, const QString &email,
                             const QString &company, const QString& deviceName);
+    Q_INVOKABLE void addDeviceWithOtp(const QString &otp, const QString &email, const QString &deviceName);
     Q_INVOKABLE void signupDone();
 
     static ServerComm& instance() noexcept {
@@ -157,6 +158,7 @@ public:
     void createActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
     void updateActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
     void deleteActionCategory(const QString& id, callback_t<nextapp::pb::Status>&& done);
+    void requestOtp(callback_t<nextapp::pb::Status>&& done);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
@@ -212,6 +214,11 @@ private:
     void setDefaulValuesInUserSettings();
     void scheduleReconnect();
     void connectToSignupServer();
+    void signupOrAdd(const QString &name,
+                     const QString &email,
+                     const QString &company,
+                     const QString& deviceName,
+                     const QString &otp);
 
     void clearMessages();
     void addMessage(const QString &msg);

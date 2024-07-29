@@ -31,6 +31,7 @@ enum Error {
     MISSING_USER_ID = 23;
     AUTH_FAILED = 24;
     CONFLICT = 25;
+    MISSING_AUTH = 26;
 }
 
 message Page {
@@ -514,7 +515,11 @@ message DeleteActionCategoryReq {
 
 message CreateDeviceReq {
     common.Device device = 1;
-    string userId = 2;
+
+    oneof auth {
+        string userId = 10;
+        common.OtpAuth otpAuth = 11;
+    }
 }
 
 message CreateDeviceResp {
@@ -680,6 +685,14 @@ message GetWorkSessionsReq {
     }
 }
 
+message OtpRequest {
+}
+
+message OtpResponse {
+    string otp = 1;
+    string email = 2;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -706,6 +719,7 @@ message Status {
         ActionCategories actionCategories = 24;
         CreateDeviceResp createDeviceResp = 25;
         ServerInfo serverInfo = 26;
+        OtpResponse otpResponse = 27;
     }
 }
 
@@ -726,6 +740,7 @@ service Nextapp {
     rpc CreateUser(User) returns (Status) {}
 
     rpc CreateDevice(CreateDeviceReq) returns (Status) {}
+    rpc GetOtpForNewDevice(OtpRequest) returns (Status) {}
 
     rpc CreateNode(CreateNodeReq) returns (Status) {}
     rpc UpdateNode(Node) returns (Status) {}

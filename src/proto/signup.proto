@@ -35,17 +35,28 @@ message SignUpResponse {
     string caCert = 6; // PEM encoded server CA certificate
 }
 
+// This comes from a device without any known identity
+// for an existing user.
+message CreateNewDeviceRequest {
+    oneof auth {
+        common.OtpAuth otpAuth = 1;
+    }
+
+    common.Device device = 3;
+}
+
 message Reply {
     string message = 1;
     Error error = 2;
 
     oneof payload {
         GetInfoResponse getInfoResponse = 10;
-        SignUpResponse signUpResponse = 11;
+        SignUpResponse signUpResponse = 11;  
     }
 }
 
 service SignUp {
   rpc GetInfo(GetInfoRequest) returns (Reply) {}
   rpc SignUp(SignUpRequest) returns (Reply) {}
+  rpc CreateNewDevice(CreateNewDeviceRequest) returns (Reply) {}
 }

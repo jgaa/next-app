@@ -25,7 +25,7 @@
 #include "nextapp/util.h"
 #include "nextapp/error_mapping.h"
 
-namespace nextapp::grpc {
+namespace nextapp {
 
 signup::pb::Error translateError(const nextapp::pb::Error& e);
 
@@ -34,9 +34,7 @@ public:
 
     class Error : public std::runtime_error {
     public:
-        Error(nextapp::pb::Error err, const std::string& what)
-            : std::runtime_error(what), error_{err} {}
-        Error(nextapp::pb::Error err, std::string_view what) noexcept
+        Error(const nextapp::pb::Error& err, std::string_view what) noexcept
             : std::runtime_error(what.data()), error_{err} {}
 
         auto error() const noexcept {
@@ -152,6 +150,11 @@ public:
                                             signup::pb::Reply *reply) override;
 
 
+        ::grpc::ServerUnaryReactor * CreateNewDevice(::grpc::CallbackServerContext *ctx,
+                                           const signup::pb::CreateNewDeviceRequest *req,
+                                           signup::pb::Reply *reply) override;
+
+
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
         template <typename ReqT, typename ReplyT, typename FnT>
@@ -236,5 +239,7 @@ private:
     std::string session_id = newUuidStr();
     std::optional<boost::asio::steady_timer> timer_;
 };
+
+using server_err = GrpcServer::Error;
 
 } // ns

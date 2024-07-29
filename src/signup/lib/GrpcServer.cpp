@@ -20,7 +20,7 @@ namespace asio = boost::asio;
 
 using stub_t = ::nextapp::pb::Nextapp::Stub;
 
-namespace nextapp::grpc {
+namespace nextapp {
 
 using namespace ::signup::pb;
 
@@ -115,7 +115,11 @@ GrpcServer::GrpcServer(Server &server)
                                     + to_string(newTenant.users().size())};
             }
 
-            device_req.set_userid(newTenant.users(0).uuid());
+            auto *auth = device_req.mutable_userid();
+            if (!auth) {
+                throw runtime_error{"Failed to create userid object"};
+            }
+            *auth = newTenant.users(0).uuid();
 
             auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
                 device_req,
@@ -153,6 +157,64 @@ GrpcServer::GrpcServer(Server &server)
         // and the email.
 
         co_return;
+    }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::CreateNewDevice(::grpc::CallbackServerContext *ctx,
+                                                                    const signup::pb::CreateNewDeviceRequest *req,
+                                                                    signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+        LOG_DEBUG << "CreateNewDevice request from client at " << ctx->peer();
+
+        // Validate the information in the request
+
+        {
+            nextapp::pb::CreateDeviceReq device_req;
+            if (auto *dev = device_req.mutable_device()) {
+                dev->CopyFrom(req->device());
+            } else {
+                throw runtime_error{"Failed to create device object"};
+            }
+
+            if (req->has_otpauth()) {
+                auto *auth = device_req.mutable_otpauth();
+                if (!auth) {
+                    throw runtime_error{"Failed to create otpauth object"};
+                }
+                auth->CopyFrom(req->otpauth());
+            } else {
+                throw server_err{nextapp::pb::Error::MISSING_AUTH, "Missing OTP"};
+            }
+
+            auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
+                device_req,
+                &stub_t::async::CreateDevice,
+                asio::use_awaitable);
+
+            if (resp.error() != nextapp::pb::Error::OK) {
+                LOG_WARN << "Failed to create device at nextapp-server: " << resp.message();
+                throw Error{resp.error(), format("Failed to create device: {}", resp.message())};
+            }
+
+            if (!resp.has_createdeviceresp()) {
+                throw runtime_error{"Failed to get device from nextapp-server's reply"};
+            }
+
+            const auto& dresp = resp.createdeviceresp();
+
+            if (auto* response = reply->mutable_signupresponse()) {
+                assert(response);
+
+                response->set_uuid(dresp.deviceid());
+                response->set_cert(dresp.cert());
+                response->set_serverurl(owner_.server().config().grpc_nextapp.address);
+                response->set_cacert(dresp.cacert());
+                assert(!response->cacert().empty());
+            } else {
+                throw runtime_error{"Failed to create signupresponse object"};
+            }
+        }
     }, __func__);
 }
 
