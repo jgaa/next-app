@@ -150,14 +150,16 @@ int main(int argc, char* argv[]) {
 
         po::options_description cluster("Cluster");
         cluster.add_options()
-            ("backend,b", po::value(&config.cluster.backends),
-             "host:port for a nextappd backend. Can be repeated.")
+            // ("backend,b", po::value(&config.cluster.backends),
+            //  "host:port for a nextappd backend. Can be repeated.")
             ("welcome", po::value(&config.cluster.welcome_path),
              "Path to the welcome page")
             ("eula", po::value(&config.cluster.eula_path),
              "Path to the EULA page")
             ("nextapp-address,n", po::value(&config.grpc_nextapp.address)->default_value(config.grpc_nextapp.address),
              "Protocol, address and port to use for gRPC client-connectiopn to NextApp")
+            ("nextapp-public-url", po::value(&config.cluster.nextapp_public_url),
+             "Public URL for nextappd. If unset, uses the value specified with `--nextapp-address`")
             ("grpc-client-ca-cert", po::value(&config.grpc_nextapp.ca_cert),
              "Path to the CA certificate")
             ("grpc-client-cert", po::value(&config.grpc_nextapp.server_cert),
@@ -232,6 +234,11 @@ int main(int argc, char* argv[]) {
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";
 
     try {
+        if (config.cluster.nextapp_public_url.empty()) {
+            config.cluster.nextapp_public_url = config.grpc_nextapp.address;
+            LOG_INFO << "Setting nextapp-public-url to '" <<config.cluster.nextapp_public_url << "' as it was unset.";
+        }
+
         Server server{config};
         server.init();
         server.run();

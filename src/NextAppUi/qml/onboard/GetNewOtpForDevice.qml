@@ -25,7 +25,7 @@ Dialog {
         Button {
             text: qsTr("Request a new OTP")
             onClicked: {
-                model.requestOtpForNewDevice(email.text)
+                model.requestOtpForNewDevice()
             }
         }
 

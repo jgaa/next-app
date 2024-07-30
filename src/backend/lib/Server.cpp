@@ -194,6 +194,9 @@ boost::asio::awaitable<CertData> Server::getCert(std::string_view id, WithMissin
         case WithMissingCert::FAIL:
             co_return cd;
         case WithMissingCert::CREATE_SERVER:
+            if (config().options.server_cert_dns_names.empty()) {
+                throw std::runtime_error("No server cert DNS names configured (--server-fqdn)");
+            }
             LOG_INFO << "Creating server cert for " << config().options.server_cert_dns_names.front();
             cd = ca().createServerCert(config().options.server_cert_dns_names);
             break;

@@ -27,6 +27,7 @@ using namespace ::signup::pb;
 GrpcServer::GrpcServer(Server &server)
 : server_(server)
 {
+    LOG_DEBUG_N << "GrpcServer created.";
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::GetInfo(
@@ -142,7 +143,7 @@ GrpcServer::GrpcServer(Server &server)
 
                 response->set_uuid(dresp.deviceid());
                 response->set_cert(dresp.cert());
-                response->set_serverurl(owner_.server().config().grpc_nextapp.address);
+                response->set_serverurl(owner_.server().config().cluster.nextapp_public_url);
                 response->set_cacert(dresp.cacert());
                 assert(!response->cacert().empty());
             } else {
@@ -208,7 +209,7 @@ GrpcServer::GrpcServer(Server &server)
 
                 response->set_uuid(dresp.deviceid());
                 response->set_cert(dresp.cert());
-                response->set_serverurl(owner_.server().config().grpc_nextapp.address);
+                response->set_serverurl(owner_.server().config().cluster.nextapp_public_url);
                 response->set_cacert(dresp.cacert());
                 assert(!response->cacert().empty());
             } else {

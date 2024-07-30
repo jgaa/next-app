@@ -46,10 +46,11 @@ struct ServerOptions {
 struct Cluster {
     // When new tenants sign up, they are assigned to a backend in the list
     // on a round-robin basis.
-    std::vector<std::string> backends; // host:port
+    //std::vector<std::string> backends; // host:port
 
     std::string welcome_path;
     std::string eula_path;
+    std::string nextapp_public_url;
 };
 
 struct Config {

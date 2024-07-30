@@ -119,6 +119,7 @@ void Server::runIoThread(const size_t id)
 
 boost::asio::awaitable<void> Server::startGrpcService()
 {
+    LOG_DEBUG_N << "Starting gRPC services...";
     assert(!grpc_service_);
     grpc_service_ = make_shared<GrpcServer>(*this);
     grpc_service_->start();
