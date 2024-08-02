@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.9 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.10 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-set(SERVER_ADDRESS "http://127.0.0.1:10321" CACHE STRING "Default address to server")
+set(SERVER_ADDRESS "http://127.0.0.1:10101" CACHE STRING "Default address to signup server")
 add_definitions("-DSERVER_ADDRESS=\"${SERVER_ADDRESS}\"")
 
 option(NEXTAPP_WITH_TREE_MODEL_TESTING "Enable ongoing tests for the MainTreeModel" OFF)
