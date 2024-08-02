@@ -355,7 +355,7 @@ string getOtpHash(string_view user, string_view uuid, string_view otp)
                 "SELECT version FROM user_settings where user = ?", cuser);
             if (!res.rows().empty()) {
                 const auto old_version = res.rows().front().front().as_int64();
-                if (old_version >= req->version()) {
+                if (old_version > req->version()) {
                     throw server_err{pb::Error::CONFLICT,
                                      format("Existing version {} is higher or equal than/to the 'new' version {}.",
                                             old_version, req->version())};
