@@ -25,7 +25,7 @@ The application at this moment is unusable for anything but the "Green Days" fea
 I'm working towards a Beta version in August 2024.
 
 The application use CMake, QT 6.8 and require g++-13 or clang-17. It's developed under
-Linux (Ubuntu 23.10). MacOS and Windows will be supported later. The server require boost version 1.83 or newer.
+Linux (Ubuntu 23.10). MacOS and Windows will be supported later. The server require boost version 1.84 or newer.
 
 If you don't care about the server, you can start the required components using docker.
 
@@ -35,13 +35,15 @@ bash bootstrap-and-run-backend.sh
 
 ```
 
-After that, you can start the QT client application, and it will connect to the backend.
+After that, you can start the QT client application, and it will connect to the signup service
+in the back-end. You may need to specify the address in the server info according to the
+output from `bootstrap-and-run-backend.sh`.
 
 When you are done testing, you can stop the containers with this command:
 
 ```sh
 
-docker stop nextappd na-mariadb
+docker stop signupd-devel nextappd-devel na-mariadb-devel
 
 ```
 
