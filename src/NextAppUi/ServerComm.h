@@ -326,4 +326,5 @@ private:
     QUuid device_uuid_;
     QString messages_;
     QTimer ping_timer_;
+    unsigned ping_timer_interval_sec_{60}; // 60 seconds
 };

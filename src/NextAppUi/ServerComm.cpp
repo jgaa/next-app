@@ -86,11 +86,20 @@ ServerComm::ServerComm()
     connect(&ping_timer_, &QTimer::timeout, [this](const auto&) {
         if (status_ == Status::ONLINE) {
             nextapp::pb::PingReq req;
+            LOG_TRACE << "Sending ping to server...";
             callRpc<nextapp::pb::Status>([this](nextapp::pb::PingReq req) {
                 return client_->Ping(req);
+            }, [this](const nextapp::pb::Status& status) {
+                if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
+                    LOG_ERROR << "Ping failed: " << status.message();
+                    setStatus(Status::ERROR);
+                }
             }, req);
         }
     });
+
+    LOG_DEBUG << "Ping interval is " << ping_timer_interval_sec_ << " seconds";
+    ping_timer_.start(ping_timer_interval_sec_ * 1000);
 }
 
 ServerComm::~ServerComm()
