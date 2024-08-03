@@ -151,7 +151,7 @@ Rectangle {
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 onSingleTapped: (eventPoint, button) => {
                                     const exclude = eventPoint.pressPosition.x >= label.x
-                                    console.log("TapHandler: ", name, ", row=", treeDelegate.row, "button=", button,
+                                    console.log("TapHandler: ", name, ", uuid=", uuid, ", row=", treeDelegate.row, "button=", button,
                                         " expanded ", treeView.isExpanded(treeDelegate.row),
                                         " exclude ", exclude,
                                         " label.x ", label.x,
@@ -171,6 +171,8 @@ Rectangle {
                                             // //}
                                         break;
                                         case Qt.RightButton:
+                                            console.log("Right button clicked uuid:", uuid, " node=", NaMainTreeModel.nodeMapFromUuid(uuid))
+                                            contextMenu.uuid = uuid
                                             contextMenu.node = NaMainTreeModel.nodeMapFromUuid(uuid)
                                             contextMenu.index = treeDelegate.index
                                             contextMenu.popup();
@@ -186,6 +188,7 @@ Rectangle {
                                 // }
 
                                 onLongPressed: {
+                                    contextMenu.uuid = treeDelegate.uuid
                                     contextMenu.node = NaMainTreeModel.nodeMapFromUuid(treeDelegate.uuid)
                                     contextMenu.popup();
                                 }
@@ -320,6 +323,7 @@ Rectangle {
 
                     MyMenu {
                         id: contextMenu
+                        property string uuid: ""
                         property var node: null
                         property int index: -1
                         Action {
@@ -334,7 +338,54 @@ Rectangle {
                                 treeView.collapseRecursively(index)
                             }
                         }
+                        MenuSeparator {}
                         Action {
+                            enabled: uuid !== ""
+                            text: qsTr("Add Action")
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                addActionDlg(contextMenu.node)
+                            }
+                        }
+                        MenuSeparator {}
+                        Action {
+                            text: qsTr("Add Folder")
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                addChildDlg(contextMenu.node, "folder")
+                            }
+                        }
+                        Action {
+                            text: qsTr("Add Organization")
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                addChildDlg(contextMenu.node, "organization")
+                            }
+                        }
+                        Action {
+                            text: qsTr("Add Person")
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                addChildDlg(contextMenu.node, "person")
+                            }
+                        }
+                        Action {
+                            text: qsTr("Add Project")
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                addChildDlg(contextMenu.node, "project")
+                            }
+                        }
+                        Action {
+                            text: qsTr("Add Task")
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                addChildDlg(contextMenu.node, "task")
+                            }
+                        }
+                        MenuSeparator {}
+                        Action {
+                            enabled: uuid !== ""
                             text: qsTr("Edit")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {
@@ -342,6 +393,7 @@ Rectangle {
                             }
                         }
                         Action {
+                            enabled: uuid !== ""
                             icon.source: "../icons/fontawsome/trash-can.svg"
                             text: qsTr("Delete")
                             onTriggered: {
@@ -370,6 +422,23 @@ Rectangle {
         onRejected: {
             confirmDelete.close()
         }
+    }
+
+    function addChildDlg(parentNode, kind) {
+        openDialog("EditNodeDlg.qml", {
+            isNew: true,
+            parentUuid: parentNode.uuid,
+            kind: kind,
+            title: qsTr("New list")
+        });
+    }
+
+    function addActionDlg(parentNode) {
+        openDialog("EditActionDlg.qml", {
+            node: parentNode.uuid,
+            title: qsTr("New action"),
+            aprx: ActionsModel.getAction("")
+        });
     }
 
     function openDialog(name, args) {

@@ -19,10 +19,10 @@ Dialog {
     property var kinds: ["folder", "organization", "person", "project", "task"]
     property string icon: "../icons/folder/.svg"
 
-    x: NaCore.isMobile ? 0 : (parent.width - width) / 2
-    y: NaCore.isMobile ? 0 : (parent.height - height) / 2
-    width: Math.min(NaCore.width, 600)
-    height: Math.min(NaCore.height, 500)
+    x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
+    y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
+    width: Math.min(600, NaCore.width, Screen.width)
+    height: Math.min(700, NaCore.height, Screen.height)
 
     standardButtons: Dialog.Ok | Dialog.Cancel
     title: qsTr("Nodes and lists")
@@ -30,8 +30,6 @@ Dialog {
     onVisibleChanged: {
         if(visible) {
             name.focus = true
-
-            //if (current)
         }
     }
 
@@ -77,6 +75,7 @@ Dialog {
             }
 
             TextField{
+                Layout.fillWidth: true
                 id: name
             }
 
