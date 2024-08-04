@@ -121,6 +121,7 @@ class ActionsModel : public QAbstractListModel
         NEXT_YEAR,
     };
 
+public:
     enum FetchWhat {
         FW_TODAY,
         FW_TODAY_AND_OVERDUE,
@@ -133,12 +134,14 @@ class ActionsModel : public QAbstractListModel
         FW_FAVORITES,
         FW_ON_TODAYS_CALENDAR
     };
+private:
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
     Q_PROPERTY(FetchWhat mode READ mode WRITE setMode NOTIFY modeChanged)
     Q_PROPERTY(nextapp::pb::GetActionsFlags flags READ flags WRITE setFlags NOTIFY flagsChanged)
-
 public:
+    Q_ENUM(FetchWhat)
+
     ActionsModel(QObject *parent = {});
 
     Q_INVOKABLE void addAction(const nextapp::pb::Action& action);
