@@ -357,6 +357,14 @@ boost::asio::awaitable<void>
                                    prefixed_cols, sortcol);
                     args.emplace_back(req->nodeidandchildren());
                     args.emplace_back(cuser);
+            } else if (req->has_ontodayscalendar() && req->ontodayscalendar()) {
+                query = format(R"(SELECT UNIQUE {}, {} AS sort_ts FROM action a
+                    JOIN time_block_actions tba on a.id=tba.action
+                    JOIN time_block tb on tba.time_block=tb.id
+                    WHERE a.user=?
+                    AND (DATE(tb.start_time) <= CURDATE() AND DATE(tb.end_time) >= CURDATE())
+                     )", prefixed_cols, sortcol);
+                args.emplace_back(cuser);
             } else {
                 query = format("SELECT {}, {} AS sort_ts FROM action a WHERE user=? ",
                                prefixed_cols, sortcol);

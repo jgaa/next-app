@@ -54,6 +54,7 @@ Rectangle {
                         ListElement { text: qsTr("Selected list") }
                         ListElement { text: qsTr("Selected list and sublists") }
                         ListElement { text: qsTr("Favorite Actions") }
+                        ListElement { text: qsTr("On Todays Calendar") }
                     }
 
                     onActivated: (ix) => {

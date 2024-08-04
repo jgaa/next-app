@@ -1028,6 +1028,9 @@ void ActionsModel::fetchIf(bool restart)
     case FetchWhat::FW_FAVORITES:
         req.setFavorites(true);
         break;
+    case FetchWhat::FW_ON_TODAYS_CALENDAR:
+        req.setOnTodaysCalendar(true);
+        break;
     }
 
     // TODO: Handle pagination, visibility

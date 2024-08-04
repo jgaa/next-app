@@ -130,7 +130,8 @@ class ActionsModel : public QAbstractListModel
         FW_CURRENT_MONTH_AND_OVERDUE,
         FW_SELECTED_NODE,
         FW_SELECTED_NODE_AND_CHILDREN,
-        FW_FAVORITES
+        FW_FAVORITES,
+        FW_ON_TODAYS_CALENDAR
     };
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
