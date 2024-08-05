@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.10 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.11 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -37,7 +37,7 @@ set(QT6_IS_SHARED_LIBS_BUILD OFF)
 # find_package(Boost REQUIRED)
 # include_directories(${Boost_INCLUDE_DIRS})
 
-find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test)
+find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test Multimedia)
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")
@@ -243,6 +243,9 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/square-checked.svg
         icons/square-unchecked.svg
         icons/task.svg
+        sounds/387351__cosmicembers__simple-ding.wav
+        sounds/515643__mashedtatoes2__ding2.wav
+        sounds/611112__5ro4__bell-ding-2.wav
     SOURCES
         ActionCategoriesModel.cpp
         ActionCategoriesModel.h
@@ -328,6 +331,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Grpc
         Qt6::Concurrent
         Qt6::Test
+        Qt6::Multimedia
         NextappGrpcClient
         NextappProtoMessageLib
         ${OPEN_SSL_DEPS}

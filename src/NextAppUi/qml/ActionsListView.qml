@@ -17,20 +17,20 @@ Rectangle {
     DisabledDimmer {}
 
     onVisibleChanged: {
-        console.log("ActionsView visible changed to", root.visible)
+        //console.log("ActionsView visible changed to", root.visible)
         ActionsModel.isVisible = root.visible
     }
 
     // onVisibleChanged is not called when the view is part of the initial view stack
     Component.onCompleted: {
-        console.log("ActionsView completed")
+        //console.log("ActionsView completed")
         ActionsModel.isVisible = root.visible
     }
 
     Connections {
         target: NaMainTreeModel
         onSelectedChanged: {
-            console.log("ActionsListView: Tree selection changed to", NaMainTreeModel.selected)
+            //console.log("ActionsListView: Tree selection changed to", NaMainTreeModel.selected)
             if (NaMainTreeModel.selected != ""
                     && ActionsModel.mode !== ActionsModel.FW_SELECTED_NODE
                     && ActionsModel.mode !== ActionsModel.FW_SELECTED_NODE_AND_CHILDREN) {

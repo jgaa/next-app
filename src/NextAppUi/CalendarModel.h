@@ -2,6 +2,10 @@
 
 #include <QObject>
 #include <QQmlEngine>
+#include <QTimer>
+#include <QAudioOutput>
+#include <QMediaPlayer>
+
 #include "CalendarDayModel.h"
 
 #include "nextapp.qpb.h"
@@ -21,6 +25,13 @@ class CalendarModel : public QObject
     Q_PROPERTY(bool valid READ valid NOTIFY validChanged)
     Q_PROPERTY(CalendarMode mode READ mode NOTIFY modeChanged)
     Q_PROPERTY(time_t target READ target NOTIFY targetChanged)
+
+    enum AudioEventType {
+        AE_PRE,
+        AE_START,
+        AE_SOON_ENDING,
+        AE_END,
+    };
 
 public:
     enum CalendarMode {
@@ -88,7 +99,8 @@ private:
     void alignDates();
     void onMinuteTimer();
     void updateToday();
-
+    void setAudioTimers();
+    void onAudioEvent();
 
     bool valid_ = false;
     bool online_ = false;
@@ -99,4 +111,9 @@ private:
     nextapp::pb::CalendarEvents all_events_;
     std::unordered_map<const QObject *, std::unique_ptr<CalendarDayModel>> day_models_;
     std::unique_ptr<QTimer> minute_timer_;
+    QAudioOutput audio_output_;
+    QMediaPlayer player_;
+    QTimer next_audio_event_;
+    const nextapp::pb::CalendarEvent *audio_event_{};
+    AudioEventType audio_event_type_{AudioEventType::AE_PRE};
 };

@@ -4,6 +4,9 @@
 #include <algorithm>
 
 #include <QTimer>
+#include <QSettings>
+
+
 #include "CalendarModel.h"
 #include "ServerComm.h"
 #include "util.h"
@@ -52,6 +55,8 @@ CalendarModel::CalendarModel()
             fetchIf();
         }
     });
+
+    connect(&next_audio_event_, &QTimer::timeout, this, &CalendarModel::onAudioEvent);
 
     setOnline(ServerComm::instance().connected());
 
@@ -479,6 +484,7 @@ void CalendarModel::updateDayModels()
         handle_day(date, start_of_day, events.end());
     }
 
+    setAudioTimers();
     setValid(online_);
 }
 
@@ -517,5 +523,121 @@ void CalendarModel::updateToday()
             dm->setToday(false);
         }
     }
+}
+
+void CalendarModel::setAudioTimers()
+{
+    // For now, find the next audio-event and set a timer for that.
+    // In the future, we may want to set a timer for all audio-events.
+
+    const auto now = time(nullptr);
+    QSettings settings{};
+
+    // Find the next event to end
+
+    const nextapp::pb::CalendarEvent *next_starting = nullptr;
+    const nextapp::pb::CalendarEvent *next_ending = nullptr;
+
+    time_t next_ending_time = 0;
+    time_t next_starting_time = 0;
+
+    auto next_start_event_type = AudioEventType::AE_START;
+    auto next_end_event_type = AudioEventType::AE_END;
+
+    for(const auto &ev : all_events_.events()) {
+        if (ev.hasTimeSpan()) {
+            const auto ending = ev.timeSpan().end();
+
+            // Check actual start time AE_START
+            const auto start = ev.timeSpan().start();
+            if (start > now && (!next_starting_time || start < next_starting_time)) {
+                next_starting_time = start;
+                next_starting = &ev;
+                next_start_event_type = AudioEventType::AE_START;
+            }
+
+            // Check if the AE_SOON_START event is the next to start
+            const auto pre_start = start - settings.value("alarms/calendarEvent.SoonToStartSecs", 60).toInt();
+            if (pre_start > now && (!next_starting_time || pre_start < next_starting_time)) {
+                next_starting_time = pre_start;
+                next_starting = &ev;
+                next_start_event_type = AudioEventType::AE_PRE;
+            }
+
+            // Check actual end-time AE_ENDING
+            if (ending > now && (!next_ending_time || ending < next_ending_time)) {
+                next_ending_time = ending;
+                next_ending = &ev;
+                next_end_event_type = AudioEventType::AE_END;
+            }
+
+            // Check if the AE_SOON_ENDING event is the next to end
+            const auto pre_ending = ending - settings.value("alarms/calendarEvent.SoonToEndSecs", 60*5).toInt();
+            if (pre_ending > now && (!next_ending_time || pre_ending < next_ending_time)) {
+                next_ending_time = pre_ending;
+                next_ending = &ev;
+                next_end_event_type = AudioEventType::AE_SOON_ENDING;
+            }
+
+            // TODO: Break the loop if we are done with the relevant items
+        }
+    }
+
+    time_t next_time{};
+    const nextapp::pb::CalendarEvent *next_event = nullptr;
+
+    if (next_ending_time && (!next_starting_time || next_ending_time < next_starting_time)) {
+        next_time = next_ending_time;
+        next_event = next_ending;
+        audio_event_type_ = next_end_event_type;
+    } else {
+        next_time = next_starting_time;
+        next_event = next_starting;
+        audio_event_type_ = next_start_event_type;
+    }
+
+    if (next_event) {
+        auto delay = max<int>(next_time - time(nullptr), 1);
+        next_audio_event_.start(delay * 1000);
+        audio_event_ = next_event;
+        LOG_TRACE_N << "Next audio event is in " << delay << " seconds and of type " << audio_event_type_;
+    } else {
+        next_audio_event_.stop();
+        audio_event_ = nullptr;
+    }
+}
+
+void CalendarModel::onAudioEvent()
+{
+    if (audio_event_) {
+        LOG_TRACE_N << "Audio event: " << audio_event_->id_proto()
+                    << " at " << QDateTime::fromSecsSinceEpoch(audio_event_->timeSpan().start()).toString();
+
+        QString audio_file;
+        switch(audio_event_type_) {
+            case AudioEventType::AE_START:
+                audio_file = "qrc:/qt/qml/NextAppUi/sounds/387351__cosmicembers__simple-ding.wav";
+                break;
+            case AudioEventType::AE_PRE:
+            case AudioEventType::AE_SOON_ENDING:
+                audio_file = "qrc:/qt/qml/NextAppUi/sounds/515643__mashedtatoes2__ding2.wav";
+                break;
+            case AudioEventType::AE_END:
+                audio_file = "qrc:/qt/qml/NextAppUi/sounds/611111__5ro4__bell-ding-1.wav";
+                break;
+        }
+
+        LOG_DEBUG_N << "Playing audio: " << audio_file << " of type " << audio_event_type_;
+
+        player_.setAudioOutput(&audio_output_);
+        audio_output_.setVolume(50);
+        player_.setSource(QUrl(audio_file));
+        player_.play();
+    } else {
+        LOG_DEBUG_N << "Called, but there is no event to play audio for.";
+    }
+
+    // Set the timer for the next event
+    setAudioTimers();
 }
 
