@@ -22,10 +22,10 @@ Dialog {
             id: tab
             width: parent.width
 
-            TabButton {
-                text: qsTr("Server")
-                width: implicitWidth
-            }
+            // TabButton {
+            //     text: qsTr("Server")
+            //     width: implicitWidth
+            // }
 
             TabButton {
                 text: qsTr("Global")
@@ -52,10 +52,10 @@ Dialog {
             Layout.fillHeight: true
             Layout.fillWidth: true
             currentIndex: tab.currentIndex
-            Item {
-                id: serverTab
-                ServerSettings {id: server}
-            }
+            // Item {
+            //     id: serverTab
+            //     ServerSettings {id: server}
+            // }
             Item {
                 id: globalTab
                 GlobalSettings {id: global}
@@ -76,7 +76,7 @@ Dialog {
     }
 
     onAccepted: {
-        server.commit()
+        //server.commit()
         global.commit()
         preferences.commit()
         advanced.commit()

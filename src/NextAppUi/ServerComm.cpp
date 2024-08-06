@@ -218,15 +218,15 @@ void ServerComm::toggleConnect()
 
 void ServerComm::reloadSettings()
 {
-    QTimer::singleShot(200, [this] {
-        auto server_address = QSettings{}.value("serverAddress", getDefaultServerAddress()).toString();
-        if (server_address != current_server_address_) {
-            LOG_INFO_N << "Server address change from " << current_server_address_
-                       << " to " << server_address
-                       << ". I will re-connect.";
-            start();
-        }
-    });
+    // QTimer::singleShot(200, [this] {
+    //     auto server_address = QSettings{}.value("serverAddress", getDefaultServerAddress()).toString();
+    //     if (server_address != current_server_address_) {
+    //         LOG_INFO_N << "Server address change from " << current_server_address_
+    //                    << " to " << server_address
+    //                    << ". I will re-connect.";
+    //         start();
+    //     }
+    // });
 }
 
 void ServerComm::getColorsInMonth(unsigned int year, unsigned int month)

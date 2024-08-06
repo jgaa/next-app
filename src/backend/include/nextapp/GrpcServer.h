@@ -304,6 +304,7 @@ public:
     // Fetch actions that start and are due on given day, and is of due_kind 'datetime'.
     // The matching actions are inserted in events.
     boost::asio::awaitable<void> fetchActionsForCalendar(pb::CalendarEvents& events, RequestCtx& rctx, const time_t& day);
+    boost::asio::awaitable<void> getGlobalSettings(pb::UserGlobalSettings& settings, RequestCtx& rctx);
 
     void handleSession(::grpc::CallbackServerContext *ctx);
 
