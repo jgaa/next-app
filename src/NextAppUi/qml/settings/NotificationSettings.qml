@@ -19,8 +19,8 @@ Item {
 
     function commit() {
         settings.setValue("alarms/calendarEvent.enabled", alarmsEnabled.checked)
-        settings.setValue("alarms/calendarEvent.SoonToStartSecs", alarmsBeforeStart.value)
-        settings.setValue("alarms/calendarEvent.SoonToEndSecs", alarmsBeforeEnd.value)
+        settings.setValue("alarms/calendarEvent.SoonToStartMinutes", alarmsBeforeStart.value)
+        settings.setValue("alarms/calendarEvent.SoonToEndMinutes", alarmsBeforeEnd.value)
         settings.setValue("alarms/calendarEvent.volume", alarmsVolume.value)
         settings.sync()
     }
@@ -47,7 +47,7 @@ Item {
                 enabled: alarmsEnabled.checked
                 SpinBox {
                     id: alarmsBeforeStart
-                    value: settings.value("alarms/calendarEvent.SoonToStartSecs", 1)
+                    value: settings.value("alarms/calendarEvent.SoonToStartMinutes", 1)
                 }
                 Label { text: qsTr("minutes")}
             }
@@ -58,8 +58,9 @@ Item {
                 SpinBox {
                     enabled: alarmsEnabled.checked
                     id: alarmsBeforeEnd
-                    value: settings.value("alarms/calendarEvent.SoonToEndSecs", 5)
+                    value: settings.value("alarms/calendarEvent.SoonToEndMinutes", 5)
                 }
+                Label { text: qsTr("minutes")}
             }
 
             Label { text: qsTr("Volume")}

@@ -245,7 +245,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/square-unchecked.svg
         icons/task.svg
         sounds/387351__cosmicembers__simple-ding.wav
-        sounds/515643__mashedtatoes2__ding2.wav
+        sounds/515643__mashedtatoes2__ding2_edit.wav
         sounds/611112__5ro4__bell-ding-2.wav
     SOURCES
         ActionCategoriesModel.cpp

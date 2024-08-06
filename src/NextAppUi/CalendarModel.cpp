@@ -9,6 +9,7 @@
 
 #include "CalendarModel.h"
 #include "ServerComm.h"
+#include "NextAppCore.h"
 #include "util.h"
 
 using namespace std;
@@ -39,6 +40,10 @@ int version(const nextapp::pb::CalendarEvent& event) {
 
 CalendarModel::CalendarModel()
 {
+    connect(NextAppCore::instance(), &NextAppCore::settingsChanged, this, [this]{
+        setAudioTimers();
+    });
+
     connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
         setOnline(ServerComm::instance().connected());
     });
@@ -530,80 +535,79 @@ void CalendarModel::setAudioTimers()
     // For now, find the next audio-event and set a timer for that.
     // In the future, we may want to set a timer for all audio-events.
 
-    const auto now = time(nullptr);
+    LOG_TRACE_N << "Called.";
+
     QSettings settings{};
+
+    if (!settings.value("alarms/calendarEvent.enabled", true).toBool()) {
+        LOG_TRACE_N << "Audio events are disabled.";
+        return;
+    }
+
+    const auto now = time(nullptr);
 
     // Find the next event to end
 
-    const nextapp::pb::CalendarEvent *next_starting = nullptr;
-    const nextapp::pb::CalendarEvent *next_ending = nullptr;
+    audio_event_ = {};
+    time_t next_time{};
 
-    time_t next_ending_time = 0;
-    time_t next_starting_time = 0;
-
-    auto next_start_event_type = AudioEventType::AE_START;
-    auto next_end_event_type = AudioEventType::AE_END;
+    const auto pre_ending_mins = settings.value("alarms/calendarEvent.SoonToEndMinutes", 5).toInt();
+    const auto pre_start_mins = settings.value("alarms/calendarEvent.SoonToStartMinutes", 1).toInt();
 
     for(const auto &ev : all_events_.events()) {
         if (ev.hasTimeSpan()) {
-            const auto ending = ev.timeSpan().end();
+            const auto starting = ev.timeSpan().start();
 
             // Check actual start time AE_START
-            const auto start = ev.timeSpan().start();
-            if (start > now && (!next_starting_time || start < next_starting_time)) {
-                next_starting_time = start;
-                next_starting = &ev;
-                next_start_event_type = AudioEventType::AE_START;
+            if (starting > now && (!next_time || starting < next_time)) {
+                next_time = starting;
+                audio_event_ = &ev;
+                audio_event_type_ = AudioEventType::AE_START;
             }
 
             // Check if the AE_SOON_START event is the next to start
-            const auto pre_start = start - settings.value("alarms/calendarEvent.SoonToStartSecs", 1).toInt();
-            if (pre_start > now && (!next_starting_time || pre_start < next_starting_time)) {
-                next_starting_time = pre_start;
-                next_starting = &ev;
-                next_start_event_type = AudioEventType::AE_PRE;
+            if (pre_start_mins > 0) {
+                const auto pre_start = starting - (pre_start_mins * 60);
+                if (pre_start > now && (!next_time || pre_start < next_time)) {
+                    next_time = pre_start;
+                    audio_event_ = &ev;
+                    audio_event_type_ = AudioEventType::AE_PRE;
+                }
             }
 
-            // Check actual end-time AE_ENDING
-            if (ending > now && (!next_ending_time || ending < next_ending_time)) {
-                next_ending_time = ending;
-                next_ending = &ev;
-                next_end_event_type = AudioEventType::AE_END;
+            // Break the loop if we are done with the relevant items
+            if (next_time && starting > now) {
+                break;
+            }
+
+            // Check actual end-time AE_END
+            const auto ending = ev.timeSpan().end();
+            if (ending > now && (!next_time || ending < next_time)) {
+                next_time = ending;
+                audio_event_ = &ev;
+                audio_event_type_ = AudioEventType::AE_END;
             }
 
             // Check if the AE_SOON_ENDING event is the next to end
-            const auto pre_ending = ending - settings.value("alarms/calendarEvent.SoonToEndSecs", 5).toInt();
-            if (pre_ending > now && (!next_ending_time || pre_ending < next_ending_time)) {
-                next_ending_time = pre_ending;
-                next_ending = &ev;
-                next_end_event_type = AudioEventType::AE_SOON_ENDING;
+            if (pre_ending_mins > 0) {
+                const auto pre_ending = ending - (pre_ending_mins * 60);
+                if (pre_ending > now && (!next_time || pre_ending < next_time)) {
+                    next_time = pre_ending;
+                    audio_event_ = &ev;
+                    audio_event_type_ = AudioEventType::AE_SOON_ENDING;
+                }
             }
-
-            // TODO: Break the loop if we are done with the relevant items
         }
     }
 
-    time_t next_time{};
-    const nextapp::pb::CalendarEvent *next_event = nullptr;
-
-    if (next_ending_time && (!next_starting_time || next_ending_time < next_starting_time)) {
-        next_time = next_ending_time;
-        next_event = next_ending;
-        audio_event_type_ = next_end_event_type;
-    } else {
-        next_time = next_starting_time;
-        next_event = next_starting;
-        audio_event_type_ = next_start_event_type;
-    }
-
-    if (next_event) {
+    if (next_time) {
         auto delay = max<int>(next_time - time(nullptr), 1);
+        next_audio_event_.setSingleShot(true);
         next_audio_event_.start(delay * 1000);
-        audio_event_ = next_event;
         LOG_TRACE_N << "Next audio event is in " << delay << " seconds and of type " << audio_event_type_;
     } else {
         next_audio_event_.stop();
-        audio_event_ = nullptr;
+        audio_event_ = {};
     }
 }
 
@@ -621,17 +625,18 @@ void CalendarModel::onAudioEvent()
                 break;
             case AudioEventType::AE_PRE:
             case AudioEventType::AE_SOON_ENDING:
-                audio_file = "qrc:/qt/qml/NextAppUi/sounds/515643__mashedtatoes2__ding2.wav";
+                audio_file = "qrc:/qt/qml/NextAppUi/sounds/515643__mashedtatoes2__ding2_edit.wav";
                 break;
             case AudioEventType::AE_END:
-                audio_file = "qrc:/qt/qml/NextAppUi/sounds/611111__5ro4__bell-ding-1.wav";
+                audio_file = "qrc:/qt/qml/NextAppUi/sounds/611112__5ro4__bell-ding-2.wav";
                 break;
         }
 
-        LOG_DEBUG_N << "Playing audio: " << audio_file << " of type " << audio_event_type_;
+        LOG_DEBUG_N << "Playing audio: " << audio_file << " of type " << audio_event_type_ << " at volume "
+                    << settings.value("alarms/calendarEvent.volume", 0.4).toDouble();
 
+        audio_output_.setVolume(settings.value("alarms/calendarEvent.volume", 0.4).toDouble());
         player_.setAudioOutput(&audio_output_);
-        audio_output_.setVolume(settings.value("alarms/calendarEvent.volume", 40).toInt());
         player_.setSource(QUrl(audio_file));
         player_.play();
     } else {

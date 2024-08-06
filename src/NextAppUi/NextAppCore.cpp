@@ -103,6 +103,10 @@ void NextAppCore::openFile(const QString &path)
     // }
 }
 
+void NextAppCore::emitSettingsChanged() {
+    emit settingsChanged();
+}
+
 time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)
 {
     try {
