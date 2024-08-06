@@ -21,7 +21,7 @@ Dialog {
     x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
     y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
     width: Math.min(600, NaCore.width, Screen.width)
-    height: Math.min(800, NaCore.height, Screen.height)
+    height: Math.min(700, NaCore.height, Screen.height)
 
     standardButtons: root.aprx.valid ? (Dialog.Ok | Dialog.Cancel) : Dialog.Cancel
 
