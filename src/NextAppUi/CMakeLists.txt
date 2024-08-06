@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.12 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.13 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -229,6 +229,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/trash-can.svg
         icons/fontawsome/cloud-bolt.svg
         icons/fontawsome/laptop.svg
+        icons/fontawsome/layer-group.svg
         icons/fontawsome/hourglass-half.svg
         icons/fontawsome/arrows-up-down-left-right.svg
         icons/generic_file.svg

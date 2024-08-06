@@ -5,13 +5,14 @@ import QtQuick.Effects
 import QtQuick.Dialogs
 import NextAppUi
 import nextapp.pb as NextappPB
+import Nextapp.Models
 
 Dialog {
     id: root
-    x: 20
-    y: 20
-    width: 600
-    height: 800
+    x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
+    y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
+    width: Math.min(600, NaCore.width, Screen.width)
+    height: Math.min(800, NaCore.height, Screen.height)
     visible: true
     standardButtons: Dialog.Close
     property font headerFont: Qt.font({pixelSize: 18, bold: true})
@@ -39,6 +40,7 @@ Dialog {
             model: ActionCategoriesModel
             Layout.fillHeight: true
             Layout.fillWidth: true
+            clip: true
             spacing: 6
 
             ItemSelectionModel {
@@ -46,9 +48,20 @@ Dialog {
                 model: listCtl.model
             }
 
+            ScrollBar.vertical: ScrollBar {
+                id: vScrollBar
+                parent: listCtl
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: MaterialDesignStyling.scrollBarWidth
+                policy: ScrollBar.AlwaysOn
+            }
+
+
             delegate: Item {
                 id: item
-                width: list.width
+                width: list.width - MaterialDesignStyling.scrollBarWidth - 2;
                 height: layout.implicitHeight
                 required property int index
                 required property string name
@@ -123,9 +136,9 @@ Dialog {
             }
         }
 
-        RowLayout {
-            Button {
-                text: qsTr("Add Category")
+        GridLayout {
+            RoundButton {
+                text: qsTr("Add")
 
                 onClicked: {
                     editDlg.actionCategory = listCtl.model.get(-1)
@@ -133,23 +146,20 @@ Dialog {
                 }
             }
 
-            Button {
+            RoundButton {
                 enabled: selectionModel.hasSelection
-                text: qsTr("Edit Category")
+                text: qsTr("Edit")
                 onClicked: {
-                    // console.log("edit selectopn. Selections=", selectionModel.selectedIndexes.length, "has selection=", selectionModel.hasSelection)
                     editDlg.actionCategory = listCtl.model.get(selectionModel.selectedIndexes[0].row)
                     selectionModel.clear();
                     editDlg.open()
                 }
             }
 
-            Button {
+            RoundButton {
                 enabled: selectionModel.hasSelection
-                text: qsTr("Remove Category")
+                text: qsTr("Remove")
                 onClicked: {
-                    //listCtl.model.deleteSelection(selectionModel.selectedIndexes)
-                    //selectionModel.clear();
                     confirmDelete.open()
                 }
 

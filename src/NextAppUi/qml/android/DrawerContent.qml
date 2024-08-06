@@ -204,6 +204,15 @@ Rectangle {
             RoundButton {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillWidth: true
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/layer-group.svg"
+                checkable: false
+                text: qsTr("Categories")
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/categories/CategoriesMgr.qml", appWindow, {});
+            }
+
+            RoundButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/laptop.svg"
                 checkable: false
                 text: qsTr("Devices")

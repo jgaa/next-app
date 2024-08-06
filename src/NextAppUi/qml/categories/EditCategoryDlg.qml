@@ -4,12 +4,15 @@ import QtQuick.Controls
 import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPB
+import Nextapp.Models
 
 Dialog {
     id: root
     title: qsTr("Edit Categories")
-    width: 600
-    height: 800
+    x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
+    y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
+    width: Math.min(600, NaCore.width, Screen.width)
+    height: Math.min(800, NaCore.height, Screen.height)
     standardButtons: Dialog.Ok
     property NextappPB.actionCategory actionCategory: ActionCategoriesModel.get(-1)
 
@@ -42,9 +45,7 @@ Dialog {
     }
 
     GridLayout {
-        Layout.alignment: Qt.AlignLeft
-        Layout.fillHeight: true
-        Layout.fillWidth: true
+        anchors.fill: parent
         rowSpacing: 4
         columns: 2
         enabled: ActionCategoriesModel.valid
