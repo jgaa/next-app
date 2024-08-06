@@ -306,35 +306,43 @@ string getOtpHash(string_view user, string_view uuid, string_view otp)
     }, __func__);
 }
 
+boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSettings &settings, RequestCtx &rctx)
+{
+    const auto& cuser = rctx.uctx->userUuid();
+
+    auto res = co_await rctx.dbh->exec(
+        "SELECT settings, version FROM user_settings WHERE user = ?",
+        cuser);
+
+    enum Cols { SETTINGS, VERSION };
+    if (!res.rows().empty()) {
+        const auto& row = res.rows().front();
+        auto blob = row.at(SETTINGS).as_blob();
+        if (settings.ParseFromArray(blob.data(), blob.size())) {
+            auto version = row.at(VERSION).as_int64();
+            settings.set_version(version);
+        } else {
+            LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << cuser;
+            throw runtime_error{"Failed to parse UserGlobalSettings"};
+        }
+    } else {
+        throw server_err{pb::Error::NOT_FOUND, "User settings not found"};
+    }
+
+    co_return;
+}
+
+
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetUserGlobalSettings(::grpc::CallbackServerContext *ctx,
                                                                            const pb::Empty *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-            const auto& cuser = rctx.uctx->userUuid();
+            // const auto& cuser = rctx.uctx->userUuid();
 
-            auto res = co_await rctx.dbh->exec(
-                "SELECT settings, version FROM user_settings WHERE user = ?",
-                cuser);
-
-            enum Cols { SETTINGS, VERSION };
-            if (!res.rows().empty()) {
-                const auto& row = res.rows().front();
-                auto blob = row.at(SETTINGS).as_blob();
-                pb::UserGlobalSettings settings;
-                if (settings.ParseFromArray(blob.data(), blob.size())) {
-                    auto version = row.at(VERSION).as_int64();
-                    settings.set_version(version);
-                    reply->mutable_userglobalsettings()->CopyFrom(settings);
-                } else {
-                    LOG_WARN_N << "Failed to parse UserGlobalSettings for user " << cuser;
-                    throw runtime_error{"Failed to parse UserGlobalSettings"};
-                }
-            } else {
-                reply->set_error(pb::NOT_FOUND);
-                reply->set_message("User settings not found");
-            }
-
+            pb::UserGlobalSettings settings;
+            co_await owner_.getGlobalSettings(settings, rctx);
+            reply->mutable_userglobalsettings()->CopyFrom(settings);
             co_return;
         }, __func__);
 }
@@ -372,13 +380,17 @@ string getOtpHash(string_view user, string_view uuid, string_view otp)
                                         ? pb::Update::Operation::Update_Operation_ADDED
                                         : pb::Update::Operation::Update_Operation_UPDATED);
 
-            *update->mutable_userglobalsettings() = *req;
+            // Rr-read from database so we get everything right. The version is updated by a trigger.
+            pb::UserGlobalSettings settings;
+            co_await owner_.getGlobalSettings(settings, rctx);
+
+            update->mutable_userglobalsettings()->CopyFrom(settings);
             rctx.publishLater(update);
 
-            *reply->mutable_userglobalsettings() = *req;
+            reply->mutable_userglobalsettings()->CopyFrom(settings);
 
             // TODO: Cluster: Signal other servers that the settings has changed
-            owner_.sessionManager().setUserSettings(toUuid(cuser), *req);
+            owner_.sessionManager().setUserSettings(toUuid(cuser), settings);
 
             co_return;
         }, __func__);
