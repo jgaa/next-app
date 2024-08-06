@@ -4,6 +4,8 @@
 #include <QQmlEngine>
 #include <QQmlApplicationEngine>
 #include <QGuiApplication>
+#include <QAudioOutput>
+#include <QMediaPlayer>
 
 #include "WorkModel.h"
 #include "WeeklyWorkReportModel.h"
@@ -45,6 +47,8 @@ public:
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
     static Q_INVOKABLE QString toDateAndTime(time_t when, time_t defaultDate = 0);
     static Q_INVOKABLE QString toTime(time_t when);
+    Q_INVOKABLE void playSound(double volume, const QString& soundFile);
+    Q_INVOKABLE void playSoundDelayed(int delayMs, double volume, const QString& soundFile);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseHourMin(const QString& str);
@@ -112,4 +116,9 @@ private:
     int height_{0};
     int width_{0};
     bool drag_enabled_{};
+    std::optional<QAudioOutput> audio_output_;
+    std::optional<QMediaPlayer> audio_player_;
+    QTimer audio_play_delay_;
+    QString sound_file_;
+    double volume_{};
 };

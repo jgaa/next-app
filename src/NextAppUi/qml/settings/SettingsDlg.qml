@@ -38,6 +38,11 @@ Dialog {
             }
 
             TabButton {
+                text: qsTr("Notifications")
+                width: implicitWidth
+            }
+
+            TabButton {
                 text: qsTr("Advanced")
                 width: implicitWidth
             }
@@ -60,6 +65,10 @@ Dialog {
                 PrefSettings {id: preferences}
             }
             Item {
+                id: notificationsTab
+                NotificationSettings {id: notifications}
+            }
+            Item {
                 id: advancedTab
                 AdvancedSettings {id: advanced}
             }
@@ -71,6 +80,7 @@ Dialog {
         global.commit()
         preferences.commit()
         advanced.commit()
+        notifications.commit()
         close()
     }
 

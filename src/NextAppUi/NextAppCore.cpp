@@ -35,6 +35,10 @@ NextAppCore::NextAppCore() {
         emit heightChanged();
     });
 #endif
+
+    connect(&audio_play_delay_, &QTimer::timeout, [this]() {
+        playSound(volume_, sound_file_);
+    });
 }
 
 
@@ -125,6 +129,39 @@ QString NextAppCore::toTime(time_t when)
 {
     const auto actualTime = QDateTime::fromSecsSinceEpoch(when);
     return actualTime.time().toString("hh:mm");
+}
+
+void NextAppCore::playSound(double volume, const QString &soundFile)
+{
+    if (!audio_output_) {
+        audio_output_.emplace();
+    }
+    if (!audio_player_) {
+        audio_player_.emplace();
+    }
+
+    audio_output_->setVolume(volume);
+    audio_player_->setAudioOutput(&audio_output_.value());
+
+    // QUrl don't support QStringView
+    QString file = soundFile;
+    if (file.isEmpty()) {
+        file = "qrc:/qt/qml/NextAppUi/sounds/387351__cosmicembers__simple-ding.wav";
+    }
+
+    audio_player_->setSource(QUrl(file));
+
+    LOG_DEBUG_N << "Playing sound " << file
+                << " at volume " << volume;
+    audio_player_->play();
+}
+
+void NextAppCore::playSoundDelayed(int delayMs, double volume, const QString &soundFile)
+{
+    volume_ = volume;
+    sound_file_ = soundFile;
+    audio_play_delay_.setSingleShot(true);
+    audio_play_delay_.start(delayMs);
 }
 
 time_t NextAppCore::parseHourMin(const QString &str)

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.11 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.12 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -199,6 +199,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/onboard/OnboardingWelcome.qml
         qml/settings/AdvancedSettings.qml
         qml/settings/GlobalSettings.qml
+        qml/settings/NotificationSettings.qml
         qml/settings/PrefSettings.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml

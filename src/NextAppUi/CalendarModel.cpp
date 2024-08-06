@@ -557,7 +557,7 @@ void CalendarModel::setAudioTimers()
             }
 
             // Check if the AE_SOON_START event is the next to start
-            const auto pre_start = start - settings.value("alarms/calendarEvent.SoonToStartSecs", 60).toInt();
+            const auto pre_start = start - settings.value("alarms/calendarEvent.SoonToStartSecs", 1).toInt();
             if (pre_start > now && (!next_starting_time || pre_start < next_starting_time)) {
                 next_starting_time = pre_start;
                 next_starting = &ev;
@@ -572,7 +572,7 @@ void CalendarModel::setAudioTimers()
             }
 
             // Check if the AE_SOON_ENDING event is the next to end
-            const auto pre_ending = ending - settings.value("alarms/calendarEvent.SoonToEndSecs", 60*5).toInt();
+            const auto pre_ending = ending - settings.value("alarms/calendarEvent.SoonToEndSecs", 5).toInt();
             if (pre_ending > now && (!next_ending_time || pre_ending < next_ending_time)) {
                 next_ending_time = pre_ending;
                 next_ending = &ev;
@@ -609,6 +609,7 @@ void CalendarModel::setAudioTimers()
 
 void CalendarModel::onAudioEvent()
 {
+    QSettings settings{};
     if (audio_event_) {
         LOG_TRACE_N << "Audio event: " << audio_event_->id_proto()
                     << " at " << QDateTime::fromSecsSinceEpoch(audio_event_->timeSpan().start()).toString();
@@ -630,7 +631,7 @@ void CalendarModel::onAudioEvent()
         LOG_DEBUG_N << "Playing audio: " << audio_file << " of type " << audio_event_type_;
 
         player_.setAudioOutput(&audio_output_);
-        audio_output_.setVolume(50);
+        audio_output_.setVolume(settings.value("alarms/calendarEvent.volume", 40).toInt());
         player_.setSource(QUrl(audio_file));
         player_.play();
     } else {
