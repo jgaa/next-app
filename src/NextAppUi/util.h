@@ -6,7 +6,7 @@
 
 [[nodiscard]] QString toValidQuid(const QString& str);
 [[nodiscard]] QUuid toQuid(const QString& str);
-[[nodiscard]] QString toHourMin(const int duration);
+[[nodiscard]] QString toHourMin(const int duration, bool showEmpty = true);
 [[nodiscard]] int parseDuration(const QString& value);
 [[nodiscard]] time_t parseDateOrTime(const QString& str, const QDate& defaultDate = QDate::currentDate());
 

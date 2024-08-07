@@ -31,8 +31,12 @@ QUuid toQuid(const QString &str)
     return uuid;
 }
 
-QString toHourMin(const int duration)
+QString toHourMin(const int duration, bool showEmpty)
 {
+    if (duration == 0) {
+        return showEmpty ?  "00:00" : "";
+    }
+
     auto minutes = duration / 60;
     auto hours = minutes / 60;
     minutes -= (hours * 60);

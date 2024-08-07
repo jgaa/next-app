@@ -83,6 +83,7 @@ Rectangle {
                     model: NaCore.createWeeklyWorkReportModel()
                     boundsBehavior: Flickable.StopAtBounds
                     boundsMovement: Flickable.StopAtBounds
+                    clip: true
 
                     onVisibleChanged: () => {
                         model.isVisible = root.visible

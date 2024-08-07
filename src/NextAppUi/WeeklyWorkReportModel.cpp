@@ -227,18 +227,18 @@ QVariant WeeklyWorkReportModel::data(const QModelIndex &index, int role) const
                 return tr("Total");
             }
             if (col == 8) {
-                return toHourMin(total());
+                return toHourMin(total(), false);
             }
-            return toHourMin(sum(col - 1));
+            return toHourMin(sum(col - 1), false);
         } else {
             if (auto it = nodes_.find(sorted_nodes_[row]); it != nodes_.end()) {
                 if (col == 0) {
                     return it->second.name;
                 }
                 if (col == 8) {
-                    return toHourMin(std::accumulate(it->second.duration.begin(), it->second.duration.end(), 0));
+                    return toHourMin(std::accumulate(it->second.duration.begin(), it->second.duration.end(), 0), false);
                 }
-                return toHourMin(it->second.duration[col - 1]);
+                return toHourMin(it->second.duration[col - 1], false);
             }
         }
     }
