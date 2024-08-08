@@ -13,16 +13,20 @@ Rectangle {
     property alias model: tableView.model
     property string selectedItem: ""
     property bool selectedIsActive: false
+    property bool selectedIsStarted: false
     color: MaterialDesignStyling.surface
     Layout.fillHeight: true
 
     function somethingChanged() {
+        console.log("Gakke!")
         if (selectedItem !== "") {
             if(!model.sessionExists(selectedItem)) {
                 selectedItem = ""
                 selectedIsActive = false
+                selectedIsStarted = false
             } else {
                 selectedIsActive = WorkSessionsModel.isActive(selectedItem)
+                selectedIsStarted = WorkSessionsModel.isStarted(selectedItem)
             }
         }
     }

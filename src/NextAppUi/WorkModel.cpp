@@ -318,7 +318,11 @@ QVariant WorkModel::data(const QModelIndex &index, int role) const
         switch(index.column()) {
         case FROM: {
 from:
-            const auto start = QDateTime::fromSecsSinceEpoch(session.session.start());
+            const auto start_time = session.session.start();
+            if (!start_time) {
+                return QString{};
+            }
+            const auto start = QDateTime::fromSecsSinceEpoch(start_time);
             const auto now = QDateTime::currentDateTime();
             if (start.date() == now.date()) {
                 return start.toString("hh:mm");
@@ -375,8 +379,9 @@ name:
         goto used;
     case NameRole:
         goto name;
+    case StartedRole:
+        return session.session.start() > 0;
     }
-
     return {};
 }
 
@@ -393,6 +398,7 @@ QHash<int, QByteArray> WorkModel::roleNames() const
     roles[PauseRole] = "pause";
     roles[DurationRole] = "duration";
     roles[NameRole] = "name";
+    roles[StartedRole] = "started";
 
     return roles;
 }
@@ -527,6 +533,7 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
 
     work.setPaused(0);
     work.setDuration(0);
+    work.setStart(0);
 
     if (work.state() != pb::WorkSession::State::DONE) {
         work.clearEnd();
@@ -611,7 +618,11 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
         end_pause(event);
     }
 
-    if (work.hasEnd()) {
+    if (!work.start()) [[unlikely]] {
+        work.clearEnd();
+        work.setDuration(0);
+        work.setPaused(0);
+    } else if (work.hasEnd()) {
         if (work.end() <= work.start()) {
             work.setDuration(0);
         } else {

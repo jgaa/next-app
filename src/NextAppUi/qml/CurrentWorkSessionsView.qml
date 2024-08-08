@@ -34,7 +34,7 @@ Rectangle {
 
             StyledButton {
                 implicitHeight: 22 // Adjust as needed
-                text: "Pause"
+                text: qsTr("Pause")
                 enabled: workSessionList.selectedItem !== "" && workSessionList.selectedIsActive
 
                 onClicked: {
@@ -44,7 +44,7 @@ Rectangle {
 
             StyledButton {
                 implicitHeight: 22 // Adjust as needed
-                text: "To the Top"
+                text: qsTr("To the Top")
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {
@@ -54,7 +54,7 @@ Rectangle {
 
             StyledButton {
                 implicitHeight: 22 // Adjust as needed
-                text: "Resume"
+                text: workSessionList.selectedIsStarted ? qsTr("Resume") : qsTr("Start")
                 enabled: workSessionList.selectedItem !== "" && !workSessionList.selectedIsActive
 
                 onClicked: {
@@ -64,7 +64,7 @@ Rectangle {
 
             StyledButton {
                 implicitHeight: 22 // Adjust as needed
-                text: "Done"
+                text: qsTr("Done")
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {
@@ -74,7 +74,7 @@ Rectangle {
 
             StyledButton {
                 implicitHeight: 22 // Adjust as needed
-                text: "Action Completed"
+                text: qsTr("Action Completed")
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {

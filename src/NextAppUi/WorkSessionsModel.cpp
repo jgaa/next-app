@@ -41,6 +41,14 @@ bool WorkSessionsModel::isActive(const QString &actionId) const
     return false;
 }
 
+bool WorkSessionsModel::isStarted(const QString &sessionId) const
+{
+    if (auto session = lookup(toQuid(sessionId))) {
+        return session->start() > 0;
+    }
+    return false;
+}
+
 void WorkSessionsModel::pause(const QString &sessionId)
 {
     ServerComm::instance().pauseWork(sessionId);

@@ -73,6 +73,7 @@ public:
         PauseRole,
         DurationRole,
         NameRole,
+        StartedRole
     };
 
     enum Cols {

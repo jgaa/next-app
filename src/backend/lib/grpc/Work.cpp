@@ -36,7 +36,11 @@ struct ToWorkSession {
         ws.set_id(row.at(ID).as_string());
         ws.set_action(row.at(ACTION).as_string());
         ws.set_user(row.at(USER).as_string());
-        ws.set_start(toTimeT(row.at(START).as_datetime(), uctx.tz()));
+        if (row.at(START).is_datetime()) {
+            ws.set_start(toTimeT(row.at(START).as_datetime(), uctx.tz()));
+        } else {
+            ws.set_start(0);
+        }
         ws.set_touched(toTimeT(row.at(TOUCHED).as_datetime(), uctx.tz()));
         if (row.at(END).is_datetime()) {
             ws.set_end(toTimeT(row.at(END).as_datetime(), uctx.tz()));
@@ -124,6 +128,7 @@ struct ToWorkSession {
             }
 
             rctx.updates.reserve(actions.size());
+            const auto opt_autostart_session = rctx.uctx->settings().autostartnewworksession();
 
             int count = 0;
             for(const auto& actionId : actions) {
@@ -131,22 +136,21 @@ struct ToWorkSession {
                 pb::WorkSession init;
                 init.set_name(name);
                 init.set_action(actionId);
-                auto res = co_await owner_.insertWork(init, rctx, false);
+
+                optional<pb::WorkSession> active_session;
+                if (opt_autostart_session) {
+                    // Don't start a new session if we alreadyt have an active session
+                    active_session = co_await owner_.fetchActiveWorkSession(rctx);
+                }
+                const bool do_start_event = !active_session && opt_autostart_session && (++count == 1);
+
+                auto res = co_await owner_.insertWork(init, rctx, do_start_event);
 
                 assert(res.has_value() && !res.rows().empty());
 
                 auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
                 auto& work = *update.mutable_work();
                 ToWorkSession::assign(res.rows().front(), work, *rctx.uctx);
-
-                if (++count == 1) {
-                    if (rctx.uctx->settings().autostartnewworksession()) {
-                        LOG_TRACE_N << "Created and starting WorkSession: " << work.id();
-                        // Pause any active work session
-                        co_await owner_.pauseWork(rctx);
-                        co_await owner_.resumeWorkSession(work, rctx, false /* New session, no need to send two updates */);
-                    }
-                }
             }
 
             co_await trx.commit();
@@ -451,7 +455,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
     auto dbopts = rctx.uctx->dbOptions();
     dbopts.reconnect_and_retry_query = false;
 
-    auto start_t = work.start();
+    time_t start_t{};
     string_view state = "active";
     pb::SavedWorkEvents events;
     if (addStartEvent) {
@@ -461,7 +465,9 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
         state = "paused";
     }
 
+
     const auto start_time = toAnsiTime(start_t, rctx.uctx->tz());
+    const auto touch_time = toAnsiTime(start_t ? start_t : time({}), rctx.uctx->tz());
     const auto blob = toBlob(events);
     // Create the work session record
     const auto res = co_await rctx.dbh->exec(
@@ -469,7 +475,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
                "RETURNING {}", ToWorkSession::selectCols),
         dbopts,
         start_time,
-        start_time,
+        touch_time,
         work.action(),
         cuser,
         work.name(),
@@ -760,6 +766,7 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)
         return; // Nothing to do
     }
 
+    work.set_start(0);
     work.set_paused(0);
     work.set_duration(0);
 
@@ -841,7 +848,11 @@ void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)
     }
 
     // Now set the duration. That is, the duration from start to end - paused
-    if (work.has_end()) {
+    if (!work.start()) [[unlikely]] {
+        LOG_TRACE_N << "WorkSession " << work.id() << " has no start time";
+        work.set_duration(0);
+        work.set_paused(0);
+    } else if (work.has_end()) {
         if (work.end() <= work.start()) {
             work.set_duration(0);
         } else {
