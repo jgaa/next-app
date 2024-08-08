@@ -11,7 +11,7 @@ namespace nextapp {
 
 struct ServerConfig {
     size_t io_threads = std::min<size_t>(std::max<size_t>(2,std::thread::hardware_concurrency()), 8);
-    size_t time_block_max_actions = 6;
+    size_t time_block_max_actions = 24;
 };
 
 struct GrpcConfig {

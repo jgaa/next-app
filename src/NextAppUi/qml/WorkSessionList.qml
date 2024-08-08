@@ -96,6 +96,8 @@ Rectangle {
 
                 RowLayout {
                     implicitHeight: delegate.implicitHeight
+                    width: parent.width
+                    clip: true
 
                     SelectedIndicatorBar {
                         selected: column === 0 && delegate.selected
