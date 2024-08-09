@@ -1,0 +1,10 @@
+[requires]
+boost/1.85.0
+openssl/3.3.1
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout

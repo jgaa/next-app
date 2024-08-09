@@ -10,15 +10,16 @@ if(NOT DEFINED USE_BOOST_VERSION)
 endif()
 
 option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" ON)
-find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
-    system
-    program_options
-    date_time
-    coroutine
-    context
-    chrono
-    json
-    )
+# find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
+#     system
+#     program_options
+#     date_time
+#     coroutine
+#     context
+#     chrono
+#     json
+#     )
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED)
 
 set(SIGNUP_LIBS = ${Boost_LIBRARIES} ZLIB Threads::Threads)
 

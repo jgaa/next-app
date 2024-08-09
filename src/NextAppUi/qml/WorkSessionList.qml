@@ -18,7 +18,6 @@ Rectangle {
     Layout.fillHeight: true
 
     function somethingChanged() {
-        console.log("Gakke!")
         if (selectedItem !== "") {
             if(!model.sessionExists(selectedItem)) {
                 selectedItem = ""
