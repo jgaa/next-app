@@ -79,8 +79,6 @@ int main(int argc, char *argv[])
 #else
         "info";
 #endif
-    qDebug() << "Device supports OpenSSL: " << QSslSocket::supportsSsl();
-
     QGuiApplication app(argc, argv);
 
     // Allow us to use an alternative config-file for testing
@@ -227,6 +225,8 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
 
     NextAppCore::instance()->modelsAreCreated();
+
+    qDebug() << "Device supports OpenSSL: " << QSslSocket::supportsSsl();
 
     auto ret = app.exec();
 
