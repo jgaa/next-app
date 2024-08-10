@@ -9,11 +9,12 @@ add_executable(${PROJECT_NAME}
     main.cpp
     )
 
-add_dependencies(${PROJECT_NAME} sulib logfault)
+add_dependencies(${PROJECT_NAME} sulib logfault Boost::boost)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${NEXTAPP_DEPENDS}
     sulib
+    ${BOOST_LIBRARIES}
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

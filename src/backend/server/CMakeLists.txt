@@ -13,6 +13,7 @@ add_dependencies(${PROJECT_NAME} logfault)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${NEXTAPP_DEPENDS}
+    ${Boost_LIBRARIES}
     nalib
     )
 
