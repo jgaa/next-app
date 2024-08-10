@@ -16,6 +16,8 @@
 #include "ServerComm.h"
 #include "util.h"
 #include "nextapp.qpb.h"
+#include "nextapp.h"
+
 
 /*! A model for work sessions
  *

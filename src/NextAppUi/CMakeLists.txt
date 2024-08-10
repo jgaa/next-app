@@ -37,10 +37,11 @@ set(QT6_IS_SHARED_LIBS_BUILD OFF)
 # find_package(Boost REQUIRED)
 # include_directories(${Boost_INCLUDE_DIRS})
 
-find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Protobuf Grpc Concurrent Test Multimedia)
+find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Grpc Concurrent Test Multimedia)
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Protobuf)
 else ()
     find_package(Qt6 6.8 REQUIRED COMPONENTS ProtobufQuick)
     set (PROTOBUF_QML_DEPENDENCY Qt::ProtobufQuick)
@@ -288,6 +289,7 @@ qt_add_qml_module(${PROJECT_NAME}
         WorkSessionsModel.h
         util.cpp
         util.h
+        nextapp.h
 )
 
 if(NOT ANDROID)

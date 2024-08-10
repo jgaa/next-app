@@ -19,6 +19,11 @@ namespace nextapp::logging {
 #define LOG_DEBUG   LFLOG_DEBUG
 #define LOG_TRACE   LFLOG_TRACE
 
+#if !defined(__PRETTY_FUNCTION__) && !defined(__GNUC__)
+#define __PRETTY_FUNCTION__ __FUNCSIG__
+#endif
+
+
 #define LOG_ERROR_N   LFLOG_ERROR  << __PRETTY_FUNCTION__ << " - "
 #define LOG_WARN_N    LFLOG_WARN   << __PRETTY_FUNCTION__ << " - "
 #define LOG_INFO_N    LFLOG_INFO   << __PRETTY_FUNCTION__ << " - "

@@ -1,6 +1,7 @@
 [requires]
 boost/1.85.0
 openssl/3.3.1
+grpc/1.65.0
 
 [generators]
 CMakeDeps
