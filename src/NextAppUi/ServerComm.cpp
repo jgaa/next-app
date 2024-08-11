@@ -981,7 +981,7 @@ void ServerComm::setDefaulValuesInUserSettings()
 
     userGlobalSettings_.setDefaultWorkHours(wh);
 
-#ifdef ANDROID
+#if defined(ANDROID) || defined(__APPLE__)
     userGlobalSettings_.setTimeZone("Europe/Sofia");
 #else
     userGlobalSettings_.setTimeZone(QString::fromUtf8(chrono::current_zone()->name()));

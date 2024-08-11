@@ -443,8 +443,8 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) con
 
 QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt) const
 {
-#ifdef ANDROID
-    return "android";
+#if defined(ANDROID) || defined(__APPLE__)
+    return "no-tz";
 #else
     using namespace nextapp::pb::ActionDueKindGadget;
 
@@ -556,7 +556,7 @@ QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::Act
     return model;
 }
 
-#ifndef ANDROID
+#if !defined(ANDROID) && !defined(__APPLE__)
 auto timeZoneOffset(const std::chrono::time_zone *tz, const auto& tp) {
 
     const auto ts_offset = tz->get_info(tp).offset;

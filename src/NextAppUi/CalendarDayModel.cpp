@@ -18,6 +18,9 @@ using namespace std;
 namespace {
 
 struct Item {
+    Item(const nextapp::pb::CalendarEvent& event, time_t start = 0, time_t end = 0)
+        : event{event}, start{start}, end{end} {}
+
     const nextapp::pb::CalendarEvent& event;
     time_t start{};
     time_t end{};

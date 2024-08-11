@@ -293,16 +293,27 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
 )
 
-if(NOT ANDROID)
+if (APPLE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE_GUI_IDENTIFIER eu.lastviking.${PROJECT_NAME}
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}"
+        MACOSX_BUNDLE TRUE
+        RUNTIME_OUTPUT_NAME nextapp
+    )
+elseif (WIN32)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        WIN32_EXECUTABLE TRUE
+        RUNTIME_OUTPUT_NAME nextapp
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+elseif (NOT ANDROID)
     # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
     # If you are developing for iOS or macOS you should consider setting an
     # explicit, fixed bundle identifier manually though.
     set_target_properties(${PROJECT_NAME} PROPERTIES
-    #    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.${PROJECT_NAME}
-        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-        MACOSX_BUNDLE TRUE
-        WIN32_EXECUTABLE TRUE
         RUNTIME_OUTPUT_NAME nextapp
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
@@ -349,6 +360,11 @@ if(ANDROID)
         BUNDLE DESTINATION .
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+elseif(APPLE)
+    install(TARGETS ${PROJECT_NAME}
+        BUNDLE DESTINATION /Applications
+        RUNTIME DESTINATION bin
     )
 else()
     include(InstallRequiredSystemLibraries)
