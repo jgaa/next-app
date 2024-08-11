@@ -11,7 +11,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
 
 RUN mkdir -p /tmp/boost &&\
     curl -L https://archives.boost.io/release/1.85.0/source/boost_1_85_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 &&\
-    cd /tmp/boost && ./bootstrap.sh && ./b2 --with-program_options --with-system --with-date_time --with-coroutine --with-context --with-chrono --with-regex --with-json --with-url install &&\
+    cd /tmp/boost && ./bootstrap.sh && ./b2 --with-program_options --with-system --with-date_time --with-coroutine --with-context --with-chrono --with-regex --with-json --with-url --with-regex --with-url --with-charconv  install &&\
     cd / &&\
     rm -rf /tmp/boost
 

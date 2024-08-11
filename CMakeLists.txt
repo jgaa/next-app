@@ -64,6 +64,8 @@ if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP OR NEXTAPP_WITH_TESTS)
 
     find_package(Boost ${USE_BOOST_VERSION} REQUIRED ALL)
 
+    message("Boost_LIBRARIES: ${Boost_LIBRARIES}")
+
     set(BOOST_LIBRARIES
         Boost::system
         Boost::program_options
@@ -77,7 +79,9 @@ if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP OR NEXTAPP_WITH_TESTS)
         )
 
     if (Boost_VERSION VERSION_GREATER "1.84.0")
-        list(APPEND BOOST_LIBRARIES Boost::charconv)
+        #list(APPEND BOOST_LIBRARIES Boost::charconv)
+        message("Adding Boost::charconv to BOOST_LIBRARIES")
+        set(BOOST_LIBRARIES ${BOOST_LIBRARIES} Boost::charconv)
     endif()
 endif()
 
