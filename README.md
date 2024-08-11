@@ -1,5 +1,5 @@
 # next-app
-GTD application for desktop and mobile.
+GTD native application for desktop and mobile.
 
 This is a project I have been thinking and talking about for more than 10 years.
 
@@ -18,7 +18,23 @@ Everything is open source. I will probably offer a hosting-plan for people who d
 their own backend. But for people and companies where privacy and security is paramount,
 the code for the server and the apps will be freely available.
 
-# How to play with the current version
+## Architecture
+
+The app is a real, native application written in C++ using the QT framework
+to be cross platform for user interfaces across operating systems. The advantage
+of a *real*, native app, over "web apps", is that it's faster, leaner, and that
+it comes without any of the constraints of "software" that is really nothing but a
+web-page.
+
+The app currently require to be connected to a back-end server that keeps it's
+data and state. The reason for this is that I want to work seamlessly with the app
+on various devices, without having to "sync" anything. So whenever you change
+something in the app on one device (for example on your phone), the change is immediately
+available and visible on any other devices (for example your MacBook and PC). In the
+future, the plan is to have an off-line mode where the app can work without a connection
+and then push all the changes to the back-ens when the connection is back online.
+
+## How to play with the current version
 
 The application at this moment is "pre-alpha", which means that lots of things
 are unstable, or not ready yet.
@@ -35,10 +51,10 @@ are unstable, or not ready yet.
   - After *i* days, weeks, months, quarters, years
   - Specific weekday, first/last day in month
 - Time Tracking
-- Calendar
+- Calendar (day plan)
   - Time Blocks
   - Actions in Time Blocks
-  - Overlap, up to 8 layers
+  - Overlap
 - Reports
   - Weekly overview
 
@@ -51,7 +67,7 @@ are unstable, or not ready yet.
 
 ## Roadmap
 
-I'm working towards a Alpha version in August 2024 and a Beta in September.
+I'm working towards an Alpha version in August 2024 and a Beta in September.
 
 ## Building
 
