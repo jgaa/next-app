@@ -32,7 +32,7 @@ on various devices, without having to "sync" anything. So whenever you change
 something in the app on one device (for example on your phone), the change is immediately
 available and visible on any other devices (for example your MacBook and PC). In the
 future, the plan is to have an off-line mode where the app can work without a connection
-and then push all the changes to the back-ens when the connection is back online.
+and then push all the changes to the back-end when the connection is back online.
 
 ## How to play with the current version
 
