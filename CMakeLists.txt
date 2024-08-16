@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.0.22)
+    set(NEXTAPP_VERSION 0.0.23)
 endif()
 
 project(next-app
@@ -53,36 +53,6 @@ include_directories(${NEXTAPP_ROOT}/dependencies/logfault/include)
 if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP)
     add_subdirectory(src/proto)
     add_subdirectory(src/common)
-endif()
-
-if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP OR NEXTAPP_WITH_TESTS)
-    if(NOT DEFINED USE_BOOST_VERSION)
-        set(USE_BOOST_VERSION 1.84)
-    endif()
-
-    option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" OFF)
-
-    find_package(Boost ${USE_BOOST_VERSION} REQUIRED ALL)
-
-    message("Boost_LIBRARIES: ${Boost_LIBRARIES}")
-
-    set(BOOST_LIBRARIES
-        Boost::system
-        Boost::program_options
-        Boost::date_time
-        Boost::coroutine
-        Boost::context
-        Boost::chrono
-        Boost::json
-        Boost::regex
-        Boost::url
-        )
-
-    if (Boost_VERSION VERSION_GREATER "1.84.0")
-        #list(APPEND BOOST_LIBRARIES Boost::charconv)
-        message("Adding Boost::charconv to BOOST_LIBRARIES")
-        set(BOOST_LIBRARIES ${BOOST_LIBRARIES} Boost::charconv)
-    endif()
 endif()
 
 if (NEXTAPP_WITH_BACKEND)

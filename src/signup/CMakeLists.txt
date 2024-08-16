@@ -9,17 +9,15 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
-option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" ON)
-# find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
-#     system
-#     program_options
-#     date_time
-#     coroutine
-#     context
-#     chrono
-#     json
-#     )
-find_package(Boost ${USE_BOOST_VERSION} REQUIRED)
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
+    system
+    program_options
+    date_time
+    coroutine
+    context
+    chrono
+    json
+    )
 
 set(SIGNUP_LIBS = ${Boost_LIBRARIES} ZLIB Threads::Threads)
 
