@@ -267,10 +267,13 @@ private:
                         assert(!done);
                     }
                 }
-            },
-            [this](QGrpcStatus status) {
+            }
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+            ,[this](QGrpcStatus status) {
                 LOG_ERROR << "callRpc_ Comm error code=" << static_cast<unsigned>(status.code()) << ": " << status.message();
-            });
+            }
+#endif
+            );
         };
 
         if (opts.enable_queue && !connected()) {

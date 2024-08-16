@@ -9,6 +9,7 @@
 #include <QSslKey>
 #include <QSslCertificate>
 
+
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/evp.h>
@@ -113,9 +114,6 @@ void ServerComm::start()
     session_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
     current_server_address_ = settings.value("server/url", QString{}).toString();
 
-    QGrpcMetadata metadata;
-    metadata.emplace("session-id", session_id_.toLatin1());
-
     QSslConfiguration sslConfig;
     sslConfig.setPeerVerifyMode(QSslSocket::QueryPeer);
     //sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
@@ -141,7 +139,6 @@ void ServerComm::start()
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else
     auto channelOptions = QGrpcChannelOptions{}
-                              .setMetadata(metadata)
                               .setSslConfiguration(sslConfig);
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(current_server_address_, QUrl::StrictMode), channelOptions));
 #endif
@@ -880,7 +877,11 @@ void ServerComm::errorOccurred(const QGrpcStatus &status)
 
     emit errorRecieved(tr("Connection to gRPC server failed: %1").arg(status.message()));
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     if (status.code() == QGrpcStatus::StatusCode::Cancelled) {
+#else
+    if (status.code() == QtGrpc::StatusCode::Cancelled) {
+#endif
         setStatus(Status::OFFLINE);
         return;
     }
@@ -1033,17 +1034,16 @@ QString ServerComm::toString(const QGrpcStatus& status) {
         tr("UNAUTHENTICATED"),
     });
 
-    if (status.code() < errors.size()) {
-        return errors[status.code()] + ": " + status.message();
+    const auto ix = static_cast<size_t>(status.code());
+    if (ix < errors.size()) {
+        return errors[ix] + ": " + status.message();
     }
 
-    return tr("UNKNOWN (code=%1): %2").arg(status.code()).arg(status.message());
+    return tr("UNKNOWN (code=%1): %2").arg(ix).arg(status.message());
 }
 
 void ServerComm::connectToSignupServer()
 {
-    QGrpcMetadata metadata;
-    metadata.emplace("session-id", session_id_.toLatin1());
     QSslConfiguration sslConfig{QSslConfiguration::defaultConfiguration()};
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
     sslConfig.setProtocol(QSsl::TlsV1_3);
@@ -1065,8 +1065,7 @@ void ServerComm::connectToSignupServer()
                               .withSslConfiguration(sslConfig);
     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else
-    auto channelOptions = QGrpcChannelOptions{}
-                              .setMetadata(metadata);
+    auto channelOptions = QGrpcChannelOptions{};
     if (use_tls) {
         channelOptions.setSslConfiguration(sslConfig);
     }
