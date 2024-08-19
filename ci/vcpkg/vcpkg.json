@@ -1,0 +1,23 @@
+{
+  "dependencies": [
+    "boost-system",
+    "boost-context",
+    "boost-coroutine",
+    "boost-filesystem",
+    "boost-asio",
+    "boost-chrono",
+    "boost-date-time",
+    "boost-log",
+    "boost-regex",
+    "boost-json",
+    "boost-url", 
+    "boost-uuid",
+    "boost-mysql",
+    "boost-charconv",
+    "boost-program-options",
+    "boost-functional",
+    "zlib",
+    "openssl",
+    "gtest"
+  ]
+}
