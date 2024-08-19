@@ -1,5 +1,7 @@
 {
   "dependencies": [
+    "grpc",
+    "protobuf",
     "boost-system",
     "boost-context",
     "boost-coroutine",
