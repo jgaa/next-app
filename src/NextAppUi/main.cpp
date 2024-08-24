@@ -105,6 +105,7 @@ int main(int argc, char *argv[])
     parser.addOption({{"C", "log-level-console"}, "Set the log level to the console to one of: off, debug, trace, info",
         "log-level-console", "info"});
     parser.addOption({"log-file", "Path to the log file", "log-file"});
+    parser.addOption({{"s", "signup"}, "Run the signup work-flow"});
 
     //parser.addPositionalArgument("", QGuiApplication::translate("main", "Initial directory"),"[path]");
     parser.process(app);
@@ -134,6 +135,12 @@ int main(int argc, char *argv[])
 
     {
         QSettings settings;
+
+        if (parser.isSet("signup")) {
+            LOG_INFO << "Running the signup work-flow";
+            settings.setValue("onboarding", false);
+            settings.remove("device/uuid");
+        }
 
         if (!settings.contains("UI/style")) {
             settings.setValue("UI/style", 0);
