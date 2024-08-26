@@ -64,18 +64,18 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
                 *day->mutable_date() = toDate(date_val);
                 if (row.at(USER).is_string()) {
-                    day->set_user(row.at(USER).as_string());
+                    day->set_user(to_view(row.at(USER).as_string()));
                 }
                 if (row.at(COLOR).is_string()) {
-                    day->set_color(row.at(COLOR).as_string());
+                    day->set_color(to_view(row.at(COLOR).as_string()));
                 }
                 if (row.at(NOTES).is_string()) {
                     day->set_hasnotes(true);
-                    reply->set_notes(row.at(NOTES).as_string());
+                    reply->set_notes(to_view(row.at(NOTES).as_string()));
                 }
                 if (row.at(REPORT).is_string()) {
                     day->set_hasreport(true);
-                    reply->set_report(row.at(REPORT).as_string());
+                    reply->set_report(to_view(row.at(REPORT).as_string()));
                 }
             } else {
                 *day->mutable_date() = *req;
@@ -110,9 +110,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 if (date_val.valid()) {
                     auto current_day = reply->add_days();
                     *current_day->mutable_date() = toDate(date_val);
-                    current_day->set_user(row.at(USER).as_string());
+                    current_day->set_user(to_view(row.at(USER).as_string()));
                     if (row.at(COLOR).is_string()) {
-                        current_day->set_color(row.at(COLOR).as_string());
+                        current_day->set_color(to_view(row.at(COLOR).as_string()));
                     }
                     current_day->set_hasnotes(row.at(NOTES).as_int64() != 1);
                     current_day->set_hasreport(row.at(REPORT).as_int64() != 1);

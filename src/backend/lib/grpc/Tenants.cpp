@@ -414,7 +414,7 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
             }
 
             pb::OtpResponse resp;
-            resp.set_email(res.rows().front().front().as_string());
+            resp.set_email(to_view(res.rows().front().front().as_string()));
 
             // Generate a new OTP
             const auto otp = getRandomStr(8, "0123456789");

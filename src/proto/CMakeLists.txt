@@ -1,7 +1,9 @@
 INCLUDE(FindProtobuf)
-FIND_PACKAGE(Protobuf REQUIRED)
+FIND_PACKAGE(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
-set(GRPC_LIB gRPC::grpc gRPC::grpc++)
+find_package(absl CONFIG REQUIRED)
+find_package(utf8_range CONFIG REQUIRED)
+
 set(GRPC_SRC_FILES nextapp.proto signup.proto)
 
 set(PROTO_FILES
@@ -9,11 +11,16 @@ set(PROTO_FILES
    common.proto
 )
 
-add_library(proto ${PROTO_FILES})
+add_library(proto ${PROTO_FILES}
+    absl_fuckup.cpp)
 target_link_libraries(proto
     PUBLIC
-        protobuf::libprotobuf
-        ${GRPC_LIB}
+    protobuf::libprotobuf protobuf::libprotobuf-lite
+    gRPC::grpc gRPC::grpc++
+    absl::log_internal_check_op
+    utf8_range::utf8_validity
+    absl::log_internal_message
+    absl::log_internal_check_op
 )
 
 target_include_directories(proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
