@@ -23,9 +23,9 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
 
          for(const auto row : res.rows()) {
              auto *dc = reply->add_daycolors();
-             dc->set_id(row.at(ID).as_string());
-             dc->set_color(row.at(COLOR).as_string());
-             dc->set_name(row.at(NAME).as_string());
+             dc->set_id(to_view(row.at(ID).as_string()));
+             dc->set_color(to_view(row.at(COLOR).as_string()));
+             dc->set_name(to_view(row.at(NAME).as_string()));
              dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
          }
 

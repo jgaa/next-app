@@ -18,8 +18,8 @@
     "boost-charconv",
     "boost-program-options",
     "boost-functional",
-    "zlib",
     "openssl",
+    "zlib",
     "gtest"
   ]
 }
