@@ -17,7 +17,6 @@ endif()
 option(WITH_TESTS "Enable Tests" ON)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message("Gakk: Debug build")
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT ON)
 else()
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT OFF)
@@ -42,9 +41,9 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Grpc
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")
-    find_package(Qt6 REQUIRED COMPONENTS Protobuf)
+    find_package(Qt6 REQUIRED CONFIG COMPONENTS Protobuf)
 else ()
-    find_package(Qt6 REQUIRED COMPONENTS ProtobufQuick)
+    find_package(Qt6 REQUIRED CONFIG COMPONENTS ProtobufQuick)
     set (PROTOBUF_QML_DEPENDENCY Qt::ProtobufQuick)
 endif()
 
