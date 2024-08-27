@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.17 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.18 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -38,13 +38,13 @@ set(QT6_IS_SHARED_LIBS_BUILD OFF)
 # find_package(Boost REQUIRED)
 # include_directories(${Boost_INCLUDE_DIRS})
 
-find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Grpc Concurrent Test Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Grpc Concurrent Test Multimedia)
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")
-    find_package(Qt6 6.8 REQUIRED COMPONENTS Protobuf)
+    find_package(Qt6 REQUIRED COMPONENTS Protobuf)
 else ()
-    find_package(Qt6 6.8 REQUIRED COMPONENTS ProtobufQuick)
+    find_package(Qt6 REQUIRED COMPONENTS ProtobufQuick)
     set (PROTOBUF_QML_DEPENDENCY Qt::ProtobufQuick)
 endif()
 
@@ -79,7 +79,6 @@ qt_add_protobuf(NextappProtoMessageLib
         ${protofile_common}
 )
 
-
 qt_add_grpc(NextappGrpcClient CLIENT
     PROTO_FILES ${protofile_nextapp} ${protofile_signup}
 )
@@ -92,9 +91,6 @@ target_link_libraries(NextappGrpcClient
         ${PROTOBUF_QML_DEPENDENCY}
         Qt6::Grpc
 )
-
-#set(ANDROID_MANIFEST_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/AndroidManifest.xml)
-
 
 qt_add_executable(${PROJECT_NAME}
     main.cpp

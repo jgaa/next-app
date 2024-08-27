@@ -134,7 +134,6 @@ void ServerComm::start()
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     auto channelOptions = QGrpcChannelOptions{QUrl(current_server_address_, QUrl::StrictMode)}
-                              .withMetadata(metadata)
                               .withSslConfiguration(sslConfig);
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else
@@ -1061,7 +1060,6 @@ void ServerComm::connectToSignupServer()
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     auto channelOptions = QGrpcChannelOptions{QUrl(signup_server_address_, QUrl::StrictMode)}
-                              .withMetadata(metadata)
                               .withSslConfiguration(sslConfig);
     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else

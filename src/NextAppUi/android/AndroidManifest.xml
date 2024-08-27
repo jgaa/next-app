@@ -1,6 +1,5 @@
 <?xml version="1.0"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-package="eu.lastviking.appNextAppUi">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="eu.lastviking.appNextAppUi" android:versionCode="-- %%INSERT_VERSION_CODE%% --" android:versionName="">
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -10,6 +9,8 @@ package="eu.lastviking.appNextAppUi">
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.SEND_SMS"/>
+
+    <!-- %%INSERT_PERMISSIONS -->
 
     <!-- %%INSERT_FEATURES -->
 
@@ -28,5 +29,4 @@ package="eu.lastviking.appNextAppUi">
                 <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/qtprovider_paths"/>
             </provider>
     </application>
-<!-- %%INSERT_PERMISSIONS -->
 </manifest>
