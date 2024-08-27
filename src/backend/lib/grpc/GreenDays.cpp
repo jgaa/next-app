@@ -23,9 +23,9 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
 
          for(const auto row : res.rows()) {
              auto *dc = reply->add_daycolors();
-             dc->set_id(to_view(row.at(ID).as_string()));
-             dc->set_color(to_view(row.at(COLOR).as_string()));
-             dc->set_name(to_view(row.at(NAME).as_string()));
+             dc->set_id(pb_adapt(row.at(ID).as_string()));
+             dc->set_color(pb_adapt(row.at(COLOR).as_string()));
+             dc->set_name(pb_adapt(row.at(NAME).as_string()));
              dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
          }
 
@@ -64,18 +64,18 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
                 *day->mutable_date() = toDate(date_val);
                 if (row.at(USER).is_string()) {
-                    day->set_user(to_view(row.at(USER).as_string()));
+                    day->set_user(pb_adapt(row.at(USER).as_string()));
                 }
                 if (row.at(COLOR).is_string()) {
-                    day->set_color(to_view(row.at(COLOR).as_string()));
+                    day->set_color(pb_adapt(row.at(COLOR).as_string()));
                 }
                 if (row.at(NOTES).is_string()) {
                     day->set_hasnotes(true);
-                    reply->set_notes(to_view(row.at(NOTES).as_string()));
+                    reply->set_notes(pb_adapt(row.at(NOTES).as_string()));
                 }
                 if (row.at(REPORT).is_string()) {
                     day->set_hasreport(true);
-                    reply->set_report(to_view(row.at(REPORT).as_string()));
+                    reply->set_report(pb_adapt(row.at(REPORT).as_string()));
                 }
             } else {
                 *day->mutable_date() = *req;
@@ -110,9 +110,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 if (date_val.valid()) {
                     auto current_day = reply->add_days();
                     *current_day->mutable_date() = toDate(date_val);
-                    current_day->set_user(to_view(row.at(USER).as_string()));
+                    current_day->set_user(pb_adapt(row.at(USER).as_string()));
                     if (row.at(COLOR).is_string()) {
-                        current_day->set_color(to_view(row.at(COLOR).as_string()));
+                        current_day->set_color(pb_adapt(row.at(COLOR).as_string()));
                     }
                     current_day->set_hasnotes(row.at(NOTES).as_int64() != 1);
                     current_day->set_hasreport(row.at(REPORT).as_int64() != 1);

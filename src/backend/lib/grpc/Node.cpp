@@ -13,20 +13,20 @@ struct ToNode {
     static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version";
 
     static void assign(const boost::mysql::row_view& row, pb::Node& node) {
-        node.set_uuid(to_view(row.at(ID).as_string()));
-        node.set_user(to_view(row.at(USER).as_string()));
-        node.set_name(to_view(row.at(NAME).as_string()));
+        node.set_uuid(pb_adapt(row.at(ID).as_string()));
+        node.set_user(pb_adapt(row.at(USER).as_string()));
+        node.set_name(pb_adapt(row.at(NAME).as_string()));
         node.set_version(row.at(VERSION).as_int64());
         const auto kind = row.at(KIND).as_int64();
         if (pb::Node::Kind_IsValid(kind)) {
             node.set_kind(static_cast<pb::Node::Kind>(kind));
         }
         if (!row.at(DESCR).is_null()) {
-            node.set_descr(to_view(row.at(DESCR).as_string()));
+            node.set_descr(pb_adapt(row.at(DESCR).as_string()));
         }
         node.set_active(row.at(ACTIVE).as_int64() != 0);
         if (!row.at(PARENT).is_null()) {
-            node.set_parent(to_view(row.at(PARENT).as_string()));
+            node.set_parent(pb_adapt(row.at(PARENT).as_string()));
         }
     }
 };

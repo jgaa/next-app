@@ -21,6 +21,12 @@
 #include "nextapp.pb.h"
 #include "nextapp/logging.h"
 
+#include "google/protobuf/port_def.inc"
+namespace nextapp {
+    static auto constexpr protobuf_version = PROTOBUF_VERSION;
+} // ns
+#include "google/protobuf/port_undef.inc"
+
 namespace nextapp {
 
 using span_t = std::span<const char>;
@@ -58,8 +64,12 @@ template <class T, class V>
 concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
 
 template <range_of<char> T>
-std::string_view to_view(const T& v) {
-    return std::string_view(v.data(), v.size());
+auto pb_adapt(const T& v) {
+    if constexpr (protobuf_version >= 4021050) {
+        return std::string_view(v.data(), v.size());
+    } else {
+        return std::string(v.data(), v.size());
+    }
 }
 
 std::string getEnv(const char *name, std::string def = {});

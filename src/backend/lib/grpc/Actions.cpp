@@ -14,17 +14,17 @@ struct ToActionCategory {
     static constexpr auto columns = "id, name, color, descr, version, icon";
 
     static void assign(const boost::mysql::row_view& row, pb::ActionCategory& cat) {
-        cat.set_id(to_view(row.at(ID).as_string()));
-        cat.set_name(to_view(row.at(NAME).as_string()));
+        cat.set_id(pb_adapt(row.at(ID).as_string()));
+        cat.set_name(pb_adapt(row.at(NAME).as_string()));
         if (row.at(COLOR).is_string()) {
-            cat.set_color(to_view(row.at(COLOR).as_string()));
+            cat.set_color(pb_adapt(row.at(COLOR).as_string()));
         }
         if (row.at(DESCR).is_string()) {
-            cat.set_descr(to_view(row.at(DESCR).as_string()));
+            cat.set_descr(pb_adapt(row.at(DESCR).as_string()));
         }
         cat.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
         if (row.at(ICON).is_string()) {
-            cat.set_icon(to_view(row.at(ICON).as_string()));
+            cat.set_icon(pb_adapt(row.at(ICON).as_string()));
         }
     }
 };
@@ -101,12 +101,12 @@ struct ToAction {
 
     template <ActionType T>
     static void assign(const boost::mysql::row_view& row, T& obj, const UserContext& uctx) {
-        obj.set_id(to_view(row.at(ID).as_string()));
-        obj.set_node(to_view(row.at(NODE).as_string()));
+        obj.set_id(pb_adapt(row.at(ID).as_string()));
+        obj.set_node(pb_adapt(row.at(NODE).as_string()));
         obj.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
 
         if (row.at(ORIGIN).is_string()) {
-            obj.set_origin(to_view(row.at(ORIGIN).as_string()));
+            obj.set_origin(pb_adapt(row.at(ORIGIN).as_string()));
         }
 
         {
@@ -133,7 +133,7 @@ struct ToAction {
             }
         }
 
-        obj.set_name(to_view(row.at(NAME).as_string()));
+        obj.set_name(pb_adapt(row.at(NAME).as_string()));
 
         {
             auto * date = obj.mutable_createddate();
@@ -160,7 +160,7 @@ struct ToAction {
             }
 
             if (row.at(DUE_TIMEZONE).is_string()) {
-                obj.mutable_due()->set_timezone(to_view(row.at(DUE_TIMEZONE).as_string()));
+                obj.mutable_due()->set_timezone(pb_adapt(row.at(DUE_TIMEZONE).as_string()));
             }
         }
 
@@ -214,11 +214,11 @@ struct ToAction {
         }
 
         if (row.at(CATEGORY).is_string()) {
-            obj.set_category(to_view(row.at(CATEGORY).as_string()));
+            obj.set_category(pb_adapt(row.at(CATEGORY).as_string()));
         }
 
         if constexpr (std::is_same_v<T, pb::Action>) {
-            obj.set_descr(to_view(row.at(DESCR).as_string()));
+            obj.set_descr(pb_adapt(row.at(DESCR).as_string()));
             obj.set_timeestimate(row.at(TIME_ESTIMATE).as_int64());
             *obj.mutable_createddate() = toDate(row.at(CREATED_DATE).as_datetime());
             {
@@ -708,10 +708,10 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
 
             for(const auto row : res.rows()) {
                 auto *af = reply->mutable_favoriteactions()->add_fa();
-                af->set_actionid(to_view(row.at(A_ID).as_string()));
-                af->set_actionname(to_view(row.at(A_NAME).as_string()));
-                af->set_nodeid(to_view(row.at(N_ID).as_string()));
-                af->set_nodename(to_view(row.at(N_NAME).as_string()));
+                af->set_actionid(pb_adapt(row.at(A_ID).as_string()));
+                af->set_actionname(pb_adapt(row.at(A_NAME).as_string()));
+                af->set_nodeid(pb_adapt(row.at(N_ID).as_string()));
+                af->set_nodename(pb_adapt(row.at(N_NAME).as_string()));
                 af->set_actionversion(static_cast<int32_t>(row.at(A_VERSION).as_int64()));
             }
 
@@ -1225,7 +1225,7 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
         for(const auto drow : dres.rows()) {
             auto id = drow.at(0).as_string();
             auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
-            update.mutable_action()->set_id(to_view(id));
+            update.mutable_action()->set_id(pb_adapt(id));
         }
     }
 

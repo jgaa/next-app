@@ -1,8 +1,26 @@
 INCLUDE(FindProtobuf)
-FIND_PACKAGE(Protobuf CONFIG REQUIRED)
+
+find_package(Protobuf CONFIG)
+if(NOT Protobuf_FOUND)
+  find_package(Protobuf REQUIRED)
+endif()
+
+message("Using protobuf ${Protobuf_VERSION}")
+
 find_package(gRPC CONFIG REQUIRED)
-find_package(absl CONFIG REQUIRED)
-find_package(utf8_range CONFIG REQUIRED)
+if (Protobuf_VERSION VERSION_GREATER 22.0)
+    message("Using new protobuf version that depends on absl")
+
+    find_package(absl CONFIG REQUIRED)
+    find_package(utf8_range CONFIG REQUIRED)
+
+    set(extra_proto_sources absl_fuckup.cpp)
+    set(extra_prot_libs
+        utf8_range::utf8_validity
+        absl::log_internal_message
+        absl::log_internal_check_op
+    )
+endif()
 
 set(GRPC_SRC_FILES nextapp.proto signup.proto)
 
@@ -11,16 +29,13 @@ set(PROTO_FILES
    common.proto
 )
 
-add_library(proto ${PROTO_FILES}
-    absl_fuckup.cpp)
+add_library(proto ${PROTO_FILES} ${extra_proto_sources})
 
 target_link_libraries(proto
     PUBLIC
     protobuf::libprotobuf protobuf::libprotobuf-lite
     gRPC::grpc gRPC::grpc++
-    utf8_range::utf8_validity
-    absl::log_internal_message
-    absl::log_internal_check_op
+    ${extra_prot_libs}
 )
 
 target_include_directories(proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
