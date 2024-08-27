@@ -72,7 +72,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-            cp -v ci/vcpkg/vcpkgs.json vcpkg.json
+            cp -v ci/vcpkg/vcpkg.json vcpkg.json
             vcpkg install
 
       - name: Prepare build dir
