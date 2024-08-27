@@ -33,9 +33,9 @@ struct ToWorkSession {
 
 
     static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws, const UserContext& uctx) {
-        ws.set_id(row.at(ID).as_string());
-        ws.set_action(row.at(ACTION).as_string());
-        ws.set_user(row.at(USER).as_string());
+        ws.set_id(to_view(row.at(ID).as_string()));
+        ws.set_action(to_view(row.at(ACTION).as_string()));
+        ws.set_user(to_view(row.at(USER).as_string()));
         if (row.at(START).is_datetime()) {
             ws.set_start(toTimeT(row.at(START).as_datetime(), uctx.tz()));
         } else {
@@ -48,9 +48,9 @@ struct ToWorkSession {
         ws.set_duration(row.at(DURATION).as_int64());
         ws.set_paused(row.at(PAUSED).as_int64() != 0);
         ws.set_version(row.at(VERSION).as_int64());
-        ws.set_name(row.at(NAME).as_string());
+        ws.set_name(to_view(row.at(NAME).as_string()));
         if (row.at(NOTES).is_string()) {
-            ws.set_notes(row.at(NOTES).as_string());
+            ws.set_notes(to_view(row.at(NOTES).as_string()));
         }
 
         if (!row.at(EVENTS).is_null()) {
@@ -522,7 +522,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
             updateOutcome(work, *rctx.uctx);
 
             const auto id = res.rows().front().at(ToWorkSession::ID).as_string();
-            work.set_id(id);
+            work.set_id(to_view(id));
 
             // Save the work session again to get all the columns saved.
             co_await owner_.saveWorkSession(work, rctx);
@@ -568,8 +568,8 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
                     auto& item = *result.add_items();
                     item.set_duration(row.at(DURATION).as_int64());
                     *item.mutable_date() = toDate(row.at(DATE).as_date());
-                    item.set_action(row.at(ACTION).as_string());
-                    item.set_node(row.at(NODE).as_string());
+                    item.set_action(to_view(row.at(ACTION).as_string()));
+                    item.set_node(to_view(row.at(NODE).as_string()));
                 }
             }
 

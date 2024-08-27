@@ -1,3 +1,5 @@
+[![CI](https://github.com/jgaa/next-app/actions/workflows/ci.yaml/badge.svg)](https://github.com/jgaa/next-app/actions/workflows/ci.yaml)
+
 # next-app
 GTD native application for desktop and mobile.
 

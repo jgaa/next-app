@@ -31,9 +31,9 @@ struct ToTimeBlock {
     static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, actions, version";
 
     static void assign(const boost::mysql::row_view& row, pb::TimeBlock& tb, const UserContext& uctx) {
-        tb.set_id(row.at(ID).as_string());
-        tb.set_user(row.at(USER).as_string());
-        tb.set_name(row.at(NAME).as_string());
+        tb.set_id(to_view(row.at(ID).as_string()));
+        tb.set_user(to_view(row.at(USER).as_string()));
+        tb.set_name(to_view(row.at(NAME).as_string()));
         tb.mutable_timespan()->set_start(toTimeT(row.at(START_TIME).as_datetime()));
         tb.mutable_timespan()->set_end(toTimeT(row.at(END_TIME).as_datetime()));
         pb::TimeBlock::Kind kind;
@@ -41,7 +41,7 @@ struct ToTimeBlock {
             tb.set_kind(kind);
         }
         if (const auto& category = row.at(CATEGORY); category.is_string()) {
-            tb.set_category(category.as_string());
+            tb.set_category(to_view(category.as_string()));
         }
 
         if (const auto& actions = row.at(ACTIONS); actions.is_blob()) {

@@ -7,6 +7,7 @@
 #include <ranges>
 #include <filesystem>
 #include <span>
+#include <string_view>
 
 #include <boost/json.hpp>
 #include <boost/uuid/random_generator.hpp>
@@ -55,6 +56,11 @@ private:
 
 template <class T, class V>
 concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
+
+template <range_of<char> T>
+std::string_view to_view(const T& v) {
+    return std::string_view(v.data(), v.size());
+}
 
 std::string getEnv(const char *name, std::string def = {});
 

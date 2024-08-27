@@ -72,33 +72,46 @@ jobs:
 
       - name: Install dependencies
         run: |
-            cp -v ci/vcpkg/vcpkg.json .
+            cp -v ci/vcpkg/vcpkg.json vcpkg.json
             vcpkg install
 
-      - name: Build project
+      - name: Prepare build dir
         run: |
-          pushd ~
+          cd ~
           if [ -d build ]; then
             echo "Build dir exists"
             ls -la build
           else
             mkdir -v build
           fi
-          cd build
+
+      - name: Build backend
+        if: startsWith(matrix.os, 'linux')
+        run: |
+          pushd ~/build
           pwd
           set -x
           cmake -DVCPKG_INSTALLED_DIR=~/vcpkg_installed -DVCPKG_VERBOSE=ON -DNEXTAPP_WITH_UI=OFF -DNEXTAPP_BOOST_USE_STATIC_LIBS=ON -DCMAKE_BUILD_TYPE=Release -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake ${GITHUB_WORKSPACE}
           cmake --build .
           popd
-        continue-on-error: true
+        # continue-on-error: true
 
-      - name: Dump diagnostics
-        if: failure()
-        run: |
-          cd ~/build
-          echo "---------------------------------"
-          cat build.ninja
-          echo "---------------------------------"
+      # - name: Build UI
+      #   run: |
+      #       pushd ~/build
+      #       pwd
+      #       set -x
+      #       cmake -DVCPKG_INSTALLED_DIR=~/vcpkg_installed -DVCPKG_VERBOSE=OFF -DNEXTAPP_WITH_BACKEND=OFF -DNEXTAPP_WITH_SIGNUP=OFF -DNEXTAPP_WITH_UI=ON -DNEXTAPP_BOOST_USE_STATIC_LIBS=ON -DCMAKE_BUILD_TYPE=Release -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake ${GITHUB_WORKSPACE}
+      #       cmake --build .
+      #       popd
+
+      # - name: Dump diagnostics
+      #   if: failure()
+      #   run: |
+      #     cd ~/build
+      #     echo "---------------------------------"
+      #     cat build.ninja
+      #     echo "---------------------------------"
 
       # - name: Run Unit Tests
       #   run: |

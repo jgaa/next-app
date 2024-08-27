@@ -20,6 +20,7 @@
     "boost-functional",
     "openssl",
     "zlib",
-    "gtest"
+    "gtest",
+    "qt"
   ]
 }
