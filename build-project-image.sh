@@ -2,7 +2,7 @@
 
 ## General build script for a CMake project to
 ## build a container-image from the deliverables
-
+set -x
 if [ -z ${BUILD_PROJECT+x} ]; then
     echo "No BUILD_PROJECT envvar provided"
     exit 1

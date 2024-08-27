@@ -13,11 +13,11 @@ set(PROTO_FILES
 
 add_library(proto ${PROTO_FILES}
     absl_fuckup.cpp)
+
 target_link_libraries(proto
     PUBLIC
     protobuf::libprotobuf protobuf::libprotobuf-lite
     gRPC::grpc gRPC::grpc++
-    absl::log_internal_check_op
     utf8_range::utf8_validity
     absl::log_internal_message
     absl::log_internal_check_op
