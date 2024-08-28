@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.18 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.19 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -52,6 +52,18 @@ qt_policy(
 )
 
 qt_standard_project_setup()
+
+set(QCORO_BUILD_EXAMPLES OFF)
+set(QCORO_BUILD_TESTING OFF)
+set(QCORO_ENABLE_ASAN OFF)
+set(QCORO_WITH_QTWEBSOCKETS OFF)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/qcoro
+    ${CMAKE_BINARY_DIR}/qcoro_build)
+
+find_package(QCoro6 COMPONENTS Core)
+find_package(QCoro6 COMPONENTS Qml)
+find_package(QCoro6 COMPONENTS Quick)
 
 #include(cmake/3rdparty.cmake)
 # Use logfault from git submodule in stead of adding it
@@ -343,6 +355,9 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Concurrent
         Qt6::Test
         Qt6::Multimedia
+        QCoro6::Core
+        QCoro6::Qml
+        QCoro6::Quick
         NextappGrpcClient
         NextappProtoMessageLib
         ${OPEN_SSL_DEPS}

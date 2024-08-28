@@ -12,11 +12,17 @@
 #include <QObject>
 #include <QUuid>
 #include <QTimer>
+#include <QFuture>
+
+#include "qcorotask.h"
+
 #include "logging.h"
 
 template <typename T, typename... Y>
 concept IsValidFunctor = std::invocable<T&, Y...>;
 
+template <typename T>
+concept ProtoMessage = std::is_base_of_v<QProtobufMessage, T>;
 
 class ServerComm : public QObject
 {
@@ -225,9 +231,22 @@ private:
     void setMessage(const QString &msg);
 
     struct GrpcCallOptions {
-        bool enable_queue = true;
-        bool ignore_errors = false;
-        bool ignore_offline = false;
+
+        GrpcCallOptions(const GrpcCallOptions&) = default;
+        GrpcCallOptions(GrpcCallOptions&&) = default;
+        GrpcCallOptions& operator=(const GrpcCallOptions&) = default;
+        GrpcCallOptions& operator=(GrpcCallOptions&&) = default;
+
+        GrpcCallOptions(bool enable_queue = false,
+                        bool ignore_errors = false,
+                        bool ignore_offline = false,
+                        const QGrpcCallOptions& qopts = {})
+            : enable_queue(enable_queue), ignore_errors(ignore_errors), ignore_offline(ignore_offline), qopts(qopts) {}
+
+        bool enable_queue;
+        bool ignore_errors;
+        bool ignore_offline;
+        QGrpcCallOptions qopts;
     };
 
     template <typename respT, typename callT, typename doneT, typename ...Args>
@@ -318,6 +337,37 @@ private:
         const GrpcCallOptions opts;
         callRpc_<respT>(std::move(call), false, opts, arg...);
     }
+
+    template <ProtoMessage reqT, ProtoMessage replyT = nextapp::pb::Status>
+    auto rpc(
+        reqT request,
+        std::shared_ptr<QGrpcCallReply>(::nextapp::pb::Nextapp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
+        const GrpcCallOptions &options = {}) {
+
+        QPromise<nextapp::pb::Status> promise;
+        auto future = promise.future();
+        auto handle = (client_.get()->*call)(request, options.qopts);
+        handle->subscribe(this, [this, options, handle, promise=std::move(promise)] () mutable {
+            if (auto orval = handle-> template read<replyT>()) {
+                auto& rval = *orval;
+
+                if constexpr (std::is_same_v<nextapp::pb::Status, replyT>) {
+                    if (!options.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
+                        LOG_ERROR << "RPC request failed with error #" <<
+                            rval.error() << " : " << rval.message();
+                    }
+                }
+
+                promise.start();
+                promise.addResult(rval);
+                promise.finish();
+            }
+        });
+
+        return future;
+    }
+
+    QCoro::Task<void> startNextappSession();
 
     std::pair<QString, QString> createCsr();
     QString toString(const QGrpcStatus& ex);
