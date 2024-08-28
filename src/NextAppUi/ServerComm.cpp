@@ -9,6 +9,7 @@
 #include <QSslKey>
 #include <QSslCertificate>
 
+#include "qcorofuture.h"
 
 #include <openssl/x509.h>
 #include <openssl/pem.h>
@@ -145,38 +146,42 @@ void ServerComm::start()
     LOG_INFO << "Using server at " << current_server_address_;
     setStatus(Status::CONNECTING);
 
+    LOG_DEBUG_N << "Starting the server comm...";
+    startNextappSession();
+    LOG_DEBUG_N << "Finished starting the server comm...";
+
     // TODO: Call Hello to get session-id.
     //       - Sett "sid" meta-data for each call
     //       - Switch to co-routines for calling coroutines
     //       - Refactor the callRpc to use co-routines and member name, so we can use one function for all calls
-    callRpc<nextapp::pb::Status>([this]() {
-        return client_->GetServerInfo({});
-    }, [this](const nextapp::pb::Status& status) {
-        if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
-            LOG_ERROR << "Failed to connect to server: " << status.message();
-            setStatus(Status::ERROR);
-            return;
-        }
-        if (status.hasServerInfo()) {
-            auto se = status.serverInfo();
-            if (!se.properties().empty()) {
-                setStatus(Status::INITIAL_SYNC);
-                // assert(se.properties().front().key() == "version");
-                server_version_ = se.properties().front().value();
-                LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
-            } else {
-                LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
-            }
+//     callRpc<nextapp::pb::Status>([this]() {
+//         return client_->GetServerInfo({});
+//     }, [this](const nextapp::pb::Status& status) {
+//         if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
+//             LOG_ERROR << "Failed to connect to server: " << status.message();
+//             setStatus(Status::ERROR);
+//             return;
+//         }
+//         if (status.hasServerInfo()) {
+//             auto se = status.serverInfo();
+//             if (!se.properties().empty()) {
+//                 setStatus(Status::INITIAL_SYNC);
+//                 // assert(se.properties().front().key() == "version");
+//                 server_version_ = se.properties().front().value();
+//                 LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
+//             } else {
+//                 LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
+//             }
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-            updates_ = client_->streamSubscribeToUpdates({});
-#else
-            updates_ = client_->SubscribeToUpdates({});
-#endif
-            connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
-            initGlobalSettings();
-        }
-    }, GrpcCallOptions{false});
+// #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+//             updates_ = client_->streamSubscribeToUpdates({});
+// #else
+//             updates_ = client_->SubscribeToUpdates({});
+// #endif
+//             connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
+//             initGlobalSettings();
+//         }
+//     }, GrpcCallOptions{false});
 }
 
 void ServerComm::stop()
@@ -1121,6 +1126,21 @@ void ServerComm::setMessage(const QString &msg)
 {
     messages_ = msg;
     emit messagesChanged();
+}
+
+QCoro::Task<void> ServerComm::startNextappSession()
+{
+    nextapp::pb::Empty req;
+    auto future = rpc(req, &nextapp::pb::Nextapp::Client::Hello);
+    auto res = co_await qCoro(future).result();
+    if (res.error() == nextapp::pb::ErrorGadget::OK) {
+        if (res.hasSessionId()) {
+            session_id_ = res.sessionId();
+        }
+        LOG_INFO << "Session started. Session-id: " << session_id_;
+        co_return;
+    }
+    co_return;
 }
 
 namespace {

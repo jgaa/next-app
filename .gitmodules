@@ -7,3 +7,6 @@
 [submodule "dependencies/date"]
 	path = dependencies/date
 	url = https://github.com/HowardHinnant/date.git
+[submodule "dependencies/qcoro"]
+	path = dependencies/qcoro
+	url = https://github.com/danvratil/qcoro.git
