@@ -309,6 +309,18 @@ void GrpcServer::startNextapp()
 
         auto resp = co_await callRpc<nextapp::pb::Status>(
             nextapp::pb::Empty{},
+            &stub_t::async::Hello,
+            asio::use_awaitable);
+
+        if (resp.error() != nextapp::pb::Error::OK) {
+            if (resp.has_sessionid()) {
+                LOG_DEBUG << "Got session id: " << resp.sessionid();
+                session_id_ = resp.sessionid();
+            }
+        }
+
+        resp = co_await callRpc<nextapp::pb::Status>(
+            nextapp::pb::Empty{},
             &stub_t::async::GetServerInfo,
             asio::use_awaitable);
 

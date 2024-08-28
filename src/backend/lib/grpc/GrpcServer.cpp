@@ -8,96 +8,19 @@ using namespace std;
 namespace json = boost::json;
 namespace asio = boost::asio;
 
-//#include <grpcpp/security/auth_metadata_processor.h>
 #include <grpcpp/support/server_interceptor.h>
 
 namespace nextapp::grpc {
 
-namespace {
-
-    // class CustomAuthProcessor : public ::grpc::AuthMetadataProcessor {
-    // public:
-    //     ::grpc::Status Process(
-    //         const ::grpc::AuthMetadataProcessor::InputMetadata& auth_metadata,
-    //         ::grpc::AuthContext* auth_context,
-    //         ::grpc::AuthMetadataProcessor::OutputMetadata* consumed_auth_metadata,
-    //         ::grpc::AuthMetadataProcessor::OutputMetadata* response_metadata
-    //         ) override {
-    //         auto peer_name = auth_context->FindPropertyValues(GRPC_X509_CN_PROPERTY_NAME);
-    //         LOG_DEBUG_N << "Peer name: " << string_view(reinterpret_cast<const char *>(peer_name.data()), peer_name.size());
-    //         if (!peer_name.empty()) {
-    //             // std:: user_identity = peer_cert.front();
-    //             // if (IsUserAllowed(user_identity)) {
-    //             //     return ::grpc::Status::OK;
-    //             // }
-    //         }
-    //         return ::grpc::Status(::grpc::StatusCode::PERMISSION_DENIED, "Unauthorized");
-    //     }
-
-    // private:
-    //     bool IsUserAllowed(const std::string& user_identity) {
-    //         // Implement your logic to determine if the user is allowed
-    //         // For example, check against a whitelist of allowed user identities
-    //         return true; // Replace with actual logic
-    //     }
-    // };
-
-    // using ::grpc::experimental::InterceptionHookPoints;
-    // using ::grpc::experimental::Interceptor;
-    // using ::grpc::experimental::InterceptorBatchMethods;
-    // using ::grpc::experimental::ServerInterceptorFactoryInterface;
-    // using ::grpc::experimental::ServerRpcInfo;
-
-    // class SessionInterceptor : public Interceptor {
-    // public:
-    //     explicit SessionInterceptor(GrpcServer& server)
-    //         : server_{server}
-    //     {
-    //     }
-
-    //     void Intercept(InterceptorBatchMethods* methods) override {
-    //         if (methods->QueryInterceptionHookPoint(InterceptionHookPoints::POST_RECV_INITIAL_METADATA)) {
-    //             // auto* user = server_.userContext(ctx);
-    //             // if (user) {
-    //             //     ctx->AddInitialMetadata("user-uuid", user->userUuid());
-    //             //     ctx->AddInitialMetadata("tenant-uuid", user->tenantUuid());
-    //             //     ctx->AddInitialMetadata("user-kind", pb::User::Kind_Name(user->kind()));
-    //             //     ctx->AddInitialMetadata("session-id", user->sessionId());
-    //             // }
-
-    //             //auto* context = methods->`
-
-    //             auto *meta = methods->GetRecvInitialMetadata();
-    //             for(const auto& [key, value]: *meta) {
-    //                 LOG_TRACE << "Metadata: " << key << " = " << value;
-    //             }
-
-    //             auto channel = methods->GetInterceptedChannel();
-
-    //         }
-    //         methods->Proceed();
-    //     }
-
-    // private:
-    //     GrpcServer& server_;
-    // };
-
-    // class SessionFactory : public ServerInterceptorFactoryInterface {
-    // public:
-    //     explicit SessionFactory(GrpcServer& server)
-    //         : server_{server}
-    //     {
-    //     }
-
-    //     Interceptor* CreateServerInterceptor(ServerRpcInfo* info) override {
-    //         return new SessionInterceptor(server_);
-    //     }
-
-    // private:
-    //     GrpcServer& server_;
-    // };
-
-} // anon ns
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::Hello(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        LOG_DEBUG << "Hello from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid() << " at " << ctx->peer();
+        reply->set_sessionid(to_string(rctx.session().sessionId()));
+        co_return;
+    }, __func__);
+}
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::Ping(::grpc::CallbackServerContext *ctx, const pb::PingReq *req, pb::Status *reply)
 {
@@ -289,16 +212,11 @@ void GrpcServer::start() {
 
     ::grpc::ServerBuilder builder;
 
-    // Tell gRPC what TCP address/port to listen to and how to handle TLS.
-    // grpc::InsecureServerCredentials() will use HTTP 2.0 without encryption.
-
     if (config().tls_mode == "none") {
         builder.AddListeningPort(config().address, ::grpc::InsecureServerCredentials());
     } else if (config().tls_mode == "ca") {
         LOG_INFO << "Using CA mode for TLS on gRPC endpoint";
         ::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY};
-        //::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY};
-        //::grpc::SslServerCredentialsOptions ssl_opts{GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE};
         ssl_opts.pem_root_certs = server_.ca().rootCert();
         ssl_opts.pem_key_cert_pairs.push_back({cert_.key, cert_.cert});
         builder.AddListeningPort(config().address, ::grpc::SslServerCredentials(ssl_opts));
@@ -317,15 +235,6 @@ void GrpcServer::start() {
     // Feed gRPC our implementation of the RPC's
     service_ = std::make_unique<NextappImpl>(*this);
     builder.RegisterService(service_.get());
-
-    // Set the custom auth processor
-    // auto auth_processor = std::make_unique<CustomAuthProcessor>();
-    // builder.SetAuthMetadataProcessor(std::move(auth_processor));
-
-    // // Set up interceptors
-    // std::vector<std::unique_ptr<ServerInterceptorFactoryInterface>> creators;
-    // creators.push_back(std::unique_ptr<ServerInterceptorFactoryInterface>(new SessionFactory(*this)));
-    // builder.experimental().SetInterceptorCreators(std::move(creators));
 
     // Finally assemble the server.
     grpc_server_ = builder.BuildAndStart();

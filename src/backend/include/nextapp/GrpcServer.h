@@ -130,6 +130,7 @@ public:
         NextappImpl(GrpcServer& owner)
             : owner_{owner} {}
 
+        ::grpc::ServerUnaryReactor *Hello(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *Ping(::grpc::CallbackServerContext *ctx, const pb::PingReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetServerInfo(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *GetDayColorDefinitions(::grpc::CallbackServerContext *, const pb::Empty *, pb::DayColorDefinitions *) override;

@@ -129,22 +129,20 @@ boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::g
 
     const auto device_uuid = toUuid(device_id);
 
-    {
-        // Happy path. Just return an existing session.
+    // Happy path. Just return an existing session.
+    if (auto it = context->client_metadata().find("sid"); it != context->client_metadata().end()) {
+        auto sid = toUuid(it->second.data());
         shared_lock lock{mutex_};
-        if (auto it = sessions_.find(device_uuid); it != sessions_.end()) {
-            co_return it->second->shared_from_this();
+        if (auto it = sessions_.find(sid); it != sessions_.end()) {
+            auto& session = *it->second;
+            if (session.deviceId() == device_uuid) [[likely]] {
+                co_return session.shared_from_this();
+            }
+            LOG_WARN << "Session " << sid << " is not for device " << device_uuid << ". Closing the session.";
+            throw server_err{pb::Error::AUTH_FAILED, "Session is not for the connected device"};
         }
+        throw server_err{pb::Error::AUTH_FAILED, "Session not found"};
     }
-
-    auto add_session = [this, context](shared_ptr<UserContext>& ux, const boost::uuids::uuid& devid) {
-        auto session = make_shared<UserContext::Session>(ux, devid);
-        sessions_[devid] = session.get();
-        ux->addSession(session);
-        LOG_INFO << "Added user-session << " << devid << " for user " << ux->userUuid()
-                  << " from IP " << context->peer();
-        return session;
-    };
 
     // Fetch or create a user context.
     auto ucx = co_await getUserContext(device_uuid, context);
@@ -153,11 +151,17 @@ boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::g
     auto session = make_shared<UserContext::Session>(ucx, device_uuid);
     {
         unique_lock lock{mutex_};
-        sessions_[device_uuid] = session.get();
+        sessions_[session->sessionId()] = session.get();
         ucx->addSession(session);
     }
-    LOG_INFO << "Added user-session << " << device_uuid << " for user " << ucx->userUuid()
+    LOG_INFO << "Added user-session << " << session->sessionId()
+             << " for device " << session->deviceId() << " for user " << ucx->userUuid()
              << " from IP " << context->peer();
+
+    // TODO: Add entry in session-table
+    // TODO: Check sessions limit for user
+    // TODO: Check concurrent devices limit for user
+
     co_return session;
 }
 

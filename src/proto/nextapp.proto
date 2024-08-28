@@ -721,10 +721,12 @@ message Status {
         CreateDeviceResp createDeviceResp = 25;
         ServerInfo serverInfo = 26;
         OtpResponse otpResponse = 27;
+        string sessionId = 28; // From Hello
     }
 }
 
 service Nextapp {
+    rpc Hello(Empty) returns (Status) {}
     rpc Ping(PingReq) returns (Status) {}
     rpc GetServerInfo(Empty) returns (Status) {}
     rpc GetNodes(GetNodesReq) returns (NodeTree) {}

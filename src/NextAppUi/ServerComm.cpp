@@ -111,7 +111,7 @@ ServerComm::~ServerComm()
 void ServerComm::start()
 {
     QSettings settings;
-    session_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    session_id_.clear();
     current_server_address_ = settings.value("server/url", QString{}).toString();
 
     QSslConfiguration sslConfig;
@@ -145,6 +145,10 @@ void ServerComm::start()
     LOG_INFO << "Using server at " << current_server_address_;
     setStatus(Status::CONNECTING);
 
+    // TODO: Call Hello to get session-id.
+    //       - Sett "sid" meta-data for each call
+    //       - Switch to co-routines for calling coroutines
+    //       - Refactor the callRpc to use co-routines and member name, so we can use one function for all calls
     callRpc<nextapp::pb::Status>([this]() {
         return client_->GetServerInfo({});
     }, [this](const nextapp::pb::Status& status) {

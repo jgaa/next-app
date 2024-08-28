@@ -38,12 +38,16 @@ public:
     class Session : public std::enable_shared_from_this<Session> {
     public:
 
-        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid uuid)
-            : user_(user), sessionid_{uuid} {
+        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid devid)
+            : user_(user), sessionid_{newUuid()}, deviceid_{devid} {
         }
 
         const boost::uuids::uuid& sessionId() const noexcept {
             return sessionid_;
+        }
+
+        const boost::uuids::uuid& deviceId() const noexcept {
+            return deviceid_;
         }
 
         UserContext& user() noexcept {
@@ -54,6 +58,7 @@ public:
     private:
         std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
         const boost::uuids::uuid sessionid_;
+        const boost::uuids::uuid deviceid_;
     };
 
 

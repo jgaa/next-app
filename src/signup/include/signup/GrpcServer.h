@@ -105,7 +105,9 @@ public:
                     cd->self_.complete(ec, cd->reply);
                 };
 
-                cd->ctx.AddMetadata("session-id", session_id);
+                if (!session_id_.empty()) {
+                    cd->ctx.AddMetadata("sid", session_id_);
+                }
 
                 (nextapp_stub_->async()->*call)(&cd->ctx, &cd->req, &cd->reply,
                                                 [fn=std::move(fn)](const ::grpc::Status& status) mutable {
@@ -236,8 +238,8 @@ private:
     mutable std::mutex mutex_;
     std::atomic_bool active_{false};
     std::unique_ptr<nextapp::pb::Nextapp::Stub> nextapp_stub_;
-    std::string session_id = newUuidStr();
     std::optional<boost::asio::steady_timer> timer_;
+    std::string session_id_;
 };
 
 using server_err = GrpcServer::Error;
