@@ -239,13 +239,24 @@ private:
                 return;
             }
             auto rpc_method = call(args...);
-            rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
+            //rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
                 //respT rval = rpc_method-> template read<respT>();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+            connect(rpc_method.get(), &QGrpcCallReply::finished, this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] (const QGrpcStatus& status) {
+                if (!status.isOk()) [[unlikely]] {
+                    LOG_ERROR <<  "RPC failed: " << toString(status);
+                    if constexpr (IsValidFunctor<doneT, CbError>) {
+                        done(CbError{nextapp::pb::ErrorGadget::GENERIC_ERROR, status.message()});
+                        setStatus(Status::ERROR);
+                        stop();
+                        return;
+                    }
+                }
                 if (auto orval = rpc_method-> template read<respT>()) {
                     auto& rval = *orval;
 #else
-                {
+
+            rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
                     respT rval = rpc_method-> template read<respT>();
 #endif
                     if constexpr (std::is_same_v<nextapp::pb::Status, respT>) {
@@ -267,11 +278,12 @@ private:
                         assert(!done);
                     }
                 }
-            }
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
             ,[this](QGrpcStatus status) {
                 LOG_ERROR << "callRpc_ Comm error code=" << static_cast<unsigned>(status.code()) << ": " << status.message();
             }
+#else
+        }
 #endif
             );
         };

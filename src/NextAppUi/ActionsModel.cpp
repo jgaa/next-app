@@ -159,7 +159,6 @@ void insertAction(QList<pb::ActionInfo>& list, const pb::Action& action, int row
 } // anon ns
 
 ActionsModel::ActionsModel(QObject *parent)
-    : actions_{make_shared<nextapp::pb::Actions>()}
 {
     flags_.setActive(true);
     flags_.setDone(false);
@@ -252,12 +251,12 @@ void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &
 
     beginResetModel();
     if (first) {
-        actions_ = actions;
+        actions_ = actions->actions();
     } else {
-        actions_->actions().append(actions->actions().begin(), actions->actions().end());
+        actions_.append(actions_.begin(), actions_.end());
     }
 
-    std::ranges::sort(actions_->actions(), [](const auto& left, const auto& right) {
+    std::ranges::sort(actions_, [](const auto& left, const auto& right) {
         return comparePred(left, right);
     });
     endResetModel();
@@ -307,9 +306,9 @@ void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Upda
     switch(op) {
     case pb::Update::Operation::ADDED: {
     insert_as_new:
-        auto row = findInsertRow(action, actions_->actions());
+        auto row = findInsertRow(action, actions_);
         beginInsertRows({}, row, row);
-        insertAction(actions_->actions(), action, row);
+        insertAction(actions_, action, row);
         endInsertRows();
     }
     break;
@@ -318,10 +317,9 @@ void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Upda
         fetchIf(true);
         break;
     case pb::Update::Operation::UPDATED: {
-        auto row = findInsertRow(action, actions_->actions());
-        if (auto currentRow = findCurrentRow(actions_->actions(), action.id_proto()) ; currentRow >=0 ) {
-            auto& list = actions_->actions();
-            if (list.at(currentRow).version() > action.version()) {
+        auto row = findInsertRow(action, actions_);
+        if (auto currentRow = findCurrentRow(actions_, action.id_proto()) ; currentRow >=0 ) {
+            if (actions_.at(currentRow).version() > action.version()) {
                 // We have a newer version already. Ignore
                 LOG_DEBUG << "Ignoring update of Action " << action.id_proto() << " \"" << action.name()
                           << "\", version " << action.version() << ": we already have a newer version.";
@@ -329,18 +327,18 @@ void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Upda
             }
 
             if (row != currentRow) {
-                beginMoveRows({}, currentRow, currentRow, {}, min<int>(row, list.size()));
+                beginMoveRows({}, currentRow, currentRow, {}, min<int>(row, actions_.size()));
                 if (row > currentRow) {
                     --row; // Compensate for the deleted row
                 }
-                list.removeAt(currentRow);
-                insertAction(list, action, row);
+                actions_.removeAt(currentRow);
+                insertAction(actions_, action, row);
                 endMoveRows();
                 const auto cix = index(row);
                 emit dataChanged(cix, cix);
             } else {
                 // Update in place
-                auto &crow = list[currentRow];
+                auto &crow = actions_[currentRow];
                 assert(crow.id_proto() == action.id_proto());
                 crow = toActionInfo(action);
                 //LOG_TRACE << "Updated action " << action.id_proto() << " \"" << action.name() << "\" in place. favorite=" << crow.favorite();
@@ -357,10 +355,9 @@ void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Upda
     break;
     case pb::Update::Operation::DELETED: {
         // The deleted event gives us an empty Action with just the id field containing information.
-        if (auto currentRow = findCurrentRow(actions_->actions(), action.id_proto()) ; currentRow >=0 ) {
+        if (auto currentRow = findCurrentRow(actions_, action.id_proto()) ; currentRow >=0 ) {
             beginRemoveRows({}, currentRow, currentRow);
-            auto& list = actions_->actions();
-            list.removeAt(currentRow);
+            actions_.removeAt(currentRow);
             endRemoveRows();
         }
     }
@@ -374,7 +371,7 @@ void ActionsModel::doUpdate(const nextapp::pb::WorkSession &work, nextapp::pb::U
     static const QList<int> roles = {HasWorkSessionRole};
 
     const auto& action_id = work.action();
-    if (const auto currentRow = findCurrentRow(actions_->actions(), action_id) ; currentRow >=0 ) {
+    if (const auto currentRow = findCurrentRow(actions_, action_id) ; currentRow >=0 ) {
         const auto cix = index(currentRow);
         LOG_TRACE << "Emitting data change on " << action_id << " for work session update on row " << currentRow;
 
@@ -800,9 +797,9 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
 
 bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid)
 {
-    auto row = findCurrentRow(actions_->actions(), actionUuid);
+    auto row = findCurrentRow(actions_, actionUuid);
     if (row >= 0) {
-        auto& ai= actions_->actions().at(row);
+        auto& ai= actions_.at(row);
         if (ai.node() == nodeUuid) {
             LOG_DEBUG_N << "Cannot move to the same node";
             return false;
@@ -817,7 +814,7 @@ bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid
 
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
-    return actions_->actions().size();
+    return actions_.size();
 }
 
 QVariant ActionsModel::data(const QModelIndex &index, int role) const
@@ -827,11 +824,11 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     }
 
     const auto row = index.row();
-    if (row < 0 && row >= actions_->actions().size()) {
+    if (row < 0 && row >= actions_.size()) {
         return {};
     }
 
-    const auto& action = actions_->actions().at(row);
+    const auto& action = actions_.at(row);
 
     switch(role) {
     case NameRole:

@@ -70,7 +70,7 @@ private:
 
     bool online_{};
     bool valid_{};
-    nextapp::pb::ActionCategories action_categories_;
+    QList<nextapp::pb::ActionCategory> action_categories_;
     std::set<QString> deleted_entries_;
     static ActionCategoriesModel *instance_;
 };

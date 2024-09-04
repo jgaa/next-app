@@ -138,11 +138,11 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
 
 void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
 {
-    auto it = std::ranges::find_if(all_events_.events(), [&eventId](const auto& event) {
+    auto it = std::ranges::find_if(all_events_, [&eventId](const auto& event) {
         return event.id_proto() == eventId;
     });
 
-    if (it == all_events_.events().end()) {
+    if (it == all_events_.end()) {
         LOG_WARN_N << "No event found with id: " << eventId;
         return;
     }
@@ -226,7 +226,8 @@ bool CalendarModel::addAction(const QString &eventId, const QString &action)
             auto tb = event->timeBlock();
 
             // Check if the action is already in the block
-            if (std::ranges::find(tb.actions().list(), action) == tb.actions().list().end()) {
+            const auto& list = tb.actions().list();
+            if (std::ranges::find(list, action) == list.end()) {
                 // Add it
                 tb.actions().list().append(action);
                 ServerComm::instance().updateTimeBlock(tb);
@@ -245,10 +246,16 @@ void CalendarModel::removeAction(const QString &eventId, const QString &action)
             auto tb = event->timeBlock();
 
             // Check if the action is already in the block
-            auto it = std::ranges::find(tb.actions().list(), action);
-            if (it != tb.actions().list().end()) {
+            const auto& list = tb.actions().list();
+            auto it = std::ranges::find(list, action);
+            if (it != list.end()) {
                 // Remove it
-                tb.actions().list().erase(it);
+                auto index = std::distance(list.begin(), it);
+                auto tmp = tb.actions().list();
+                tmp.erase(tmp.begin() + index);
+                nextapp::pb::StringList sl;
+                sl.setList(std::move(tmp));
+                tb.setActions(std::move(sl));
                 ServerComm::instance().updateTimeBlock(tb);
             }
         }
@@ -257,11 +264,11 @@ void CalendarModel::removeAction(const QString &eventId, const QString &action)
 
 nextapp::pb::CalendarEvent *CalendarModel::lookup(const QString &eventId)
 {
-    auto it = std::ranges::find_if(all_events_.events(), [&eventId](const auto& event) {
+    auto it = std::ranges::find_if(all_events_, [&eventId](const auto& event) {
         return event.id_proto() == eventId;
     });
 
-    if (it == all_events_.events().end()) {
+    if (it == all_events_.end()) {
         LOG_WARN_N << "No event found with id: " << eventId;
         return nullptr;
     }
@@ -317,11 +324,11 @@ void CalendarModel::onCalendarEventUpdated(const nextapp::pb::CalendarEvents &ev
     }), std::back_inserter(dates));
 
     for(const auto& event : events.events()) {
-        auto event_it = std::ranges::find_if(all_events_.events(), [&event](const auto& e) {
+        auto event_it = std::ranges::find_if(all_events_, [&event](const auto& e) {
             return e.id_proto() == event.id_proto();
         });
 
-        nextapp::pb::CalendarEvent *existing = (event_it == all_events_.events().end()) ? nullptr : &*event_it;
+        nextapp::pb::CalendarEvent *existing = (event_it == all_events_.end()) ? nullptr : &*event_it;
 
         if (existing
             && op != nextapp::pb::Update_QtProtobufNested::Operation::DELETED
@@ -336,7 +343,7 @@ void CalendarModel::onCalendarEventUpdated(const nextapp::pb::CalendarEvents &ev
         switch(op) {
             case nextapp::pb::Update_QtProtobufNested::Operation::DELETED:
                 if (existing) {
-                    all_events_.events().erase(event_it);
+                    all_events_.erase(event_it);
                 } else {
                     continue; // irrelevant
                 }
@@ -344,7 +351,7 @@ void CalendarModel::onCalendarEventUpdated(const nextapp::pb::CalendarEvents &ev
             case nextapp::pb::Update_QtProtobufNested::Operation::ADDED:
 add:
                 if (std::ranges::find(dates.begin(), dates.end(), new_date) != dates.end()) {
-                    all_events_.events().push_back(event);
+                    all_events_.push_back(event);
                 } else {
                     continue ; // irrelevant
                 }
@@ -361,7 +368,7 @@ add:
                         LOG_TRACE_N << "Updated event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start();
                     } else {
                         // We had it, but now it's outside our range of dates
-                        all_events_.events().erase(event_it);
+                        all_events_.erase(event_it);
                         new_date = {};
                     }
                 } else /* an event may have moved into our range */ {
@@ -440,7 +447,7 @@ void CalendarModel::onReceivedCalendarData(nextapp::pb::CalendarEvents &data)
         dm->events() = {};
     }
 
-    all_events_.events().swap(data.events());
+    all_events_ = data.events();
 
     updateDayModels();
     setValid(online_);
@@ -469,7 +476,7 @@ void CalendarModel::updateDayModels()
         dm->events() = {};
     }
 
-    auto events = span(all_events_.events());
+    auto events = span(all_events_);
     auto start_of_day = events.begin();
     if (start_of_day != events.end()) {
 
@@ -495,7 +502,7 @@ void CalendarModel::updateDayModels()
 
 void CalendarModel::sort()
 {
-    ranges::sort(all_events_.events(), compare);
+    ranges::sort(all_events_, compare);
 }
 
 void CalendarModel::updateDayModelsDates()
@@ -554,7 +561,7 @@ void CalendarModel::setAudioTimers()
     const auto pre_ending_mins = settings.value("alarms/calendarEvent.SoonToEndMinutes", 5).toInt();
     const auto pre_start_mins = settings.value("alarms/calendarEvent.SoonToStartMinutes", 1).toInt();
 
-    for(const auto &ev : all_events_.events()) {
+    for(const auto &ev : all_events_) {
         if (ev.hasTimeSpan()) {
             const auto starting = ev.timeSpan().start();
 

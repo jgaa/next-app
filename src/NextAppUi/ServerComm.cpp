@@ -9,6 +9,10 @@
 #include <QSslKey>
 #include <QSslCertificate>
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+#   include <QSslConfiguration>
+#   include <QGrpcChannelOptions>
+#endif
 
 #include <openssl/x509.h>
 #include <openssl/pem.h>
@@ -53,6 +57,7 @@ ServerComm::ServerComm()
     : client_{new nextapp::pb::Nextapp::Client}, signup_client_{new signup::pb::SignUp::Client}
 {
 
+    nextapp::pb::Nextapp::Client xx;
     instance_ = this;
 
     QSettings settings;
@@ -63,8 +68,11 @@ ServerComm::ServerComm()
         LOG_INFO << "Created new device-uuid for this device: " << device_uuid_.toString();
     }
 
-    connect(client_.get(), &nextapp::pb::Nextapp::Client::errorOccurred,
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+    connect(client_.get(), &nextapp::pb::Nextapp::Client::errorOccurred
+            ,
             this, &ServerComm::errorOccurred);
+#endif
 
     setDefaulValuesInUserSettings();
 
@@ -1074,12 +1082,14 @@ void ServerComm::connectToSignupServer()
     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(signup_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     connect(signup_client_.get(), &signup::pb::SignUp::Client::errorOccurred, [this](const QGrpcStatus &status) {
         LOG_ERROR_N << "Connection to signup server failed: " << status.message();
         addMessage(tr("Connection to signup server failed: %1").arg(toString(status)));
         signup_status_ = SignupStatus::SIGNUP_ERROR;
         emit signupStatusChanged();
     });
+#endif
 
     LOG_INFO << "Using signup server at " << signup_server_address_;
 

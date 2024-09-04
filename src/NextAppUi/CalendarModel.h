@@ -108,7 +108,7 @@ private:
     QDate last_;
     QDate target_;
     CalendarMode mode_ = CM_UNSET;
-    nextapp::pb::CalendarEvents all_events_;
+    QList<nextapp::pb::CalendarEvent> all_events_;
     std::unordered_map<const QObject *, std::unique_ptr<CalendarDayModel>> day_models_;
     std::unique_ptr<QTimer> minute_timer_;
     QAudioOutput audio_output_;

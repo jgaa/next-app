@@ -193,7 +193,7 @@ private:
     void fetchIf(bool restart = true);
     void selectedChanged();
 
-    std::shared_ptr<nextapp::pb::Actions> actions_;
+    QList<nextapp::pb::ActionInfo> actions_;
     std::set<QUuid> worked_on_;
     FetchWhat mode_ = FW_TODAY_AND_OVERDUE;
     bool is_visible_ = false;

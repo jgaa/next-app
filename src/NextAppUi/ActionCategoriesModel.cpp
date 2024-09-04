@@ -77,13 +77,13 @@ void ActionCategoriesModel::updateCategory(const nextapp::pb::ActionCategory &ca
 
 nextapp::pb::ActionCategory ActionCategoriesModel::get(int index)
 {
-    if (index < 0 || index >= action_categories_.categories().size()) {
+    if (index < 0 || index >= action_categories_.size()) {
         nextapp::pb::ActionCategory cat;
         cat.setColor("deepskyblue");
         return cat;
     }
 
-    return action_categories_.categories().at(index);
+    return action_categories_.at(index);
 }
 
 QString ActionCategoriesModel::getName(const QString &id)
@@ -97,25 +97,25 @@ QString ActionCategoriesModel::getName(const QString &id)
 
 int ActionCategoriesModel::getIndexByUuid(const QString &id)
 {
-    auto it = ranges::find_if(action_categories_.categories(), [&id](const nextapp::pb::ActionCategory& c) {
+    auto it = ranges::find_if(action_categories_, [&id](const nextapp::pb::ActionCategory& c) {
         return c.id_proto() == id;
     });
 
-    if (it == action_categories_.categories().end()) {
+    if (it == action_categories_.end()) {
         return -1;
     }
 
-    const int ix = std::distance(action_categories_.categories().begin(), it);
+    const int ix = std::distance(action_categories_.begin(), it);
     return ix;
 }
 
 QString ActionCategoriesModel::getColorFromUuid(const QString &id)
 {
-    auto it = ranges::find_if(action_categories_.categories(), [&id](const nextapp::pb::ActionCategory& c) {
+    auto it = ranges::find_if(action_categories_, [&id](const nextapp::pb::ActionCategory& c) {
         return c.id_proto() == id;
     });
 
-    if (it == action_categories_.categories().end()) [[unlikely]] {
+    if (it == action_categories_.end()) [[unlikely]] {
         return "transparent";
     }
 
@@ -124,7 +124,7 @@ QString ActionCategoriesModel::getColorFromUuid(const QString &id)
 
 int ActionCategoriesModel::rowCount(const QModelIndex &parent) const
 {
-    return action_categories_.categories().size();
+    return action_categories_.size();
 }
 
 QVariant ActionCategoriesModel::data(const QModelIndex &index, int role) const
@@ -133,7 +133,7 @@ QVariant ActionCategoriesModel::data(const QModelIndex &index, int role) const
         return {};
     }
 
-    const auto &category = action_categories_.categories().at(index.row());
+    const auto &category = action_categories_.at(index.row());
     switch (role) {
     case NameRole:
         return category.name();
@@ -178,21 +178,21 @@ void ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> 
         });
 
         const auto& cat = update->actionCategory();
-        auto it = std::find_if(action_categories_.categories().begin(), action_categories_.categories().end(),
+        auto it = std::find_if(action_categories_.begin(), action_categories_.end(),
                                [&cat](const nextapp::pb::ActionCategory& c) {
             return c.id_proto() == cat.id_proto();
         });
 
         if (update->op() == nextapp::pb::Update::Operation::DELETED) {
-            action_categories_.categories().erase(it);
+            action_categories_.erase(it);
         } else {
-            if (it != action_categories_.categories().end()) {
+            if (it != action_categories_.end()) {
                 *it = cat;
             } else {
-                action_categories_.categories().push_back(cat);
+                action_categories_.push_back(cat);
             }
 
-            ranges::sort(action_categories_.categories(), compare);
+            ranges::sort(action_categories_, compare);
         }
     }
 
@@ -208,7 +208,7 @@ void ActionCategoriesModel::setOnline(bool value) {
         } else {
             setValid(false);
             beginResetModel();
-            action_categories_.categories().clear();
+            action_categories_.clear();
             endResetModel();
         }
     }
@@ -249,14 +249,14 @@ void ActionCategoriesModel::onReceivedActionCategories(nextapp::pb::ActionCatego
     });
 
     auto old = std::move(action_categories_);
-    action_categories_ = std::move(action_categories);
+    action_categories_ = action_categories.categories();
 
     // Handle the case where the server already sent an update for a newer entry than what we received from our request.
-    for(auto &cat : old.categories()) {
-        if (auto it = ranges::find_if(action_categories_.categories(),
+    for(auto &cat : old) {
+        if (auto it = ranges::find_if(action_categories_,
                                [&cat](const nextapp::pb::ActionCategory& c) {
             return c.id_proto() == cat.id_proto();
-        }); it == action_categories_.categories().end()) {
+        }); it == action_categories_.end()) {
             if (cat.version() > it->version()) {
                 // Keep the old value
                 *it = std::move(cat);
@@ -266,27 +266,27 @@ void ActionCategoriesModel::onReceivedActionCategories(nextapp::pb::ActionCatego
 
     // Handle the case where a category was deleted after the server prepared the response, and we already got the notification.
     for(auto& del : deleted_entries_) {
-        if (auto it = ranges::find_if(action_categories_.categories(),
+        if (auto it = ranges::find_if(action_categories_,
                                [&del](const nextapp::pb::ActionCategory& c) {
             return c.id_proto() == del;
-        }); it != action_categories_.categories().end()) {
-            action_categories_.categories().erase(it);
+        }); it != action_categories_.end()) {
+            action_categories_.erase(it);
         }
     }
     deleted_entries_.clear();
 
-    ranges::sort(action_categories_.categories(), compare);
+    ranges::sort(action_categories_, compare);
 
     setValid(true);
 }
 
 nextapp::pb::ActionCategory *ActionCategoriesModel::lookup(const QString &id)
 {
-    auto it = ranges::find_if(action_categories_.categories(), [&id](const nextapp::pb::ActionCategory& c) {
+    auto it = ranges::find_if(action_categories_, [&id](const nextapp::pb::ActionCategory& c) {
         return c.id_proto() == id;
     });
 
-    if (it == action_categories_.categories().end()) {
+    if (it == action_categories_.end()) {
         return nullptr;
     }
 
