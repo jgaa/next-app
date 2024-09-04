@@ -346,6 +346,13 @@ private:
 
         QPromise<nextapp::pb::Status> promise;
         auto future = promise.future();
+
+        auto qopts = options.qopts;
+
+        if (!session_id_.empty()) {
+            qopts.setMetadata({std::make_pair("sid", session_id_.c_str())});
+        }
+
         auto handle = (client_.get()->*call)(request, options.qopts);
         handle->subscribe(this, [this, options, handle, promise=std::move(promise)] () mutable {
             if (auto orval = handle-> template read<replyT>()) {
@@ -383,7 +390,7 @@ private:
     std::shared_ptr<QGrpcServerStream> updates_;
     QString current_server_address_;
     nextapp::pb::UserGlobalSettings userGlobalSettings_;
-    QString session_id_;
+    std::string session_id_;
     int reconnect_after_seconds_{0};
     QString signup_server_address_;
     signup::pb::GetInfoResponse signup_info_;

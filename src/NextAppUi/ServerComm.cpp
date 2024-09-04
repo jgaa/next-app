@@ -152,45 +152,7 @@ void ServerComm::start()
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(current_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
-    LOG_INFO << "Using server at " << current_server_address_;
-    setStatus(Status::CONNECTING);
-
-    LOG_DEBUG_N << "Starting the server comm...";
     startNextappSession();
-    LOG_DEBUG_N << "Finished starting the server comm...";
-
-    // TODO: Call Hello to get session-id.
-    //       - Sett "sid" meta-data for each call
-    //       - Switch to co-routines for calling coroutines
-    //       - Refactor the callRpc to use co-routines and member name, so we can use one function for all calls
-//     callRpc<nextapp::pb::Status>([this]() {
-//         return client_->GetServerInfo({});
-//     }, [this](const nextapp::pb::Status& status) {
-//         if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
-//             LOG_ERROR << "Failed to connect to server: " << status.message();
-//             setStatus(Status::ERROR);
-//             return;
-//         }
-//         if (status.hasServerInfo()) {
-//             auto se = status.serverInfo();
-//             if (!se.properties().empty()) {
-//                 setStatus(Status::INITIAL_SYNC);
-//                 // assert(se.properties().front().key() == "version");
-//                 server_version_ = se.properties().front().value();
-//                 LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
-//             } else {
-//                 LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
-//             }
-
-// #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-//             updates_ = client_->streamSubscribeToUpdates({});
-// #else
-//             updates_ = client_->SubscribeToUpdates({});
-// #endif
-//             connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
-//             initGlobalSettings();
-//         }
-//     }, GrpcCallOptions{false});
 }
 
 void ServerComm::stop()
@@ -1141,16 +1103,72 @@ void ServerComm::setMessage(const QString &msg)
 
 QCoro::Task<void> ServerComm::startNextappSession()
 {
+    LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
+
+    session_id_.clear();
+    setStatus(Status::CONNECTING);
     nextapp::pb::Empty req;
     auto future = rpc(req, &nextapp::pb::Nextapp::Client::Hello);
     auto res = co_await qCoro(future).result();
     if (res.error() == nextapp::pb::ErrorGadget::OK) {
         if (res.hasSessionId()) {
-            session_id_ = res.sessionId();
+            session_id_ = res.sessionId().toLatin1();
         }
         LOG_INFO << "Session started. Session-id: " << session_id_;
+    } else {
+failed:
+        setStatus(Status::ERROR);
+        LOG_ERROR_N << "Failed to start new session: " << res.message();
+        stop();
         co_return;
     }
+    setStatus(Status::INITIAL_SYNC);
+
+    res = co_await qCoro(
+              rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetServerInfo)
+              ).result();
+
+    if (res.error() != nextapp::pb::ErrorGadget::OK) {
+        goto failed;
+    }
+
+    assert(res.hasServerInfo());
+    if (res.hasServerInfo()) {
+        const auto& se = res.serverInfo();
+        server_version_ = se.properties().front().value();
+        LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
+    } else {
+        LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
+    }
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+    updates_ = client_->streamSubscribeToUpdates({});
+#else
+    updates_ = client_->SubscribeToUpdates({});
+#endif
+
+    connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
+
+    res = co_await qCoro(
+              rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetUserGlobalSettings)
+              ).result();
+
+    if (res.error() == nextapp::pb::ErrorGadget::OK && res.hasUserGlobalSettings()) {
+        userGlobalSettings_ = res.userGlobalSettings();
+        LOG_DEBUG_N << "Received global user-settings";
+        emit globalSettingsChanged();
+    } else if (res.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
+        LOG_INFO_N << "initializing global settings...";
+        res = co_await qCoro(
+                  rpc(userGlobalSettings_, &nextapp::pb::Nextapp::Client::SetUserGlobalSettings)
+                  ).result();
+    } else {
+        goto failed;
+        LOG_ERROR_N << "Failed to get global user-settings: " << res.message();
+    }
+
+    onGrpcReady();
+
     co_return;
 }
 
