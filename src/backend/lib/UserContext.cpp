@@ -147,7 +147,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::g
 
     // Happy path. Just return an existing session.
     if (auto it = context->client_metadata().find("sid"); it != context->client_metadata().end()) {
-        auto sid = toUuid(it->second.data());
+        auto sid = toUuid(to_string_view(it->second));
         shared_lock lock{mutex_};
         if (auto it = sessions_.find(sid); it != sessions_.end()) {
             auto& session = *it->second;
@@ -196,7 +196,7 @@ std::shared_ptr<UserContext::Session> SessionManager::getExistingSession(const :
     const auto device_uuid = toUuid(device_id);
 
     if (auto it = context->client_metadata().find("sid"); it != context->client_metadata().end()) {
-        auto sid = toUuid(it->second.data());
+        auto sid = toUuid(to_string_view(it->second));
         shared_lock lock{mutex_};
         if (auto it = sessions_.find(sid); it != sessions_.end()) {
             auto& session = *it->second;

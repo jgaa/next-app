@@ -148,13 +148,15 @@ string sha256(const std::span<uint8_t> in, bool encodeToBase64)
 boost::uuids::uuid toUuid(std::string_view uuid)
 {
     using namespace boost::uuids;
+    const string str{uuid};
+
     try {
-        return string_generator()(string{uuid});
+        return string_generator()(str);
     } catch(const runtime_error&) {
         ;
     }
 
-    throw runtime_error{"invalid uuid"};
+    throw runtime_error{"invalid uuid: \"" + str + "\""};
 }
 
 uint64_t getRandomNumber64()
