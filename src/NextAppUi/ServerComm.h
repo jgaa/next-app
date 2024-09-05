@@ -350,14 +350,35 @@ private:
         auto qopts = options.qopts;
 
         if (!session_id_.empty()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
             qopts.setMetadata({std::make_pair("sid", session_id_.c_str())});
+#else
+            qopts.withMetadata({{"sid", session_id_.c_str()}});
+#endif
         }
 
         auto handle = (client_.get()->*call)(request, options.qopts);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+            connect(handle.get(), &QGrpcCallReply::finished, this, [this, handle, options, promise=std::move(promise)] (const QGrpcStatus& status) mutable {
+                if (!status.isOk()) [[unlikely]] {
+                    LOG_ERROR <<  "RPC failed: " << toString(status);
+                    setStatus(Status::ERROR);
+                    stop();
+                    replyT rval;
+                    rval.setError(nextapp::pb::ErrorGadget::GENERIC_ERROR);
+                    rval.setMessage(status.message());
+                    promise.start();
+                    promise.addResult(std::move(rval));
+                    promise.finish();
+                    return;
+                }
+                if (auto orval = handle-> template read<replyT>()) [[likely]] {
+                    auto& rval = *orval;
+#else
         handle->subscribe(this, [this, options, handle, promise=std::move(promise)] () mutable {
-            if (auto orval = handle-> template read<replyT>()) {
-                auto& rval = *orval;
-
+            {
+                auto rval = handle-> template read<replyT>();
+#endif
                 if constexpr (std::is_same_v<nextapp::pb::Status, replyT>) {
                     if (!options.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
                         LOG_ERROR << "RPC request failed with error #" <<
@@ -366,9 +387,18 @@ private:
                 }
 
                 promise.start();
-                promise.addResult(rval);
+                promise.addResult(std::move(rval));
                 promise.finish();
+                return;
             }
+
+            replyT errval;
+            errval.setError(nextapp::pb::ErrorGadget::GENERIC_ERROR);
+            errval.setMessage("Failed to read RPC response in client");
+            promise.start();
+            promise.addResult(std::move(errval));
+            promise.finish();
+
         });
 
         return future;
