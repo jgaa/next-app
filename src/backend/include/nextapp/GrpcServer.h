@@ -180,17 +180,17 @@ public:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
         template <typename ReqT, typename ReplyT, typename FnT>
         ::grpc::ServerUnaryReactor*
-        unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn, std::string_view name = {}) noexcept {
+        unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn, std::string_view name = {}, bool allowNewSession = false) noexcept {
             assert(ctx);
             assert(reply);
 
             auto* reactor = ctx->DefaultReactor();
 
-            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn=std::move(fn), name]() mutable -> boost::asio::awaitable<void> {
+            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name]() mutable -> boost::asio::awaitable<void> {
                     try {
                         LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
-                        RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx)};
+                        RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx, allowNewSession)};
 
                         if constexpr (UnaryFnWithoutContext<FnT, ReplyT>) {
                             co_await fn(reply);

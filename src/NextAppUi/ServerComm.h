@@ -257,6 +257,7 @@ private:
                 LOG_ERROR << "ServerComm::callRpc_ Called when status is " << status_;
                 return;
             }
+
             auto rpc_method = call(args...);
             //rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
                 //respT rval = rpc_method-> template read<respT>();
@@ -350,11 +351,12 @@ private:
         auto qopts = options.qopts;
 
         if (!session_id_.empty()) {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-            qopts.setMetadata({std::make_pair("sid", session_id_.c_str())});
-#else
-            qopts.withMetadata({{"sid", session_id_.c_str()}});
-#endif
+// TODO: Enable when we remove the "sid" from the static metadata in the channel
+// #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+//             qopts.setMetadata({std::make_pair("sid", session_id_.c_str())});
+// #else
+//             qopts.withMetadata({{"sid", session_id_.c_str()}});
+// #endif
         }
 
         auto handle = (client_.get()->*call)(request, options.qopts);

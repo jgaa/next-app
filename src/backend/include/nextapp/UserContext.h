@@ -38,8 +38,8 @@ public:
     class Session : public std::enable_shared_from_this<Session> {
     public:
 
-        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid devid)
-            : user_(user), sessionid_{newUuid()}, deviceid_{devid} {
+        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid devid, boost::uuids::uuid sessionid)
+            : user_(user), sessionid_{sessionid}, deviceid_{devid} {
         }
 
         const boost::uuids::uuid& sessionId() const noexcept {
@@ -142,7 +142,7 @@ public:
 
     // Creates or fetches existing session.
     // Throws on error, or if the user or tenant is not active.
-    boost::asio::awaitable<std::shared_ptr<UserContext::Session>> getSession(const ::grpc::ServerContextBase* context);
+    boost::asio::awaitable<std::shared_ptr<UserContext::Session>> getSession(const ::grpc::ServerContextBase* context, bool allowNewSession = false);
 
     std::shared_ptr<UserContext::Session> getExistingSession(const ::grpc::ServerContextBase *context);
 

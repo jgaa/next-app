@@ -19,7 +19,7 @@ namespace nextapp::grpc {
         LOG_DEBUG << "Hello from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid() << " at " << ctx->peer();
         reply->set_sessionid(to_string(rctx.session().sessionId()));
         co_return;
-    }, __func__);
+    }, __func__, true /* allow new session */);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::Ping(::grpc::CallbackServerContext *ctx, const pb::PingReq *req, pb::Status *reply)

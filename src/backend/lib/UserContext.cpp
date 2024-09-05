@@ -111,9 +111,24 @@ boost::uuids::uuid UserContext::newUuid()
     return ::nextapp::newUuid();
 }
 
+string mapToString(const auto &map) {
+    ostringstream out;
+    unsigned count = 0;
+    for(const auto& [key, value] : map) {
+        if (++count > 1) {
+            out << ", ";
+        }
+        out << key << ": " << value;
+    }
+    return out.str();
+}
+
 boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::getSession(
-    const ::grpc::ServerContextBase* context)
+    const ::grpc::ServerContextBase* context, bool allowNewSession)
 {
+    LOG_TRACE << "Getting session for peer at " << context->peer()
+              << " context: " << mapToString(context->client_metadata());
+
     if (!context->auth_context()->IsPeerAuthenticated()) {
         throw server_err{pb::Error::AUTH_FAILED, "Not authenticated by gRPC!"};
     }
@@ -128,6 +143,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::g
     }
 
     const auto device_uuid = toUuid(device_id);
+    boost::uuids::uuid new_sid = newUuid();
 
     // Happy path. Just return an existing session.
     if (auto it = context->client_metadata().find("sid"); it != context->client_metadata().end()) {
@@ -141,14 +157,19 @@ boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::g
             LOG_WARN << "Session " << sid << " is not for device " << device_uuid << ". Closing the session.";
             throw server_err{pb::Error::AUTH_FAILED, "Session is not for the connected device"};
         }
-        throw server_err{pb::Error::AUTH_FAILED, "Session not found"};
+
+        // TODO: Enable when the client can handle a server-assigned session-id.
+        //throw server_err{pb::Error::AUTH_FAILED, "Session not found"};
+        new_sid = sid;
+    } else if (!allowNewSession) {
+        throw server_err{pb::Error::AUTH_FAILED, "Session-id 'sid' not found in the gRPC meta-data."};
     }
 
     // Fetch or create a user context.
     auto ucx = co_await getUserContext(device_uuid, context);
     assert(ucx);
 
-    auto session = make_shared<UserContext::Session>(ucx, device_uuid);
+    auto session = make_shared<UserContext::Session>(ucx, device_uuid, new_sid);
     {
         unique_lock lock{mutex_};
         sessions_[session->sessionId()] = session.get();
@@ -174,9 +195,19 @@ std::shared_ptr<UserContext::Session> SessionManager::getExistingSession(const :
     auto device_id = to_string_view(v.front());
     const auto device_uuid = toUuid(device_id);
 
-    shared_lock lock{mutex_};
-    if (auto it = sessions_.find(device_uuid); it != sessions_.end()) {
-        return it->second->shared_from_this();
+    if (auto it = context->client_metadata().find("sid"); it != context->client_metadata().end()) {
+        auto sid = toUuid(it->second.data());
+        shared_lock lock{mutex_};
+        if (auto it = sessions_.find(sid); it != sessions_.end()) {
+            auto& session = *it->second;
+            if (session.deviceId() == device_uuid) [[likely]] {
+                return session.shared_from_this();
+            }
+            LOG_WARN << "Session " << sid << " is not for device " << device_uuid << ". Closing the session.";
+            throw server_err{pb::Error::AUTH_FAILED, "Session is not for the connected device"};
+        }
+    } else {
+        throw server_err{pb::Error::AUTH_FAILED, "Session-id 'sid' not found in the gRPC meta-data."};
     }
 
     throw server_err{pb::Error::AUTH_FAILED, "Session not found"};

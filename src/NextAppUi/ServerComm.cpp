@@ -121,7 +121,11 @@ ServerComm::~ServerComm()
 void ServerComm::start()
 {
     QSettings settings;
-    session_id_.clear();
+    // TODO: Clear the uuid and let the server decide the session-id.
+    //       We can't change the channel medatada with QT gRPC, so we have to wait until
+    //       `callRpc` is totally removed before we can do this
+    //       Remember to remove the `setMetadata` call below.
+    session_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString();
     current_server_address_ = settings.value("server/url", QString{}).toString();
 
     QSslConfiguration sslConfig;
@@ -144,11 +148,13 @@ void ServerComm::start()
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     auto channelOptions = QGrpcChannelOptions{QUrl(current_server_address_, QUrl::StrictMode)}
-                              .withSslConfiguration(sslConfig);
+                              .withSslConfiguration(sslConfig)
+                              .withMetadata({std::make_pair("sid", session_id_.c_str())});
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else
     auto channelOptions = QGrpcChannelOptions{}
-                              .setSslConfiguration(sslConfig);
+                              .setSslConfiguration(sslConfig)
+                              .setMetadata({std::make_pair("sid", session_id_.c_str())});
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(current_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
