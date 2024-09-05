@@ -24,6 +24,15 @@ concept IsValidFunctor = std::invocable<T&, Y...>;
 template <typename T>
 concept ProtoMessage = std::is_base_of_v<QProtobufMessage, T>;
 
+namespace nextapp {
+template <typename T, ProtoMessage M>
+auto append(const T& list, M event) {
+    auto tmp = list;
+    tmp.append(std::move(event));
+    return tmp;
+}
+} // ns
+
 class ServerComm : public QObject
 {
 public:

@@ -40,13 +40,14 @@ ostream& operator << (ostream&o, const ServerComm::Status& v) {
 
 namespace {
 
+
 auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind kind) {
     nextapp::pb::AddWorkEventReq req;
     nextapp::pb::WorkEvent event;
     event.setKind(kind);
     req.setWorkSessionId(sessionId);
-    req.events().append(event);
-
+    //req.events().append(event);
+    req.setEvents(nextapp::append(req.events(), std::move(event)));
     return req;
 }
 
@@ -498,7 +499,7 @@ void ServerComm::touchWork(const QString& sessionId) {
 void ServerComm::sendWorkEvent(const QString &sessionId, const nextapp::pb::WorkEvent &event)
 {
     nextapp::pb::AddWorkEventReq req;
-    req.events().append(event);
+    req.setEvents(nextapp::append(req.events(), event));
     req.setWorkSessionId(sessionId);
 
     sendWorkEvents(req);

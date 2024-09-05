@@ -313,9 +313,13 @@ void GrpcServer::startNextapp()
             asio::use_awaitable);
 
         if (resp.error() != nextapp::pb::Error::OK) {
+            throw runtime_error{"Failed to connect and authorize with nextappd: " + resp.message()};
+        } else {
             if (resp.has_sessionid()) {
                 LOG_DEBUG << "Got session id: " << resp.sessionid();
                 session_id_ = resp.sessionid();
+            } else {
+                LOG_WARN << "Failed to get session id from nextapp-server's reply";
             }
         }
 
