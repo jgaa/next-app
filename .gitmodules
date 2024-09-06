@@ -10,3 +10,6 @@
 [submodule "dependencies/qcoro"]
 	path = dependencies/qcoro
 	url = https://github.com/danvratil/qcoro.git
+[submodule "dependencies/expected"]
+	path = dependencies/expected
+	url = https://github.com/TartanLlama/expected.git

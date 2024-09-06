@@ -719,8 +719,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v7_upgrade,
         v8_upgrade,
         v9_upgrade,
-        v10_upgrade
-        //v11_upgrade
+        v10_upgrade,
+        v11_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

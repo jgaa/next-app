@@ -7,6 +7,7 @@
 #include <QAudioOutput>
 #include <QMediaPlayer>
 
+#include "DbStore.h"
 #include "WorkModel.h"
 #include "WeeklyWorkReportModel.h"
 
@@ -115,6 +116,8 @@ signals:
 private:
     static NextAppCore *instance_;
     QGuiApplication *app_{qApp};
+    std::unique_ptr<DbStore> db_;
+
     int height_{0};
     int width_{0};
     bool drag_enabled_{};

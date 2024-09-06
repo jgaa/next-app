@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.21 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.22 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -33,9 +33,11 @@ endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+
 set(QT6_IS_SHARED_LIBS_BUILD OFF)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Grpc Concurrent Test Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Grpc Concurrent Test Multimedia Sql)
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")
@@ -62,6 +64,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/qcoro
 find_package(QCoro6 COMPONENTS Core)
 find_package(QCoro6 COMPONENTS Qml)
 find_package(QCoro6 COMPONENTS Quick)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/expected/include)
+
 
 #include(cmake/3rdparty.cmake)
 # Use logfault from git submodule in stead of adding it
@@ -272,6 +277,8 @@ qt_add_qml_module(${PROJECT_NAME}
         DayModel.h
         DaysModel.cpp
         DaysModel.h
+        DbStore.cpp
+        DbStore.h
         DualView.h DualView.cpp
         MainTreeModel.cpp
         MainTreeModel.h
@@ -293,10 +300,12 @@ qt_add_qml_module(${PROJECT_NAME}
         WorkModel.h
         WorkSessionsModel.cpp
         WorkSessionsModel.h
+        nextapp.h
         util.cpp
         util.h
-        nextapp.h
 )
+
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 
 if (APPLE)
     set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -353,6 +362,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Concurrent
         Qt6::Test
         Qt6::Multimedia
+        Qt6::Sql
         QCoro6::Core
         QCoro6::Qml
         QCoro6::Quick

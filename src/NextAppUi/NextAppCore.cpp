@@ -39,6 +39,20 @@ NextAppCore::NextAppCore() {
     connect(&audio_play_delay_, &QTimer::timeout, [this]() {
         playSound(volume_, sound_file_);
     });
+
+    db_ = make_unique<DbStore>();
+
+    connect(db_.get(), &DbStore::error, [this](DbStore::Error error) {
+        LOG_ERROR_N << "DB error: " << static_cast<int>(error);
+        // TODO: Show error. Do not connect to server.
+    });
+
+    connect(db_.get(), &DbStore::initialized, [this]() {
+        // TODO: Connect to server
+
+    });
+
+    db_->init();
 }
 
 
