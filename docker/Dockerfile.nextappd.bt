@@ -7,7 +7,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q --no-install-recommends \
     libssl3 libprotobuf32 libicu74 liblz4-1 libz3-4 libsnappy1v5 libgrpc++1.51t64 \
-    libcurl4t64 tzdata gdb
+    libcurl4t64 tzdata gdb libprotobuf-lite32t64
 
 COPY bin/* /usr/local/bin/
 # COPY lib/* /usr/local/lib/
