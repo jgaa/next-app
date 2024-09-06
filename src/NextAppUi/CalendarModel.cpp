@@ -229,7 +229,7 @@ bool CalendarModel::addAction(const QString &eventId, const QString &action)
             const auto& list = tb.actions().list();
             if (std::ranges::find(list, action) == list.end()) {
                 // Add it
-                tb.actions().list().append(action);
+                tb.setActions(nextapp::append(tb.actions(), action));
                 ServerComm::instance().updateTimeBlock(tb);
                 return true;
             }
@@ -251,12 +251,8 @@ void CalendarModel::removeAction(const QString &eventId, const QString &action)
             if (it != list.end()) {
                 // Remove it
                 auto index = std::distance(list.begin(), it);
-                auto tmp = tb.actions().list();
-                tmp.erase(tmp.begin() + index);
-                nextapp::pb::StringList sl;
-                sl.setList(std::move(tmp));
-                tb.setActions(std::move(sl));
-                ServerComm::instance().updateTimeBlock(tb);
+                tb.setActions(nextapp::remove(tb.actions(), index));
+                //ServerComm::instance().updateTimeBlock(tb);
             }
         }
     }

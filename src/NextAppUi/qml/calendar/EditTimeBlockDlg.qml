@@ -37,6 +37,7 @@ Dialog {
         tb.category = category.uuid
         tb.timeSpan.start = NaCore.parseDateOrTime(start.text, tb.timeSpan.start)
         tb.timeSpan.end = NaCore.parseDateOrTime(end.text, tb.timeSpan.start)
+        tb.actions = actionsCtl.model.actions
 
         // TODO: Validate that from and to dates are the same!
         // TODO: Category
@@ -165,7 +166,9 @@ Dialog {
                         icon.source:  "../../icons/fontawsome/trash-can.svg"
                         icon.color: "red"
                         onClicked: {
+                            console.log("before remove: ", actionsCtl.model.actions)
                             actionsCtl.model.removeAction(root.tb.id_proto, uuid)
+                            console.log("after remove: ", actionsCtl.model.actions)
                         }
 
                         text: qsTr("Remove")

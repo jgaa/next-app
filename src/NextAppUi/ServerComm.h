@@ -31,6 +31,26 @@ auto append(const T& list, M event) {
     tmp.append(std::move(event));
     return tmp;
 }
+
+template <typename T>
+auto append(nextapp::pb::StringList& sl, T&& value) {
+    auto list = sl.list();
+    list.append(std::forward<T>(value));
+    nextapp::pb::StringList new_sl;
+    new_sl.setList(std::move(list));
+    return new_sl;
+}
+
+template <typename T>
+auto remove(nextapp::pb::StringList& sl, T index) {
+    auto list = sl.list();
+    list.removeAt(index);
+    nextapp::pb::StringList new_sl;
+    new_sl.setList(std::move(list));
+    return new_sl;
+}
+
+
 } // ns
 
 class ServerComm : public QObject

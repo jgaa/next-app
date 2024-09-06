@@ -2,6 +2,7 @@
 
 #include "ActionInfoCache.h"
 #include "CalendarDayModel.h"
+#include "ServerComm.h"
 #include "logging.h"
 #include "util.h"
 
@@ -11,10 +12,11 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
 {
     assert(day_);
     tb_ = getTb();
+    actions_ = tb_->actions();
 
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, [this](const QUuid &uuid) {
         if (tb_) {
-            if (tb_->actions().list().contains(uuid.toString(QUuid::WithoutBraces))) {
+            if (actions_.list().contains(uuid.toString(QUuid::WithoutBraces))) {
                 sync();
             }
         }
@@ -22,7 +24,7 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
 
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, [this](const QUuid &uuid) {
         if (tb_) {
-            if (tb_->actions().list().contains(uuid.toString(QUuid::WithoutBraces))) {
+            if (actions_.list().contains(uuid.toString(QUuid::WithoutBraces))) {
                 sync();
             }
         }
@@ -53,7 +55,20 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
 void TimeBoxActionsModel::removeAction(const QString &eventId, const QString &action)
 {
     assert(day_);
-    day_->removeAction(eventId, action);
+
+    // Find the index.
+    const auto actions = actions_.list();
+    const auto index = actions.indexOf(action);
+    if (index == -1) {
+        return;
+    }
+    //Start remove notification
+    beginRemoveRows({}, index, index);
+    actions_ = nextapp::remove(actions_, index);
+    endRemoveRows();
+    emit actionsChanged();
+
+    return;
 }
 
 nextapp::pb::TimeBlock *TimeBoxActionsModel::getTb()
@@ -76,6 +91,8 @@ void TimeBoxActionsModel::sync()
         QQmlEngine::setObjectOwnership(ai, QQmlEngine::CppOwnership);
         aiPrx_.emplace_back(ai);
     }
+
+    emit actionsChanged();
 }
 
 int TimeBoxActionsModel::rowCount(const QModelIndex &parent) const

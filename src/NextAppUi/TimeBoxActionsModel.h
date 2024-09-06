@@ -24,16 +24,22 @@ class TimeBoxActionsModel : public QAbstractListModel
         DoneRole
     };
 
+    Q_PROPERTY(nextapp::pb::StringList actions MEMBER actions_ NOTIFY actionsChanged)
+
 public:
     TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayModel *day, QObject *parent = nullptr);
 
     Q_INVOKABLE void removeAction(const QString& eventId, const QString& action);
+
+signals:
+    void actionsChanged();
 
 private:
     QUuid uuid_;
     QQuickItem* timeBox_{};
     CalendarDayModel* day_{};
     nextapp::pb::TimeBlock* tb_{};
+    nextapp::pb::StringList actions_;
     std::vector<std::unique_ptr<ActionInfoPrx>> aiPrx_{};
 
     nextapp::pb::TimeBlock *getTb();
