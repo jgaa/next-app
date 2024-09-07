@@ -14,8 +14,6 @@
 #   include <QGrpcChannelOptions>
 #endif
 
-#include "qcorofuture.h"
-
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/evp.h>
@@ -1115,8 +1113,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
     session_id_.clear();
     setStatus(Status::CONNECTING);
     nextapp::pb::Empty req;
-    auto future = rpc(req, &nextapp::pb::Nextapp::Client::Hello);
-    auto res = co_await qCoro(future).result();
+    auto res = co_await rpc(req, &nextapp::pb::Nextapp::Client::Hello);
     if (res.error() == nextapp::pb::ErrorGadget::OK) {
         if (res.hasSessionId()) {
             session_id_ = res.sessionId().toLatin1();
@@ -1131,9 +1128,7 @@ failed:
     }
     setStatus(Status::INITIAL_SYNC);
 
-    res = co_await qCoro(
-              rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetServerInfo)
-              ).result();
+    res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetServerInfo);
 
     if (res.error() != nextapp::pb::ErrorGadget::OK) {
         goto failed;
@@ -1156,9 +1151,7 @@ failed:
 
     connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
 
-    res = co_await qCoro(
-              rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetUserGlobalSettings)
-              ).result();
+    res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetUserGlobalSettings);
 
     if (res.error() == nextapp::pb::ErrorGadget::OK && res.hasUserGlobalSettings()) {
         userGlobalSettings_ = res.userGlobalSettings();
@@ -1166,9 +1159,7 @@ failed:
         emit globalSettingsChanged();
     } else if (res.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
         LOG_INFO_N << "initializing global settings...";
-        res = co_await qCoro(
-                  rpc(userGlobalSettings_, &nextapp::pb::Nextapp::Client::SetUserGlobalSettings)
-                  ).result();
+        res = co_await rpc(userGlobalSettings_, &nextapp::pb::Nextapp::Client::SetUserGlobalSettings);
     } else {
         goto failed;
         LOG_ERROR_N << "Failed to get global user-settings: " << res.message();

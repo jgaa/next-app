@@ -15,6 +15,7 @@
 #include <QFuture>
 
 #include "qcorotask.h"
+#include "qcorofuture.h"
 
 #include "logging.h"
 
@@ -369,7 +370,7 @@ private:
     }
 
     template <ProtoMessage reqT, ProtoMessage replyT = nextapp::pb::Status>
-    auto rpc(
+    QCoro::Task<replyT> rpc(
         reqT request,
         std::shared_ptr<QGrpcCallReply>(::nextapp::pb::Nextapp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
         const GrpcCallOptions &options = {}) {
@@ -432,7 +433,8 @@ private:
 
         });
 
-        return future;
+        // TODO: Can we move to using the subscription directly when we drop support for QT 6.7?
+        co_return co_await qCoro(future).result();
     }
 
     QCoro::Task<void> startNextappSession();
