@@ -679,6 +679,11 @@ void ServerComm::requestOtp(callback_t<nextapp::pb::Status> &&done)
     }, std::move(done));
 }
 
+std::shared_ptr<GrpcIncomingStream> ServerComm::synchGreenDays(const nextapp::pb::GetNewReq &req)
+{
+    return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewDays);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;

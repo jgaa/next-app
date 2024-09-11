@@ -105,6 +105,11 @@ public:
 
     void setDragEnabled(bool drag_enabled);
 
+    auto& db() const noexcept {
+        assert(db_);
+        return *db_;
+    }
+
 signals:
     void allBaseModelsCreated();
     void onlineChanged(bool online);

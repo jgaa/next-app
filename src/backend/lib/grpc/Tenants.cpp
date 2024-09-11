@@ -432,5 +432,4 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
         }, __func__);
 }
 
-
 } // ns

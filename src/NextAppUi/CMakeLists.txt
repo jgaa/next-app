@@ -273,19 +273,20 @@ qt_add_qml_module(${PROJECT_NAME}
         CalendarModel.h
         DayColorModel.cpp
         DayColorModel.h
+        DbStore.cpp
+        DbStore.h
+        DualView.h DualView.cpp
         GreenDayModel.cpp
         GreenDayModel.h
         GreenDaysModel.cpp
         GreenDaysModel.h
-        DbStore.cpp
-        DbStore.h
-        DualView.h DualView.cpp
+        GreenMonthModel.cpp
+        GreenMonthModel.h
+        GrpcIncomingStream.h
         MainTreeModel.cpp
         MainTreeModel.h
         MaterialDesignStyling.cpp
         MaterialDesignStyling.h
-        GreenMonthModel.cpp
-        GreenMonthModel.h
         NextAppCore.cpp
         NextAppCore.h
         OtpModel.cpp

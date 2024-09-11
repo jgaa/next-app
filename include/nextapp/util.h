@@ -29,6 +29,18 @@ namespace nextapp {
 
 namespace nextapp {
 
+template<typename T>
+concept SmartPointer = std::is_same_v<T, std::unique_ptr<typename T::element_type>> ||
+                       std::is_same_v<T, std::shared_ptr<typename T::element_type>>;
+
+template <typename T>
+concept ProtoMessage = std::is_base_of_v<google::protobuf::Message, T>;
+
+template <typename T>
+concept ProtoMessagePtr = (std::is_same_v<T, std::unique_ptr<typename T::element_type>> ||
+                          std::is_same_v<T, std::shared_ptr<typename T::element_type>>) &&
+                          ProtoMessage<typename T::element_type>;
+
 using span_t = std::span<const char>;
 
 uint64_t getRandomNumber64();
@@ -118,9 +130,6 @@ struct UuidHash {
         return boost::hash_value(uuid);
     }
 };
-
-template <typename T>
-concept ProtoMessage = std::is_base_of_v<google::protobuf::Message, T>;
 
 template <ProtoMessage T>
 std::string toJson(const T& obj, int mode = 1) {

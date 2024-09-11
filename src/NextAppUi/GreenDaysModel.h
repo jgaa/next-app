@@ -7,6 +7,7 @@
 #include <QHash>
 #include <QUuid>
 #include <QAbstractItemModel>
+#include "qcorotask.h"
 
 #include "GreenMonthModel.h"
 
@@ -47,8 +48,21 @@ class GreenDaysModel : public QObject
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    Q_PROPERTY(bool valid READ valid NOTIFY validChanged)
+
 public:
+    enum class State {
+        LOCAL,
+        SYNCHING,
+        SYNCHED,
+        ERROR
+    };
+
+    Q_ENUM(State)
+
+    Q_PROPERTY(bool valid READ valid NOTIFY validChanged)
+    Q_PROPERTY(State state MEMBER state_ NOTIFY stateChanged)
+
+
     struct DayInfo {
         DayInfo() = default;
         DayInfo(const DayInfo&) = default;
@@ -88,7 +102,7 @@ public:
     void fetchColors();
 
     bool valid() const noexcept {
-        return !color_definitions_.dayColors().empty();
+        return state_ == State::SYNCHED;
     }
 
     QString getColorUuid(int year, int month, int day);
@@ -102,6 +116,7 @@ signals:
     void updatedMonth(int year, int month);
     void updatedDay(int year, int month, int day);
     void dayColorsChanged(const nextapp::pb::DayColorDefinitions& defs);
+    void stateChanged(State state);
 
 public slots:
 
@@ -112,9 +127,12 @@ public slots:
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
 
 private:
-    void onOnline();
+    QCoro::Task<void> onOnline();
     void refetchAllMonths();
+    void setState(State state) noexcept;
+    QCoro::Task<void> synchFromServer();
 
+    State state_{State::LOCAL};
     uint32_t static getKey(int year, int month) noexcept;
     DayInfo *lookup(int year, int month, int day);
     void toDayInfo(const nextapp::pb::Day& day, GreenDaysModel::DayInfo& di);

@@ -19,10 +19,11 @@ public:
     static constexpr uint latest_version = 1;
     enum Error {
         OK,
-        GENERIC_ERROR
+        GENERIC_ERROR,
+        QUERY_FAILED
     };
 
-    using rval_t = tl::expected<QList<QVariant>, Error>;
+    using rval_t = tl::expected<QList<QList<QVariant>>, Error>;
 
     explicit DbStore(QObject *parent = nullptr);
 
@@ -47,7 +48,7 @@ private:
     void start();
     void initImpl(QPromise<rval_t>& promise);
     void queryImpl(const QString& sql, const QList<QVariant>& params, QPromise<rval_t>& promise);
-    void updateSchema(uint version);
+    bool updateSchema(uint version);
     uint getDbVersion();
 
     QThread* thread_{};

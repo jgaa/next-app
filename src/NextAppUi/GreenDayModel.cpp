@@ -131,6 +131,11 @@ std::optional<QString> GreenDayModel::report(const nextapp::pb::CompleteDay &day
     return {};
 }
 
+// void GreenDayModel::sync()
+// {
+//     setState(State::Syncing);
+// }
+
 void GreenDayModel::receivedDay(const nextapp::pb::CompleteDay& day) {
     updateSelf(day);
 }

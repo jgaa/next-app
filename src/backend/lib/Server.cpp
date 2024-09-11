@@ -704,6 +704,21 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     static constexpr auto v11_upgrade = to_array<string_view>({
         "SET FOREIGN_KEY_CHECKS=0",
 
+        "ALTER TABLE day ADD COLUMN IF NOT EXISTS updated TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP",
+        "CREATE INDEX day_ix1 ON day (updated)",
+        "ALTER TABLE day ADD COLUMN IF NOT EXISTS deleted SMALLINT NOT NULL DEFAULT 0",
+        "UPDATE day SET updated = UTC_TIMESTAMP WHERE updated IS NULL",
+        "UPDATE day SET deleted = 0 WHERE deleted IS NULL",
+        "ALTER TABLE day DROP FOREIGN KEY day_ibfk_1",
+        "ALTER TABLE day ADD CONSTRAINT day_ibfk_1 FOREIGN KEY (color) REFERENCES day_colors(id) ON DELETE SET NULL ON UPDATE RESTRICT",
+        "ALTER TABLE day DROP FOREIGN KEY day_ibfk_2",
+        "ALTER TABLE day ADD CONSTRAINT day_ibfk_2 FOREIGN KEY (user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT",
+        R"(CREATE TRIGGER updated_day_timestamp
+            BEFORE UPDATE ON day
+            FOR EACH ROW
+            BEGIN
+                SET NEW.updated = UTC_TIMESTAMP;
+            END)",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
@@ -742,6 +757,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             for(string_view query : relevant | std::views::join) {
                 co_await handle.exec(query);
             }
+
 
             co_await handle.exec("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
             co_await trx.commit();

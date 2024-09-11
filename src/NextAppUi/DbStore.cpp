@@ -13,6 +13,7 @@
 #include <QDir>
 #include "qcorofuture.h"
 #include <QSqlError>
+#include <QSqlRecord>
 
 #include "DbStore.h"
 
@@ -23,18 +24,13 @@ using namespace std;
 DbStore::DbStore(QObject *parent)
     : QObject{parent}, thread_{new QThread{this}}
 {
-
+    mutex_.lock();
     QObject::connect(thread_, &QThread::started, this, &DbStore::start);
 
     thread_->start();
     moveToThread(thread_);
 
     LOG_TRACE_N << "Now attached to worker thread";
-
-    mutex_.lock();
-
-    // connect(this, &DbStore::doInit, this, &DbStore::initImpl);
-    // connect(this, &DbStore::doQuery, this, &DbStore::queryImpl);
 }
 
 void DbStore::start() {
@@ -45,9 +41,7 @@ void DbStore::start() {
         lock_guard lock{mutex_};
     }
 
-    //connect(this, &DbStore::doInit, this, &DbStore::initImpl);
-
-    LOG_TRACE_N << "Initing db store";
+    LOG_TRACE_N << "Initializing db store";
 
     db_ = new QSqlDatabase{QSqlDatabase::addDatabase("QSQLITE")};
     data_dir_ = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
@@ -55,22 +49,24 @@ void DbStore::start() {
     if (!QFile::exists(data_dir_)) {
         LOG_INFO << "Database directory does not exist, creating it";
         if (!QDir{}.mkpath(data_dir_)) {
-            LOG_ERROR << "Failed to create database directory";
+            LOG_ERROR << "Failed to create database directory: " << data_dir_;
             emit error(GENERIC_ERROR);
             return;
         }
     }
-    data_dir_ += "/db.sqlite";
+    auto db_path = data_dir_ + "/db.sqlite";
 
-    db_->setDatabaseName(data_dir_);
+    db_->setDatabaseName(db_path);
     if (!db_->open()) {
-        LOG_ERROR << "Failed to open database: " << db_->lastError().text();
+        LOG_ERROR << "Failed to open database: \"" << db_path << "\", error=" << db_->lastError().text();
         emit error(GENERIC_ERROR);
         return;
     }
     const auto version = getDbVersion();
 
-    updateSchema(version);
+    if (!updateSchema(version)) {
+        return;
+    }
 
     connect(this, &DbStore::doQuery, this, &DbStore::queryImpl);
     emit initialized();
@@ -88,13 +84,52 @@ QCoro::Task<DbStore::rval_t> DbStore::query(const QString &sql, const QList<QVar
 void DbStore::queryImpl(const QString &sql, const QList<QVariant>& params, QPromise<rval_t> &promise)
 {
     LOG_TRACE_N << "Querying db: " << sql;
+    QSqlQuery query{*db_};
+    rval_t rval;
+    if (params.empty()) {
+        if (query.exec(sql)) {
+            QList<QList<QVariant>> rows;
+            if (auto num_rows = query.size(); num_rows > 0) {
+                rows.reserve(num_rows);
+            }
+            const auto num_cols = query.record().count();
+            while (query.next()) {
+                QList<QVariant> cols;
+                cols.reserve(num_cols);
+                for (int i = 0; i < num_cols; ++i) {
+                    cols.append(query.value(i));
+                }
+
+                rows.emplace_back(std::move(cols));
+            }
+            rval = std::move(rows);
+        } else {
+            LOG_ERROR_N << "Failed to execute: \"" << sql
+                        << "\", db=" << query.lastError().databaseText()
+                        << ", driver=" << query.lastError().driverText();
+            rval = tl::unexpected(QUERY_FAILED);
+        }
+    }
+
+    promise.start();
+    promise.addResult(std::move(rval));
+    promise.finish();
 }
 
-void DbStore::updateSchema(uint version)
+bool DbStore::updateSchema(uint version)
 {
     static constexpr auto v1_bootstrap = to_array<string_view>({
         "CREATE TABLE nextapp (id INTEGER NOT NULL, version INTEGER NOT NULL) ",
-        "INSERT INTO nextapp (id, version) values(1, 0)"
+        "INSERT INTO nextapp (id, version) values(1, 0)",
+
+        R"(CREATE TABLE IF NOT EXISTS "day" (
+            "date" DATE NOT NULL,
+            "color" VARCHAR(32) NOT NULL,
+            "notes" TEXT,
+            "report" TEXT,
+            "updated" INTEGER NOT NULL,
+            PRIMARY KEY("date")
+        ))",
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({
@@ -112,9 +147,11 @@ void DbStore::updateSchema(uint version)
         LOG_TRACE_N << "Executing: " << sql;
         if (!q.exec(sql)) {
             LOG_ERROR_N << "Failed to execute: \"" << sql << "\",  db=" << q.lastError().databaseText() << ", driver=" << q.lastError().driverText();
-            throw std::runtime_error{"Failed to upgrade database"};
+            return false;
         }
     }
+
+    return true;
 }
 
 uint DbStore::getDbVersion()

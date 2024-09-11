@@ -3,7 +3,9 @@
 #include "MaterialDesignStyling.h"
 
 #include "ServerComm.h"
+#include "NextAppCore.h"
 #include "logging.h"
+#include "DbStore.h"
 
 using namespace std;
 using namespace nextapp;
@@ -27,15 +29,15 @@ GreenDaysModel::GreenDaysModel()
 {
     instance_ = this;
 
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedDayColorDefinitions,
-            this,
-            &GreenDaysModel::fetchedColors);
+    // connect(std::addressof(ServerComm::instance()),
+    //         &ServerComm::receivedDayColorDefinitions,
+    //         this,
+    //         &GreenDaysModel::fetchedColors);
 
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedMonth,
-            this,
-            &GreenDaysModel::fetchedMonth);
+    // connect(std::addressof(ServerComm::instance()),
+    //         &ServerComm::receivedMonth,
+    //         this,
+    //         &GreenDaysModel::fetchedMonth);
 
     connect(std::addressof(ServerComm::instance()),
             &ServerComm::onUpdate,
@@ -221,9 +223,12 @@ void GreenDaysModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update
     }
 }
 
-void GreenDaysModel::onOnline()
+QCoro::Task<void> GreenDaysModel::onOnline()
 {
-    fetchColors();
+    //fetchColors();
+    if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
+        co_await synchFromServer();
+    }
 }
 
 void GreenDaysModel::refetchAllMonths()
@@ -232,6 +237,114 @@ void GreenDaysModel::refetchAllMonths()
         PackedMonth key = {};
         key.as_number = v;
         fetchMonth(key.date.year_, key.date.month_);
+    }
+}
+
+void GreenDaysModel::setState(State state) noexcept
+{
+    if (state_ != state) {
+        state_ = state;
+        emit stateChanged(state);
+
+        if (state_ == State::SYNCHED) {
+            emit validChanged();
+        }
+    }
+}
+
+QCoro::Task<void>  GreenDaysModel::synchFromServer()
+{
+    if (state_ == State::SYNCHING) {
+        LOG_DEBUG_N << "We are already synching.";
+        co_return;
+    }
+
+    LOG_DEBUG_N << "Synching green days from server";
+
+    setState(State::SYNCHING);
+
+    // Get a stream of updates from servercomm.
+    nextapp::pb::GetNewReq req;
+    //TODO: Get the latest timestamp we have from the database
+
+    auto& db = NextAppCore::instance()->db();
+
+    auto stream = ServerComm::instance().synchGreenDays(req);
+
+    bool looks_ok = false;
+    LOG_TRACE_N << "Entering message-loop";
+    while (auto update = co_await stream->next<nextapp::pb::Status>()) {
+        LOG_TRACE_N << "next returned";
+        if (update.has_value()) {
+            LOG_TRACE_N << "next has value";
+            auto &u = update.value();
+            if (u.error() == nextapp::pb::ErrorGadget::OK) {
+                LOG_TRACE_N << "Got OK from server";
+                if (u.hasDays()) {
+                    LOG_TRACE_N << "Got days from server. Count=" << u.days().days().size();
+                    for(const auto& item : u.days().days()) {
+                        QList<QVariant> params;
+
+                        if (item.day().deleted()) {
+                            // Delete the day
+                            QString sql = R"(DELETE FROM day WHERE date = ?)";
+                            params.append(QDate{item.day().date().year(), item.day().date().month() + 1, item.day().date().mday()});
+                            LOG_TRACE_N << "Deleting day " << item.day().date().year() << '-'
+                                        << item.day().date().month() << '-'
+                                        << item.day().date().mday();
+                            const auto rval = co_await db.query(sql, params);
+                            if (!rval) {
+                                LOG_ERROR_N << "Failed to delete day "
+                                            << item.day().date().year() << '-'
+                                            << item.day().date().month() << '-'
+                                            << item.day().date().mday()
+                                            << " err=" << rval.error();
+                            }
+                            continue;
+                        }
+
+                        QString sql = R"(INSERT INTO day
+        (date, color, notes, report, updated)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            color=excluded.color,
+            notes=excluded.notes,
+            report=excluded.report,
+            updated=excluded.updated)";
+
+                        const auto& day = item.day();
+                        const qlonglong updated = day.updated();
+                        params.append(QDate{day.date().year(), day.date().month() + 1, day.date().mday()});
+                        params.append(day.color());
+                        params.append(item.notes());
+                        params.append(item.report());
+                        params.append(updated);
+                        LOG_TRACE_N << "Updating day " << day.date().year() << '-'
+                                    << day.date().month() << '-'
+                                    << day.date().mday();
+                        const auto rval = co_await db.query(sql, params);
+                        if (!rval) {
+                            LOG_ERROR_N << "Failed to update day "
+                                        << day.date().year() << '-'
+                                        << day.date().month() << '-'
+                                        << day.date().mday()
+                                        << " err=" << rval.error();
+                        }
+                    }
+                }
+
+            } else {
+                LOG_DEBUG_N << "Got error from server. err=" << u.error()
+                            << " msg=" << u.message();
+                setState(State::ERROR);
+                // Todo: Schedule a re-try
+                break;
+            }
+        } else {
+            LOG_TRACE_N << "Stream returned nothing. Done. err="
+                        << update.error().err_code();
+            break;
+        }
     }
 }
 

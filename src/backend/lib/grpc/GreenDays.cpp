@@ -50,7 +50,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
-                "SELECT date, user, color, notes, report FROM day WHERE user=? AND date=? ORDER BY date",
+                "SELECT date, user, color, notes, report FROM day WHERE user=? AND date=? AND deleted=0 ORDER BY date",
                 uctx->dbOptions(), cuser, toAnsiDate(*req));
 
             enum Cols {
@@ -83,7 +83,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             }
 
             co_return;
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetMonth(::grpc::CallbackServerContext *ctx, const pb::MonthReq *req, pb::Month *reply)
@@ -95,7 +95,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
-                "SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? ORDER BY date",
+                "SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? and deleted=0 ORDER BY date",
                 uctx->dbOptions(), cuser, req->year(), req->month() + 1);
 
             enum Cols {
@@ -120,7 +120,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             }
 
             co_return;
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetColorOnDay(::grpc::CallbackServerContext *ctx, const pb::SetColorReq *req, pb::Status *reply)
@@ -139,7 +139,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
             auto res = co_await owner_.server().db().exec(
                 R"(INSERT INTO day (date, user, color) VALUES (?, ?, ?)
-                   ON DUPLICATE KEY UPDATE color=?)", uctx->dbOptions(),
+                   ON DUPLICATE KEY UPDATE color=?, deleted=0)", uctx->dbOptions(),
                 // insert
                 toAnsiDate(req->date()),
                 cuser,
@@ -162,7 +162,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             dc->set_color(req->color());
             rctx.publishLater(update);
             co_return;
-        });
+        }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetDay(::grpc::CallbackServerContext *ctx, const pb::CompleteDay *req, pb::Status *reply)
@@ -212,7 +212,86 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             *update->mutable_day() = *req;
             rctx.publishLater(update);
             co_return;
-        });
+        }, __func__);
 }
+
+::grpc::ServerWriteReactor< ::nextapp::pb::Status>*
+GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req)
+{
+    LOG_DEBUG << "GetNewDays called";
+
+    return writeStreamHandler(ctx, req,
+        [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
+            const auto& cuser = uctx->userUuid();
+
+            auto res = co_await owner_.server().db().exec(
+                R"(SELECT deleted, UNIX_TIMESTAMP(updated), date, user, color, notes, report FROM day
+                   WHERE user=? AND UNIX_TIMESTAMP(updated) >= ?)",
+                uctx->dbOptions(), cuser, req->since());
+
+            enum Cols {
+                DELETED, UPDATED, DATE, USER, COLOR, NOTES, REPORT
+            };
+
+            nextapp::pb::Status reply;
+
+            auto *days = reply.mutable_days();
+            auto rows = 0u;
+
+            auto flush = [&reply, &stream, &days, &rows]() -> boost::asio::awaitable<void> {
+                reply.set_error(::nextapp::pb::Error::OK);
+                LOG_TRACE << "GetNewDays flush "<< Server::instance().grpc().toJsonForLog(reply);
+                co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
+                reply.Clear();
+                days = reply.mutable_days();
+                rows = {};
+            };
+
+            const auto batch_size = owner_.server().config().options.stream_batch_size;
+
+            for(const auto& row : res.rows()) {
+                auto current_day = days->add_days();
+                auto *d = current_day->mutable_day();
+                assert(row.at(DELETED).is_int64());
+                d->set_deleted(row.at(DELETED).as_int64() == 1);
+                assert(row.at(UPDATED).is_int64());
+                d->set_updated(row.at(UPDATED).as_int64());
+                if (row.at(USER).is_string()) {
+                    d->set_user(pb_adapt(row.at(USER).as_string()));
+                }
+                const auto date_val = row.at(DATE).as_date();
+                if (!date_val.valid()) {
+                    LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
+                    continue;
+                }
+                *d->mutable_date() = toDate(date_val);
+
+                if (!d->deleted()) {
+
+                    if (row.at(COLOR).is_string()) {
+                        d->set_color(pb_adapt(row.at(COLOR).as_string()));
+                    }
+                    if (row.at(NOTES).is_string()) {
+                        d->set_hasnotes(true);
+                        current_day->set_notes(pb_adapt(row.at(NOTES).as_string()));
+                    }
+                    if (row.at(REPORT).is_string()) {
+                        d->set_hasreport(true);
+                        current_day->set_report(pb_adapt(row.at(REPORT).as_string()));
+                    }
+                }
+
+                // Do we need to flush?
+                if (++rows > batch_size) {
+                    co_await flush();
+                }
+            }
+
+            co_await flush();
+            co_return;
+    }, __func__ );
+}
+
 
 } // ns

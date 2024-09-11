@@ -7,9 +7,10 @@ add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/certs.h
     ${NEXTAPP_BACKEND}/include/nextapp/config.h
     ${NEXTAPP_BACKEND}/include/nextapp/errors.h
-    ${NEXTAPP_ROOT}/include/nextapp/logging.h
     ${NEXTAPP_BACKEND}/include/nextapp/nextappd.h
+    ${NEXTAPP_ROOT}/include/nextapp/logging.h
     ${NEXTAPP_ROOT}/include/nextapp/util.h
+    ${NEXTAPP_ROOT}/include/nextapp/AsyncServerWriteReactor.h
     Server.cpp
     UserContext.cpp
     certs.cpp

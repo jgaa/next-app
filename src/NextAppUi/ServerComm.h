@@ -18,12 +18,13 @@
 #include "qcorofuture.h"
 
 #include "logging.h"
+#include "GrpcIncomingStream.h"
 
 template <typename T, typename... Y>
 concept IsValidFunctor = std::invocable<T&, Y...>;
 
-template <typename T>
-concept ProtoMessage = std::is_base_of_v<QProtobufMessage, T>;
+// template <typename T>
+// concept ProtoMessage = std::is_base_of_v<QProtobufMessage, T>;
 
 namespace nextapp {
 template <typename T, ProtoMessage M>
@@ -195,6 +196,8 @@ public:
     void updateActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
     void deleteActionCategory(const QString& id, callback_t<nextapp::pb::Status>&& done);
     void requestOtp(callback_t<nextapp::pb::Status>&& done);
+
+    std::shared_ptr<GrpcIncomingStream> synchGreenDays(const nextapp::pb::GetNewReq& req);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
@@ -435,6 +438,16 @@ private:
 
         // TODO: Can we move to using the subscription directly when we drop support for QT 6.7?
         co_return co_await qCoro(future).result();
+    }
+
+    template <ProtoMessage reqT, ProtoMessage replyT = nextapp::pb::Status>
+    std::shared_ptr<GrpcIncomingStream> rpcOpenReadStream(
+        const reqT& request,
+        std::shared_ptr<QGrpcServerStream>(::nextapp::pb::Nextapp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
+        const GrpcCallOptions &options = {}) {
+
+        auto svr_stream = (client_.get()->*call)(request, options.qopts);
+        return std::make_shared<GrpcIncomingStream>(svr_stream);
     }
 
     QCoro::Task<void> startNextappSession();

@@ -417,6 +417,8 @@ message Day {
     string color = 3; // uuid
     bool hasNotes = 4;
     bool hasReport = 5;
+    uint64 updated = 6; // time_t
+    bool deleted = 7;
 }
 
 message ColorAtDay {
@@ -430,6 +432,11 @@ message CompleteDay {
     optional string notes = 2;
     optional string report = 3;
 }
+
+message ListOfDays {
+    repeated CompleteDay days = 1;
+}
+
 
 message MonthReq {
     int32 year = 1;
@@ -694,6 +701,10 @@ message OtpResponse {
     string email = 2;
 }
 
+message GetNewReq {
+    int64 since = 3; // time_t. Use 0 to fetch all
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -722,6 +733,7 @@ message Status {
         ServerInfo serverInfo = 26;
         OtpResponse otpResponse = 27;
         string sessionId = 28; // From Hello
+        ListOfDays days = 29; // For day colors
     }
 }
 
@@ -777,4 +789,6 @@ service Nextapp {
     rpc GetActionCategories(Empty) returns (Status) {}
     rpc UpdateActionCategory(ActionCategory) returns (Status) {}
     rpc DeleteActionCategory(DeleteActionCategoryReq) returns (Status) {}
+
+    rpc GetNewDays(GetNewReq) returns (stream Status) {}
 }

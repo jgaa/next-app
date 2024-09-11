@@ -35,6 +35,9 @@ struct ServerOptions {
     /*! Maximum page size for paginated results */
     size_t max_page_size = 250;
 
+    /*! Number of messages to batch in a stream */
+    size_t stream_batch_size = 10;
+
     /*! DNS names in the self-signed server cert for grpc */
     std::vector<std::string> server_cert_dns_names;
 };

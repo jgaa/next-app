@@ -19,6 +19,7 @@
 #include "nextapp/UserContext.h"
 #include "nextapp/certs.h"
 #include "nextapp/util.h"
+#include "nextapp/AsyncServerWriteReactor.h"
 
 #include "mysqlpool/mysqlpool.h"
 
@@ -174,7 +175,7 @@ public:
         ::grpc::ServerUnaryReactor *DeleteActionCategory(::grpc::CallbackServerContext *ctx, const pb::DeleteActionCategoryReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetActionCategories(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetOtpForNewDevice(::grpc::CallbackServerContext *ctx, const pb::OtpRequest *req, pb::Status *reply) override;
-
+        ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewDays(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
@@ -186,7 +187,9 @@ public:
 
             auto* reactor = ctx->DefaultReactor();
 
-            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name]() mutable -> boost::asio::awaitable<void> {
+            boost::asio::co_spawn(owner_.server().ctx(),
+                                  [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name]
+                                  () mutable -> boost::asio::awaitable<void> {
                     try {
                         LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
@@ -231,6 +234,62 @@ public:
                 }, boost::asio::detached);
 
             return reactor;
+        }
+
+        template <typename ReqT, typename FnT, typename ReplyT=::nextapp::pb::Status>
+        ::grpc::ServerWriteReactor<ReplyT> *
+        writeStreamHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, FnT &&fn, std::string_view name = {}) noexcept {
+            assert(ctx);
+            assert(req);
+
+            auto stream = make_write_dstream<ReplyT>(ctx, owner_.server().ctx());
+            stream->start();
+
+            boost::asio::co_spawn(owner_.server().ctx(),
+                                  [this, ctx, req, stream, fn=std::move(fn), name]
+                                  () mutable -> boost::asio::awaitable<void> {
+                nextapp::pb::Status err_reply;
+                ::grpc::Status finish_status;
+                try {
+                    LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
+
+                    RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx)};
+                    rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
+                    co_await fn(stream, rctx);
+                    if (!rctx.updates.empty()) {
+                        LOG_TRACE << std::format("Publishing {} delayed updates to user {} for {}.",
+                                                 rctx.updates.size(), name, rctx.uctx->userUuid());
+
+                        for (auto& update : rctx.updates) {
+                            rctx.uctx->publish(update);
+                        }
+                    }
+                    LOG_TRACE << "Finished reply stream [" << name << "]: ";
+                    goto done;
+                } catch (const server_err& ex) {
+                    LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
+                    err_reply.set_error(ex.error());
+                    err_reply.set_message(ex.what());
+                    finish_status = {::grpc::Status::CANCELLED};
+                } catch (const std::exception& ex) {
+                    LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
+                    err_reply.set_error(nextapp::pb::Error::GENERIC_ERROR);
+                    err_reply.set_message(ex.what());
+                    finish_status = {::grpc::Status::CANCELLED};
+                }
+
+                assert(err_reply.error() != nextapp::pb::Error::OK);
+                co_await stream->sendMessage(std::move(err_reply), boost::asio::use_awaitable);
+
+done:
+                // Ignored if the stream is already closed.
+                stream->close(finish_status);
+
+                LOG_TRACE << "Request [" << name << "] Exiting unary handler.";
+
+            }, boost::asio::detached);
+
+            return stream.get();
         }
 
         GrpcServer& owner_;
