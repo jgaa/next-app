@@ -2,7 +2,7 @@
 #include <ranges>
 
 #include "DayColorModel.h"
-#include "DaysModel.h"
+#include "GreenDaysModel.h"
 
 #include "logging.h"
 
@@ -15,8 +15,8 @@ DayColorModel::DayColorModel(QObject *parent)
 
 void DayColorModel::start()
 {
-    connect(DaysModel::instance(),
-            &DaysModel::dayColorsChanged,
+    connect(GreenDaysModel::instance(),
+            &GreenDaysModel::dayColorsChanged,
             this,
             &DayColorModel::dayColorsChanged);
 }

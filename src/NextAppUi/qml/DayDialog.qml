@@ -7,7 +7,7 @@ import NextAppUi
 Dialog {
     id: dayDlg
     property var date
-    property DayModel model
+    property GreenDayModel model
     property alias notes: notes.text
     property alias report: report.text
     property bool valid: model.valid

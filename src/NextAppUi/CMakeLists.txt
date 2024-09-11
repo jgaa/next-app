@@ -273,10 +273,10 @@ qt_add_qml_module(${PROJECT_NAME}
         CalendarModel.h
         DayColorModel.cpp
         DayColorModel.h
-        DayModel.cpp
-        DayModel.h
-        DaysModel.cpp
-        DaysModel.h
+        GreenDayModel.cpp
+        GreenDayModel.h
+        GreenDaysModel.cpp
+        GreenDaysModel.h
         DbStore.cpp
         DbStore.h
         DualView.h DualView.cpp
@@ -284,8 +284,8 @@ qt_add_qml_module(${PROJECT_NAME}
         MainTreeModel.h
         MaterialDesignStyling.cpp
         MaterialDesignStyling.h
-        MonthModel.cpp
-        MonthModel.h
+        GreenMonthModel.cpp
+        GreenMonthModel.h
         NextAppCore.cpp
         NextAppCore.h
         OtpModel.cpp

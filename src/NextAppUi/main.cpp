@@ -10,7 +10,7 @@
 
 #include "ServerComm.h"
 #include "MainTreeModel.h"
-#include "DaysModel.h"
+#include "GreenDaysModel.h"
 #include "DayColorModel.h"
 #include "ActionsModel.h"
 #include "WorkSessionsModel.h"
