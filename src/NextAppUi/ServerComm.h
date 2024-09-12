@@ -447,7 +447,7 @@ private:
         const GrpcCallOptions &options = {}) {
 
         auto svr_stream = (client_.get()->*call)(request, options.qopts);
-        return std::make_shared<GrpcIncomingStream>(svr_stream);
+        return std::make_shared<GrpcIncomingStream>(std::move(svr_stream));
     }
 
     QCoro::Task<void> startNextappSession();

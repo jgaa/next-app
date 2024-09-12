@@ -2,6 +2,9 @@
 #include <QUuid>
 #include <QDateTime>
 #include <QLocale>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QMetaProperty>
 
 #include <regex>
 
@@ -159,4 +162,15 @@ bool isLastMonth(time_t when)
     auto year = date.year();
     auto today = QDate::currentDate();
     return month == today.addMonths(-1).month() && year == today.addMonths(-1).year();
+}
+
+QString toJson(const QObject &o)
+{
+    QJsonObject obj;
+    const QMetaObject* meta = o.metaObject();
+    for (int i = 0; i < meta->propertyCount(); ++i) {
+        auto prop = meta->property(i);
+        obj[prop.name()] = prop.read(&o).toString();
+    }
+    return QString(QJsonDocument(obj).toJson());
 }

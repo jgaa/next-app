@@ -24,6 +24,12 @@ auto to_string_view(const boost::mysql::blob_view& blob) {
 
 } // anon ns
 
+
+SessionManager::SessionManager(Server &server)
+    : server_{server}
+    , skip_tls_auth_{server.config().grpc.tls_mode == "none"}
+{}
+
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone, bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions)
     : user_uuid_{userUuid},
     tenant_uuid_{tenantUuid},
@@ -47,6 +53,7 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
                          const pb::UserGlobalSettings &settings)
     : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings)
     , kind_{kind} {
+
     try {
         if (settings_.timezone().empty()) [[unlikely]] {
             tz_ = std::chrono::current_zone();
@@ -129,11 +136,19 @@ boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::g
     LOG_TRACE << "Getting session for peer at " << context->peer()
               << " context: " << mapToString(context->client_metadata());
 
+    string_view device_id;
+
     if (!context->auth_context()->IsPeerAuthenticated()) {
+        if (skip_tls_auth_) {
+            LOG_WARN << "TLS is disabled. Skipping authentication via cert.";
+            if (auto it = context->client_metadata().find("did"); it != context->client_metadata().end()) {
+                device_id = to_string_view(it->second);
+                goto initial_auth_ok;
+            }
+        }
         throw server_err{pb::Error::AUTH_FAILED, "Not authenticated by gRPC!"};
     }
 
-    string_view device_id;
     {
         auto v = context->auth_context()->FindPropertyValues(GRPC_X509_CN_PROPERTY_NAME);
         if (v.empty()) {
@@ -141,6 +156,8 @@ boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::g
         }
         device_id = to_string_view(v.front());
     }
+
+initial_auth_ok:
 
     const auto device_uuid = toUuid(device_id);
     boost::uuids::uuid new_sid = newUuid();
@@ -188,12 +205,25 @@ boost::asio::awaitable<std::shared_ptr<UserContext::Session> > SessionManager::g
 
 std::shared_ptr<UserContext::Session> SessionManager::getExistingSession(const ::grpc::ServerContextBase *context)
 {
+    boost::uuids::uuid device_uuid;
     if (!context->auth_context()->IsPeerAuthenticated()) {
+        if (skip_tls_auth_) {
+            if (auto it = context->client_metadata().find("did"); it != context->client_metadata().end()) {
+                device_uuid = toUuid(to_string_view(it->second));
+                LOG_WARN << "TLS is disabled. Skipping authentication via cert.";
+                goto initial_auth_ok;
+            }
+        }
         throw server_err{pb::Error::AUTH_FAILED, "Not authenticated by gRPC!"};
     }
-    auto v = context->auth_context()->FindPropertyValues(GRPC_X509_CN_PROPERTY_NAME);
-    auto device_id = to_string_view(v.front());
-    const auto device_uuid = toUuid(device_id);
+
+    {
+        auto v = context->auth_context()->FindPropertyValues(GRPC_X509_CN_PROPERTY_NAME);
+        device_uuid = toUuid(to_string_view(v.front()));
+    }
+
+initial_auth_ok:
+    assert(device_uuid != boost::uuids::nil_uuid());
 
     if (auto it = context->client_metadata().find("sid"); it != context->client_metadata().end()) {
         auto sid = toUuid(to_string_view(it->second));

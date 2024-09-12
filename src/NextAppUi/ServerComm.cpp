@@ -127,34 +127,50 @@ void ServerComm::start()
     session_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString();
     current_server_address_ = settings.value("server/url", QString{}).toString();
 
-    QSslConfiguration sslConfig;
-    sslConfig.setPeerVerifyMode(QSslSocket::QueryPeer);
-    //sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
-    sslConfig.setProtocol(QSsl::TlsV1_3);
+    const QUrl url(current_server_address_, QUrl::StrictMode);
 
-    if (auto cert = settings.value("server/clientCert").toString(); !cert.isEmpty()) {
-        LOG_DEBUG_N << "Loading our private client cert/key.";
-        sslConfig.setLocalCertificate(QSslCertificate{cert.toUtf8()});
-        sslConfig.setPrivateKey(QSslKey{settings.value("server/clientKey").toByteArray(), QSsl::Rsa});
-        auto caCert = QSslCertificate{settings.value("server/caCert").toByteArray()};
-        sslConfig.setCaCertificates({caCert});
-        sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
+    optional<QSslConfiguration> sslConfig;
+
+    if (url.scheme() == "https") {
+        sslConfig.emplace();
+        sslConfig->setPeerVerifyMode(QSslSocket::QueryPeer);
+        //sslConfig->setPeerVerifyMode(QSslSocket::VerifyNone);
+        sslConfig->setProtocol(QSsl::TlsV1_3);
+
+        if (auto cert = settings.value("server/clientCert").toString(); !cert.isEmpty()) {
+            LOG_DEBUG_N << "Loading our private client cert/key.";
+            sslConfig->setLocalCertificate(QSslCertificate{cert.toUtf8()});
+            sslConfig->setPrivateKey(QSslKey{settings.value("server/clientKey").toByteArray(), QSsl::Rsa});
+            auto caCert = QSslCertificate{settings.value("server/caCert").toByteArray()};
+            sslConfig->setCaCertificates({caCert});
+            sslConfig->setPeerVerifyMode(QSslSocket::VerifyPeer);
+        }
+
+        // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
+        // it only support https/2.
+        sslConfig->setAllowedNextProtocols({{"h2"}});
     }
 
-    // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
-    // it only support https/2.
-    sslConfig.setAllowedNextProtocols({{"h2"}});
-
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-    auto channelOptions = QGrpcChannelOptions{QUrl(current_server_address_, QUrl::StrictMode)}
-                              .withSslConfiguration(sslConfig)
+    auto channelOptions = QGrpcChannelOptions{url}
+                              .withSslConfiguration(sslConfig);
                               .withMetadata({std::make_pair("sid", session_id_.c_str())});
+    if (sslConfig) {
+        channelOptions.withSslConfiguration(*sslConfig);
+    }
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else
+    const auto device_id = device_uuid_.toString(QUuid::WithoutBraces).toStdString();
     auto channelOptions = QGrpcChannelOptions{}
-                              .setSslConfiguration(sslConfig)
-                              .setMetadata({std::make_pair("sid", session_id_.c_str())});
-    client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(current_server_address_, QUrl::StrictMode), channelOptions));
+                              //.setSslConfiguration(sslConfig)
+                              .setMetadata({
+                                            std::make_pair("sid", session_id_.c_str()),
+                                            {"did", device_id.c_str()}});
+    if (sslConfig) {
+        LOG_DEBUG_N << "Using SSL configuration.";
+        channelOptions.setSslConfiguration(*sslConfig);
+    }
+    client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(url, channelOptions));
 #endif
 
     startNextappSession();
@@ -1036,11 +1052,6 @@ void ServerComm::connectToSignupServer()
     QSslConfiguration sslConfig{QSslConfiguration::defaultConfiguration()};
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
     sslConfig.setProtocol(QSsl::TlsV1_3);
-
-    LOG_TRACE_N << "CA certs: ";
-    for(const auto& c : sslConfig.caCertificates()) {
-        LOG_TRACE_N << "  " << c.subjectDisplayName();
-    }
 
     // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
     // it only support https/2.

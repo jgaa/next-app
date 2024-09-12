@@ -225,6 +225,11 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
+            const auto batch_size = owner_.server().config().options.stream_batch_size;
+
+            // TODO: Switch to cursor/batched reads when we get support in mysqlpool.
+            //       For now, just read everything into memory.
+
             auto res = co_await owner_.server().db().exec(
                 R"(SELECT deleted, UNIX_TIMESTAMP(updated), date, user, color, notes, report FROM day
                    WHERE user=? AND UNIX_TIMESTAMP(updated) >= ?)",
@@ -239,16 +244,16 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             auto *days = reply.mutable_days();
             auto rows = 0u;
 
-            auto flush = [&reply, &stream, &days, &rows]() -> boost::asio::awaitable<void> {
+            auto flush = [this, &reply, &stream, &days, &rows]() -> boost::asio::awaitable<void> {
                 reply.set_error(::nextapp::pb::Error::OK);
-                LOG_TRACE << "GetNewDays flush "<< Server::instance().grpc().toJsonForLog(reply);
+                assert(reply.has_days());
+                assert(reply.days().days_size() == rows);
+                reply.set_message(format("Fetched {} days", reply.days().days_size()));
                 co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
                 reply.Clear();
                 days = reply.mutable_days();
                 rows = {};
             };
-
-            const auto batch_size = owner_.server().config().options.stream_batch_size;
 
             for(const auto& row : res.rows()) {
                 auto current_day = days->add_days();

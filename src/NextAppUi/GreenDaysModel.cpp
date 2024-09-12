@@ -6,6 +6,7 @@
 #include "NextAppCore.h"
 #include "logging.h"
 #include "DbStore.h"
+#include "util.h"
 
 using namespace std;
 using namespace nextapp;
@@ -274,10 +275,10 @@ QCoro::Task<void>  GreenDaysModel::synchFromServer()
     bool looks_ok = false;
     LOG_TRACE_N << "Entering message-loop";
     while (auto update = co_await stream->next<nextapp::pb::Status>()) {
-        LOG_TRACE_N << "next returned";
+        LOG_TRACE_N << "next returned something";
         if (update.has_value()) {
-            LOG_TRACE_N << "next has value";
             auto &u = update.value();
+            LOG_TRACE_N << "next has value";
             if (u.error() == nextapp::pb::ErrorGadget::OK) {
                 LOG_TRACE_N << "Got OK from server";
                 if (u.hasDays()) {
@@ -292,7 +293,7 @@ QCoro::Task<void>  GreenDaysModel::synchFromServer()
                             LOG_TRACE_N << "Deleting day " << item.day().date().year() << '-'
                                         << item.day().date().month() << '-'
                                         << item.day().date().mday();
-                            const auto rval = co_await db.query(sql, params);
+                            const auto rval = co_await db.query(sql, &params);
                             if (!rval) {
                                 LOG_ERROR_N << "Failed to delete day "
                                             << item.day().date().year() << '-'
@@ -316,13 +317,13 @@ QCoro::Task<void>  GreenDaysModel::synchFromServer()
                         const qlonglong updated = day.updated();
                         params.append(QDate{day.date().year(), day.date().month() + 1, day.date().mday()});
                         params.append(day.color());
-                        params.append(item.notes());
-                        params.append(item.report());
+                        params.append(item.hasNotes() ? item.notes() : QVariant{});
+                        params.append(item.hasReport() ? item.report(): QVariant{});
                         params.append(updated);
                         LOG_TRACE_N << "Updating day " << day.date().year() << '-'
                                     << day.date().month() << '-'
                                     << day.date().mday();
-                        const auto rval = co_await db.query(sql, params);
+                        const auto rval = co_await db.query(sql, &params);
                         if (!rval) {
                             LOG_ERROR_N << "Failed to update day "
                                         << day.date().year() << '-'

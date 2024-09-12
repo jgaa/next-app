@@ -18,9 +18,9 @@
 
 namespace nextapp {
 
-template <ProtoMessage reqT, typename A>
+template <ProtoMessage reqT, typename A, typename G>
 class AsyncServerWriteReactor
-    : public std::enable_shared_from_this<AsyncServerWriteReactor<reqT, A>>
+    : public std::enable_shared_from_this<AsyncServerWriteReactor<reqT, A, G>>
     , public ::grpc::ServerWriteReactor<reqT>
 {
 public:
@@ -32,8 +32,8 @@ public:
         DONE
     };
 
-    AsyncServerWriteReactor(::grpc::CallbackServerContext *context, A& asio)
-        : context_{context}, asio_{asio}, timer_{asio_} {
+    AsyncServerWriteReactor(::grpc::CallbackServerContext *context, A& asio, G& grpc)
+        : context_{context}, asio_{asio}, timer_{asio_}, grpc_{grpc} {
         LOG_TRACE_N << "Stream " << uuid_ << " is created.";
     }
 
@@ -54,7 +54,6 @@ public:
     auto sendMessage(reqT && message, CompletionToken&& token) {
         return boost::asio::async_compose<CompletionToken, void(boost::system::error_code)>(
             [this, message=std::move(message)](auto& self) mutable {
-
             {
                 // Happy path
                 std::scoped_lock lock{mutex_};
@@ -76,6 +75,7 @@ public:
                     {
                         std::scoped_lock lock{mutex_};
                         if (state_ == IoState::READY) {
+                            LOG_DEBUG << "sendMessage/co_spawn/before write " << grpc_.toJsonForLog(message);
                             write(std::move(message));
                             self.complete({});
                             co_return;
@@ -91,6 +91,7 @@ public:
                         // that leads to nobody cancelling the timer.
                         timer_.expires_from_now(boost::posix_time::seconds(5));
                     }
+
                     try {
                         co_await timer_.async_wait(boost::asio::use_awaitable);
                     } catch (const boost::system::system_error& e) {
@@ -140,12 +141,12 @@ public:
 
     /*! Callback event when a write operation is complete */
     void OnWriteDone(bool ok) override {
+        LOG_TRACE_N << "OnWriteDone() called with " << (ok ? "OK" : "NOT OK") << " on stream " << uuid_ << " state=" << static_cast<int>(state_);
 
         if (!ok) [[unlikely]] {
             LOG_WARN << "The write-operation failed.";
 
             // We still need to call Finish or the request will remain stuck!
-            ::grpc::Status gall;
             close_({::grpc::StatusCode::CANCELLED, "Write failed"}, true);
         } else {
             std::scoped_lock lock{mutex_};
@@ -156,6 +157,8 @@ public:
                     break;
                 case IoState::DONE_PENDING:
                     assert(finish_status_.has_value());
+                    LOG_TRACE_N << "Closing stream " << uuid_ << " (was pending)  with status: " << finish_status_->error_message()
+                                << " code=" << finish_status_->error_code();
                     this->Finish(*finish_status_);
                     setState(IoState::WAITING_ON_DONE);
                     break;
@@ -174,6 +177,10 @@ private:
     void write(reqT && message) {
         assert(state_ == IoState::READY);
         current_message_ = std::move(message);
+        LOG_TRACE_N << "Writing message to stream " << uuid_
+                    << ' ' << grpc_.toJsonForLog(current_message_);
+
+        // Seems like StartWrite may call into our OnWriteDone() immediately, causing a deadlock with a normal mutex.
         this->StartWrite(&current_message_);
         setState(IoState::WAITING_ON_WRITE);
     }
@@ -193,6 +200,8 @@ private:
         if (state_ == IoState::READY) {
 forced:
             assert(finish_status_.has_value());
+            LOG_TRACE_N << "Closing stream " << uuid_ << " with status: " << finish_status_->error_message()
+                << " code=" << finish_status_->error_code();
             this->Finish(*finish_status_);
             setState(IoState::WAITING_ON_DONE);
             return;
@@ -204,7 +213,7 @@ forced:
     }
 
     void setState(IoState state) {
-        LOG_TRACE_N << "Write stream " << uuid_ << " state changed from "
+        LOG_TRACE_N << "On stream " << uuid_ << " state changed from "
                     << static_cast<int>(state_) << " to " << static_cast<int>(state);
         state_ = state;
     }
@@ -212,18 +221,19 @@ forced:
 
     IoState state_{IoState::READY};
     ::grpc::CallbackServerContext *context_;
-    A& asio_{};
+    A& asio_;
+    G& grpc_;
     reqT current_message_;
     boost::asio::deadline_timer timer_;
     std::optional<::grpc::Status> finish_status_;
     std::shared_ptr<AsyncServerWriteReactor> self_;
-    std::mutex mutex_;
+    std::recursive_mutex mutex_; // TODO: Clean up locking!
     const boost::uuids::uuid uuid_{newUuid()};
 };
 
-template <ProtoMessage T, typename A>
-auto make_write_dstream(::grpc::CallbackServerContext *context, A &asio) {
-    return make_shared<AsyncServerWriteReactor<T, A>>(context, asio);
+template <ProtoMessage T, typename A, typename G>
+auto make_write_dstream(::grpc::CallbackServerContext *context, A &asio, G& grpc) {
+    return make_shared<AsyncServerWriteReactor<T, A, G>>(context, asio, grpc);
 }
 
 

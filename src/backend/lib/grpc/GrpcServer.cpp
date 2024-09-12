@@ -213,6 +213,7 @@ void GrpcServer::start() {
     ::grpc::ServerBuilder builder;
 
     if (config().tls_mode == "none") {
+        LOG_WARN << "No TLS on gRPC endpoint. Use only in a safe environment!";
         builder.AddListeningPort(config().address, ::grpc::InsecureServerCredentials());
     } else if (config().tls_mode == "ca") {
         LOG_INFO << "Using CA mode for TLS on gRPC endpoint";

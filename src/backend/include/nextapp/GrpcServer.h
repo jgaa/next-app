@@ -37,11 +37,6 @@ public:
     UserContext *uctx{};
     std::vector<std::shared_ptr<nextapp::pb::Update>> updates;
 
-    // UserContext& uctx() {
-    //     assert(session);
-    //     return session->user();
-    // }
-
     void publishLater(std::shared_ptr<nextapp::pb::Update> update) {
         updates.emplace_back(update);
     }
@@ -242,7 +237,7 @@ public:
             assert(ctx);
             assert(req);
 
-            auto stream = make_write_dstream<ReplyT>(ctx, owner_.server().ctx());
+            auto stream = make_write_dstream<ReplyT>(ctx, owner_.server().ctx(), owner_);
             stream->start();
 
             boost::asio::co_spawn(owner_.server().ctx(),

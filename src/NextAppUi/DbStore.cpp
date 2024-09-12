@@ -25,20 +25,32 @@ DbStore::DbStore(QObject *parent)
     : QObject{parent}, thread_{new QThread{this}}
 {
     mutex_.lock();
-    QObject::connect(thread_, &QThread::started, this, &DbStore::start);
+    if constexpr (use_worker_thread) {
+        QObject::connect(thread_, &QThread::started, this, &DbStore::start);
+        QObject::connect(thread_, &QThread::finished, this, []() {
+            LOG_TRACE_N << "Worker thread finished";
+        });
+        thread_->start();
+        moveToThread(thread_);
 
-    thread_->start();
-    moveToThread(thread_);
+        LOG_TRACE_N << "Now attached to worker thread";
+    }
+}
 
-    LOG_TRACE_N << "Now attached to worker thread";
+DbStore::~DbStore()
+{
+    LOG_TRACE_N << "Destroying db store";
 }
 
 void DbStore::start() {
-    LOG_TRACE_N << "Now running in worker thread";
 
-    {
-        // Wait for init() to be called
-        lock_guard lock{mutex_};
+    if constexpr (use_worker_thread) {
+        LOG_TRACE_N << "Now running in worker thread";
+
+        {
+            // Wait for init() to be called
+            lock_guard lock{mutex_};
+        }
     }
 
     LOG_TRACE_N << "Initializing db store";
@@ -65,55 +77,73 @@ void DbStore::start() {
     const auto version = getDbVersion();
 
     if (!updateSchema(version)) {
-        return;
+        // TODO: Do something!
     }
 
-    connect(this, &DbStore::doQuery, this, &DbStore::queryImpl);
+    connect(this, &DbStore::doQuery, this, &DbStore::queryImpl, Qt::QueuedConnection);
     emit initialized();
 }
 
-QCoro::Task<DbStore::rval_t> DbStore::query(const QString &sql, const QList<QVariant>& params)
+QCoro::Task<DbStore::rval_t> DbStore::query(const QString &sql, const QList<QVariant> *params)
 {
     QPromise<rval_t> promise;
-    emit doQuery(sql, params, promise);
+
+    if constexpr (use_worker_thread) {
+        emit doQuery(sql, params, &promise);
+    } else {
+        queryImpl(sql, params, &promise);
+    }
 
     auto future = promise.future();
+
     co_return co_await qCoro(future).takeResult();
 }
 
-void DbStore::queryImpl(const QString &sql, const QList<QVariant>& params, QPromise<rval_t> &promise)
+void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QPromise<rval_t> *promise)
 {
+    assert(promise);
     LOG_TRACE_N << "Querying db: " << sql;
     QSqlQuery query{*db_};
     rval_t rval;
-    if (params.empty()) {
-        if (query.exec(sql)) {
-            QList<QList<QVariant>> rows;
-            if (auto num_rows = query.size(); num_rows > 0) {
-                rows.reserve(num_rows);
-            }
-            const auto num_cols = query.record().count();
-            while (query.next()) {
-                QList<QVariant> cols;
-                cols.reserve(num_cols);
-                for (int i = 0; i < num_cols; ++i) {
-                    cols.append(query.value(i));
-                }
 
-                rows.emplace_back(std::move(cols));
-            }
-            rval = std::move(rows);
-        } else {
-            LOG_ERROR_N << "Failed to execute: \"" << sql
-                        << "\", db=" << query.lastError().databaseText()
-                        << ", driver=" << query.lastError().driverText();
-            rval = tl::unexpected(QUERY_FAILED);
+    bool success{false};
+
+    if (!params || params->empty()) {
+        success = query.exec(sql);
+    } else {
+        query.prepare(sql);
+        for (int i = 0; i < params->size(); ++i) {
+            query.bindValue(i, params->at(i));
         }
+        success = query.exec();
     }
 
-    promise.start();
-    promise.addResult(std::move(rval));
-    promise.finish();
+    if (success) {
+        QList<QList<QVariant>> rows;
+        if (auto num_rows = query.size(); num_rows > 0) {
+            rows.reserve(num_rows);
+        }
+        const auto num_cols = query.record().count();
+        while (query.next()) {
+            QList<QVariant> cols;
+            cols.reserve(num_cols);
+            for (int i = 0; i < num_cols; ++i) {
+                cols.append(query.value(i));
+            }
+
+            rows.emplace_back(std::move(cols));
+        }
+        rval = std::move(rows);
+    } else {
+        LOG_ERROR_N << "Failed to execute: \"" << sql
+                    << "\", db=" << query.lastError().databaseText()
+                    << ", driver=" << query.lastError().driverText();
+        rval = tl::unexpected(QUERY_FAILED);
+    }
+
+    promise->start();
+    promise->addResult(std::move(rval));
+    promise->finish();
 }
 
 bool DbStore::updateSchema(uint version)

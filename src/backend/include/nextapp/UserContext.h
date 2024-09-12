@@ -135,8 +135,7 @@ private:
 
 class SessionManager {
 public:
-    SessionManager(Server& server)
-        : server_{server} {}
+    SessionManager(Server& server);
 
     ~SessionManager() = default;
 
@@ -157,6 +156,7 @@ private:
     std::unordered_map<boost::uuids::uuid, UserContext::Session *, UuidHash> sessions_;
     std::unordered_map<boost::uuids::uuid, std::shared_ptr<UserContext>, UuidHash> users_;
     Server& server_;
+    const bool skip_tls_auth_;
 };
 
 } // ns
