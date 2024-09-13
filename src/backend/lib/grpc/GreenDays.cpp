@@ -227,10 +227,11 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
 
             const auto batch_size = owner_.server().config().options.stream_batch_size;
 
-            // TODO: Switch to cursor/batched reads when we get support in mysqlpool.
-            //       For now, just read everything into memory.
-
-            co_await owner_.server().db().start_exec(
+            // Use batched reading from the database, so that we can get all the data, but
+            // without running out of memory.
+            // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
+            assert(rctx.dbh);
+            co_await  rctx.dbh->start_exec(
                 R"(SELECT deleted, UNIX_TIMESTAMP(updated), date, user, color, notes, report FROM day
                    WHERE user=? AND UNIX_TIMESTAMP(updated) >= ?)",
                 uctx->dbOptions(), cuser, req->since());
@@ -242,58 +243,77 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             nextapp::pb::Status reply;
 
             auto *days = reply.mutable_days();
-            auto rows = 0u;
+            auto num_rows_in_batch = 0u;
+            auto total_rows = 0u;
 
-            auto flush = [this, &reply, &stream, &days, &rows]() -> boost::asio::awaitable<void> {
+            auto flush = [this, &reply, &stream, &days, &num_rows_in_batch]() -> boost::asio::awaitable<void> {
                 reply.set_error(::nextapp::pb::Error::OK);
                 assert(reply.has_days());
-                assert(reply.days().days_size() == rows);
+                assert(reply.days().days_size() == num_rows_in_batch);
                 reply.set_message(format("Fetched {} days", reply.days().days_size()));
                 co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
                 reply.Clear();
                 days = reply.mutable_days();
-                rows = {};
+                num_rows_in_batch = {};
             };
 
-            for(const auto& row : res.rows()) {
-                auto current_day = days->add_days();
-                auto *d = current_day->mutable_day();
-                assert(row.at(DELETED).is_int64());
-                d->set_deleted(row.at(DELETED).as_int64() == 1);
-                assert(row.at(UPDATED).is_int64());
-                d->set_updated(row.at(UPDATED).as_int64());
-                if (row.at(USER).is_string()) {
-                    d->set_user(pb_adapt(row.at(USER).as_string()));
-                }
-                const auto date_val = row.at(DATE).as_date();
-                if (!date_val.valid()) {
-                    LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
-                    continue;
-                }
-                *d->mutable_date() = toDate(date_val);
+            bool read_more = true;
+            for(auto rows = co_await rctx.dbh->readSome()
+                 ; read_more
+                 ; rows = co_await rctx.dbh->readSome()) {
 
-                if (!d->deleted()) {
+                read_more = rctx.dbh->shouldReadMore(); // For next iteration
 
-                    if (row.at(COLOR).is_string()) {
-                        d->set_color(pb_adapt(row.at(COLOR).as_string()));
-                    }
-                    if (row.at(NOTES).is_string()) {
-                        d->set_hasnotes(true);
-                        current_day->set_notes(pb_adapt(row.at(NOTES).as_string()));
-                    }
-                    if (row.at(REPORT).is_string()) {
-                        d->set_hasreport(true);
-                        current_day->set_report(pb_adapt(row.at(REPORT).as_string()));
-                    }
+                if (rows.empty()) {
+                    LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+                    break;
                 }
 
-                // Do we need to flush?
-                if (++rows > batch_size) {
-                    co_await flush();
+                for(const auto& row : rows) {
+                    auto current_day = days->add_days();
+                    auto *d = current_day->mutable_day();
+                    assert(row.at(DELETED).is_int64());
+                    d->set_deleted(row.at(DELETED).as_int64() == 1);
+                    assert(row.at(UPDATED).is_int64());
+                    d->set_updated(row.at(UPDATED).as_int64());
+                    if (row.at(USER).is_string()) {
+                        d->set_user(pb_adapt(row.at(USER).as_string()));
+                    }
+                    const auto date_val = row.at(DATE).as_date();
+                    if (!date_val.valid()) {
+                        LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
+                        continue;
+                    }
+                    *d->mutable_date() = toDate(date_val);
+
+                    if (!d->deleted()) {
+
+                        if (row.at(COLOR).is_string()) {
+                            d->set_color(pb_adapt(row.at(COLOR).as_string()));
+                        }
+                        if (row.at(NOTES).is_string()) {
+                            d->set_hasnotes(true);
+                            current_day->set_notes(pb_adapt(row.at(NOTES).as_string()));
+                        }
+                        if (row.at(REPORT).is_string()) {
+                            d->set_hasreport(true);
+                            current_day->set_report(pb_adapt(row.at(REPORT).as_string()));
+                        }
+                    }
+
+                    ++total_rows;
+
+                    // Do we need to flush?
+                    if (++num_rows_in_batch > batch_size) {
+                        co_await flush();
+                    }
                 }
-            }
+
+            } // read more from db loop
 
             co_await flush();
+
+            LOG_DEBUG_N << "Sent " << total_rows << " days to client.";
             co_return;
     }, __func__ );
 }
