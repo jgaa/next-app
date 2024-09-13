@@ -1,6 +1,7 @@
 #pragma once
 
 #include <queue>
+#include <set>
 
 #include <QObject>
 #include <QMap>
@@ -54,6 +55,8 @@ public:
         LOCAL,
         SYNCHING,
         SYNCHED,
+        LOADING,
+        VALID,
         ERROR
     };
 
@@ -90,6 +93,8 @@ public:
         return instance_;
     }
 
+    void Q_INVOKABLE addYear(int year);
+
     //using day_table_t = std::unordered_map<uint32_t, >;
 
     Q_INVOKABLE GreenDayModel *getDay(int year, int month, int day);
@@ -102,7 +107,7 @@ public:
     void fetchColors();
 
     bool valid() const noexcept {
-        return state_ == State::SYNCHED;
+        return state_ == State::VALID;
     }
 
     QString getColorUuid(int year, int month, int day);
@@ -131,6 +136,7 @@ private:
     void refetchAllMonths();
     void setState(State state) noexcept;
     QCoro::Task<void> synchFromServer();
+    QCoro::Task<void> fetchFromCache();
 
     State state_{State::LOCAL};
     uint32_t static getKey(int year, int month) noexcept;
@@ -141,6 +147,7 @@ private:
     using days_in_month_t = std::array<DayInfo, 31>;
     using months_t = std::map<uint16_t, days_in_month_t>;
     months_t months_;
+    std::set<int> years_to_cache_;
     nextapp::pb::DayColorDefinitions color_definitions_;
     static GreenDaysModel *instance_;
 };

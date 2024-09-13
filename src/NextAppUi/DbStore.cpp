@@ -160,6 +160,8 @@ bool DbStore::updateSchema(uint version)
             "updated" INTEGER NOT NULL,
             PRIMARY KEY("date")
         ))",
+
+        "CREATE INDEX IF NOT EXISTS day_updated ON day(updated)",
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({

@@ -29,6 +29,7 @@ GreenDaysModel *GreenDaysModel::instance_;
 GreenDaysModel::GreenDaysModel()
 {
     instance_ = this;
+    years_to_cache_.emplace(QDate::currentDate().year());
 
     // connect(std::addressof(ServerComm::instance()),
     //         &ServerComm::receivedDayColorDefinitions,
@@ -54,6 +55,12 @@ GreenDaysModel::GreenDaysModel()
     if (ServerComm::instance().connected()) {
         onOnline();
     }
+}
+
+void GreenDaysModel::addYear(int year)
+{
+    years_to_cache_.insert(year);
+    fetchFromCache();
 }
 
 GreenDayModel *GreenDaysModel::getDay(int year, int month, int day)
@@ -243,11 +250,12 @@ void GreenDaysModel::refetchAllMonths()
 
 void GreenDaysModel::setState(State state) noexcept
 {
+    const auto old_state = state_;
     if (state_ != state) {
         state_ = state;
         emit stateChanged(state);
 
-        if (state_ == State::SYNCHED) {
+        if (state_ == State::SYNCHED || old_state == State::SYNCHED) {
             emit validChanged();
         }
     }
@@ -269,7 +277,11 @@ QCoro::Task<void>  GreenDaysModel::synchFromServer()
     //TODO: Get the latest timestamp we have from the database
 
     auto& db = NextAppCore::instance()->db();
+    const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day");
 
+    if (last_updated) {
+        req.setSince(last_updated.value());
+    }
     auto stream = ServerComm::instance().synchGreenDays(req);
 
     bool looks_ok = false;
@@ -339,14 +351,65 @@ QCoro::Task<void>  GreenDaysModel::synchFromServer()
                             << " msg=" << u.message();
                 setState(State::ERROR);
                 // Todo: Schedule a re-try
-                break;
+                co_return;
             }
         } else {
             LOG_TRACE_N << "Stream returned nothing. Done. err="
                         << update.error().err_code();
-            break;
+            co_return;
         }
     }
+
+    setState(State::SYNCHED);
+    co_await fetchFromCache();
+}
+
+QCoro::Task<void> GreenDaysModel::fetchFromCache()
+{
+    if (state_ == State::LOADING) {
+        LOG_DEBUG_N << "Already loading";
+        co_return;
+    }
+    setState(State::LOADING);
+
+    auto& db = NextAppCore::instance()->db();
+
+    string where;
+    assert(!years_to_cache_.empty());
+
+    if (years_to_cache_.size() == 1) {
+        where = format(" WHERE strftime('%Y', updated) = '{}' ",
+                       *years_to_cache_.begin());
+    } else {
+        where = format(" WHERE strftime('%Y', updated) BETWEEN '{}' AND '{}'",
+                       *years_to_cache_.begin(), *years_to_cache_.rbegin());
+    }
+
+    QString query = "SELECT date, color, notes, report FROM day"
+                    + QString::fromStdString(where);
+
+    months_.clear();
+
+    const auto rval = co_await db.query(query);
+    if (rval) {
+        for (const auto& row : rval.value()) {
+            const auto date = row.at(0).toDate();
+            const auto color = row.at(1).toString();
+            const auto notes = row.at(2).toString();
+            const auto report = row.at(3).toString();
+
+            DayInfo day;
+            day.valid = true;
+            day.color_ix = getColorIx(QUuid{color});
+            day.have_notes = !notes.isEmpty();
+            day.have_report = !report.isEmpty();
+            months_[getKey(date.year(), date.month())][date.day() -1] = day;
+        }
+    } else {
+        setState(State::ERROR);
+    }
+
+    setState(State::VALID);
 }
 
 uint32_t GreenDaysModel::getKey(int year, int month) noexcept

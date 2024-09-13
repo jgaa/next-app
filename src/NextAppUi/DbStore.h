@@ -23,7 +23,8 @@ public:
     enum Error {
         OK,
         GENERIC_ERROR,
-        QUERY_FAILED
+        QUERY_FAILED,
+        EMPTY_RESULT
     };
 
     using rval_t = tl::expected<QList<QList<QVariant>>, Error>;
@@ -32,6 +33,19 @@ public:
     ~DbStore();
 
     QCoro::Task<rval_t> query(const QString& sql, const QList<QVariant> *params = {});
+
+    template <typename T>
+    QCoro::Task<tl::expected<T, Error>> queryOne(const QString& sql, const QList<QVariant> *params = {}) {
+        auto vals = co_await query(sql, params);
+        if (vals) {
+            auto& value = vals.value();
+            if (value.empty()) {
+                co_return tl::unexpected(EMPTY_RESULT);
+            }
+            co_return value.front().front().template value<T>();
+        }
+        co_return vals.error();
+    }
 
     void init() {
         // Once called, the database will be initialized in the worker thread.
