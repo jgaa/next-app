@@ -230,7 +230,7 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             // TODO: Switch to cursor/batched reads when we get support in mysqlpool.
             //       For now, just read everything into memory.
 
-            auto res = co_await owner_.server().db().exec(
+            co_await owner_.server().db().start_exec(
                 R"(SELECT deleted, UNIX_TIMESTAMP(updated), date, user, color, notes, report FROM day
                    WHERE user=? AND UNIX_TIMESTAMP(updated) >= ?)",
                 uctx->dbOptions(), cuser, req->since());
