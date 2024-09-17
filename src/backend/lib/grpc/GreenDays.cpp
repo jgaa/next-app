@@ -245,12 +245,14 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             auto *days = reply.mutable_days();
             auto num_rows_in_batch = 0u;
             auto total_rows = 0u;
+            auto batch_num = 0u;
 
-            auto flush = [this, &reply, &stream, &days, &num_rows_in_batch]() -> boost::asio::awaitable<void> {
+            auto flush = [&]() -> boost::asio::awaitable<void> {
                 reply.set_error(::nextapp::pb::Error::OK);
                 assert(reply.has_days());
                 assert(reply.days().days_size() == num_rows_in_batch);
-                reply.set_message(format("Fetched {} days", reply.days().days_size()));
+                ++batch_num;
+                reply.set_message(format("Fetched {} days in batch {}", reply.days().days_size(), batch_num));
                 co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
                 reply.Clear();
                 days = reply.mutable_days();
@@ -316,6 +318,45 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             LOG_DEBUG_N << "Sent " << total_rows << " days to client.";
             co_return;
     }, __func__ );
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetNewDayColorDefinitions(::grpc::CallbackServerContext *ctx,
+                                                                               const pb::GetNewReq *req,
+                                                                               pb::Status *reply)
+{
+    auto rval = unaryHandler(ctx, req, reply,
+    [this, req] (auto *reply) -> boost::asio::awaitable<void> {
+
+        auto res = co_await owner_.server().db().exec(
+            "SELECT id, name, color, score, UNIX_TIMESTAMP(updated) "
+            "FROM day_colors "
+            "WHERE tenant IS NULL AND UNIX_TIMESTAMP(updated) >= ?",
+            req->since());
+
+        enum Cols {
+            ID, NAME, COLOR, SCORE, UPDATED
+        };
+
+        if (auto *dcd = reply->mutable_daycolordefinitions()) {
+            for(const auto& row : res.rows()) {
+                auto *dc = dcd->add_daycolors();
+                dc->set_id(pb_adapt(row.at(ID).as_string()));
+                dc->set_color(pb_adapt(row.at(COLOR).as_string()));
+                dc->set_name(pb_adapt(row.at(NAME).as_string()));
+                dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
+                dc->set_updated(row.at(UPDATED).as_int64());
+            }
+        } else {
+            assert(false);
+            throw server_err{pb::Error::GENERIC_ERROR, "Could not allocate daycolordefinitions"};
+        }
+        co_return;
+    }, __func__);
+
+    LOG_TRACE_N << "Leaving the coro do do it's magic...";
+    return rval;
+
+    return nullptr;
 }
 
 

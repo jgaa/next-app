@@ -710,8 +710,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "UPDATE day SET updated = UTC_TIMESTAMP WHERE updated IS NULL",
         "UPDATE day SET deleted = 0 WHERE deleted IS NULL",
         "ALTER TABLE day DROP FOREIGN KEY day_ibfk_1",
-        "ALTER TABLE day ADD CONSTRAINT day_ibfk_1 FOREIGN KEY (color) REFERENCES day_colors(id) ON DELETE SET NULL ON UPDATE RESTRICT",
         "ALTER TABLE day DROP FOREIGN KEY day_ibfk_2",
+        "ALTER TABLE day ADD CONSTRAINT day_ibfk_1 FOREIGN KEY (color) REFERENCES day_colors(id) ON DELETE SET NULL ON UPDATE RESTRICT",
         "ALTER TABLE day ADD CONSTRAINT day_ibfk_2 FOREIGN KEY (user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT",
         R"(CREATE TRIGGER updated_day_timestamp
             BEFORE UPDATE ON day
@@ -719,7 +719,15 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             BEGIN
                 SET NEW.updated = UTC_TIMESTAMP;
             END)",
-
+        "ALTER TABLE day_colors ADD COLUMN IF NOT EXISTS updated TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP",
+        "CREATE INDEX day_colors_ix1 ON day_colors (updated)",
+        "UPDATE day_colors SET updated = UTC_TIMESTAMP WHERE updated IS NULL",
+        R"(CREATE TRIGGER updated_day_colors_timestamp
+            BEFORE UPDATE ON day_colors
+            FOR EACH ROW
+            BEGIN
+                SET NEW.updated = UTC_TIMESTAMP;
+            END)",
         "SET FOREIGN_KEY_CHECKS=1"
     });
 

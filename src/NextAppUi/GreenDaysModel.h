@@ -51,6 +51,13 @@ class GreenDaysModel : public QObject
     QML_SINGLETON
 
 public:
+    struct ColorDef {
+        QString id;
+        QString name;
+        QString color;
+        int score{};
+    };
+
     enum class State {
         LOCAL,
         SYNCHING,
@@ -100,7 +107,7 @@ public:
     Q_INVOKABLE GreenDayModel *getDay(int year, int month, int day);
     Q_INVOKABLE GreenMonthModel *getMonth(int year, int month);
 
-    std::optional<nextapp::pb::DayColor> getDayColor(const QUuid& uuid) const;
+    std::optional<ColorDef> getDayColor(const QUuid& uuid) const;
 
     void fetchMonth(int year, int month);
     void fetchDay(int year, int month, int day);
@@ -116,6 +123,8 @@ public:
 
     [[nodiscard]] uint getColorIx(const QUuid& uuid) const noexcept;
 
+    const nextapp::pb::DayColorDefinitions getAsDayColorDefinitions() const;
+
 signals:
     void validChanged();
     void updatedMonth(int year, int month);
@@ -125,8 +134,8 @@ signals:
 
 public slots:
 
-    void fetchedColors(const nextapp::pb::DayColorDefinitions& defs);
-    void fetchedMonth(const nextapp::pb::Month& defs);
+    // void fetchedColors(const nextapp::pb::DayColorDefinitions& defs);
+    // void fetchedMonth(const nextapp::pb::Month& defs);
 
     // Used to update the state if it is changed
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
@@ -136,7 +145,11 @@ private:
     void refetchAllMonths();
     void setState(State state) noexcept;
     QCoro::Task<void> synchFromServer();
-    QCoro::Task<void> fetchFromCache();
+    QCoro::Task<bool> synchColorsFromServer();
+    QCoro::Task<bool> synchDaysFromServer();
+    QCoro::Task<void> loadFromCache();
+    QCoro::Task<bool> loadColorDefsFromCache();
+    QCoro::Task<bool> loadDaysFromCache();
 
     State state_{State::LOCAL};
     uint32_t static getKey(int year, int month) noexcept;
@@ -148,7 +161,9 @@ private:
     using months_t = std::map<uint16_t, days_in_month_t>;
     months_t months_;
     std::set<int> years_to_cache_;
-    nextapp::pb::DayColorDefinitions color_definitions_;
+    //nextapp::pb::DayColorDefinitions color_definitions_;
+    std::map<QUuid, uint> color_definitions_;
+    std::vector<ColorDef> color_data_;
     static GreenDaysModel *instance_;
 };
 

@@ -26,7 +26,7 @@ bool GreenDayModel::valid() const noexcept {
 
 QString GreenDayModel::color() const {
     if (auto dc = GreenDaysModel::instance()->getDayColor(QUuid{day_.day().color()})) {
-        return dc->color();
+        return dc->color;
     }
     return {};
 }

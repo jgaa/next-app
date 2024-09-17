@@ -19,7 +19,7 @@ Rectangle {
     property string selectedItemUuid: NaMainTreeModel.selected
     property bool hasSelection: selectedItemUuid !== ""
 
-    color: MaterialDesignStyling.surface
+    // color: MaterialDesignStyling.surface
 
     ColumnLayout {
         anchors.fill: parent

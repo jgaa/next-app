@@ -198,6 +198,7 @@ public:
     void requestOtp(callback_t<nextapp::pb::Status>&& done);
 
     std::shared_ptr<GrpcIncomingStream> synchGreenDays(const nextapp::pb::GetNewReq& req);
+    QCoro::Task<nextapp::pb::Status> getNewDayColorDefinitions(const nextapp::pb::GetNewReq& req);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

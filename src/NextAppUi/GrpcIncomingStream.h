@@ -1,5 +1,7 @@
 #pragma once
 
+#include <queue>
+
 #include "tl/expected.hpp"
 
 #include <QObject>
@@ -7,6 +9,7 @@
 #include "qcorotask.h"
 #include "qcorosignal.h"
 #include "logging.h"
+#include "nextapp.qpb.h"
 
 template <typename T>
 concept ProtoMessage = std::is_base_of_v<QProtobufMessage, T>;
@@ -18,6 +21,11 @@ concept ProtoMessage = std::is_base_of_v<QProtobufMessage, T>;
  * with either the message or an error code.
  *
  * The class will emit a signal haveMessage() when a new message is available.
+ *
+ * Note that with the current implementation of QT grpc streams, we have to
+ * queue the incoming messages in memory as soon as they arrive. Unlike
+ * the original gRPC streams, QT streams don't wait for us to call `read<>()` before
+ * they discard the message. We have to read it as soon as we get a message signal.
  */
 
 class GrpcIncomingStream : public QObject
@@ -26,7 +34,7 @@ class GrpcIncomingStream : public QObject
 public:
     enum class State {
         IDLE,
-        HAVE_MESSAGE,
+        STREAMING,
         DONE
     };
 
@@ -72,31 +80,28 @@ public:
     QCoro::Task<tl::expected<T, Error>> next()
     {
         LOG_TRACE_N << "Next message";
-        if (state_ == State::DONE) {
-            LOG_TRACE_N << "Stream is closed";
-            co_return tl::unexpected(Error{Error::Code::CLOSED});
+
+        while(true) {
+            LOG_TRACE_N << "Next message / top of loop";
+            if (!messages_.empty()) {
+                auto message = std::move(messages_.front());
+                messages_.pop();
+                LOG_TRACE_N << "Returning message to caller";
+                co_return std::move(message);
+            }
+
+            if (state_ == State::DONE) {
+                LOG_TRACE_N << "Stream is closed";
+                co_return tl::unexpected(Error{Error::Code::CLOSED});
+            }
+
+            assert(state_ != State::DONE);
+
+            // We have to wait for the next message
+            LOG_TRACE_N << "Waiting for event";
+            co_await qCoro(this, &GrpcIncomingStream::haveMessage);
+            LOG_TRACE_N << "Event received";
         }
-
-        if (stream_->isFinished()) {
-            LOG_TRACE_N << "Stream is closed";
-            setState(State::DONE);
-            co_return tl::unexpected(Error{Error::Code::CLOSED});
-        }
-
-        assert(state_ != State::HAVE_MESSAGE);
-        assert(state_ != State::DONE);
-
-        // We have to wait for the next message
-        LOG_TRACE_N << "Waiting for message";
-        co_await qCoro(this, &GrpcIncomingStream::haveMessage);
-        LOG_TRACE_N << "Message received";
-        if (state_ == State::DONE) {
-            LOG_TRACE_N << "Stream is closed";
-            co_return tl::unexpected(Error{Error::Code::CLOSED});
-        }
-
-        LOG_TRACE_N << "Reading message after await.";
-        co_return read<T>();
     }
 
     const auto& stream() const noexcept {
@@ -109,46 +114,36 @@ signals:
 
 private:
 
-    // The assumption is that a stream will not get another `messageReceived` signal until read() has been called.
-    void messageReceived()
-    {
+    // The QT stream implementation does not support reading messages asynchrouneosly.
+    // As soon as the signal is received, we need to read the message. Else it's gone
+    // if there is a new incoming message pending. So unless we block the thread,
+    // there is no way for the client to limit the speed of the incoming messages.
+    void messageReceived() {
         LOG_TRACE_N << "Message received";
-        assert(state_ == State::IDLE);
-        setState(State::HAVE_MESSAGE);
-        emit haveMessage();
+        if (state_ == State::IDLE) {
+            setState(State::STREAMING);
+        }
+
+        LOG_TRACE_N << "Reading message";
+        if (auto message = stream_->read<nextapp::pb::Status>()) {
+            LOG_TRACE_N << "Read message. Queuing it.";
+            messages_.emplace(std::move(message.value()));
+            emit haveMessage();
+            return;
+        }
+        LOG_TRACE_N << "Failed to read message";
     }
 
-    void setState(State state) noexcept
-    {
+    void setState(State state) noexcept {
         if (state_ != state) {
             LOG_TRACE_N << "State changed from " << static_cast<int>(state_) << " to " << static_cast<int>(state);
             state_ = state;
         }
     }
 
-    template <typename T>
-    tl::expected<T, Error> read() {
-        assert(state_ == State::HAVE_MESSAGE);
-        setState(State::IDLE);
-
-        LOG_TRACE_N << "Reading message";
-        if (auto message = stream_->read<T>()) {
-            LOG_TRACE_N << "Read message";
-            return message.value();
-        }
-
-        LOG_TRACE_N << "Failed to read message";
-
-        if (stream_->isFinished()) {
-            LOG_TRACE_N << "Stream is finished";
-            setState(State::DONE);
-            return tl::unexpected(Error{Error::Code::CLOSED});
-        }
-
-        LOG_TRACE_N << "returning Read failed";
-        return tl::unexpected(Error{Error::Code::READ_FAILED});
-    }
-
     std::shared_ptr<QGrpcServerStream> stream_;
     State state_{State::IDLE};
+
+    // QObject's cant be templates, so we have to use a queue with a known type.
+    std::queue<nextapp::pb::Status> messages_;
 };

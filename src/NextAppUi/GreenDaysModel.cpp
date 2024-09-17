@@ -60,7 +60,7 @@ GreenDaysModel::GreenDaysModel()
 void GreenDaysModel::addYear(int year)
 {
     years_to_cache_.insert(year);
-    fetchFromCache();
+    loadFromCache();
 }
 
 GreenDayModel *GreenDaysModel::getDay(int year, int month, int day)
@@ -84,16 +84,13 @@ GreenMonthModel *GreenDaysModel::getMonth(int year, int month)
     return new GreenMonthModel(year, month, *this);
 }
 
-std::optional<pb::DayColor> GreenDaysModel::getDayColor(const QUuid &uuid) const
+std::optional<GreenDaysModel::ColorDef> GreenDaysModel::getDayColor(const QUuid &uuid) const
 {
     const auto key = uuid.toString(QUuid::WithoutBraces);
-    const auto& range = color_definitions_.dayColors();
-    if (auto it = ranges::find_if(range,
-            [this, &key](const auto &v) {
-                return v.id_proto() == key;
-            }); it != range.end()) {
-        return *it;
+    if (auto it = color_definitions_.find(uuid); it != color_definitions_.end()) {
+        return color_data_.at(it->second);
     }
+
     return {};
 }
 
@@ -124,7 +121,7 @@ QString GreenDaysModel::getColorUuid(int year, int month, int day)
 {
     if (auto *di = lookup(year, month, day)) {
         if (di->haveColor()) {
-            return color_definitions_.dayColors().at(di->color_ix).id_proto();
+            return color_data_.at(di->color_ix).id;
         }
     }
 
@@ -135,8 +132,7 @@ QString GreenDaysModel::getColorName(int year, int month, int day)
 {
     if (auto *di = lookup(year, month, day)) {
         if (di->haveColor()) {
-            const auto rval = color_definitions_.dayColors().at(di->color_ix).color();
-            return rval;
+            return color_data_.at(di->color_ix).color;
         }
     }
 
@@ -155,50 +151,31 @@ bool GreenDaysModel::hasMonth(int year, int month)
     return false;
 }
 
-void GreenDaysModel::fetchedColors(const nextapp::pb::DayColorDefinitions &defs)
-{
-    color_definitions_ = defs;
-    // TODO: If we actually re-fetch the color defs, we must signal all the existing months that they are invalid
-    //months_.clear();
-    refetchAllMonths();
-    emit validChanged();
-    emit dayColorsChanged(color_definitions_);
-}
-
 uint GreenDaysModel::getColorIx(const QUuid& uuid) const noexcept {
-    const auto key = uuid.toString(QUuid::WithoutBraces);
 
-    const auto& list = color_definitions_.dayColors();
-    uint row = 0;
-    for(auto& c : list) {
-        if (key == c.id_proto()) {
-            return row;
-        }
-        ++row;
+    if (auto it = color_definitions_.find(uuid); it != color_definitions_.end()) {
+        return it->second;
     }
 
-    assert(false); // Shound not happen
     return 0;
 }
 
-
-void GreenDaysModel::fetchedMonth(const nextapp::pb::Month &month)
+const pb::DayColorDefinitions GreenDaysModel::getAsDayColorDefinitions() const
 {
-    PackedMonth key = {};
-    key.date.month_ = month.month();
-    key.date.year_ = month.year();
+    nextapp::pb::DayColorDefinitions defs;
+    nextapp::pb::DayColorRepeated list;
 
-    auto& m = months_[key.as_number];
-    assert(m.size() >= month.days().size());
-
-    m.fill({});
-    for(const auto& md : month.days()) {
-        const auto mday = md.date().mday();
-        assert(mday > 0);
-        auto& day = m.at(md.date().mday() -1);
-        toDayInfo(md, day);
+    for(const auto& cd : color_data_) {
+        nextapp::pb::DayColor dc;
+        dc.setId_proto(cd.id);
+        dc.setColor(cd.color);
+        dc.setName(cd.name);
+        dc.setScore(cd.score);
+        list.append(std::move(dc));
     }
-    emit updatedMonth(month.year(), month.month());
+
+    defs.setDayColors(std::move(list));
+    return defs;
 }
 
 void GreenDaysModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
@@ -272,10 +249,66 @@ QCoro::Task<void>  GreenDaysModel::synchFromServer()
 
     setState(State::SYNCHING);
 
+    if (co_await synchColorsFromServer() && co_await synchDaysFromServer()) {
+            setState(State::SYNCHED);
+            co_await loadFromCache();
+            co_return;
+    }
+
+    setState(State::ERROR);
+}
+
+QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
+{
+    nextapp::pb::GetNewReq req;
+    auto& db = NextAppCore::instance()->db();
+    const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day_colors");
+
+    if (last_updated) {
+        req.setSince(last_updated.value());
+    }
+
+    auto res = co_await ServerComm::instance().getNewDayColorDefinitions(req);
+    if (res.error() == nextapp::pb::ErrorGadget::OK) {
+        if (res.hasDayColorDefinitions()) {
+            for(const auto cdd : res.dayColorDefinitions().dayColors()) {
+                QList<QVariant> params;
+                QString sql = R"(INSERT INTO day_colors
+                    (id, color, score, name, updated)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        color=excluded.color,
+                        score=excluded.score,
+                        name=excluded.name,
+                        updated=excluded.updated)";
+
+                const qlonglong updated = cdd.updated();
+                const int score = cdd.score();
+                params.append(cdd.id_proto());
+                params.append(cdd.color());
+                params.append(score);
+                params.append(cdd.name());
+                params.append(updated);
+                const auto rval = co_await db.query(sql, &params);
+                if (!rval) {
+                    LOG_ERROR_N << "Failed to update day color "
+                                << cdd.id_proto() << " " << cdd.name()
+                                << " err=" << rval.error();
+                    co_return false;
+                }
+            }
+        }
+
+        co_return true;
+    }
+
+    co_return false;
+}
+
+QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
+{
     // Get a stream of updates from servercomm.
     nextapp::pb::GetNewReq req;
-    //TODO: Get the latest timestamp we have from the database
-
     auto& db = NextAppCore::instance()->db();
     const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day");
 
@@ -348,23 +381,20 @@ QCoro::Task<void>  GreenDaysModel::synchFromServer()
 
             } else {
                 LOG_DEBUG_N << "Got error from server. err=" << u.error()
-                            << " msg=" << u.message();
-                setState(State::ERROR);
-                // Todo: Schedule a re-try
-                co_return;
+                << " msg=" << u.message();
+                co_return false;
             }
         } else {
             LOG_TRACE_N << "Stream returned nothing. Done. err="
                         << update.error().err_code();
-            co_return;
+            co_return false;
         }
     }
 
-    setState(State::SYNCHED);
-    co_await fetchFromCache();
+    co_return true;
 }
 
-QCoro::Task<void> GreenDaysModel::fetchFromCache()
+QCoro::Task<void> GreenDaysModel::loadFromCache()
 {
     if (state_ == State::LOADING) {
         LOG_DEBUG_N << "Already loading";
@@ -378,10 +408,10 @@ QCoro::Task<void> GreenDaysModel::fetchFromCache()
     assert(!years_to_cache_.empty());
 
     if (years_to_cache_.size() == 1) {
-        where = format(" WHERE strftime('%Y', updated) = '{}' ",
+        where = format(" WHERE strftime('%Y', date) = '{}' ",
                        *years_to_cache_.begin());
     } else {
-        where = format(" WHERE strftime('%Y', updated) BETWEEN '{}' AND '{}'",
+        where = format(" WHERE strftime('%Y', date) BETWEEN '{}' AND '{}'",
                        *years_to_cache_.begin(), *years_to_cache_.rbegin());
     }
 
@@ -410,6 +440,38 @@ QCoro::Task<void> GreenDaysModel::fetchFromCache()
     }
 
     setState(State::VALID);
+}
+
+QCoro::Task<bool> GreenDaysModel::loadColorDefsFromCache()
+{
+    auto& db = NextAppCore::instance()->db();
+
+    QString query = "SELECT id, score, color, name FROM day_colors";
+    enum Cols {
+        ID = 0,
+        SCORE,
+        COLOR,
+        NAME
+    };
+
+    color_definitions_.clear();
+    color_data_.clear();
+
+    const auto rval = co_await db.query(query);
+    if (rval) {
+        color_data_.reserve(rval.value().size());
+        for (const auto& row : rval.value()) {
+            color_definitions_[QUuid(row.at(ID).toString())] = color_data_.size();
+            color_data_.push_back({row.at(ID).toString(),
+                                     row.at(NAME).toString(),
+                                     row.at(COLOR).toString(),
+                                     row.at(SCORE).toInt()});
+        }
+        emit dayColorsChanged(getAsDayColorDefinitions());
+        co_return true;
+    }
+
+    co_return false;
 }
 
 uint32_t GreenDaysModel::getKey(int year, int month) noexcept

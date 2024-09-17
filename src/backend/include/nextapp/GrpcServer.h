@@ -171,6 +171,7 @@ public:
         ::grpc::ServerUnaryReactor *GetActionCategories(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetOtpForNewDevice(::grpc::CallbackServerContext *ctx, const pb::OtpRequest *req, pb::Status *reply) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewDays(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
+        ::grpc::ServerUnaryReactor *GetNewDayColorDefinitions(::grpc::CallbackServerContext *, const pb::GetNewReq *, pb::Status *) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback

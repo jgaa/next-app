@@ -700,6 +700,11 @@ std::shared_ptr<GrpcIncomingStream> ServerComm::synchGreenDays(const nextapp::pb
     return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewDays);
 }
 
+QCoro::Task<nextapp::pb::Status> ServerComm::getNewDayColorDefinitions(const nextapp::pb::GetNewReq &req)
+{
+    co_return co_await rpc(req, &nextapp::pb::Nextapp::Client::GetNewDayColorDefinitions);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;

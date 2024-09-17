@@ -398,6 +398,7 @@ message DayColor {
     int32 score = 3;
     string color = 4;
     string name = 5;
+    uint64 updated = 6; // time_t
 }
 
 message DayColorDefinitions {
@@ -734,6 +735,7 @@ message Status {
         OtpResponse otpResponse = 27;
         string sessionId = 28; // From Hello
         ListOfDays days = 29; // For day colors
+        DayColorDefinitions dayColorDefinitions = 30;
     }
 }
 
@@ -791,4 +793,5 @@ service Nextapp {
     rpc DeleteActionCategory(DeleteActionCategoryReq) returns (Status) {}
 
     rpc GetNewDays(GetNewReq) returns (stream Status) {}
+    rpc GetNewDayColorDefinitions(GetNewReq) returns (Status) {}
 }
