@@ -104,7 +104,10 @@ public:
 
     //using day_table_t = std::unordered_map<uint32_t, >;
 
+    // Year as an int, month as 1 - 12, day as 1 - 31
     Q_INVOKABLE GreenDayModel *getDay(int year, int month, int day);
+
+    // Year as an int, month as 1 - 12
     Q_INVOKABLE GreenMonthModel *getMonth(int year, int month);
 
     std::optional<ColorDef> getDayColor(const QUuid& uuid) const;
@@ -141,6 +144,7 @@ public slots:
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
 
 private:
+    QCoro::Task<void> onUpdatedDay(nextapp::pb::CompleteDay completeDay);
     QCoro::Task<void> onOnline();
     void refetchAllMonths();
     void setState(State state) noexcept;
@@ -150,9 +154,12 @@ private:
     QCoro::Task<void> loadFromCache();
     QCoro::Task<bool> loadColorDefsFromCache();
     QCoro::Task<bool> loadDaysFromCache();
+    QCoro::Task<bool> storeDay(const nextapp::pb::CompleteDay& day);
 
     State state_{State::LOCAL};
+    // Year as an int, month as 1 - 12
     uint32_t static getKey(int year, int month) noexcept;
+    // Year as an int, month as 1 - 12, day as 1 - 31
     DayInfo *lookup(int year, int month, int day);
     void toDayInfo(const nextapp::pb::Day& day, GreenDaysModel::DayInfo& di);
     // Returns true if the value was changed
@@ -166,6 +173,7 @@ private:
     std::vector<ColorDef> color_data_;
     static GreenDaysModel *instance_;
 };
+
 
 
 

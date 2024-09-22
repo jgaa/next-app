@@ -4,12 +4,19 @@
 #include <QUuid>
 #include <QDate>
 
+namespace nextapp::pb {
+class Date;
+}
+
 [[nodiscard]] QString toValidQuid(const QString& str);
 [[nodiscard]] QUuid toQuid(const QString& str);
 [[nodiscard]] QString toHourMin(const int duration, bool showEmpty = true);
 [[nodiscard]] int parseDuration(const QString& value);
 [[nodiscard]] time_t parseDateOrTime(const QString& str, const QDate& defaultDate = QDate::currentDate());
 [[nodiscard]] QString toJson(const QObject& o);
+[[nodiscard]] QDate toQDate(const nextapp::pb::Date& date);
+[[nodiscard]] nextapp::pb::Date toDate(const QDate& date);
+
 
 QDate getFirstDayOfWeek(const QDate& when = QDate::currentDate());
 

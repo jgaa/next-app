@@ -154,7 +154,7 @@ bool DbStore::updateSchema(uint version)
 
         R"(CREATE TABLE IF NOT EXISTS "day" (
             "date" DATE NOT NULL,
-            "color" VARCHAR(32) NOT NULL,
+            "color" VARCHAR(32),
             "notes" TEXT,
             "report" TEXT,
             "updated" INTEGER NOT NULL,

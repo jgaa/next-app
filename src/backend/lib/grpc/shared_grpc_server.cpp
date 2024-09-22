@@ -240,5 +240,44 @@ TimePeriod toTimePeriod(time_t when, const UserContext &uctx, pb::WorkSummaryKin
     }
 }
 
+int64_t toMsTimestamp(const boost::mysql::datetime& from, const std::chrono::time_zone& tz)
+{
+    if (from.valid()) {
+        using namespace std::chrono;
+
+        // Convert the datetime to a time_point representing local time
+        auto when = from.as_time_point();
+
+        // Treat 'when' as a local_time in the specified time zone
+        local_time<milliseconds> local_tp{duration_cast<milliseconds>(when.time_since_epoch())};
+
+        // Convert local_time to sys_time (UTC time_point) using the time zone
+        sys_time<milliseconds> utc_time = tz.to_sys(local_tp);
+
+        // Get milliseconds since epoch from the UTC time_point
+        int64_t when_ms = utc_time.time_since_epoch().count();
+
+        return when_ms;
+    }
+
+    return {};
+}
+
+string toMsDateTime(uint64_t msSinceEpoch, const chrono::time_zone& tz)
+{
+    using namespace std::chrono;
+
+    // Convert milliseconds since epoch to a system_clock time_point
+    auto tp = time_point<system_clock, milliseconds>{milliseconds{msSinceEpoch}};
+
+    // Create a zoned_time in the specified time zone
+    auto zoned = zoned_time{&tz, tp};
+
+    // Get the local_time in the specified time zone
+    auto local_tp = zoned.get_local_time();
+
+    // Format the local time without any further time zone conversion
+    return format("{:%F %T}", local_tp);
+}
 
 } // ns

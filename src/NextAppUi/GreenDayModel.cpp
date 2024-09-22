@@ -1,5 +1,6 @@
 #include "GreenDayModel.h"
 #include "GreenDaysModel.h"
+#include "NextAppCore.h"
 #include "ServerComm.h"
 #include "util.h"
 
@@ -40,7 +41,7 @@ int GreenDayModel::day() const {
 }
 
 int GreenDayModel::month() const {
-    return day_.day().date().month();
+    return day_.day().date().month() + 1;
 }
 
 int GreenDayModel::year() const {
@@ -96,18 +97,15 @@ void GreenDayModel::commit() {
     // Avoid sending `00000000-0000-0000-0000-000000000000` which will not work on the server
     day_.day().setColor(toValidQuid(day_.day().color()));
 
+    assert(day_.day().date().year() == year_);
+    assert(day_.day().date().month() + 1 == month_);
+    assert(day_.day().date().mday() == mday_);
+
     ServerComm::instance().setDay(day_);
 }
 
 void GreenDayModel::revert() {
     fetch();
-}
-
-void GreenDayModel::fetch()
-{
-    // assert(mday_ > 0);
-    // assert(mday_ <= 31);
-    ServerComm::instance().fetchDay(year_, month_, mday_);
 }
 
 GreenDaysModel &GreenDayModel::parent()
@@ -131,11 +129,6 @@ std::optional<QString> GreenDayModel::report(const nextapp::pb::CompleteDay &day
     return {};
 }
 
-// void GreenDayModel::sync()
-// {
-//     setState(State::Syncing);
-// }
-
 void GreenDayModel::receivedDay(const nextapp::pb::CompleteDay& day) {
     updateSelf(day);
 }
@@ -143,14 +136,7 @@ void GreenDayModel::receivedDay(const nextapp::pb::CompleteDay& day) {
 void GreenDayModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 {
     assert(update);
-    if (update->hasDayColor()) {
-        const auto& date = update->dayColor().date();
-        if (date == day_.day().date()) {
-            auto day = day_;
-            day.day().setColor(update->dayColor().color());
-            updateSelf(day);
-        }
-    } else if (update->hasDay()) {
+    if (update->hasDay()) {
         const auto& date = update->day().day().date();
         if (date == day_.day().date()) {
             updateSelf(update->day());
@@ -181,4 +167,47 @@ void GreenDayModel::updateSelf(const nextapp::pb::CompleteDay &day) {
     if (report(old) != report(day_)) {
         emit reportChanged();
     }
+}
+
+QCoro::Task<void> GreenDayModel::fetch()
+{
+    // TODO: Handle offline/not synched states
+    auto& db = NextAppCore::instance()->db();
+
+    QList<QVariant> params;
+    params.append(QDate{year_, month_, mday_});
+    auto res = co_await db.query("SELECT date, color, notes, report, updated FROM day WHERE date = ?", &params);
+    enum Cols { DATE, COLOR, NOTES, REPORT, UPDATED };
+    if (res) {
+        if (!res.value().empty()) {
+            const auto& row = res.value().front();
+            nextapp::pb::CompleteDay cd;
+            nextapp::pb::Day d;
+            d.setDate(toDate((row[DATE].toDate())));
+            d.setColor(row[COLOR].toString());
+            d.setUpdated(row[UPDATED].toLongLong());
+            cd.setDay(std::move(d));
+
+            if (!row[NOTES].isNull()) {
+                cd.setNotes(row[NOTES].toString());
+            }
+
+            if (!row[REPORT].isNull()) {
+                cd.setReport(row[REPORT].toString());
+            }
+
+            day_ = cd;
+            assert(day_.day().date().year() == year_);
+            assert(day_.day().date().month() + 1 == month_);
+            assert(day_.day().date().mday() == mday_);
+        } else {
+            QDate date{year_, month_, mday_};
+            day_.day().setDate(toDate(date));
+        }
+        valid_ = true; // Non-existent in the db is also a valid state.
+    } else {
+        valid_ = false;
+    }
+
+    emit validChanged();
 }

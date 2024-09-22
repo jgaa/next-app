@@ -967,15 +967,15 @@ void ServerComm::onUpdateMessage()
                     }
                 }
             }
-            if (msg->hasDayColor()) {
-                LOG_DEBUG << "Day color is " << msg->dayColor().color();
-                QUuid color;
-                if (!msg->dayColor().color().isEmpty()) {
-                    color = QUuid{msg->dayColor().color()};
-                }
-                const auto& date = msg->dayColor().date();
-                emit dayColorChanged(date.year(), date.month(), date.mday(), color);
-            }
+            // if (msg->hasDayColor()) {
+            //     LOG_DEBUG << "Day color is " << msg->dayColor().color();
+            //     QUuid color;
+            //     if (!msg->dayColor().color().isEmpty()) {
+            //         color = QUuid{msg->dayColor().color()};
+            //     }
+            //     const auto& date = msg->dayColor().date();
+            //     emit dayColorChanged(date.year(), date.month(), date.mday(), color);
+            // }
 
             emit onUpdate(std::move(msg));
         }

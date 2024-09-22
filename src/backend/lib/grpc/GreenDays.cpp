@@ -38,48 +38,63 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
     return rval;
 }
 
+boost::asio::awaitable<std::optional<pb::CompleteDay>>
+GrpcServer::fetchDay(const pb::Date& date, RequestCtx& rctx) {
+    const auto uctx = rctx.uctx;
+    const auto& cuser = uctx->userUuid();
+
+    auto res = co_await rctx.dbh->exec(
+        "SELECT date, color, notes, report, updated FROM day WHERE user=? AND date=? AND deleted=0 ORDER BY date",
+        uctx->dbOptions(), cuser, toAnsiDate(date));
+
+    enum Cols {
+        DATE, COLOR, NOTES, REPORT, UPDATED
+    };
+
+    pb::CompleteDay reply;
+    auto day = reply.mutable_day();
+    if (!res.empty() && !res.rows().empty()) {
+        const auto& row = res.rows().front();
+        const auto date_val = row.at(DATE).as_date();
+
+        *day->mutable_date() = toDate(date_val);
+        if (row.at(COLOR).is_string()) {
+            day->set_color(pb_adapt(row.at(COLOR).as_string()));
+        }
+        if (row.at(NOTES).is_string()) {
+            day->set_hasnotes(true);
+            reply.set_notes(pb_adapt(row.at(NOTES).as_string()));
+        }
+        if (row.at(REPORT).is_string()) {
+            day->set_hasreport(true);
+            reply.set_report(pb_adapt(row.at(REPORT).as_string()));
+        }
+
+        day->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
+
+        co_return reply;
+    }
+
+    co_return std::nullopt;
+}
+
 ::grpc::ServerUnaryReactor *
 GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                                 const pb::Date *req,
-                                pb::CompleteDay *reply)
+                                pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::CompleteDay *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-            const auto uctx = rctx.uctx;
-            const auto& cuser = uctx->userUuid();
-
-            auto res = co_await owner_.server().db().exec(
-                "SELECT date, user, color, notes, report FROM day WHERE user=? AND date=? AND deleted=0 ORDER BY date",
-                uctx->dbOptions(), cuser, toAnsiDate(*req));
-
-            enum Cols {
-                DATE, USER, COLOR, NOTES, REPORT
-            };
-
-            auto* day = reply->mutable_day();
-            if (!res.empty() && !res.rows().empty()) {
-                const auto& row = res.rows().front();
-                const auto date_val = row.at(DATE).as_date();
-
-                *day->mutable_date() = toDate(date_val);
-                if (row.at(USER).is_string()) {
-                    day->set_user(pb_adapt(row.at(USER).as_string()));
-                }
-                if (row.at(COLOR).is_string()) {
-                    day->set_color(pb_adapt(row.at(COLOR).as_string()));
-                }
-                if (row.at(NOTES).is_string()) {
-                    day->set_hasnotes(true);
-                    reply->set_notes(pb_adapt(row.at(NOTES).as_string()));
-                }
-                if (row.at(REPORT).is_string()) {
-                    day->set_hasreport(true);
-                    reply->set_report(pb_adapt(row.at(REPORT).as_string()));
+            if (auto full_day = co_await owner_.fetchDay(*req, rctx)) {
+                if (auto * day = reply->mutable_day()) {
+                    *day = std::move(*full_day);
+                } else {
+                    assert(false);
                 }
             } else {
-                *day->mutable_date() = *req;
-                day->set_user(cuser);
+                reply->set_error(pb::Error::NOT_FOUND);
+                reply->set_message("Day not found");
             }
 
             co_return;
@@ -95,11 +110,11 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
             const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
-                "SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? and deleted=0 ORDER BY date",
+                "SELECT date, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? and deleted=0 ORDER BY date",
                 uctx->dbOptions(), cuser, req->year(), req->month() + 1);
 
             enum Cols {
-                DATE, USER, COLOR, NOTES, REPORT
+                DATE, COLOR, NOTES, REPORT
             };
 
             reply->set_year(req->year());
@@ -110,7 +125,6 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 if (date_val.valid()) {
                     auto current_day = reply->add_days();
                     *current_day->mutable_date() = toDate(date_val);
-                    current_day->set_user(pb_adapt(row.at(USER).as_string()));
                     if (row.at(COLOR).is_string()) {
                         current_day->set_color(pb_adapt(row.at(COLOR).as_string()));
                     }
@@ -123,7 +137,9 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
         }, __func__);
 }
 
-::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetColorOnDay(::grpc::CallbackServerContext *ctx, const pb::SetColorReq *req, pb::Status *reply)
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetColorOnDay(::grpc::CallbackServerContext *ctx,
+                                                                   const pb::SetColorReq *req,
+                                                                   pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
@@ -148,19 +164,21 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 color
                 );
 
-
-            LOG_TRACE_N << "Finish updating color for " << toAnsiDate(req->date());
-
-            res.affected_rows();
-
             auto update = newUpdate(res.affected_rows() == 1 /* inserted, 2 == updated */
                                         ? pb::Update::Operation::Update_Operation_ADDED
                                         : pb::Update::Operation::Update_Operation_UPDATED);
-            auto dc = update->mutable_daycolor();
-            *dc->mutable_date() = req->date();
-            dc->set_user(cuser);
-            dc->set_color(req->color());
-            rctx.publishLater(update);
+
+            if (auto full_day = co_await owner_.fetchDay(req->date(), rctx)) {
+                auto& update = rctx.publishLater(res.affected_rows() == 1 /* inserted, 2 == updated */
+                                                    ? pb::Update::Operation::Update_Operation_ADDED
+                                                    : pb::Update::Operation::Update_Operation_UPDATED);
+
+                *update.mutable_day() = std::move(*full_day);
+            } else {
+                LOG_WARN_N << "Failed to fetch day after setting color. "
+                           << " date=" << toAnsiDate(req->date()) << " user=" << cuser;
+            }
+
             co_return;
         }, __func__);
 }
@@ -205,12 +223,17 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 );
 
 
-
-            auto update = newUpdate(res.affected_rows() == 1 /* inserted, 2 == updated */
+            if (auto full_day = co_await owner_.fetchDay(req->day().date(), rctx)) {
+                auto& update = rctx.publishLater(res.affected_rows() == 1 /* inserted, 2 == updated */
                                         ? pb::Update::Operation::Update_Operation_ADDED
                                         : pb::Update::Operation::Update_Operation_UPDATED);
-            *update->mutable_day() = *req;
-            rctx.publishLater(update);
+
+                *update.mutable_day() = std::move(*full_day);
+            } else {
+                LOG_WARN_N << "Failed to fetch day after setting color. "
+                           << " date=" << toAnsiDate(req->day().date()) << " user=" << cuser;
+            }
+
             co_return;
         }, __func__);
 }
@@ -232,12 +255,12 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
             assert(rctx.dbh);
             co_await  rctx.dbh->start_exec(
-                R"(SELECT deleted, UNIX_TIMESTAMP(updated), date, user, color, notes, report FROM day
-                   WHERE user=? AND UNIX_TIMESTAMP(updated) >= ?)",
-                uctx->dbOptions(), cuser, req->since());
+                R"(SELECT deleted, updated, date, color, notes, report FROM day
+                   WHERE user=? AND updated > ?)",
+                uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz()));
 
             enum Cols {
-                DELETED, UPDATED, DATE, USER, COLOR, NOTES, REPORT
+                DELETED, UPDATED, DATE, COLOR, NOTES, REPORT
             };
 
             nextapp::pb::Status reply;
@@ -276,11 +299,7 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
                     auto *d = current_day->mutable_day();
                     assert(row.at(DELETED).is_int64());
                     d->set_deleted(row.at(DELETED).as_int64() == 1);
-                    assert(row.at(UPDATED).is_int64());
-                    d->set_updated(row.at(UPDATED).as_int64());
-                    if (row.at(USER).is_string()) {
-                        d->set_user(pb_adapt(row.at(USER).as_string()));
-                    }
+                    d->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
                     const auto date_val = row.at(DATE).as_date();
                     if (!date_val.valid()) {
                         LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
@@ -306,7 +325,7 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
                     ++total_rows;
 
                     // Do we need to flush?
-                    if (++num_rows_in_batch > batch_size) {
+                    if (++num_rows_in_batch >= batch_size) {
                         co_await flush();
                     }
                 }
@@ -324,14 +343,15 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
                                                                                const pb::GetNewReq *req,
                                                                                pb::Status *reply)
 {
-    auto rval = unaryHandler(ctx, req, reply,
-    [this, req] (auto *reply) -> boost::asio::awaitable<void> {
+    return unaryHandler(ctx, req, reply,
+    [this, req] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-        auto res = co_await owner_.server().db().exec(
-            "SELECT id, name, color, score, UNIX_TIMESTAMP(updated) "
+        auto res = co_await rctx.dbh->exec(
+            "SELECT id, name, color, score, updated "
             "FROM day_colors "
-            "WHERE tenant IS NULL AND UNIX_TIMESTAMP(updated) >= ?",
-            req->since());
+            "WHERE tenant IS NULL AND updated > ?",
+            rctx.uctx->dbOptions(),
+            toMsDateTime(req->since(), rctx.uctx->tz()));
 
         enum Cols {
             ID, NAME, COLOR, SCORE, UPDATED
@@ -344,7 +364,7 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
                 dc->set_color(pb_adapt(row.at(COLOR).as_string()));
                 dc->set_name(pb_adapt(row.at(NAME).as_string()));
                 dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
-                dc->set_updated(row.at(UPDATED).as_int64());
+                dc->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
             }
         } else {
             assert(false);
@@ -352,11 +372,6 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
         }
         co_return;
     }, __func__);
-
-    LOG_TRACE_N << "Leaving the coro do do it's magic...";
-    return rval;
-
-    return nullptr;
 }
 
 

@@ -215,18 +215,11 @@ public:
 signals:
     void versionChanged();
     void connectedChanged();
-    void dayColorDefinitionsChanged();
     void errorRecieved(const QString &value);
     void globalSettingsChanged();
     void firstDayOfWeekChanged();
     void statusChanged();
     void signupInfoChanged();
-
-    // When the server has replied to our request fo the colors for this month
-    void monthColorsChanged(unsigned year, unsigned month, colors_in_months_t colors);
-
-    // When an update-message is received from the server regarding a change for a color on a day
-    void dayColorChanged(unsigned year, unsigned month, unsigned day, QUuid uuid);
 
     // When we get the full node-list
     void receivedNodeTree(const nextapp::pb::NodeTree& tree);

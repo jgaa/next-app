@@ -65,15 +65,15 @@ Rectangle {
         radius: 5
         property alias month: grid.month
         property alias year: grid.year
-        property GreenMonthModel mmodel: GreenDaysModel.getMonth(year, month)
-        property bool validColors: mmodel.validColors;
+        property GreenMonthModel mmodel: GreenDaysModel.getMonth(year, month + 1)
+        property bool validColors: mmodel.validColors
 
         color: MaterialDesignStyling.surface
         border.color: MaterialDesignStyling.outline
         border.width: 1
 
         onValidColorsChanged: {
-            // console.log("Month ", grid.month, " validColors changed to ", monthComponent.validColors)
+            console.log("Month ", grid.month, " validColors changed to ", monthComponent.validColors)
         }
 
         Layout.fillWidth: true
@@ -185,7 +185,7 @@ Rectangle {
                                 onDoubleClicked: {
                                     //var uuid = monthComponent.mmodel.getUuidForDayInMonth(drect.model.day);
 
-                                    var dmodel = GreenDaysModel.getDay(drect.model.year, drect.model.month, drect.model.day);
+                                    var dmodel = GreenDaysModel.getDay(drect.model.year, drect.model.month + 1, drect.model.day);
                                     if (dmodel === null) {
                                         console.debug("Error: dmodel is null");
                                         return; // or maybe throw

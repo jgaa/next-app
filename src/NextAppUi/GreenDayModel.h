@@ -7,6 +7,7 @@
 #include <QHash>
 #include <QUuid>
 #include <QAbstractItemModel>
+#include "qcorotask.h"
 
 #include "nextapp.qpb.h"
 
@@ -65,9 +66,6 @@ public:
     // Revert to the saved value
     Q_INVOKABLE void revert();
 
-    // Called if we need to fect the day.
-    Q_INVOKABLE void fetch();
-
     GreenDaysModel& parent();
 
     static std::optional<QString> notes(const nextapp::pb::CompleteDay& day);
@@ -89,6 +87,8 @@ public slots:
 
 private:
     void updateSelf(const nextapp::pb::CompleteDay& day);
+    // Called if we need to fect the day.
+    QCoro::Task<void> fetch();
 
     bool valid_{false};
     nextapp::pb::CompleteDay day_;

@@ -20,8 +20,7 @@ QString toValidQuid(const QString &str) {
     if (uuid.isNull()) {
         return {};
     }
-    auto rval = uuid.toString(QUuid::WithoutBraces);
-    return rval;
+    return uuid.toString(QUuid::WithoutBraces);
 }
 
 
@@ -173,4 +172,18 @@ QString toJson(const QObject &o)
         obj[prop.name()] = prop.read(&o).toString();
     }
     return QString(QJsonDocument(obj).toJson());
+}
+
+QDate toQDate(const nextapp::pb::Date &date)
+{
+    return QDate{date.year(), date.month() +1, date.mday()};
+}
+
+nextapp::pb::Date toDate(const QDate &date)
+{
+    nextapp::pb::Date d;
+    d.setYear(date.year());
+    d.setMonth(date.month() -1);
+    d.setMday(date.day());
+    return d;
 }

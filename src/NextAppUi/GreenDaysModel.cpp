@@ -66,15 +66,19 @@ void GreenDaysModel::addYear(int year)
 GreenDayModel *GreenDaysModel::getDay(int year, int month, int day)
 {
     assert(day > 0);
-    auto rval = make_unique<GreenDayModel>(year, month, day, this);
+    assert(day <= 31);
+    assert(month >= 1);
+    assert(month <= 12);
 
-    assert(day > 0);
-    fetchDay(year, month, day);
+    auto rval = make_unique<GreenDayModel>(year, month, day, this);
     return rval.release();
 }
 
 GreenMonthModel *GreenDaysModel::getMonth(int year, int month)
 {
+    assert(month >= 1);
+    assert(month <= 12);
+
     const auto key = getKey(year, month);
     if (!hasMonth(year, month)) {
         months_[key] = {};
@@ -141,10 +145,10 @@ QString GreenDaysModel::getColorName(int year, int month, int day)
 
 bool GreenDaysModel::hasMonth(int year, int month)
 {
-    PackedMonth key = {};
-    key.date.month_ = month;
-    key.date.year_ = year;
-    if (auto it = months_.find(key.as_number); it != months_.end()) {
+    assert(month >= 1);
+    assert(month <= 12);
+    auto key = getKey(year, month);
+    if (auto it = months_.find(key); it != months_.end()) {
         return true;
     }
 
@@ -180,31 +184,22 @@ const pb::DayColorDefinitions GreenDaysModel::getAsDayColorDefinitions() const
 
 void GreenDaysModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 {
-    auto set = [this](const nextapp::pb::Date& when, const QString& color) {
-        PackedMonth key = {};
-        key.date.month_ = when.month();
-        key.date.year_ = when.year();
-        if (auto it = months_.find(key.as_number); it != months_.end()) {
-            const auto mday = when.mday() -1;
-            if (mday >= it->second.size()) {
-                assert(false);
-                return;
-            }
-            auto& md = it->second[mday];
-            if (setDayColor(md, QUuid{color})) {
-                emit updatedMonth(when.year(), when.month());
-                emit updatedDay(when.year(), when.month(), when.mday());
-            }
-        } else  {
-            LOG_TRACE << "GreenDaysModel::onUpdate - could not find month for " << when.year() << '-' << when.mday();
-        }
-    };
-
     if (update->hasDay()) {
-        set(update->day().day().date(), update->day().day().color());
+        onUpdatedDay(update->day());
     }
-    if (update->hasDayColor()) {
-        set(update->dayColor().date(), update->dayColor().color());
+}
+
+
+QCoro::Task<void> GreenDaysModel::onUpdatedDay(nextapp::pb::CompleteDay completeDay)
+{
+    const auto date = completeDay.day().date();
+
+    co_await storeDay(completeDay);
+    auto *di = lookup(date.year(), date.month() + 1, date.mday());
+    if (di) {
+        toDayInfo(completeDay.day(), *di);
+        emit updatedMonth(date.year(), date.month() + 1);
+        emit updatedDay(date.year(), date.month() + 1, date.mday());
     }
 }
 
@@ -232,7 +227,8 @@ void GreenDaysModel::setState(State state) noexcept
         state_ = state;
         emit stateChanged(state);
 
-        if (state_ == State::SYNCHED || old_state == State::SYNCHED) {
+        if (state_ == State::VALID || old_state == State::VALID) {
+            LOG_TRACE_N << "Valid changed to " << (valid() ? "VALID" : "NOT VALID");
             emit validChanged();
         }
     }
@@ -329,55 +325,9 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
                 if (u.hasDays()) {
                     LOG_TRACE_N << "Got days from server. Count=" << u.days().days().size();
                     for(const auto& item : u.days().days()) {
-                        QList<QVariant> params;
-
-                        if (item.day().deleted()) {
-                            // Delete the day
-                            QString sql = R"(DELETE FROM day WHERE date = ?)";
-                            params.append(QDate{item.day().date().year(), item.day().date().month() + 1, item.day().date().mday()});
-                            LOG_TRACE_N << "Deleting day " << item.day().date().year() << '-'
-                                        << item.day().date().month() << '-'
-                                        << item.day().date().mday();
-                            const auto rval = co_await db.query(sql, &params);
-                            if (!rval) {
-                                LOG_ERROR_N << "Failed to delete day "
-                                            << item.day().date().year() << '-'
-                                            << item.day().date().month() << '-'
-                                            << item.day().date().mday()
-                                            << " err=" << rval.error();
-                            }
-                            continue;
-                        }
-
-                        QString sql = R"(INSERT INTO day
-        (date, color, notes, report, updated)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(date) DO UPDATE SET
-            color=excluded.color,
-            notes=excluded.notes,
-            report=excluded.report,
-            updated=excluded.updated)";
-
-                        const auto& day = item.day();
-                        const qlonglong updated = day.updated();
-                        params.append(QDate{day.date().year(), day.date().month() + 1, day.date().mday()});
-                        params.append(day.color());
-                        params.append(item.hasNotes() ? item.notes() : QVariant{});
-                        params.append(item.hasReport() ? item.report(): QVariant{});
-                        params.append(updated);
-                        LOG_TRACE_N << "Updating day " << day.date().year() << '-'
-                                    << day.date().month() << '-'
-                                    << day.date().mday();
-                        const auto rval = co_await db.query(sql, &params);
-                        if (!rval) {
-                            LOG_ERROR_N << "Failed to update day "
-                                        << day.date().year() << '-'
-                                        << day.date().month() << '-'
-                                        << day.date().mday()
-                                        << " err=" << rval.error();
-                        }
+                        co_await storeDay(item);
                     }
-                }
+                 }
 
             } else {
                 LOG_DEBUG_N << "Got error from server. err=" << u.error()
@@ -402,41 +352,9 @@ QCoro::Task<void> GreenDaysModel::loadFromCache()
     }
     setState(State::LOADING);
 
-    auto& db = NextAppCore::instance()->db();
-
-    string where;
-    assert(!years_to_cache_.empty());
-
-    if (years_to_cache_.size() == 1) {
-        where = format(" WHERE strftime('%Y', date) = '{}' ",
-                       *years_to_cache_.begin());
-    } else {
-        where = format(" WHERE strftime('%Y', date) BETWEEN '{}' AND '{}'",
-                       *years_to_cache_.begin(), *years_to_cache_.rbegin());
-    }
-
-    QString query = "SELECT date, color, notes, report FROM day"
-                    + QString::fromStdString(where);
-
-    months_.clear();
-
-    const auto rval = co_await db.query(query);
-    if (rval) {
-        for (const auto& row : rval.value()) {
-            const auto date = row.at(0).toDate();
-            const auto color = row.at(1).toString();
-            const auto notes = row.at(2).toString();
-            const auto report = row.at(3).toString();
-
-            DayInfo day;
-            day.valid = true;
-            day.color_ix = getColorIx(QUuid{color});
-            day.have_notes = !notes.isEmpty();
-            day.have_report = !report.isEmpty();
-            months_[getKey(date.year(), date.month())][date.day() -1] = day;
-        }
-    } else {
+    if (!co_await loadColorDefsFromCache() || ! co_await loadDaysFromCache()) {
         setState(State::ERROR);
+        co_return;
     }
 
     setState(State::VALID);
@@ -474,17 +392,127 @@ QCoro::Task<bool> GreenDaysModel::loadColorDefsFromCache()
     co_return false;
 }
 
+QCoro::Task<bool> GreenDaysModel::loadDaysFromCache()
+{
+    auto& db = NextAppCore::instance()->db();
+
+    string where;
+    assert(!years_to_cache_.empty());
+
+    if (years_to_cache_.size() == 1) {
+        where = format(" WHERE strftime('%Y', date) = '{}' ",
+                       *years_to_cache_.begin());
+    } else {
+        where = format(" WHERE strftime('%Y', date) BETWEEN '{}' AND '{}'",
+                       *years_to_cache_.begin(), *years_to_cache_.rbegin());
+    }
+
+    QString query = "SELECT date, color, notes, report FROM day"
+                    + QString::fromStdString(where);
+
+    enum Cols {
+        DATE = 0,
+        COLOR,
+        NOTES,
+        REPORT
+    };
+
+    months_.clear();
+
+    const auto rval = co_await db.query(query);
+    if (rval) {
+        for (const auto& row : rval.value()) {
+            const auto date = row.at(DATE).toDate();
+            const auto color = row.at(COLOR).toString();
+            const auto notes = row.at(NOTES).toString();
+            const auto report = row.at(REPORT).toString();
+
+            DayInfo day;
+            day.valid = true;
+            if (color.isEmpty()) {
+                day.clearColor();
+            } else {
+                day.color_ix = getColorIx(QUuid{color});
+            }
+            day.have_notes = !notes.isEmpty();
+            day.have_report = !report.isEmpty();
+            months_[getKey(date.year(), date.month())][date.day() -1] = day;
+        }
+        co_return true;
+    }
+
+    co_return false;
+}
+
+QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullDay)
+{
+    auto& db = NextAppCore::instance()->db();
+    QList<QVariant> params;
+
+    if (fullDay.day().deleted()) {
+        // Delete the day
+        QString sql = R"(DELETE FROM day WHERE date = ?)";
+        params.append(QDate{fullDay.day().date().year(), fullDay.day().date().month() + 1, fullDay.day().date().mday()});
+        LOG_TRACE_N << "Deleting day " << fullDay.day().date().year() << '-'
+                    << fullDay.day().date().month() << '-'
+                    << fullDay.day().date().mday();
+        const auto rval = co_await db.query(sql, &params);
+        if (!rval) {
+            LOG_ERROR_N << "Failed to delete day "
+                        << fullDay.day().date().year() << '-'
+                        << fullDay.day().date().month() << '-'
+                        << fullDay.day().date().mday()
+                        << " err=" << rval.error();
+        }
+        co_return true;
+    }
+
+    QString sql = R"(INSERT INTO day
+        (date, color, notes, report, updated)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            color=excluded.color,
+            notes=excluded.notes,
+            report=excluded.report,
+            updated=excluded.updated)";
+
+    const auto& day = fullDay.day();
+    const qlonglong updated = day.updated();
+    params.append(QDate{day.date().year(), day.date().month() + 1, day.date().mday()});
+    params.append(day.color());
+    params.append(fullDay.hasNotes() ? fullDay.notes() : QVariant{});
+    params.append(fullDay.hasReport() ? fullDay.report(): QVariant{});
+    params.append(updated);
+    LOG_TRACE_N << "Updating day " << day.date().year() << '-'
+                << day.date().month() << '-'
+                << day.date().mday();
+    const auto rval = co_await db.query(sql, &params);
+    if (!rval) {
+        LOG_ERROR_N << "Failed to update day "
+                    << day.date().year() << '-'
+                    << day.date().month() << '-'
+                    << day.date().mday()
+                    << " err=" << rval.error();
+        co_return false;
+    }
+
+    co_return true;
+}
+
 uint32_t GreenDaysModel::getKey(int year, int month) noexcept
 {
+    assert(month >= 1);
+    assert (month <= 12);
     PackedMonth key = {};
-    key.date.month_ = month;
+    key.date.month_ = month -1;
     key.date.year_ = year;
     return key.as_number;
 }
 
 GreenDaysModel::DayInfo *GreenDaysModel::lookup(int year, int month, int day)
 {
-    assert(day > 0);
+    assert(day >= 1);
+    assert(day <= 31);
     if (auto it = months_.find(getKey(year, month)); it != months_.end()) {
         return &it->second.at(day-1);
     }
