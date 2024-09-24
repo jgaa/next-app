@@ -7,12 +7,12 @@ namespace {
 
 struct ToNode {
     enum Cols {
-        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION
+        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION, UPDATED, DELETED
     };
 
-    static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version";
+    static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version, updated, deleted";
 
-    static void assign(const boost::mysql::row_view& row, pb::Node& node) {
+    static void assign(const boost::mysql::row_view& row, pb::Node& node, const RequestCtx& rctx) {
         node.set_uuid(pb_adapt(row.at(ID).as_string()));
         node.set_user(pb_adapt(row.at(USER).as_string()));
         node.set_name(pb_adapt(row.at(NAME).as_string()));
@@ -28,6 +28,8 @@ struct ToNode {
         if (!row.at(PARENT).is_null()) {
             node.set_parent(pb_adapt(row.at(PARENT).as_string()));
         }
+        node.set_deleted(row.at(ToNode::DELETED).as_int64() == 1);
+        node.set_updated(toMsTimestamp(row.at(ToNode::UPDATED).as_datetime(), rctx.uctx->tz()));
     }
 };
 
@@ -77,7 +79,7 @@ struct ToNode {
 
             if (!res.empty()) {
                 auto node = reply->mutable_node();
-                ToNode::assign(res.rows().front(), *node);
+                ToNode::assign(res.rows().front(), *node, rctx);
                 reply->set_error(pb::Error::OK);
             } else {
                 assert(false); // Should get exception on error
@@ -108,7 +110,7 @@ struct ToNode {
 
             for(auto retry = 0;; ++retry) {
 
-                const pb::Node existing = co_await owner_.fetcNode(req->uuid(), cuser);
+                const pb::Node existing = co_await owner_.fetcNode(req->uuid(), cuser, rctx);
 
                 // Check if any data has changed
                 data_changed = req->name() != existing.name()
@@ -123,7 +125,7 @@ struct ToNode {
 
                 // Update the data, if version is unchanged
                 auto res = co_await owner_.server().db().exec(
-                    "UPDATE node SET name=?, active=?, kind=?, descr=?, version=version+1 WHERE id=? AND user=? AND version=?",
+                    "UPDATE node SET name=?, active=?, kind=?, descr=? WHERE id=? AND user=? AND version=?",
                     dbopts,
                     req->name(),
                     req->active(),
@@ -149,7 +151,7 @@ struct ToNode {
             }
 
             // Get the current record
-            const pb::Node current = co_await owner_.fetcNode(req->uuid(), cuser);
+            const pb::Node current = co_await owner_.fetcNode(req->uuid(), cuser, rctx);
 
             // Notify clients about changes
 
@@ -176,7 +178,7 @@ struct ToNode {
 
             for(auto retry = 0;; ++retry) {
 
-                const pb::Node existing = co_await owner_.fetcNode(req->uuid(), cuser);
+                const pb::Node existing = co_await owner_.fetcNode(req->uuid(), cuser, rctx);
 
                 if (existing.parent() == req->parentuuid()) {
                     reply->set_error(pb::Error::NO_CHANGES);
@@ -199,7 +201,7 @@ struct ToNode {
 
                 // Update the data, if version is unchanged
                 auto res = co_await owner_.server().db().exec(
-                    "UPDATE node SET parent=?, version=version+1 WHERE id=? AND user=? AND version=?",
+                    "UPDATE node SET parent=? WHERE id=? AND user=? AND version=?",
                     parent,
                     req->uuid(),
                     cuser,
@@ -221,7 +223,7 @@ struct ToNode {
             }
 
             // Get the current record
-            const pb::Node current = co_await owner_.fetcNode(req->uuid(), cuser);
+            const pb::Node current = co_await owner_.fetcNode(req->uuid(), cuser, rctx);
             // Notify clients about changes
 
             reply->set_error(pb::Error::OK);
@@ -245,7 +247,7 @@ struct ToNode {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
-            const auto node = co_await owner_.fetcNode(req->uuid(), cuser);
+            const auto node = co_await owner_.fetcNode(req->uuid(), cuser, rctx);
 
             auto res = co_await owner_.server().db().exec(format("DELETE from node where id=? and user=?", ToNode::selectCols),
                                                           req->uuid(), cuser);
@@ -294,7 +296,7 @@ struct ToNode {
             assert(res.has_value());
             for(const auto& row : res.rows()) {
                 pb::Node n;
-                ToNode::assign(row, n);
+                ToNode::assign(row, n, rctx);
                 const auto parent = n.parent();
 
                 if (auto it = known.find(parent); it != known.end()) {
@@ -331,16 +333,83 @@ struct ToNode {
         });
 }
 
-boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, const std::string &userUuid)
+::grpc::ServerWriteReactor<pb::Status> *
+GrpcServer::NextappImpl::GetNewNodes(::grpc::CallbackServerContext *ctx, const pb::GetNewReq *req)
 {
-    auto res = co_await server().db().exec(format("SELECT {} from node where id=? and user=?", ToNode::selectCols),
+    return writeStreamHandler(ctx, req,
+        [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
+            const auto& cuser = uctx->userUuid();
+            const auto batch_size = owner_.server().config().options.stream_batch_size;
+
+            // Use batched reading from the database, so that we can get all the data, but
+            // without running out of memory.
+            // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
+            assert(rctx.dbh);
+            co_await  rctx.dbh->start_exec(
+                format("SELECT {} from node WHERE user=? AND updated > ?", ToNode::selectCols),
+                uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz()));
+
+            nextapp::pb::Status reply;
+
+            auto *nodes = reply.mutable_nodes();
+            auto num_rows_in_batch = 0u;
+            auto total_rows = 0u;
+            auto batch_num = 0u;
+
+            auto flush = [&]() -> boost::asio::awaitable<void> {
+                reply.set_error(::nextapp::pb::Error::OK);
+                assert(reply.has_nodes());
+                ++batch_num;
+                reply.set_message(format("Fetched {} nodes in batch {}", reply.nodes().nodes_size(), batch_num));
+                co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
+                reply.Clear();
+                nodes = reply.mutable_nodes();
+                num_rows_in_batch = {};
+            };
+
+            bool read_more = true;
+            for(auto rows = co_await rctx.dbh->readSome()
+                 ; read_more
+                 ; rows = co_await rctx.dbh->readSome()) {
+
+                read_more = rctx.dbh->shouldReadMore(); // For next iteration
+
+                if (rows.empty()) {
+                    LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+                    break;
+                }
+
+                for(const auto& row : rows) {
+                    auto * node = nodes->add_nodes();
+                    ToNode::assign(row, *node, rctx);
+                    ++total_rows;
+                    // Do we need to flush?
+                    if (++num_rows_in_batch >= batch_size) {
+                        co_await flush();
+                    }
+                }
+
+            } // read more from db loop
+
+            co_await flush();
+
+            LOG_DEBUG_N << "Sent " << total_rows << " days to client.";
+            co_return;
+
+    }, __func__);
+}
+
+boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, const std::string &userUuid, RequestCtx& rctx)
+{
+    auto res = co_await rctx.dbh->exec(format("SELECT {} from node where id=? and user=?", ToNode::selectCols),
                                            uuid, userUuid);
     if (!res.has_value()) {
         throw server_err{pb::Error::NOT_FOUND, format("Node {} not found", uuid)};
     }
 
     pb::Node rval;
-    ToNode::assign(res.rows().front(), rval);
+    ToNode::assign(res.rows().front(), rval, rctx);
     co_return rval;
 }
 
@@ -356,6 +425,7 @@ boost::asio::awaitable<void> GrpcServer::validateNode(jgaa::mysqlpool::Mysqlpool
     if (!res.has_value()) {
         throw server_err{pb::Error::INVALID_PARENT, "Node id must exist and be owned by the user"};
     }
+    co_return;
 }
 
 } // ns

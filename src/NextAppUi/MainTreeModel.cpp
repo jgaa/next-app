@@ -1,8 +1,13 @@
 
 #include <algorithm>
 #include <ranges>
+
+#include <QProtobufSerializer>
+
 #include "MainTreeModel.h"
 #include "ServerComm.h"
+#include "NextAppCore.h"
+#include "DbStore.h"
 #include "logging.h"
 #include "util.h"
 
@@ -100,24 +105,21 @@ MainTreeModel::MainTreeModel(QObject *parent)
 {
     instance_ = this;
 
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedNodeTree,
-            this,
-            &MainTreeModel::setAllNodes);
+    // connect(std::addressof(ServerComm::instance()),
+    //         &ServerComm::receivedNodeTree,
+    //         this,
+    //         &MainTreeModel::setAllNodes);
 
     connect(std::addressof(ServerComm::instance()),
             &ServerComm::onUpdate,
             this,
             &MainTreeModel::onUpdate);
 
-    connect(std::addressof(ServerComm::instance()), &ServerComm::connectedChanged, this, [this] {
-        if (ServerComm::instance().connected()) {
-            ServerComm::instance().getNodeTree();
-        }
-    });
+    connect(std::addressof(ServerComm::instance()), &ServerComm::connectedChanged,
+            this, &MainTreeModel::onOnline);
 
     if (ServerComm::instance().connected()) {
-        ServerComm::instance().getNodeTree();
+        onOnline();
     }
 }
 
@@ -493,6 +495,142 @@ bool MainTreeModel::isDescent(const QUuid &nodeUuid, const QUuid &descentOf)
     }
 
     return false;
+}
+
+QCoro::Task<void> MainTreeModel::onOnline()
+{
+    if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
+        if (state_ == State::SYNCHING) {
+            LOG_DEBUG_N << "We are already synching.";
+            co_return;
+        }
+
+        LOG_DEBUG_N << "Synching nodes from server";
+        setState(State::SYNCHING);
+
+        if (!co_await synchFromServer()) {
+            LOG_WARN << "Failed to synch from server.";
+            setState(State::ERROR);
+            co_return;
+        }
+
+        if (state_ != State::SYNCHING) {
+            LOG_WARN << "Unexpected state (not SYNCHING): " << static_cast<int>(state_);
+            co_return;
+        }
+
+        setState(State::LOADING);
+
+        if (!co_await loadFromCache()) {
+            LOG_WARN << "Failed to load from cache.";
+            setState(State::ERROR);
+            co_return;
+        }
+
+        setState(State::VALID);
+    }
+}
+
+QCoro::Task<bool> MainTreeModel::synchFromServer()
+{
+    // Get a stream of updates from servercomm.
+    nextapp::pb::GetNewReq req;
+    auto& db = NextAppCore::instance()->db();
+    const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM node");
+
+    if (last_updated) {
+        req.setSince(last_updated.value());
+    }
+
+    auto stream = ServerComm::instance().synchNodes(req);
+
+    bool looks_ok = false;
+    LOG_TRACE_N << "Entering message-loop";
+    while (auto update = co_await stream->next<nextapp::pb::Status>()) {
+
+        LOG_TRACE_N << "next returned something";
+        if (update.has_value()) {
+            auto &u = update.value();
+            LOG_TRACE_N << "next has value";
+            if (u.error() == nextapp::pb::ErrorGadget::OK) {
+                LOG_TRACE_N << "Got OK from server";
+                if (u.hasNodes()) {
+                    LOG_TRACE_N << "Got days from server. Count=" << u.days().days().size();
+                    for(const auto& item : u.nodes().nodes()) {
+                        co_await save(item);
+                    }
+                }
+            } else {
+                LOG_DEBUG_N << "Got error from server. err=" << u.error()
+                << " msg=" << u.message();
+                co_return false;
+            }
+        } else {
+            LOG_TRACE_N << "Stream returned nothing. Done. err="
+                        << update.error().err_code();
+            co_return false;
+        }
+    }
+
+    co_return true;
+}
+
+QCoro::Task<bool> MainTreeModel::loadFromCache()
+{
+    co_return true;
+}
+
+QCoro::Task<bool> MainTreeModel::save(const nextapp::pb::Node &node)
+{
+    auto& db = NextAppCore::instance()->db();
+    QList<QVariant> params;
+
+    if (node.deleted()) {
+        QString sql = R"(DELETE FROM node WHERE uuid = ?)";
+        params.append(node.uuid());
+        LOG_TRACE_N << "Deleting node " << node.uuid() << " " << node.name();
+
+        const auto rval = co_await db.query(sql, &params);
+        if (!rval) {
+            LOG_WARN_N << "Failed to delete node " << node.uuid() << " " << node.name()
+                        << " err=" << rval.error();
+        }
+        co_return true; // TODO: Add proper error handling. Probably a full resynch if the node is in the db.
+    }
+
+    QProtobufSerializer serializer;
+
+    params.append(node.uuid());
+    params.append(node.parent());
+    params.append(node.active());
+    params.append(qlonglong{node.updated()});
+    params.append(node.serialize(&serializer));
+
+    QString sql = R"(INSERT INTO node
+        (uuid, parent, active, updated, data) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(uuid) DO UPDATE SET
+        parent=excluded.parent,
+        active=excluded.active,
+        updated=excluded.updated,
+        data=excluded.data)";
+
+    const auto rval = co_await db.query(sql, &params);
+    if (!rval) {
+        LOG_ERROR_N << "Failed to update node: " << node.uuid() << " " << node.name()
+                    << " err=" << rval.error();
+        co_return false; // TODO: Add proper error handling. Probably a full resynch.
+    }
+
+    co_return true;
+}
+
+void MainTreeModel::setState(State state) noexcept
+{
+    if (state != state_) {
+        LOG_TRACE_N << "State changed from " << static_cast<int>(state_) << " to " << static_cast<int>(state);
+        state_ = state;
+        emit stateChanged();
+    }
 }
 
 MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &child)

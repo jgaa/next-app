@@ -704,8 +704,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     static constexpr auto v11_upgrade = to_array<string_view>({
         "SET FOREIGN_KEY_CHECKS=0",
 
-        "ALTER TABLE day ADD COLUMN IF NOT EXISTS updated TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP(6)",
-        "CREATE INDEX day_ix1 ON day (updated)",
+        "ALTER TABLE day ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
+        "CREATE INDEX day_ix1 ON day (user, updated)",
         "ALTER TABLE day ADD COLUMN IF NOT EXISTS deleted SMALLINT NOT NULL DEFAULT 0",
         "UPDATE day SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
         "UPDATE day SET deleted = 0 WHERE deleted IS NULL",
@@ -719,8 +719,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             BEGIN
                 SET NEW.updated = UTC_TIMESTAMP(6);
             END)",
-        "ALTER TABLE day_colors ADD COLUMN IF NOT EXISTS updated TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP(6)",
-        "CREATE INDEX day_colors_ix1 ON day_colors (updated)",
+        "ALTER TABLE day_colors ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
+        "CREATE INDEX day_colors_ix1 ON day_colors (tenant, updated)",
         "UPDATE day_colors SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
         R"(CREATE TRIGGER updated_day_colors_timestamp
             BEFORE UPDATE ON day_colors
@@ -728,6 +728,20 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             BEGIN
                 SET NEW.updated = UTC_TIMESTAMP(6);
             END)",
+
+        "ALTER TABLE node ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
+        "ALTER TABLE node ADD COLUMN IF NOT EXISTS deleted SMALLINT NOT NULL DEFAULT 0",
+        "CREATE INDEX node_ix_updated ON node (user, updated)",
+        "UPDATE node SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
+        "UPDATE node SET deleted = 0 WHERE deleted IS NULL",
+        R"(CREATE TRIGGER tr_before_update_node
+          BEFORE UPDATE ON node
+          FOR EACH ROW
+          BEGIN
+            SET NEW.version = OLD.version + 1;
+            SET NEW.updated = UTC_TIMESTAMP(6);
+          END)",
+
         "SET FOREIGN_KEY_CHECKS=1"
     });
 

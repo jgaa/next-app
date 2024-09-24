@@ -127,6 +127,8 @@ message Node {
     Kind kind = 6;
     string descr = 7;
     int64 version = 8; // Set by the server, handled by version trigger in the db
+    bool deleted = 9;
+    int64 updated = 10; // time_t as ms
 }
 
 message WorkEvent {
@@ -246,6 +248,9 @@ message NodeUpdate {
     NodeTree tree = 3;
 }
 
+message Nodes {
+    repeated Node nodes = 1; // Nodes in random order
+}
 
 enum ActionStatus {
     ACTIVE  = 0;
@@ -734,6 +739,7 @@ message Status {
         ListOfDays days = 29; // For day colors
         DayColorDefinitions dayColorDefinitions = 30;
         CompleteDay day = 31; // for day color
+        Nodes nodes = 32;
     }
 }
 
@@ -792,4 +798,5 @@ service Nextapp {
 
     rpc GetNewDays(GetNewReq) returns (stream Status) {}
     rpc GetNewDayColorDefinitions(GetNewReq) returns (Status) {}
+    rpc GetNewNodes(GetNewReq) returns (stream Status) {}
 }

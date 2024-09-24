@@ -172,7 +172,20 @@ bool DbStore::updateSchema(uint version)
             PRIMARY KEY("id")
         ))",
 
-        "CREATE INDEX IF NOT EXISTS day_updated_ix ON day(updated)"
+        "CREATE INDEX IF NOT EXISTS day_colors_updated_ix ON day_colors(updated)",
+
+        // The nodes will be cached in memory, so no need to store much data for indexing
+        R"(CREATE TABLE IF NOT EXISTS "node" (
+            "id" VARCHAR(32) NOT NULL,
+            "parent" VARCHAR(32),
+            "active" BOOLEAN NOT NULL,
+            "updated" INTEGER NOT NULL,
+            "data" BLOB NOT NULL,
+            PRIMARY KEY("id")
+        ))",
+
+        "CREATE INDEX IF NOT EXISTS node_updated_ix ON node(updated)"
+
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({

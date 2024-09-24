@@ -6,17 +6,34 @@
 #include <QUuid>
 #include <QAbstractItemModel>
 
+#include "qcorotask.h"
 #include "nextapp.qpb.h"
 
+// Singleton, handled in main.cpp
 class MainTreeModel : public QAbstractItemModel
 {
     Q_OBJECT
     QML_ELEMENT
-//    QML_SINGLETON
     Q_PROPERTY(QModelIndex useRoot READ useRoot NOTIFY useRootChanged)
+
+    // Used by multiple qml components
     Q_PROPERTY(QString selected READ selected WRITE setSelected NOTIFY selectedChanged)
+    Q_PROPERTY(State state READ state NOTIFY stateChanged)
+    Q_PROPERTY(bool valid READ valid NOTIFY stateChanged)
 
 public:
+    enum class State {
+        LOCAL,
+        SYNCHING,
+        SYNCHED,
+        LOADING,
+        VALID,
+        ERROR
+    };
+
+    Q_ENUM(State)
+
+
     struct ResetScope {
     public:
         ResetScope(MainTreeModel& model);
@@ -103,9 +120,18 @@ public:
     void setSelected(const QString& selected);
     QString selected() const;
 
+    State state() const noexcept {
+        return state_;
+    }
+
+    bool valid() const noexcept {
+        return state_ == State::VALID;
+    }
+
 signals:
     void useRootChanged();
     void selectedChanged();
+    void stateChanged();
 
 public:
     QString nodeName(const QModelIndex& index) const;
@@ -180,6 +206,11 @@ private:
     void pocessUpdate(const nextapp::pb::Update& update);
     TreeNode *lookupTreeNode(const QUuid& uuid, bool emptyIsRoot = true);
     bool isDescent(const QUuid &uuid, const QUuid &toParentUuid);
+    QCoro::Task<void> onOnline();
+    QCoro::Task<bool> synchFromServer();
+    QCoro::Task<bool> loadFromCache();
+    QCoro::Task<bool> save(const nextapp::pb::Node& node);
+    void setState(State state) noexcept;
 
     TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child);
     TreeNode root_;
@@ -188,4 +219,5 @@ private:
     bool has_initial_tree_ = false;
     QString selected_;
     static MainTreeModel *instance_;
+    State state_{State::LOCAL};
 };

@@ -172,6 +172,7 @@ public:
         ::grpc::ServerUnaryReactor *GetOtpForNewDevice(::grpc::CallbackServerContext *ctx, const pb::OtpRequest *req, pb::Status *reply) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewDays(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
         ::grpc::ServerUnaryReactor *GetNewDayColorDefinitions(::grpc::CallbackServerContext *, const pb::GetNewReq *, pb::Status *) override;
+        ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewNodes(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
@@ -310,7 +311,7 @@ done:
     boost::asio::awaitable<void> validateAction(const std::string &actionId, const std::string &userUuid, std::string *name = {});
     boost::asio::awaitable<void> validateAction(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string &actionId, const std::string &userUuid, std::string *name = {});
     boost::asio::awaitable<void> validateTimeBlock(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string &timeBlockId, const std::string &userUuid);
-    boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid);
+    boost::asio::awaitable<nextapp::pb::Node> fetcNode(const std::string& uuid, const std::string& userUuid, RequestCtx& rctx);
     boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, RequestCtx& rctx);
     boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, RequestCtx& rctx, bool touch = true);
     boost::asio::awaitable<boost::mysql::results> insertWork(const pb::WorkSession& work, RequestCtx& rctx, bool addStartEvent = true);

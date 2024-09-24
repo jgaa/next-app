@@ -241,8 +241,6 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 ::grpc::ServerWriteReactor< ::nextapp::pb::Status>*
 GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req)
 {
-    LOG_DEBUG << "GetNewDays called";
-
     return writeStreamHandler(ctx, req,
         [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = rctx.uctx;
