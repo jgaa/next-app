@@ -247,7 +247,7 @@ struct ToNode {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
-            const auto node = co_await owner_.fetcNode(req->uuid(), cuser, rctx);
+            auto node = co_await owner_.fetcNode(req->uuid(), cuser, rctx);
 
             auto res = co_await owner_.server().db().exec(format("DELETE from node where id=? and user=?", ToNode::selectCols),
                                                           req->uuid(), cuser);
@@ -255,6 +255,8 @@ struct ToNode {
             if (!res.has_value() || res.affected_rows() == 0) {
                 throw server_err{pb::Error::NOT_FOUND, format("Node {} not found", req->uuid())};
             }
+
+            node.set_deleted(true);
 
             reply->set_error(pb::Error::OK);
             *reply->mutable_node() = node;

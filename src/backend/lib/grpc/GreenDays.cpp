@@ -255,7 +255,7 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             co_await  rctx.dbh->start_exec(
                 R"(SELECT deleted, updated, date, color, notes, report FROM day
                    WHERE user=? AND updated > ?)",
-                uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz()));
+                uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz(), true));
 
             enum Cols {
                 DELETED, UPDATED, DATE, COLOR, NOTES, REPORT

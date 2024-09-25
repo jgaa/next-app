@@ -27,6 +27,7 @@ public:
         SYNCHING,
         SYNCHED,
         LOADING,
+        APPLYING_UPDATES,
         VALID,
         ERROR
     };
@@ -177,8 +178,6 @@ public:
     void dump();
 
 public slots:    
-    // Deletes any existing nodes and copys the tree from 'tree'
-    void setAllNodes(const nextapp::pb::NodeTree& tree);
 
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
 
@@ -203,7 +202,7 @@ private:
     void insertNode(TreeNode::node_list_t& list, std::shared_ptr<TreeNode>& tn, int row);
     QModelIndex getIndex(TreeNode *node);
     int getInsertRow(const TreeNode *parent, const nextapp::pb::Node& node);
-    void pocessUpdate(const nextapp::pb::Update& update);
+    QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update);
     TreeNode *lookupTreeNode(const QUuid& uuid, bool emptyIsRoot = true);
     bool isDescent(const QUuid &uuid, const QUuid &toParentUuid);
     QCoro::Task<void> onOnline();

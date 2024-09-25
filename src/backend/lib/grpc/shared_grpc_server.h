@@ -53,7 +53,7 @@ std::string prefixNames(const std::string_view cols, const std::string_view pref
 ::nextapp::pb::Date toDate(const time_t when, const chrono::time_zone& tz);
 std::chrono::year_month_day toYearMonthDay(const time_t when, const chrono::time_zone& tz);
 int64_t toMsTimestamp(const boost::mysql::datetime& from, const chrono::time_zone& tz);
-std::string toMsDateTime(uint64_t msSinceEpoc, const chrono::time_zone& tz);
+std::string toMsDateTime(uint64_t msSinceEpoc, const chrono::time_zone& tz, bool roundUp = true);
 
 // For TIMESTAMP
 std::time_t toTimeT(const boost::mysql::datetime& from, const chrono::time_zone& tz);

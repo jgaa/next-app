@@ -263,12 +263,14 @@ int64_t toMsTimestamp(const boost::mysql::datetime& from, const std::chrono::tim
     return {};
 }
 
-string toMsDateTime(uint64_t msSinceEpoch, const chrono::time_zone& tz)
+// Internally the timestamps are in nanoseconds.
+// If we query the date like > msSinceEpoch, we need to round up to the next millisecond.
+string toMsDateTime(uint64_t msSinceEpoch, const chrono::time_zone& tz, bool roundUp)
 {
     using namespace std::chrono;
 
     // Convert milliseconds since epoch to a system_clock time_point
-    auto tp = time_point<system_clock, milliseconds>{milliseconds{msSinceEpoch}};
+    auto tp = time_point<system_clock, milliseconds>{milliseconds{msSinceEpoch + (roundUp ? 1 : 0)}};
 
     // Create a zoned_time in the specified time zone
     auto zoned = zoned_time{&tz, tp};

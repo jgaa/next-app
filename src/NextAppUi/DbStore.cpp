@@ -176,12 +176,12 @@ bool DbStore::updateSchema(uint version)
 
         // The nodes will be cached in memory, so no need to store much data for indexing
         R"(CREATE TABLE IF NOT EXISTS "node" (
-            "id" VARCHAR(32) NOT NULL,
+            "uuid" VARCHAR(32) NOT NULL,
             "parent" VARCHAR(32),
             "active" BOOLEAN NOT NULL,
             "updated" INTEGER NOT NULL,
             "data" BLOB NOT NULL,
-            PRIMARY KEY("id")
+            PRIMARY KEY("uuid")
         ))",
 
         "CREATE INDEX IF NOT EXISTS node_updated_ix ON node(updated)"
@@ -207,6 +207,13 @@ bool DbStore::updateSchema(uint version)
         }
     }
 
+    {
+        QSqlQuery q{*db_};
+        if (!q.exec(QString::asprintf("UPDATE nextapp SET version = %d WHERE id=1", latest_version))) {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -227,9 +234,18 @@ uint DbStore::getDbVersion()
             if (!query.exec()) {
                 LOG_ERROR << "Cannot execute query: db=" << query.lastError().databaseText() << ", driver=" << query.lastError().driverText();
             } else {
-                const auto version = query.value(0).toUInt();
-                LOG_TRACE_N << "Existing database version: " << version;
-                return version;
+                if (query.next()) {
+                    bool ok = false;
+                    const auto version = query.value(0).toInt(&ok);
+                    if (ok) {
+                        LOG_TRACE_N << "Existing database version: " << version;
+                        return version;
+                    } else {
+                        LOG_WARN_N << "Failed to get version from the database";
+                    }
+                } else {
+                    LOG_WARN_N << "No rows returned when querying about version";
+                }
             }
         } else {
             LOG_DEBUG << "Table nextapp does not exist";

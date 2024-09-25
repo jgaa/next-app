@@ -105,11 +105,6 @@ MainTreeModel::MainTreeModel(QObject *parent)
 {
     instance_ = this;
 
-    // connect(std::addressof(ServerComm::instance()),
-    //         &ServerComm::receivedNodeTree,
-    //         this,
-    //         &MainTreeModel::setAllNodes);
-
     connect(std::addressof(ServerComm::instance()),
             &ServerComm::onUpdate,
             this,
@@ -387,14 +382,16 @@ int MainTreeModel::getInsertRow(const TreeNode *parent, const nextapp::pb::Node 
     return row;
 }
 
-void MainTreeModel::pocessUpdate(const nextapp::pb::Update &update)
+// We are a coroutine and may outlive the caller. So we use a smart pointer for the update,
+// not just a reference to the data.
+QCoro::Task<void> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
 {
     using nextapp::pb::Update;
     using nextapp::pb::Node;
 
 
-    assert(update.hasNode());
-    const Node& node = update.node();
+    assert(update->hasNode());
+    const Node& node = update->node();
 
     TreeNode* parent = &root_;
     if (!node.parent().isEmpty()) {
@@ -404,12 +401,12 @@ void MainTreeModel::pocessUpdate(const nextapp::pb::Update &update)
 
     TreeNode* current = lookupTreeNode(QUuid{node.uuid()});
 
-    const auto op = update.op();
+    const auto op = update->op();
 
     if (op != Update::Operation::DELETED) {
         if (current && current->node().version() > node.version()) {
             LOG_DEBUG << "Received updated/added/moved node " << node.uuid() <<" with version less than the existing node. Ignoring.";
-            return;
+            co_return;
         }
     }
 
@@ -418,6 +415,7 @@ void MainTreeModel::pocessUpdate(const nextapp::pb::Update &update)
 added:
         assert(current == nullptr);
         assert(parent);
+        co_await save(node);
         addNode(parent, node);
         break;
     case Update::Operation::UPDATED:
@@ -425,6 +423,7 @@ added:
         {
             auto cix = getIndex(current);
             current->node() = node;
+            co_await save(node);
             emit dataChanged(cix, cix);
         }
         break;
@@ -433,6 +432,8 @@ added:
             assert(parent);
             assert(parent != current->parent());
             moveNode(parent, current, node);
+            co_await save(parent->node());
+            co_await save(node);
         } else {
             // Add it!
             LOG_WARN << "Failed to locate moved node " << current->node().uuid() << ". Will add it.";
@@ -443,7 +444,7 @@ added:
         if (current) {
             if (current == &root_) {
                 LOG_WARN << "Cannot delete root node!";
-                return;
+                co_return;
             }
             assert(parent);
             auto cix = getIndex(current);
@@ -455,6 +456,8 @@ added:
                     setSelected({});
                 }
             }
+
+            co_await save(node);
 
             beginRemoveRows(parent_ix, cix.row(), cix.row());
             parent->children().removeAt(cix.row());
@@ -500,6 +503,7 @@ bool MainTreeModel::isDescent(const QUuid &nodeUuid, const QUuid &descentOf)
 QCoro::Task<void> MainTreeModel::onOnline()
 {
     if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
+        ResetScope scope{*this};
         if (state_ == State::SYNCHING) {
             LOG_DEBUG_N << "We are already synching.";
             co_return;
@@ -507,6 +511,7 @@ QCoro::Task<void> MainTreeModel::onOnline()
 
         LOG_DEBUG_N << "Synching nodes from server";
         setState(State::SYNCHING);
+        clear();
 
         if (!co_await synchFromServer()) {
             LOG_WARN << "Failed to synch from server.";
@@ -525,6 +530,16 @@ QCoro::Task<void> MainTreeModel::onOnline()
             LOG_WARN << "Failed to load from cache.";
             setState(State::ERROR);
             co_return;
+        }
+
+        setState(State::APPLYING_UPDATES);
+
+        while (!pending_updates_.empty()) {
+            auto pending = std::move(pending_updates_);
+            pending_updates_.clear();
+            for(auto& update : pending) {
+                co_await pocessUpdate(update);
+            }
         }
 
         setState(State::VALID);
@@ -553,9 +568,9 @@ QCoro::Task<bool> MainTreeModel::synchFromServer()
             auto &u = update.value();
             LOG_TRACE_N << "next has value";
             if (u.error() == nextapp::pb::ErrorGadget::OK) {
-                LOG_TRACE_N << "Got OK from server";
+                LOG_TRACE_N << "Got OK from server: " << u.message();
                 if (u.hasNodes()) {
-                    LOG_TRACE_N << "Got days from server. Count=" << u.days().days().size();
+                    LOG_TRACE_N << "Got days from server. Count=" << u.nodes().nodes().size();
                     for(const auto& item : u.nodes().nodes()) {
                         co_await save(item);
                     }
@@ -572,11 +587,54 @@ QCoro::Task<bool> MainTreeModel::synchFromServer()
         }
     }
 
+
     co_return true;
 }
 
 QCoro::Task<bool> MainTreeModel::loadFromCache()
 {
+    auto& db = NextAppCore::instance()->db();
+
+    QString query = R"(WITH RECURSIVE node_tree AS (
+        -- Select the root nodes (those without a parent)
+        SELECT uuid, parent, active, updated, data
+        FROM node
+        WHERE parent IS NULL
+
+        UNION ALL
+
+        -- Recursively select the child nodes
+        SELECT n.uuid, n.parent, n.active, n.updated, n.data
+        FROM node n
+        INNER JOIN node_tree nt ON n.parent = nt.uuid
+    )
+    SELECT uuid, data FROM node_tree)";
+
+    enum Cols {
+        UUID = 0,
+        DATA
+    };
+
+    auto rval = co_await db.query(query);
+    if (rval) {
+        for (const auto& row : rval.value()) {
+            QProtobufSerializer serializer;
+            nextapp::pb::Node node;
+            const auto& data = row.at(DATA).toByteArray();
+            node.deserialize(&serializer, data);
+            assert(node.uuid() == row.at(UUID).toString());
+
+            // The query is supposed to return parents first.
+            auto parent = lookupTreeNode(QUuid{node.parent()});
+            assert(parent);
+            if (parent) {
+                addNode(parent, node);
+            } else {
+                LOG_WARN_N << "Missing parent for tree node: " << node.uuid() << " " << node.name();
+            }
+        }
+    }
+
     co_return true;
 }
 
@@ -643,27 +701,13 @@ MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &
     return root_.children();
 }
 
-void MainTreeModel::setAllNodes(const nextapp::pb::NodeTree& tree)
-{
-    {
-        ResetScope scope{*this};
-        clear();
-        copyTreeBranch(root_.children(), tree.root().children(), uuid_index_, &root_);
-    }
-
-    // Handle corner-case when updates are arriving before we get the initial tree
-    has_initial_tree_ = true;
-    std::ranges::for_each(pending_updates_, [this](const auto& update) {
-        pocessUpdate(*update);
-    });
-}
-
 void MainTreeModel::onUpdate(const std::shared_ptr<nextapp::pb::Update>& update)
 {
     assert(update);
     if (update->hasNode()) {
-        if (has_initial_tree_) {
-            return pocessUpdate(*update);
+        if (valid()) {
+            pocessUpdate(update);
+            return;
         }
 
         pending_updates_.emplace_back(update);
