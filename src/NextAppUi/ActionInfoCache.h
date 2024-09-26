@@ -17,16 +17,11 @@ class ActionInfoPrx : public QObject {
     QML_ELEMENT
 
     Q_PROPERTY(nextapp::pb::ActionInfo *action READ getAction NOTIFY actionChanged)
-    //Q_PROPERTY(bool valid READ online() NOTIFY validChanged)
+
 public:
     ActionInfoPrx(QUuid actionUuid, ActionInfoCache *model);
-    //ActionInfoPrx();
 
     const nextapp::pb::ActionInfo* getActionInfo(const QUuid &uuid);
-
-    // bool getValid() const noexcept {
-    //     return valid_;
-    // }
 
     void setAction(const std::shared_ptr<nextapp::pb::ActionInfo>& action) {
         action_ = action;

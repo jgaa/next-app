@@ -9,8 +9,11 @@
 #include "qcorotask.h"
 #include "nextapp.qpb.h"
 
+#include "ServerSynchedCahce.h"
+
 // Singleton, handled in main.cpp
 class MainTreeModel : public QAbstractItemModel
+    , public ServerSynchedCahce<nextapp::pb::Node, MainTreeModel>
 {
     Q_OBJECT
     QML_ELEMENT
@@ -22,15 +25,6 @@ class MainTreeModel : public QAbstractItemModel
     Q_PROPERTY(bool valid READ valid NOTIFY stateChanged)
 
 public:
-    enum class State {
-        LOCAL,
-        SYNCHING,
-        SYNCHED,
-        LOADING,
-        APPLYING_UPDATES,
-        VALID,
-        ERROR
-    };
 
     Q_ENUM(State)
 
@@ -125,9 +119,9 @@ public:
         return state_;
     }
 
-    bool valid() const noexcept {
-        return state_ == State::VALID;
-    }
+    // bool valid() const noexcept {
+    //     return state_ == State::VALID;
+    // }
 
 signals:
     void useRootChanged();
@@ -164,13 +158,13 @@ public:
     Q_INVOKABLE void moveNode(const QString& uuid, const QString& toParentUuid);
     Q_INVOKABLE bool canMove(const QString& uuid, const QString& toParentUuid);
 
-    QModelIndex index(int row, int column, const QModelIndex &parent) const;
-    QModelIndex parent(const QModelIndex &child) const;
-    int rowCount(const QModelIndex &parent) const;
-    int columnCount(const QModelIndex &parent) const;
-    QVariant data(const QModelIndex &index, int role) const;
-    [[nodiscard]] bool hasChildren(const QModelIndex &parent) const;
-    [[nodiscard]] QHash<int, QByteArray> roleNames() const {
+    QModelIndex index(int row, int column, const QModelIndex &parent) const override;
+    QModelIndex parent(const QModelIndex &child) const override;
+    int rowCount(const QModelIndex &parent) const override;
+    int columnCount(const QModelIndex &parent) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    [[nodiscard]] bool hasChildren(const QModelIndex &parent) const override;
+    [[nodiscard]] QHash<int, QByteArray> roleNames() const  override{
         return TreeNode::roleNames();
     }
 
@@ -179,7 +173,7 @@ public:
 
 public slots:    
 
-    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
 
     void clear();
 
@@ -196,20 +190,36 @@ public slots:
     static nextapp::pb::Node::Kind toNodeKind(const QString& name);
     static QString toString(const nextapp::pb::Node::Kind& kind);
 
+    // ServerSynchedCahce overrides
+    QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
+    QCoro::Task<bool> save(const nextapp::pb::Node& node) override;
+    QCoro::Task<bool> loadFromCache() override;
+    bool hasItems(const nextapp::pb::Status& status) const noexcept override {
+        return status.hasNodes();
+    }
+    bool isRelevant(const nextapp::pb::Update& update) const noexcept override {
+        return update.hasNode();
+    }
+    nextapp::pb::NodeRepeated getItems(const nextapp::pb::Status& status) override{
+        return status.nodes().nodes();
+    }
+    std::string_view itemName() const noexcept override {
+        return "node";
+    }
+    std::shared_ptr<GrpcIncomingStream> openServerStream(nextapp::pb::GetNewReq req) override;
+
+
 private:
     void addNode(TreeNode *parent, const nextapp::pb::Node& node);
     void moveNode(TreeNode *parent, TreeNode *current, const nextapp::pb::Node& node);
     void insertNode(TreeNode::node_list_t& list, std::shared_ptr<TreeNode>& tn, int row);
     QModelIndex getIndex(TreeNode *node);
     int getInsertRow(const TreeNode *parent, const nextapp::pb::Node& node);
-    QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update);
     TreeNode *lookupTreeNode(const QUuid& uuid, bool emptyIsRoot = true);
     bool isDescent(const QUuid &uuid, const QUuid &toParentUuid);
     QCoro::Task<void> onOnline();
-    QCoro::Task<bool> synchFromServer();
-    QCoro::Task<bool> loadFromCache();
-    QCoro::Task<bool> save(const nextapp::pb::Node& node);
-    void setState(State state) noexcept;
+    //QCoro::Task<bool> synchFromServer();
+    //void setState(State state) noexcept;
 
     TreeNode::node_list_t& getListFromChild(MainTreeModel::TreeNode& child);
     TreeNode root_;

@@ -742,6 +742,33 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             SET NEW.updated = UTC_TIMESTAMP(6);
           END)",
 
+        "ALTER TABLE action ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
+        "ALTER TABLE action ADD COLUMN IF NOT EXISTS deleted SMALLINT NOT NULL DEFAULT 0",
+        "CREATE INDEX action_ix_updated ON action (user, updated)",
+        "UPDATE action SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
+        "UPDATE action SET deleted = 0 WHERE deleted IS NULL",
+        R"(CREATE TRIGGER tr_before_update_action
+          BEFORE UPDATE ON action
+          FOR EACH ROW
+          BEGIN
+            SET NEW.version = OLD.version + 1;
+            SET NEW.updated = UTC_TIMESTAMP(6);
+          END)",
+
+        "ALTER TABLE action_category ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
+        "ALTER TABLE action_category ADD COLUMN IF NOT EXISTS deleted SMALLINT NOT NULL DEFAULT 0",
+        "CREATE INDEX action_category_ix_updated ON action_category (user, updated)",
+        "UPDATE action_category SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
+        "UPDATE action_category SET deleted = 0 WHERE deleted IS NULL",
+        "DROP TRIGGER IF EXISTS tr_before_update_action_category",
+        R"(CREATE TRIGGER tr_before_update_action_category
+          BEFORE UPDATE ON action_category
+          FOR EACH ROW
+          BEGIN
+            SET NEW.version = OLD.version + 1;
+            SET NEW.updated = UTC_TIMESTAMP(6);
+          END)",
+
         "SET FOREIGN_KEY_CHECKS=1"
     });
 

@@ -293,6 +293,7 @@ qt_add_qml_module(${PROJECT_NAME}
         OtpModel.h
         ServerComm.cpp
         ServerComm.h
+        ServerSynchedCahce.h
         TimeBoxActionsModel.cpp
         TimeBoxActionsModel.h
         WeeklyWorkReportModel.cpp

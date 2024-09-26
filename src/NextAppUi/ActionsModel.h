@@ -37,16 +37,6 @@ private:
     nextapp::pb::Action action_;
 };
 
-// class SimpleListModel : public QStringListModel {
-//     Q_OBJECT
-//     QML_ELEMENT
-// public:
-//     SimpleListModel(QObject *parent = {})
-//         : QStringListModel{parent}
-//     {
-//     }
-// };
-
 class ActionsModel : public QAbstractListModel
 {
     Q_OBJECT

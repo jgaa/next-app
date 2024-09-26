@@ -105,10 +105,10 @@ MainTreeModel::MainTreeModel(QObject *parent)
 {
     instance_ = this;
 
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::onUpdate,
-            this,
-            &MainTreeModel::onUpdate);
+    connect(std::addressof(ServerComm::instance()), &ServerComm::onUpdate,
+            this, [this] (const std::shared_ptr<nextapp::pb::Update>& update) {
+                onUpdate(update);
+            });
 
     connect(std::addressof(ServerComm::instance()), &ServerComm::connectedChanged,
             this, &MainTreeModel::onOnline);
@@ -503,92 +503,8 @@ bool MainTreeModel::isDescent(const QUuid &nodeUuid, const QUuid &descentOf)
 QCoro::Task<void> MainTreeModel::onOnline()
 {
     if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
-        ResetScope scope{*this};
-        if (state_ == State::SYNCHING) {
-            LOG_DEBUG_N << "We are already synching.";
-            co_return;
-        }
-
-        LOG_DEBUG_N << "Synching nodes from server";
-        setState(State::SYNCHING);
-        clear();
-
-        if (!co_await synchFromServer()) {
-            LOG_WARN << "Failed to synch from server.";
-            setState(State::ERROR);
-            co_return;
-        }
-
-        if (state_ != State::SYNCHING) {
-            LOG_WARN << "Unexpected state (not SYNCHING): " << static_cast<int>(state_);
-            co_return;
-        }
-
-        setState(State::LOADING);
-
-        if (!co_await loadFromCache()) {
-            LOG_WARN << "Failed to load from cache.";
-            setState(State::ERROR);
-            co_return;
-        }
-
-        setState(State::APPLYING_UPDATES);
-
-        while (!pending_updates_.empty()) {
-            auto pending = std::move(pending_updates_);
-            pending_updates_.clear();
-            for(auto& update : pending) {
-                co_await pocessUpdate(update);
-            }
-        }
-
-        setState(State::VALID);
+        co_await synch();
     }
-}
-
-QCoro::Task<bool> MainTreeModel::synchFromServer()
-{
-    // Get a stream of updates from servercomm.
-    nextapp::pb::GetNewReq req;
-    auto& db = NextAppCore::instance()->db();
-    const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM node");
-
-    if (last_updated) {
-        req.setSince(last_updated.value());
-    }
-
-    auto stream = ServerComm::instance().synchNodes(req);
-
-    bool looks_ok = false;
-    LOG_TRACE_N << "Entering message-loop";
-    while (auto update = co_await stream->next<nextapp::pb::Status>()) {
-
-        LOG_TRACE_N << "next returned something";
-        if (update.has_value()) {
-            auto &u = update.value();
-            LOG_TRACE_N << "next has value";
-            if (u.error() == nextapp::pb::ErrorGadget::OK) {
-                LOG_TRACE_N << "Got OK from server: " << u.message();
-                if (u.hasNodes()) {
-                    LOG_TRACE_N << "Got days from server. Count=" << u.nodes().nodes().size();
-                    for(const auto& item : u.nodes().nodes()) {
-                        co_await save(item);
-                    }
-                }
-            } else {
-                LOG_DEBUG_N << "Got error from server. err=" << u.error()
-                << " msg=" << u.message();
-                co_return false;
-            }
-        } else {
-            LOG_TRACE_N << "Stream returned nothing. Done. err="
-                        << update.error().err_code();
-            co_return false;
-        }
-    }
-
-
-    co_return true;
 }
 
 QCoro::Task<bool> MainTreeModel::loadFromCache()
@@ -638,6 +554,10 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
     co_return true;
 }
 
+std::shared_ptr<GrpcIncomingStream> MainTreeModel::openServerStream(nextapp::pb::GetNewReq req) {
+    return ServerComm::instance().synchNodes(req);
+}
+
 QCoro::Task<bool> MainTreeModel::save(const nextapp::pb::Node &node)
 {
     auto& db = NextAppCore::instance()->db();
@@ -682,15 +602,6 @@ QCoro::Task<bool> MainTreeModel::save(const nextapp::pb::Node &node)
     co_return true;
 }
 
-void MainTreeModel::setState(State state) noexcept
-{
-    if (state != state_) {
-        LOG_TRACE_N << "State changed from " << static_cast<int>(state_) << " to " << static_cast<int>(state);
-        state_ = state;
-        emit stateChanged();
-    }
-}
-
 MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &child)
 {
 
@@ -699,19 +610,6 @@ MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &
     }
 
     return root_.children();
-}
-
-void MainTreeModel::onUpdate(const std::shared_ptr<nextapp::pb::Update>& update)
-{
-    assert(update);
-    if (update->hasNode()) {
-        if (valid()) {
-            pocessUpdate(update);
-            return;
-        }
-
-        pending_updates_.emplace_back(update);
-    }
 }
 
 MainTreeModel::TreeNode::TreeNode(nextapp::pb::Node node, TreeNode *parent)
