@@ -710,6 +710,11 @@ std::shared_ptr<GrpcIncomingStream> ServerComm::synchNodes(const nextapp::pb::Ge
     return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewNodes);
 }
 
+std::shared_ptr<GrpcIncomingStream> ServerComm::synchActions(const nextapp::pb::GetNewReq &req)
+{
+    return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewActions);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;

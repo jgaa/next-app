@@ -27,13 +27,14 @@ public:
 
     // Interface
     virtual QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) = 0;
-    virtual QCoro::Task<bool> save(const nextapp::pb::Node& node) = 0;
+    virtual QCoro::Task<bool> save(const QProtobufMessage& item) = 0;
     virtual QCoro::Task<bool> loadFromCache() = 0;
     virtual bool hasItems(const nextapp::pb::Status& status) const noexcept = 0;
     virtual QList<T> getItems(const nextapp::pb::Status& status) = 0;
     virtual bool isRelevant(const nextapp::pb::Update& update) const noexcept = 0;
     virtual std::string_view itemName() const noexcept = 0;
     virtual std::shared_ptr<GrpcIncomingStream> openServerStream(nextapp::pb::GetNewReq req) = 0;
+    virtual void clear() = 0;
 
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update) {
         assert(update);
@@ -54,6 +55,7 @@ public:
         }
 
         setState(State::SYNCHING);
+        clear();
         if (co_await synchFromServer()) {
             setState(State::LOADING);
             if (co_await loadFromCache()) {

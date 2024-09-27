@@ -396,7 +396,7 @@ GrpcServer::NextappImpl::GetNewNodes(::grpc::CallbackServerContext *ctx, const p
 
             co_await flush();
 
-            LOG_DEBUG_N << "Sent " << total_rows << " days to client.";
+            LOG_DEBUG_N << "Sent " << total_rows << " nodes to client.";
             co_return;
 
     }, __func__);

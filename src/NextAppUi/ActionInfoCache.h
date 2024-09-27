@@ -10,9 +10,12 @@
 
 #include "nextapp.qpb.h"
 
+#include "ServerSynchedCahce.h"
+
 class ActionInfoCache;
 
-class ActionInfoPrx : public QObject {
+class ActionInfoPrx : public QObject
+{
     Q_OBJECT
     QML_ELEMENT
 
@@ -53,9 +56,13 @@ private:
 
 
 class ActionInfoCache : public QObject
+    , public ServerSynchedCahce<nextapp::pb::Action, ActionInfoCache>
 {
     Q_OBJECT
     QML_ELEMENT
+
+    Q_PROPERTY(bool valid READ valid NOTIFY stateChanged)
+
 public:
     ActionInfoCache(QObject *parent = nullptr);
 
@@ -70,29 +77,50 @@ public:
     std::shared_ptr<nextapp::pb::ActionInfo> get(const QString &action_uuid, bool fetch = false);
 
     bool online() const noexcept {
-        return online_;
+        return state() == State::VALID;
     }
-
-    void setOnline(bool online);
 
     void actionWasAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
 
 signals:
-    void onlineChanged();
     void actionDeleted(const QUuid &uuid);
     void actionReceived(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
     void actionChanged(const QUuid &uuid);
+    void stateChanged();
+
+public:
+    // ServerSynchedCahce overrides
+    QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
+    QCoro::Task<bool> save(const QProtobufMessage& item) override;
+    QCoro::Task<bool> loadFromCache() override;
+    QCoro::Task<bool> loadSomeFromCache(std::optional<QString> id);
+    bool hasItems(const nextapp::pb::Status& status) const noexcept override {
+        return status.hasCompleteActions();
+    }
+    bool isRelevant(const nextapp::pb::Update& update) const noexcept override {
+        return update.hasAction();
+    }
+    QList<nextapp::pb::Action> getItems(const nextapp::pb::Status& status) override{
+        return status.completeActions().actions();
+    }
+    std::string_view itemName() const noexcept override {
+        return "action";
+    }
+    std::shared_ptr<GrpcIncomingStream> openServerStream(nextapp::pb::GetNewReq req) override;
+    void clear() override;
+
 
 private:
-    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
-    void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
-    void receivedAction(const nextapp::pb::Status& status);
+    //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
+    //void receivedAction(const nextapp::pb::Status& status);
 
     std::shared_ptr<nextapp::pb::ActionInfo>& get_(const QString &action_uuid);
     std::shared_ptr<nextapp::pb::ActionInfo>& get_(const QUuid &action_uuid);
-    void fetch(const QUuid &action_uuid);
 
-    bool online_;
+    // Fetches from db and adds to cache. Returns the item from the cache.
+    QCoro::Task<void> fetchFromDb(QUuid action_uuid);
+
     static ActionInfoCache *instance_;
 
     /* The idea is to have two caches, one hot with all the items currently used,
@@ -101,5 +129,5 @@ private:
      * keep it syncronized with the server.
      */
     std::map<QUuid, std::shared_ptr<nextapp::pb::ActionInfo>> hot_cache_;
-    std::set<QUuid> pending_fetch_;
+    //std::set<QUuid> pending_fetch_;
 };

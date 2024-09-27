@@ -333,6 +333,10 @@ message Actions {
     optional ActionStatus activeFilter = 2; // informative
 }
 
+message CompleteActions {
+    repeated Action actions = 1;
+}
+
 // The complete information about an action
 message Action {
     enum RepeatKind {
@@ -744,6 +748,7 @@ message Status {
         DayColorDefinitions dayColorDefinitions = 30;
         CompleteDay day = 31; // for day color
         Nodes nodes = 32;
+        CompleteActions completeActions = 33;
     }
 }
 
@@ -803,4 +808,5 @@ service Nextapp {
     rpc GetNewDays(GetNewReq) returns (stream Status) {}
     rpc GetNewDayColorDefinitions(GetNewReq) returns (Status) {}
     rpc GetNewNodes(GetNewReq) returns (stream Status) {}
+    rpc GetNewActions(GetNewReq) returns (stream Status) {}
 }

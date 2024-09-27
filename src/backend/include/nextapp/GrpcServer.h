@@ -173,6 +173,7 @@ public:
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewDays(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
         ::grpc::ServerUnaryReactor *GetNewDayColorDefinitions(::grpc::CallbackServerContext *, const pb::GetNewReq *, pb::Status *) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewNodes(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
+        ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewActions(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback

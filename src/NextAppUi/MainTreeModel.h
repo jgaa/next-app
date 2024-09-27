@@ -167,15 +167,14 @@ public:
     [[nodiscard]] QHash<int, QByteArray> roleNames() const  override{
         return TreeNode::roleNames();
     }
+    void clear() override;
 
     // Print the tree to the log
     void dump();
 
-public slots:    
+public:
 
     //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
-
-    void clear();
 
     std::unique_ptr<ResetScope> resetScope() {
         return std::make_unique<ResetScope>(*this);
@@ -192,7 +191,7 @@ public slots:
 
     // ServerSynchedCahce overrides
     QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
-    QCoro::Task<bool> save(const nextapp::pb::Node& node) override;
+    QCoro::Task<bool> save(const QProtobufMessage& item) override;
     QCoro::Task<bool> loadFromCache() override;
     bool hasItems(const nextapp::pb::Status& status) const noexcept override {
         return status.hasNodes();

@@ -558,8 +558,10 @@ std::shared_ptr<GrpcIncomingStream> MainTreeModel::openServerStream(nextapp::pb:
     return ServerComm::instance().synchNodes(req);
 }
 
-QCoro::Task<bool> MainTreeModel::save(const nextapp::pb::Node &node)
+QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
 {
+    const auto& node = static_cast<const nextapp::pb::Node&>(item);
+
     auto& db = NextAppCore::instance()->db();
     QList<QVariant> params;
 

@@ -769,6 +769,13 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             SET NEW.updated = UTC_TIMESTAMP(6);
           END)",
 
+        R"(CREATE OR REPLACE TABLE deleted (
+            id UUID NOT NULL PRIMARY KEY,
+            user UUID NOT NULL,
+            kind enum ('action', 'action_category', 'node', 'day', 'day_colors') NOT NULL,
+            deleted TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
         "SET FOREIGN_KEY_CHECKS=1"
     });
 

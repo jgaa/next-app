@@ -32,7 +32,7 @@ struct ToActionCategory {
 struct ToAction {
     enum Cols {
         ID, NODE, USER, VERSION, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
-        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER // remaining
+        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER, UPDATED, DELETED // remaining
     };
 
     static auto coreSelectCols() {
@@ -58,6 +58,7 @@ struct ToAction {
         // Remove columns we don't use for insert
         auto cols = boost::replace_all_copy(string{allSelectCols()}, "created_date,", "");
         boost::replace_all(cols, "version,", "");
+        boost::replace_all(cols, "updated,", "");
         return cols;
     }
 
@@ -258,6 +259,8 @@ struct ToAction {
                 }
             }
             obj.set_repeatafter(row.at(REPEAT_AFTER).as_int64());
+            obj.set_deleted(row.at(DELETED).as_int64() == 1);
+            obj.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
         }
     }
 
@@ -272,7 +275,7 @@ private:
 
     static constexpr string_view ids_ = "id, node, user, version, ";
     static constexpr string_view core_ = "origin, priority, status, favorite, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, category";
-    static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after";
+    static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, updated, deleted";
 };
 
 enum class DoneChanged {
@@ -1381,5 +1384,73 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
 
         }, __func__);
 }
+
+::grpc::ServerWriteReactor<pb::Status> *
+GrpcServer::NextappImpl::GetNewActions(::grpc::CallbackServerContext *ctx, const pb::GetNewReq *req)
+{
+    return writeStreamHandler(ctx, req,
+    [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        const auto uctx = rctx.uctx;
+        const auto& cuser = uctx->userUuid();
+        const auto batch_size = owner_.server().config().options.stream_batch_size;
+
+        // Use batched reading from the database, so that we can get all the data, but
+        // without running out of memory.
+        // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
+        assert(rctx.dbh);
+        co_await  rctx.dbh->start_exec(
+          format("SELECT {} from action WHERE user=? AND updated > ?", ToAction::allSelectCols()),
+          uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz()));
+
+        nextapp::pb::Status reply;
+
+        auto *actions = reply.mutable_completeactions();
+        auto num_rows_in_batch = 0u;
+        auto total_rows = 0u;
+        auto batch_num = 0u;
+
+        auto flush = [&]() -> boost::asio::awaitable<void> {
+          reply.set_error(::nextapp::pb::Error::OK);
+          assert(reply.has_completeactions());
+          ++batch_num;
+          reply.set_message(format("Fetched {} actions in batch {}", reply.actions().actions_size(), batch_num));
+          co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
+          reply.Clear();
+          actions = reply.mutable_completeactions();
+          num_rows_in_batch = {};
+        };
+
+        bool read_more = true;
+        for(auto rows = co_await rctx.dbh->readSome()
+           ; read_more
+           ; rows = co_await rctx.dbh->readSome()) {
+
+          read_more = rctx.dbh->shouldReadMore(); // For next iteration
+
+          if (rows.empty()) {
+              LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+              break;
+          }
+
+          for(const auto& row : rows) {
+              auto * action = actions->add_actions();
+              ToAction::assign(row, *action, *rctx.uctx);
+              ++total_rows;
+              // Do we need to flush?
+              if (++num_rows_in_batch >= batch_size) {
+                  co_await flush();
+              }
+          }
+
+        } // read more from db loop
+
+        co_await flush();
+
+        LOG_DEBUG_N << "Sent " << total_rows << " actions to client.";
+        co_return;
+
+    }, __func__);
+}
+
 
 } // ns

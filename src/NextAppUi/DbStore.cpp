@@ -135,9 +135,11 @@ void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QProm
         }
         rval = std::move(rows);
     } else {
+        const auto args_count = params ? params->size() : 0u;
         LOG_ERROR_N << "Failed to execute: \"" << sql
                     << "\", db=" << query.lastError().databaseText()
-                    << ", driver=" << query.lastError().driverText();
+                    << ", driver=" << query.lastError().driverText()
+                    << ", params=#" << args_count;
         rval = tl::unexpected(QUERY_FAILED);
     }
 
@@ -184,8 +186,52 @@ bool DbStore::updateSchema(uint version)
             PRIMARY KEY("uuid")
         ))",
 
-        "CREATE INDEX IF NOT EXISTS node_updated_ix ON node(updated)"
+        "CREATE INDEX IF NOT EXISTS node_updated_ix ON node(updated)",
 
+        R"(CREATE TABLE IF NOT EXISTS "action_category" (
+            "id" VARCHAR(32) NOT NULL,
+            "updated" INTEGER NOT NULL,
+            "data" BLOB NOT NULL,
+            PRIMARY KEY("id")
+        ))",
+
+        "CREATE INDEX IF NOT EXISTS action_category_updated_ix ON action_category(updated)",
+
+        R"(CREATE TABLE IF NOT EXISTS "action" (
+            "id" VARCHAR(32) NOT NULL,
+            "node" VARCHAR(32) NOT NULL,
+            "origin" VARCHAR(32),
+            "category" VARCHAR(32),
+            "priority" INTEGER NOT NULL,
+            "status" INTEGER NOT NULL,
+            "favorite" BOOLEAN NOT NULL,
+            "name" VARCHAR(255) NOT NULL,
+            "descr" TEXT,
+            "created_date" DATETIME NOT NULL,
+            "due_kind" INTEGER NOT NULL,
+            "start_time" DATETIME,
+            "due_by_time" DATETIME,
+            "due_timezone" VARCHAR(32),
+            "completed_time" DATETIME,
+            "time_estimate" INTEGER,
+            "difficulty" INTEGER,
+            "repeat_kind" INTEGER,
+            "repeat_unit" INTEGER,
+            "repeat_when" INTEGER,
+            "repeat_after" INTEGER,
+            "kind" INTEGER NOT NULL,
+            "version" INTEGER NOT NULL,
+            "updated" INTEGER NOT NULL,
+            "deleted" BOOLEAN NOT NULL,
+            PRIMARY KEY("id")
+        ))",
+
+        "CREATE INDEX IF NOT EXISTS action_updated_ix ON action(updated)",
+        "CREATE INDEX IF NOT EXISTS action_node_ix ON action(node, status)",
+        "CREATE INDEX IF NOT EXISTS action_created_date_ix ON action(created_date, status)",
+        "CREATE INDEX IF NOT EXISTS action_start_time_ix ON action(start_time, status)",
+        "CREATE INDEX IF NOT EXISTS action_due_by_time_ix ON action(due_by_time, status)",
+        "CREATE INDEX IF NOT EXISTS action_completed_time_ix ON action(completed_time, status)",
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({
