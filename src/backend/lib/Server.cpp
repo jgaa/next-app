@@ -26,9 +26,34 @@ using jgaa::mysqlpool::tuple_awaitable;
 namespace nextapp {
 
 Server::Server(const Config& config)
-    : config_(config)
+    : config_(config), metrics_(*this)
 {
+// Macro to detect compiler and version
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#if defined(__clang__)
+#define COMPILER_NAME "Clang"
+#define COMPILER_VERSION TOSTRING(__clang_major__ ) "." TOSTRING(__clang_minor__) "." TOSTRING(__clang_patchlevel__)
+#elif defined(__GNUC__)
+#define COMPILER_NAME "GCC"
+#define COMPILER_VERSION TOSTRING(__GNUC__) "." TOSTRING(__GNUC_MINOR__) "." TOSTRING(__GNUC_PATCHLEVEL__)
+#elif defined(_MSC_VER)
+#define COMPILER_NAME "MSVC"
+#define COMPILER_VERSION TOSTRING(_MSC_VER)
+#else
+#define COMPILER_NAME "Unknown Compiler"
+#define COMPILER_VERSION "Unknown Version"
+#endif
 
+    metrics().metrics().AddInfo("nsblast_build", "Build information", {}, {
+        {"version", NEXTAPP_VERSION},
+        {"build_date", __DATE__},
+        {"build_time", __TIME__},
+        {"platform", BOOST_PLATFORM},
+        {"compiler", COMPILER_NAME},
+        {"compiler_version", COMPILER_VERSION},
+        {"branch", GIT_BRANCH}
+    });
 }
 
 Server::~Server()
@@ -67,7 +92,19 @@ void Server::run()
             }
         });
 
-    // TODO: Set up signal handler
+    if (config().disable_http) {
+        LOG_INFO << "HTTP server is disabled.";
+        return;
+    } else {
+        LOG_INFO << "Starting HTTP server.";
+        http_server_.emplace(config().http, [this](const yahat::AuthReq& ar) {
+            // TODO: Add actual authentication!
+            return yahat::Auth{"admin", true};
+        }, metrics_.metrics(), "nextapp "s + NEXTAPP_VERSION);
+
+        http_server_->start();
+    }
+
     LOG_DEBUG_N << "Main thread joins the IO thread pool...";
     runIoThread(0);
     LOG_DEBUG_N << "Main thread left the IO thread pool...";
@@ -240,6 +277,8 @@ void Server::initCtx(size_t numThreads)
 
 void Server::runIoThread(const size_t id)
 {
+    auto scope = metrics().asio_worker_threads().scoped();
+
     LOG_DEBUG_N << "starting io-thread " << id;
     while(!ctx_.stopped()) {
         try {

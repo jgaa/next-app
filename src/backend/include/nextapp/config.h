@@ -6,6 +6,7 @@
 #include "nextapp/util.h"
 #include "mysqlpool/conf.h"
 #include "nextapp/certs.h"
+#include "yahat/HttpServer.h"
 
 namespace nextapp {
 
@@ -46,6 +47,9 @@ struct Config {
     Config() {
         db.timer_interval_ms = 30000;
         db.max_connections = 64;
+
+        http.http_port = "9012";
+        http.http_endpoint = "localhost";
     }
 
     ServerConfig svr;
@@ -53,6 +57,9 @@ struct Config {
     GrpcConfig grpc;
     ServerOptions options;
     CaOptions ca;
+
+    yahat::HttpConfig http;
+    bool disable_http = false;
 };
 
 } // ns

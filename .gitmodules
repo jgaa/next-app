@@ -13,3 +13,6 @@
 [submodule "dependencies/expected"]
 	path = dependencies/expected
 	url = https://github.com/TartanLlama/expected.git
+[submodule "dependencies/yahat-cpp"]
+	path = dependencies/yahat-cpp
+	url = https://github.com/jgaa/yahat-cpp.git

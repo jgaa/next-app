@@ -11,6 +11,8 @@
 #include "nextapp/util.h"
 #include "nextapp/certs.h"
 #include "mysqlpool/mysqlpool.h"
+#include "yahat/HttpServer.h"
+#include "nextapp/Metrics.h"
 
 namespace nextapp {
 
@@ -72,6 +74,10 @@ public:
         return *ca_;
     }
 
+    auto& metrics() noexcept {
+        return metrics_;
+    }
+
     enum class WithMissingCert {
         FAIL,
         CREATE_SERVER
@@ -96,6 +102,7 @@ private:
     void createCa();
     void createServerCert();
 
+    Metrics metrics_;
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;
     std::vector <std::jthread> io_threads_;
@@ -105,6 +112,7 @@ private:
     std::atomic_bool done_{false};
     std::shared_ptr<grpc::GrpcServer> grpc_service_;
     std::optional<CertAuthority> ca_;
+    std::optional<yahat::HttpServer> http_server_;
     static Server *instance_;
 };
 

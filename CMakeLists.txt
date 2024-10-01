@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.1.0)
+    set(NEXTAPP_VERSION 0.1.1)
 endif()
 
 project(next-app
@@ -36,6 +36,17 @@ set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 
+# Get the current Git branch name
+execute_process(
+    COMMAND git rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+message(STATUS "Git branch: ${GIT_BRANCH}")
+add_compile_definitions(GIT_BRANCH="${GIT_BRANCH}")
+
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 if (NOT ANDROID)
@@ -53,6 +64,8 @@ include_directories(${NEXTAPP_ROOT}/dependencies/logfault/include)
 if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP)
     add_subdirectory(src/proto)
     add_subdirectory(src/common)
+    add_subdirectory(dependencies/yahat-cpp)
+    include_directories(${NEXTAPP_ROOT}/dependencies/yahat-cpp/include)
 endif()
 
 if (NEXTAPP_WITH_BACKEND)

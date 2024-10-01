@@ -5,7 +5,12 @@ find_package(Doxygen)
 
 set(NEXTAPP_BACKEND ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(NEXTAPP_LIBS = ${BOOST_LIBRARIES} stdc++fs ZLIB Threads::Threads)
+set(NEXTAPP_LIBS = ${BOOST_LIBRARIES} ZLIB Threads::Threads)
+
+set(YAHAT_ENABLE_METRICS ON)
+set(YAHAT_WITH_EXAMPLES OFF)
+set(YAHAT_WITH_TESTS OFF)
+set(USE_LOGFAULT ON)
 
 add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY
