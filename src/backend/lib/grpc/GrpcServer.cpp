@@ -185,6 +185,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         std::shared_ptr<ServerWriteReactorImpl> self_;
         ::grpc::CallbackServerContext *context_;
         std::weak_ptr<UserContext::Session> session_;
+        Metrics::gauge_scoped_t session_subscriptions_{owner_.server().metrics().session_subscriptions().scoped()};
     };
 
     try {

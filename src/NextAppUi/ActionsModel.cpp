@@ -12,9 +12,11 @@
 #include "ServerComm.h"
 #include "MainTreeModel.h"
 //#include "WorkSessionsModel.h"
+#include "ActionInfoCache.h"
 
 #include "logging.h"
 #include "util.h"
+#include "DbStore.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -165,10 +167,10 @@ ActionsModel::ActionsModel(QObject *parent)
     flags_.setUnscheduled(true);
     flags_.setUpcoming(true);
 
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedActions,
-            this,
-            &ActionsModel::receivedActions);
+    // connect(std::addressof(ServerComm::instance()),
+    //         &ServerComm::receivedActions,
+    //         this,
+    //         &ActionsModel::receivedActions);
 
     connect(std::addressof(ServerComm::instance()),
             &ServerComm::onUpdate,
@@ -234,39 +236,36 @@ void ActionsModel::markActionAsFavorite(const QString &actionUuid, bool favorite
     ServerComm::instance().markActionAsFavorite(actionUuid, favorite);
 }
 
-void ActionsModel::fetch(nextapp::pb::GetActionsReq &filter)
-{
-    ServerComm::instance().getActions(filter);
-}
 
-void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &actions,
-                                   bool more, bool first)
-{
-    LOG_TRACE_N << "Received " << actions->actions().size() << " actions. More=" << more << ", first=" << first;
-    if (first) {
-        pagination_.reset();
-    }
-    pagination_.increment(actions->actions().size());
-    pagination_.more = more;
+// void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &actions,
+//                                    bool more, bool first)
+// {
+//     LOG_TRACE_N << "Received " << actions->actions().size() << " actions. More=" << more << ", first=" << first;
+//     if (first) {
+//         pagination_.reset();
+//     }
+//     pagination_.increment(actions->actions().size());
+//     pagination_.more = more;
 
-    beginResetModel();
-    if (first) {
-        actions_ = actions->actions();
-    } else {
-        actions_.append(actions_.begin(), actions_.end());
-    }
+//     beginResetModel();
+//     if (first) {
+//         actions_ = actions->actions();
+//     } else {
+//         actions_.append(actions_.begin(), actions_.end());
+//     }
 
-    std::ranges::sort(actions_, [](const auto& left, const auto& right) {
-        return comparePred(left, right);
-    });
-    endResetModel();
-}
+//     std::ranges::sort(actions_, [](const auto& left, const auto& right) {
+//         return comparePred(left, right);
+//     });
+//     endResetModel();
+// }
 
-template <ActionType T>
-int findCurrentRow(const QList<T>& list, QString id) {
+template <typename T, typename U>
+int findCurrentRow(const T& list, const U& key) {
+    const QUuid id{key};
 
-    auto it = std::ranges::find_if(list, [&id](const T& a) {
-        return a.id_proto() == id;
+    auto it = std::ranges::find_if(list, [&id](const auto& a) {
+        return a.uuid == id;
     });
 
     if (it != list.end()) {
@@ -297,72 +296,74 @@ void ActionsModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkS
 
 void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Update::Operation op)
 {
-    if (op == pb::Update::Operation::ADDED || op == pb::Update::Operation::UPDATED) {
-        if (action.node() != MainTreeModel::instance()->selected()) {
-            return; // Irrelevant
-        }
-    }
+    // TODO: Re-implement
 
-    switch(op) {
-    case pb::Update::Operation::ADDED: {
-    insert_as_new:
-        auto row = findInsertRow(action, actions_);
-        beginInsertRows({}, row, row);
-        insertAction(actions_, action, row);
-        endInsertRows();
-    }
-    break;
-    case pb::Update::Operation::MOVED:
-        // TODO: Optimize so that we only add/remove the moved node, but adhers to the current selection
-        fetchIf(true);
-        break;
-    case pb::Update::Operation::UPDATED: {
-        auto row = findInsertRow(action, actions_);
-        if (auto currentRow = findCurrentRow(actions_, action.id_proto()) ; currentRow >=0 ) {
-            if (actions_.at(currentRow).version() > action.version()) {
-                // We have a newer version already. Ignore
-                LOG_DEBUG << "Ignoring update of Action " << action.id_proto() << " \"" << action.name()
-                          << "\", version " << action.version() << ": we already have a newer version.";
-                return;
-            }
+    // if (op == pb::Update::Operation::ADDED || op == pb::Update::Operation::UPDATED) {
+    //     if (action.node() != MainTreeModel::instance()->selected()) {
+    //         return; // Irrelevant
+    //     }
+    // }
 
-            if (row != currentRow) {
-                beginMoveRows({}, currentRow, currentRow, {}, min<int>(row, actions_.size()));
-                if (row > currentRow) {
-                    --row; // Compensate for the deleted row
-                }
-                actions_.removeAt(currentRow);
-                insertAction(actions_, action, row);
-                endMoveRows();
-                const auto cix = index(row);
-                emit dataChanged(cix, cix);
-            } else {
-                // Update in place
-                auto &crow = actions_[currentRow];
-                assert(crow.id_proto() == action.id_proto());
-                crow = toActionInfo(action);
-                //LOG_TRACE << "Updated action " << action.id_proto() << " \"" << action.name() << "\" in place. favorite=" << crow.favorite();
-                const auto cix = index(currentRow);
-                emit dataChanged(cix, cix);
-            }
-        } else {
-            // Not found
-            LOG_DEBUG << "Did not find updated action  " << action.id_proto() << " \"" << action.name()
-                      << "\" in the current list af actions. Inserting it as new.";
-            goto insert_as_new;
-        }
-    }
-    break;
-    case pb::Update::Operation::DELETED: {
-        // The deleted event gives us an empty Action with just the id field containing information.
-        if (auto currentRow = findCurrentRow(actions_, action.id_proto()) ; currentRow >=0 ) {
-            beginRemoveRows({}, currentRow, currentRow);
-            actions_.removeAt(currentRow);
-            endRemoveRows();
-        }
-    }
-    break;
-    }
+    // switch(op) {
+    // case pb::Update::Operation::ADDED: {
+    // insert_as_new:
+    //     auto row = findInsertRow(action, actions_);
+    //     beginInsertRows({}, row, row);
+    //     insertAction(actions_, action, row);
+    //     endInsertRows();
+    // }
+    // break;
+    // case pb::Update::Operation::MOVED:
+    //     // TODO: Optimize so that we only add/remove the moved node, but adhers to the current selection
+    //     fetchIf(true);
+    //     break;
+    // case pb::Update::Operation::UPDATED: {
+    //     auto row = findInsertRow(action, actions_);
+    //     if (auto currentRow = findCurrentRow(actions_, action.id_proto()) ; currentRow >=0 ) {
+    //         if (actions_.at(currentRow).version() > action.version()) {
+    //             // We have a newer version already. Ignore
+    //             LOG_DEBUG << "Ignoring update of Action " << action.id_proto() << " \"" << action.name()
+    //                       << "\", version " << action.version() << ": we already have a newer version.";
+    //             return;
+    //         }
+
+    //         if (row != currentRow) {
+    //             beginMoveRows({}, currentRow, currentRow, {}, min<int>(row, actions_.size()));
+    //             if (row > currentRow) {
+    //                 --row; // Compensate for the deleted row
+    //             }
+    //             actions_.removeAt(currentRow);
+    //             insertAction(actions_, action, row);
+    //             endMoveRows();
+    //             const auto cix = index(row);
+    //             emit dataChanged(cix, cix);
+    //         } else {
+    //             // Update in place
+    //             auto &crow = actions_[currentRow];
+    //             assert(crow.id_proto() == action.id_proto());
+    //             crow = toActionInfo(action);
+    //             //LOG_TRACE << "Updated action " << action.id_proto() << " \"" << action.name() << "\" in place. favorite=" << crow.favorite();
+    //             const auto cix = index(currentRow);
+    //             emit dataChanged(cix, cix);
+    //         }
+    //     } else {
+    //         // Not found
+    //         LOG_DEBUG << "Did not find updated action  " << action.id_proto() << " \"" << action.name()
+    //                   << "\" in the current list af actions. Inserting it as new.";
+    //         goto insert_as_new;
+    //     }
+    // }
+    // break;
+    // case pb::Update::Operation::DELETED: {
+    //     // The deleted event gives us an empty Action with just the id field containing information.
+    //     if (auto currentRow = findCurrentRow(actions_, action.id_proto()) ; currentRow >=0 ) {
+    //         beginRemoveRows({}, currentRow, currentRow);
+    //         actions_.removeAt(currentRow);
+    //         endRemoveRows();
+    //     }
+    // }
+    // break;
+    // }
 }
 
 // Send a data changed event for the action referenced in the work session.
@@ -800,7 +801,9 @@ bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid
     auto row = findCurrentRow(actions_, actionUuid);
     if (row >= 0) {
         auto& ai= actions_.at(row);
-        if (ai.node() == nodeUuid) {
+        assert(ai.action);
+        assert(ai.action->id_proto() == actionUuid);
+        if (ai.action->node() == nodeUuid) {
             LOG_DEBUG_N << "Cannot move to the same node";
             return false;
         }
@@ -828,7 +831,10 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return {};
     }
 
-    const auto& action = actions_.at(row);
+    auto& data = actions_.at(row);
+    assert(data.action);
+
+    const auto& action = *data.action;
 
     switch(role) {
     case NameRole:
@@ -956,82 +962,122 @@ bool ActionsModel::canFetchMore(const QModelIndex &parent) const
     return pagination_.hasMore();
 }
 
-void ActionsModel::fetchIf(bool restart)
+QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 {
+    beginResetModel();
+    ScopedExit reset_model([this] {
+        endResetModel();
+    });
+
     if (restart) {
         pagination_.reset();
     }
 
-    if (!isVisible() || !ServerComm::instance().connected()) {
-        LOG_DEBUG_N << "Not connected or not visible. Skipping fetch. connected="
+    if (!isVisible() ) {
+        LOG_DEBUG_N << "Not visible. Skipping fetch. connected="
                     << ServerComm::instance().connected() << ", visible=" << isVisible();
-        return;
+        co_return;
     }
 
     LOG_DEBUG_N << "Fetching actions. Mode is " << mode_;
 
-    nextapp::pb::GetActionsReq req;
-    req.setFlags(flags_);
-    nextapp::pb::PageSpan page;
-    page.setPageSize(QSettings{}.value("pagination/page_size", 100).toInt());
-    page.setOffset(pagination_.nextOffset());
-    req.setPage(page);
+    //nextapp::pb::GetActionsReq req;
+    //req.setFlags(flags_);
+    //nextapp::pb::PageSpan page;
+    //page.setPageSize(QSettings{}.value("pagination/page_size", 100).toInt());
+    //page.setOffset(pagination_.nextOffset());
+    //req.setPage(page);
+
+    // Set pagination to the request
+    const uint offset = pagination_.nextOffset();
+    auto date = QDate::currentDate();
+    DbStore::param_t params;
+    std::string sql;
 
     switch(mode_) {
     case FetchWhat::FW_TODAY: {
-        auto date = QDate::currentDate();
-        req.startSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-        req.startSpan().setEnd(date.addDays(1).startOfDay().toSecsSinceEpoch());
+        // Only show todays actions and actions completed today.
+        // Order by priority and due time
+        sql = format(R"(SELECT ID FROM action WHERE due_by_time >= ? AND due_by_time < ?
+ORDER BY priority, due_by_time
+LIMIT {} OFFSET {})", pagination_.pageSize(), pagination_.nextOffset());
+        params.push_back(date.startOfDay());
+        params.push_back(date.addDays(1).startOfDay());
+
     } break;
-    case FetchWhat::FW_TODAY_AND_OVERDUE: {
-        auto date = QDate::currentDate();
-        req.startSpan().setStart(3600);
-        req.startSpan().setEnd(date.addDays(1).startOfDay().toSecsSinceEpoch());
-    } break;
-    case FetchWhat::FW_CURRENT_WEEK: {
-        auto date = QDate::currentDate();
-        auto day_in_week = date.dayOfWeek();
-        auto w_start = date.addDays((day_in_week  -1) * -1);
-        req.startSpan().setStart(w_start.startOfDay().toSecsSinceEpoch());
-        req.startSpan().setEnd(w_start.addDays(7).startOfDay().toSecsSinceEpoch());
-    } break;
-    case FetchWhat::FW_CURRENT_WEEK_AND_OVERDUE: {
-        auto date = QDate::currentDate();
-        auto day_in_week = date.dayOfWeek();
-        auto w_start = date.addDays((day_in_week  -1) * -1);
-        req.startSpan().setStart(1);
-        req.startSpan().setEnd(w_start.addDays(7).startOfDay().toSecsSinceEpoch());
-    } break;
-    case FetchWhat::FW_CURRENT_MONTH: {
-        auto date = QDate::currentDate();
-        date.setDate(date.year(), date.month(), 1);
-        req.startSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-        date = date.addMonths(1);
-        req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    } break;
-    case FetchWhat::FW_CURRENT_MONTH_AND_OVERDUE: {
-        auto date = QDate::currentDate();
-        date.setDate(date.year(), date.month(), 1);
-        req.startSpan().setStart(1);
-        date = date.addMonths(1);
-        req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    } break;
-    case FetchWhat::FW_SELECTED_NODE:
-        req.setNodeId(MainTreeModel::instance()->selected());
-        break;
-    case FW_SELECTED_NODE_AND_CHILDREN:
-        req.setNodeIdAndChildren(MainTreeModel::instance()->selected());
-        break;
-    case FetchWhat::FW_FAVORITES:
-        req.setFavorites(true);
-        break;
-    case FetchWhat::FW_ON_TODAYS_CALENDAR:
-        req.setOnTodaysCalendar(true);
-        break;
+    // case FetchWhat::FW_TODAY_AND_OVERDUE: {
+    //     auto date = QDate::currentDate();
+    //     req.startSpan().setStart(3600);
+    //     req.startSpan().setEnd(date.addDays(1).startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case FetchWhat::FW_CURRENT_WEEK: {
+    //     auto date = QDate::currentDate();
+    //     auto day_in_week = date.dayOfWeek();
+    //     auto w_start = date.addDays((day_in_week  -1) * -1);
+    //     req.startSpan().setStart(w_start.startOfDay().toSecsSinceEpoch());
+    //     req.startSpan().setEnd(w_start.addDays(7).startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case FetchWhat::FW_CURRENT_WEEK_AND_OVERDUE: {
+    //     auto date = QDate::currentDate();
+    //     auto day_in_week = date.dayOfWeek();
+    //     auto w_start = date.addDays((day_in_week  -1) * -1);
+    //     req.startSpan().setStart(1);
+    //     req.startSpan().setEnd(w_start.addDays(7).startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case FetchWhat::FW_CURRENT_MONTH: {
+    //     auto date = QDate::currentDate();
+    //     date.setDate(date.year(), date.month(), 1);
+    //     req.startSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+    //     date = date.addMonths(1);
+    //     req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case FetchWhat::FW_CURRENT_MONTH_AND_OVERDUE: {
+    //     auto date = QDate::currentDate();
+    //     date.setDate(date.year(), date.month(), 1);
+    //     req.startSpan().setStart(1);
+    //     date = date.addMonths(1);
+    //     req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case FetchWhat::FW_SELECTED_NODE:
+    //     req.setNodeId(MainTreeModel::instance()->selected());
+    //     break;
+    // case FW_SELECTED_NODE_AND_CHILDREN:
+    //     req.setNodeIdAndChildren(MainTreeModel::instance()->selected());
+    //     break;
+    // case FetchWhat::FW_FAVORITES:
+    //     req.setFavorites(true);
+    //     break;
+    // case FetchWhat::FW_ON_TODAYS_CALENDAR:
+    //     req.setOnTodaysCalendar(true);
+    //     break;
     }
 
-    // TODO: Handle pagination, visibility
-    fetch(req);
+    auto& db = NextAppCore::instance()->db();
+    auto result = co_await db.query(QString::fromLatin1(sql), &params);
+    if (result) {
+        // Make a new list of actions with the sorted ID's
+        decltype(actions_) new_actions;
+        for(const auto& row: *result) {
+            const auto& id = row.at(0);
+            new_actions.push_back({id.toString()});
+        }
+
+        // Send the list to the cache to fill in the data-pointers
+        auto cache = ActionInfoCache::instance()->fill(new_actions);
+
+        // Insert or replace the new list depending on it's page.
+        if (pagination_.isFirstPage()) {
+            actions_ = std::move(new_actions);
+        } else {
+            std::copy(new_actions.begin(), new_actions.end(), std::back_inserter(actions_));
+        }
+
+        pagination_.more = result->size() == pagination_.pageSize();
+        pagination_.increment(result->size());
+
+    } else {
+        LOG_ERROR << "Failed to query actions from local db";
+    }
 }
 
 void ActionsModel::selectedChanged()

@@ -1390,6 +1390,7 @@ GrpcServer::NextappImpl::GetNewActions(::grpc::CallbackServerContext *ctx, const
 {
     return writeStreamHandler(ctx, req,
     [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        const auto stream_scope = owner_.server().metrics().data_streams_actions().scoped();
         const auto uctx = rctx.uctx;
         const auto& cuser = uctx->userUuid();
         const auto batch_size = owner_.server().config().options.stream_batch_size;

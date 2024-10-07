@@ -109,6 +109,25 @@ public:
     std::shared_ptr<GrpcIncomingStream> openServerStream(nextapp::pb::GetNewReq req) override;
     void clear() override;
 
+    template <typename T>
+    QCoro::Task<bool> fill(T& items) {
+        for (auto& item : items) {
+            const QUuid& id = item.uuid;
+            if (auto a = get_(id)) {
+                item.action = a;
+                continue;
+            }
+            co_await fetchFromDb(id);
+            if (auto a = get_(id)) {
+                item.action = a;
+            } else {
+                LOG_WARN << "Cannot find action with id: " << id.toString()
+                         << " in the db.";
+            }
+        }
+        co_return true;
+    }
+
 
 private:
     //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);

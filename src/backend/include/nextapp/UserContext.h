@@ -12,6 +12,7 @@
 #include "mysqlpool/mysqlpool.h"
 #include "nextapp.pb.h"
 #include "nextapp/util.h"
+#include "nextapp/Metrics.h"
 //#include "nextapp/logging.h"
 
 namespace nextapp {
@@ -38,8 +39,8 @@ public:
     class Session : public std::enable_shared_from_this<Session> {
     public:
 
-        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid devid, boost::uuids::uuid sessionid)
-            : user_(user), sessionid_{sessionid}, deviceid_{devid} {
+        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid devid, boost::uuids::uuid sessionid, Metrics::gauge_scoped_t scope)
+            : user_(user), sessionid_{sessionid}, deviceid_{devid}, instance_scope_{std::move(scope)} {
         }
 
         const boost::uuids::uuid& sessionId() const noexcept {
@@ -59,6 +60,7 @@ public:
         std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
         const boost::uuids::uuid sessionid_;
         const boost::uuids::uuid deviceid_;
+        const Metrics::gauge_scoped_t instance_scope_;
     };
 
 

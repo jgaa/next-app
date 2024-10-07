@@ -46,10 +46,12 @@ struct ServerOptions {
 struct Config {
     Config() {
         db.timer_interval_ms = 30000;
-        db.max_connections = 64;
+        db.max_connections = 16;
 
         http.http_port = "9012";
+        http.num_http_threads = 2;
         http.http_endpoint = "localhost";
+        http.auto_handle_cors = false;
     }
 
     ServerConfig svr;
@@ -59,7 +61,7 @@ struct Config {
     CaOptions ca;
 
     yahat::HttpConfig http;
-    bool disable_http = false;
+    bool enable_http = true;
 };
 
 } // ns

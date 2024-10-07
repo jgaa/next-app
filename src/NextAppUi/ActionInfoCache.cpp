@@ -241,8 +241,16 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     params.append(action.descr());
     params.append(toQDate(action.createdDate()));
     params.append(action.due().kind());
-    params.append(QDateTime::fromSecsSinceEpoch(action.due().start()));
-    params.append(QDateTime::fromSecsSinceEpoch(action.due().due()));
+    if (action.due().hasStart()) {
+        params.append(QDateTime::fromSecsSinceEpoch(action.due().start()));
+    } else {
+        params.append(QVariant{});
+    }
+    if (action.due().hasDue()) {
+        params.append(QDateTime::fromSecsSinceEpoch(action.due().due()));
+    } else {
+        params.append(QVariant{});
+    }
     params.append(action.due().timezone());
     params.append(QDateTime::fromSecsSinceEpoch(action.completedTime()));
     params.append(static_cast<qlonglong>(action.timeEstimate()));
@@ -347,24 +355,6 @@ void ActionInfoCache::clear()
 {
     hot_cache_.clear();
 }
-
-// void ActionInfoCache::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &actions, bool more, bool first)
-// {
-//     for (const auto &action : actions->actions()) {
-//         if (add(hot_cache_, action)) {
-//             emit actionChanged(toQuid(action.id_proto()));
-//         }
-//     }
-// }
-
-// void ActionInfoCache::receivedAction(const nextapp::pb::Status &status)
-// {
-//     if (status.hasAction()) {
-//         if (add(hot_cache_, status.action(), this)) {
-//             emit actionChanged(toQuid(status.action().id_proto()));
-//         }
-//     }
-// }
 
 std::shared_ptr<nextapp::pb::ActionInfo> &ActionInfoCache::get_(const QUuid &action_uuid)
 {

@@ -1,11 +1,27 @@
 #pragma once
 
 #include <set>
+#include <deque>
+
 
 #include <QAbstractListModel>
 #include <QStringListModel>
+#include <QUuid>
+#include <QSettings>
+
+#include "qcorotask.h"
 
 #include "nextapp.qpb.h"
+
+// A query to the database gives us the uuid. The action itself is lazily fetched from the cache.
+struct ActionData {
+    ActionData() = default;
+    ActionData(QString uuid)
+        : uuid{uuid}{}
+
+    QUuid uuid;
+    std::shared_ptr<nextapp::pb::ActionInfo> action;
+};
 
 class ActionPrx : public QObject {
     Q_OBJECT
@@ -62,7 +78,10 @@ class ActionsModel : public QAbstractListModel
             return more;
         }
 
-        void increment(unsigned rows) noexcept {
+        void increment(unsigned rows = 0) noexcept {
+            if (rows == 0) {
+                rows = pageSize();
+            }
             ++page;
             next_offset += rows;
         }
@@ -71,8 +90,13 @@ class ActionsModel : public QAbstractListModel
             return next_offset;
         }
 
+        uint pageSize() const noexcept{
+            return page_size_;
+        }
+
     private:
         static constexpr int first_page_val_  = 1;
+        uint page_size_ = QSettings{}.value("pagination/page_size", 100).toInt();
     };
 
     enum Roles {
@@ -152,8 +176,8 @@ public:
     Q_INVOKABLE nextapp::pb::Due changeDue(int shortcut, const nextapp::pb::Due& fromDue) const;
     Q_INVOKABLE bool moveToNode(const QString& actionUuid, const QString& nodeUuid);
 
-    void fetch(nextapp::pb::GetActionsReq& filter);
-    void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
+   //QCoro::Task<void> fetch(nextapp::pb::GetActionsReq& filter);
+    //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
     void doUpdate(const nextapp::pb::Action& action, nextapp::pb::Update::Operation op);
@@ -180,10 +204,12 @@ signals:
     void flagsChanged();
 
 private:
-    void fetchIf(bool restart = true);
+    QCoro::Task<void> fetchIf(bool restart = true);
     void selectedChanged();
 
-    QList<nextapp::pb::ActionInfo> actions_;
+
+    //QList<nextapp::pb::ActionInfo> actions_;
+    std::deque<ActionData> actions_;
     std::set<QUuid> worked_on_;
     FetchWhat mode_ = FW_TODAY_AND_OVERDUE;
     bool is_visible_ = false;

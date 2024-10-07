@@ -186,7 +186,9 @@ initial_auth_ok:
     auto ucx = co_await getUserContext(device_uuid, context);
     assert(ucx);
 
-    auto session = make_shared<UserContext::Session>(ucx, device_uuid, new_sid);
+    auto scope = ucx->isAdmin() ? server_.metrics().sessions_admin().scoped() : server_.metrics().sessions_user().scoped();
+
+    auto session = make_shared<UserContext::Session>(ucx, device_uuid, new_sid, std::move(scope));
     {
         unique_lock lock{mutex_};
         sessions_[session->sessionId()] = session.get();

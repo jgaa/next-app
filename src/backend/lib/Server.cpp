@@ -45,7 +45,7 @@ Server::Server(const Config& config)
 #define COMPILER_VERSION "Unknown Version"
 #endif
 
-    metrics().metrics().AddInfo("nsblast_build", "Build information", {}, {
+    metrics().metrics().AddInfo("nextapp_build", "Build information", {}, {
         {"version", NEXTAPP_VERSION},
         {"build_date", __DATE__},
         {"build_time", __TIME__},
@@ -92,11 +92,10 @@ void Server::run()
             }
         });
 
-    if (config().disable_http) {
-        LOG_INFO << "HTTP server is disabled.";
-        return;
+    if (!config().enable_http) {
+        LOG_INFO << "HTTP server (metrics) is disabled.";
     } else {
-        LOG_INFO << "Starting HTTP server.";
+        LOG_INFO << "Starting HTTP server (metrics).";
         http_server_.emplace(config().http, [this](const yahat::AuthReq& ar) {
             // TODO: Add actual authentication!
             return yahat::Auth{"admin", true};

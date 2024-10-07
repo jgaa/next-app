@@ -28,14 +28,15 @@ public:
     };
 
     using rval_t = tl::expected<QList<QList<QVariant>>, Error>;
+    using param_t = QList<QVariant>;
 
     explicit DbStore(QObject *parent = nullptr);
     ~DbStore();
 
-    QCoro::Task<rval_t> query(const QString& sql, const QList<QVariant> *params = {});
+    QCoro::Task<rval_t> query(const QString& sql, const param_t *params = {});
 
     template <typename T>
-    QCoro::Task<tl::expected<T, Error>> queryOne(const QString& sql, const QList<QVariant> *params = {}) {
+    QCoro::Task<tl::expected<T, Error>> queryOne(const QString& sql, const param_t *params = {}) {
         auto vals = co_await query(sql, params);
         if (vals) {
             auto& value = vals.value();
@@ -56,11 +57,11 @@ public:
         }
     }
 
-    void queryImpl(const QString& sql, const QList<QVariant> *params, QPromise<rval_t> *promise);
+    void queryImpl(const QString& sql, const param_t *params, QPromise<rval_t> *promise);
 
 signals:
     // Emitted from the main thread to query the database.
-    void doQuery(const QString& sql, const QList<QVariant> *params, QPromise<rval_t> *promise);
+    void doQuery(const QString& sql, const param_t *params, QPromise<rval_t> *promise);
 
     // Emitted from the worker thread when the database is ready.
     void initialized();

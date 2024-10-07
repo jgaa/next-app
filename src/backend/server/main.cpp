@@ -157,6 +157,21 @@ int main(int argc, char* argv[]) {
              "TLS mode; one of 'ca' or 'none'. Ca will use a self-signed server cert.")
             ;
 
+        po::options_description metrics("Metrics");
+        metrics.add_options()
+            ("enable-metrics", po::bool_switch(&config.enable_http))
+            ("metrics-endpoint", po::value(&config.http.metrics_target)->default_value(config.http.metrics_target),
+              "Scrape endpoint for metrics.")
+            ("metrics-port", po::value(&config.http.http_port)->default_value(config.http.http_port),
+              "Port to listen on for metrics.")
+            ("metrics-host", po::value(&config.http.http_endpoint)->default_value(config.http.http_endpoint),
+              "Host to listen on for metrics.")
+            ("metrics-tls-cert", po::value(&config.http.http_tls_cert)->default_value(config.http.http_tls_cert),
+              "TLS (PAM) cert to use (enables HTTPS).")
+            ("metrics-tls-key", po::value(&config.http.http_tls_key)->default_value(config.http.http_tls_key),
+             "TLS key to use (enables HTTPS).")
+            ;
+
         po::options_description ca("Certs");
         ca.add_options()
             ("cert-lifetime", po::value(&config.ca.lifetime_days_certs)->default_value(config.ca.lifetime_days_certs),
@@ -211,7 +226,7 @@ int main(int argc, char* argv[]) {
             ;
 
         po::options_description cmdline_options;
-        cmdline_options.add(general).add(bs).add(svr).add(ca).add(db);
+        cmdline_options.add(general).add(bs).add(svr).add(metrics).add(ca).add(db);
         po::variables_map vm;
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
