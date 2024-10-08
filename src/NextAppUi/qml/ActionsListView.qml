@@ -58,16 +58,21 @@ Rectangle {
                     currentIndex: ActionsModel.mode
                     Layout.preferredWidth: 220
                     model: ListModel {
+                        ListElement { text: qsTr("Active") }
                         ListElement { text: qsTr("Today") }
                         ListElement { text: qsTr("Today and overdue") }
+                        ListElement { text: qsTr("Tomorrow") }
                         ListElement { text: qsTr("Current Week") }
-                        ListElement { text: qsTr("Current Week and overdue") }
+                        ListElement { text: qsTr("Next week") }
                         ListElement { text: qsTr("Current Month") }
-                        ListElement { text: qsTr("Current Month and ocerdue") }
+                        ListElement { text: qsTr("Next Month") }
                         ListElement { text: qsTr("Selected list") }
                         ListElement { text: qsTr("Selected list and sublists") }
                         ListElement { text: qsTr("Favorite Actions") }
-                        ListElement { text: qsTr("On Todays Calendar") }
+                        ListElement { text: qsTr("On the Calendar") }
+                        ListElement { text: qsTr("Unassigned") }
+                        ListElement { text: qsTr("On hold") }
+                        ListElement { text: qsTr("Completed") }
                     }
 
                     onActivated: (ix) => {
@@ -76,11 +81,34 @@ Rectangle {
                     }
                 }
 
-                StyledButton {
-                    width: 180
-                    text: qsTr("Filter")
-                    onClicked: {
-                        filter.open()
+                // StyledButton {
+                //     width: 180
+                //     text: qsTr("Filter")
+                //     onClicked: {
+                //         filter.open()
+                //     }
+                // }
+
+                StyledComboBox {
+                    id: sortingCtl
+                    currentIndex: ActionsModel.sort
+                    Layout.preferredWidth: 220
+                    model: ListModel {
+                        ListElement { text: qsTr("Default") }
+                        ListElement { text: qsTr("Priority, Start Date, Name") }
+                        ListElement { text: qsTr("Priority, Due Date, Name") }
+                        ListElement { text: qsTr("Start Date, Name") }
+                        ListElement { text: qsTr("Due Date, Name") }
+                        ListElement { text: qsTr("Name") }
+                        ListElement { text: qsTr("Created Date") }
+                        ListElement { text: qsTr("Created Date Desc") }
+                        ListElement { text: qsTr("Completed Date") }
+                        ListElement { text: qsTr("Completed Date Desc") }
+                    }
+
+                    onActivated: (ix) => {
+                        // console.log("Sorting changed to", ix)
+                        ActionsModel.sort = ix
                     }
                 }
             }

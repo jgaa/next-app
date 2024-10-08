@@ -137,24 +137,44 @@ class ActionsModel : public QAbstractListModel
 
 public:
     enum FetchWhat {
+        FW_ACTIVE,
         FW_TODAY,
         FW_TODAY_AND_OVERDUE,
+        FW_TOMORROW,
         FW_CURRENT_WEEK,
-        FW_CURRENT_WEEK_AND_OVERDUE,
+        FW_NEXT_WEEK,
         FW_CURRENT_MONTH,
-        FW_CURRENT_MONTH_AND_OVERDUE,
+        FW_NEXT_MONTH,
         FW_SELECTED_NODE,
         FW_SELECTED_NODE_AND_CHILDREN,
         FW_FAVORITES,
-        FW_ON_TODAYS_CALENDAR
+        FW_ON_CALENDAR,
+        FW_UNASSIGNED,
+        FW_ON_HOLD,
+        FW_COMPLETED,
     };
-private:
+
+    enum Sorting {
+        SORT_DEFAULT,
+        SORT_PRI_START_DATE_NAME,
+        SORT_PRI_DUE_DATE_NAME,
+        SORT_START_DATE_NAME,
+        SORT_DUE_DATE_NAME,
+        SORT_NAME,
+        SORT_CREATED_DATE,
+        SORT_CREATED_DATE_DESC,
+        SORT_COMPLETED_DATE,
+        SORT_COMPLETED_DATE_DESC,
+    };
+
+    Q_ENUM(FetchWhat)
+    Q_ENUM(Sorting)
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
     Q_PROPERTY(FetchWhat mode READ mode WRITE setMode NOTIFY modeChanged)
+    Q_PROPERTY(Sorting sort MEMBER sort_ WRITE setSort NOTIFY sortChanged FINAL)
+
     Q_PROPERTY(nextapp::pb::GetActionsFlags flags READ flags WRITE setFlags NOTIFY flagsChanged)
-public:
-    Q_ENUM(FetchWhat)
 
     ActionsModel(QObject *parent = {});
 
@@ -188,6 +208,7 @@ public:
     void setIsVisible(bool isVisible);
     nextapp::pb::GetActionsFlags flags() const noexcept { return flags_; }
     void setFlags(nextapp::pb::GetActionsFlags flags);
+    void setSort(Sorting sort);
 
     // QAbstractItemModel interface
 public:
@@ -202,6 +223,7 @@ signals:
     void modeChanged();
     void isVisibleChanged();
     void flagsChanged();
+    void sortChanged();
 
 private:
     QCoro::Task<void> fetchIf(bool restart = true);
@@ -215,6 +237,7 @@ private:
     bool is_visible_ = false;
     nextapp::pb::GetActionsFlags flags_{};
     Pagination pagination_;
+    Sorting sort_{SORT_DEFAULT};
 
     // QAbstractItemModel interface
 public:

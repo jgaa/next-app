@@ -102,7 +102,9 @@ QCoro::Task<DbStore::rval_t> DbStore::query(const QString &sql, const QList<QVar
 void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QPromise<rval_t> *promise)
 {
     assert(promise);
-    LOG_TRACE_N << "Querying db: " << sql;
+    const auto args_count = params ? params->size() : 0u;
+    LOG_TRACE_N << "Querying db: \"" << sql
+                << "\" with " << args_count << " args";
     QSqlQuery query{*db_};
     rval_t rval;
 
@@ -135,7 +137,6 @@ void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QProm
         }
         rval = std::move(rows);
     } else {
-        const auto args_count = params ? params->size() : 0u;
         LOG_ERROR_N << "Failed to execute: \"" << sql
                     << "\", db=" << query.lastError().databaseText()
                     << ", driver=" << query.lastError().driverText()

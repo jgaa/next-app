@@ -21,6 +21,7 @@
 using namespace std;
 using namespace std::string_literals;
 using namespace nextapp;
+using a_status_t = nextapp::pb::ActionStatusGadget::ActionStatus;
 
 namespace {
 
@@ -392,7 +393,7 @@ void ActionsModel::setMode(FetchWhat mode)
         LOG_DEBUG_N << "Mode changed to " << mode;
         mode_ = mode;
         emit modeChanged();
-        fetchIf();
+        fetchIf(true);
     }
 }
 
@@ -403,7 +404,7 @@ void ActionsModel::setIsVisible(bool isVisible)
         LOG_DEBUG_N << "Visible changed to " << isVisible;
         is_visible_ = isVisible;
         emit isVisibleChanged();
-        fetchIf();
+        fetchIf(true);
     }
 }
 
@@ -413,7 +414,16 @@ void ActionsModel::setFlags(nextapp::pb::GetActionsFlags flags)
         LOG_DEBUG_N << "Flags changed ";
         flags_ = flags;
         emit flagsChanged();
-        fetchIf();
+        fetchIf(true);
+    }
+}
+
+void ActionsModel::setSort(Sorting sort)
+{
+    if (sort_ != sort) {
+        sort_ = sort;
+        emit sortChanged();
+        fetchIf(true);
     }
 }
 
@@ -964,6 +974,19 @@ bool ActionsModel::canFetchMore(const QModelIndex &parent) const
 
 QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 {
+    static constexpr auto sorting = to_array<string_view>({
+        "a.due_by_time, a.name",
+        "a.priority, a.start_time, a.name",
+        "a.priority, a.due_by_time, a.name",
+        "a.start_time, a.name",
+        "a.due_by_time, a.name",
+        "a.name",
+        "a.created_date",
+        "a.created_date DESC",
+        "a.completed_time",
+        "a.completed_time DESC",
+    });
+
     beginResetModel();
     ScopedExit reset_model([this] {
         endResetModel();
@@ -979,14 +1002,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
         co_return;
     }
 
-    LOG_DEBUG_N << "Fetching actions. Mode is " << mode_;
-
-    //nextapp::pb::GetActionsReq req;
-    //req.setFlags(flags_);
-    //nextapp::pb::PageSpan page;
-    //page.setPageSize(QSettings{}.value("pagination/page_size", 100).toInt());
-    //page.setOffset(pagination_.nextOffset());
-    //req.setPage(page);
+    LOG_DEBUG_N << "Fetching actions. Mode is " << mode_ << " sorting is " << sort_;
 
     // Set pagination to the request
     const uint offset = pagination_.nextOffset();
@@ -995,61 +1011,170 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     std::string sql;
 
     switch(mode_) {
-    case FetchWhat::FW_TODAY: {
+    case FetchWhat::FW_ACTIVE:
+        // Fetch all active actions with start-time before tomorrow.
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.start_time < ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        params.push_back(date.addDays(1).startOfDay());
+        break;
+
+    case FetchWhat::FW_TODAY:
         // Only show todays actions and actions completed today.
         // Order by priority and due time
-        sql = format(R"(SELECT ID FROM action WHERE due_by_time >= ? AND due_by_time < ?
-ORDER BY priority, due_by_time
-LIMIT {} OFFSET {})", pagination_.pageSize(), pagination_.nextOffset());
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(date.startOfDay());
         params.push_back(date.addDays(1).startOfDay());
+        break;
 
+    case FetchWhat::FW_TODAY_AND_OVERDUE:
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time < ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        params.push_back(date.addDays(1).startOfDay());
+        break;
+
+    case FetchWhat::FW_TOMORROW:
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        params.push_back(date.addDays(1).startOfDay());
+        params.push_back(date.addDays(2).startOfDay());
+        break;
+
+    case FetchWhat::FW_CURRENT_WEEK: {
+        // Fetch all active actions with start-time before tomorrow.
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        //
+        auto start_of_week = getFirstDayOfWeek(date);
+        params.push_back(start_of_week.startOfDay());
+        params.push_back(start_of_week.addDays(7).startOfDay());
     } break;
-    // case FetchWhat::FW_TODAY_AND_OVERDUE: {
-    //     auto date = QDate::currentDate();
-    //     req.startSpan().setStart(3600);
-    //     req.startSpan().setEnd(date.addDays(1).startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case FetchWhat::FW_CURRENT_WEEK: {
-    //     auto date = QDate::currentDate();
-    //     auto day_in_week = date.dayOfWeek();
-    //     auto w_start = date.addDays((day_in_week  -1) * -1);
-    //     req.startSpan().setStart(w_start.startOfDay().toSecsSinceEpoch());
-    //     req.startSpan().setEnd(w_start.addDays(7).startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case FetchWhat::FW_CURRENT_WEEK_AND_OVERDUE: {
-    //     auto date = QDate::currentDate();
-    //     auto day_in_week = date.dayOfWeek();
-    //     auto w_start = date.addDays((day_in_week  -1) * -1);
-    //     req.startSpan().setStart(1);
-    //     req.startSpan().setEnd(w_start.addDays(7).startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case FetchWhat::FW_CURRENT_MONTH: {
-    //     auto date = QDate::currentDate();
-    //     date.setDate(date.year(), date.month(), 1);
-    //     req.startSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-    //     date = date.addMonths(1);
-    //     req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case FetchWhat::FW_CURRENT_MONTH_AND_OVERDUE: {
-    //     auto date = QDate::currentDate();
-    //     date.setDate(date.year(), date.month(), 1);
-    //     req.startSpan().setStart(1);
-    //     date = date.addMonths(1);
-    //     req.startSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case FetchWhat::FW_SELECTED_NODE:
-    //     req.setNodeId(MainTreeModel::instance()->selected());
-    //     break;
-    // case FW_SELECTED_NODE_AND_CHILDREN:
-    //     req.setNodeIdAndChildren(MainTreeModel::instance()->selected());
-    //     break;
-    // case FetchWhat::FW_FAVORITES:
-    //     req.setFavorites(true);
-    //     break;
-    // case FetchWhat::FW_ON_TODAYS_CALENDAR:
-    //     req.setOnTodaysCalendar(true);
-    //     break;
+
+    case FetchWhat::FW_NEXT_WEEK: {
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        auto start_of_week = getFirstDayOfWeek(date.addDays(7));
+        params.push_back(start_of_week.startOfDay());
+        params.push_back(start_of_week.addDays(7).startOfDay());
+    } break;
+
+    case FetchWhat::FW_CURRENT_MONTH: {
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        auto start_of_month = QDate{date.year(), date.month(), 1};
+        params.push_back(start_of_month.startOfDay());
+        params.push_back(start_of_month.addMonths(1).startOfDay());
+    } break;
+
+    case FetchWhat::FW_NEXT_MONTH: {
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        auto start_of_month = QDate{date.year(), date.month(), 1};
+        params.push_back(start_of_month.addMonths(1).startOfDay());
+        params.push_back(start_of_month.addMonths(2).startOfDay());
+    } break;
+
+    case FetchWhat::FW_SELECTED_NODE:
+        sql = format(R"(SELECT a.id FROM action a
+JOIN node n ON a.node = n.uuid
+WHERE a.status={} AND n.uuid = ?
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                    static_cast<uint>(a_status_t::ACTIVE),
+                    sorting.at(sort_),
+                    pagination_.pageSize(), pagination_.nextOffset());
+        params.push_back(MainTreeModel::instance()->selected());
+        break;
+
+    case FetchWhat::FW_SELECTED_NODE_AND_CHILDREN:
+        // This is where ChatGPT shines ;)
+        sql = format(R"(WITH RECURSIVE node_hierarchy AS (
+    -- Base case: Select the node with the given UUID
+    SELECT uuid
+    FROM node
+    WHERE uuid = ?
+
+    -- Recursive case: Select the children of the current node
+    UNION ALL
+    SELECT n.uuid
+    FROM node n
+    JOIN node_hierarchy nh ON n.parent = nh.uuid
+)
+SELECT a.id
+FROM action a
+JOIN node_hierarchy nh ON a.node = nh.uuid
+WHERE a.status={}
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        params.push_back(MainTreeModel::instance()->selected());
+        break;
+
+    case FetchWhat::FW_FAVORITES:
+        sql = format(R"(SELECT a.id FROM action a WHERE a.favorite = 1 AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        break;
+
+    case FetchWhat::FW_ON_CALENDAR:
+        // TODO: Implment when we have the calendar in the db
+        break;
+
+    case FetchWhat::FW_UNASSIGNED:
+        sql = format(R"(SELECT a.id FROM action a WHERE a.due_by_time IS NULL AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ACTIVE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        break;
+
+    case FetchWhat::FW_ON_HOLD:
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::ONHOLD),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        break;
+
+    case FetchWhat::FW_COMPLETED:
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+                     static_cast<uint>(a_status_t::DONE),
+                     sorting.at(sort_),
+                     pagination_.pageSize(), pagination_.nextOffset());
+        break;
     }
 
     auto& db = NextAppCore::instance()->db();
