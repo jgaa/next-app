@@ -143,6 +143,8 @@ public:
     }
     QString nodeNameFromQuuid(const QUuid& uuid, bool fullPath = false);
 
+    bool isChildOfSelected(const QUuid& uuid);
+
     Q_INVOKABLE QModelIndex *emptyQModelIndex() {
         return new QModelIndex{};
     }

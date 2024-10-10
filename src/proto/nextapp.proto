@@ -296,6 +296,7 @@ enum ActionKind {
     AC_UPCOMING         = 4; // The action is not active yet
     AC_UNSCHEDULED      = 5; // The action is not scheduled
     AC_DONE             = 6;
+    AC_ON_HOLD          = 7;
 }
 
 // Due time for an action

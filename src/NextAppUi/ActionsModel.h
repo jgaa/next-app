@@ -18,6 +18,8 @@ struct ActionData {
     ActionData() = default;
     ActionData(QString uuid)
         : uuid{uuid}{}
+    ActionData(QString uuid, std::shared_ptr<nextapp::pb::ActionInfo> action)
+        : uuid{uuid}, action{std::move(action)} {}
 
     QUuid uuid;
     std::shared_ptr<nextapp::pb::ActionInfo> action;
@@ -228,7 +230,9 @@ signals:
 private:
     QCoro::Task<void> fetchIf(bool restart = true);
     void selectedChanged();
-
+    void actionChanged(const QUuid &uuid);
+    void actionDeleted(const QUuid &uuid);
+    void actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
 
     //QList<nextapp::pb::ActionInfo> actions_;
     std::deque<ActionData> actions_;

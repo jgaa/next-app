@@ -31,34 +31,55 @@ struct ToActionCategory {
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, CREATED_DATE, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
-        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER, UPDATED, DELETED // remaining
+        ID, NODE, USER, VERSION, UPDATED, DELETED, CREATED_DATE, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
+        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER// remaining
     };
 
+    enum class ColType {
+        IDS,
+        READ_ONLY, // Read only, informative in normal queries
+        CORE,
+        REMAINING
+    };
+
+
     static auto coreSelectCols() {
-        static const auto cols = format("{}{}", ids_, core_);
+        static const auto cols = filteredCols({ColType::IDS, ColType::READ_ONLY, ColType::CORE});
         return cols;
     }
 
     static string_view allSelectCols() {
-        static const auto cols = format("{}{}{}", ids_, core_, remaining_);
+        static const auto cols = filteredCols({ColType::IDS, ColType::READ_ONLY, ColType::CORE, ColType::REMAINING});
         return cols;
     }
 
+    static std::string makeBindingStr() {
+        auto cols = filteredCols({ColType::IDS, ColType::CORE, ColType::REMAINING});
+        auto numCols = std::count(cols.begin(), cols.end(), ',') + 1;
+
+        std::string binding;
+        for (int i = 0; i < numCols; ++i) {
+            if (i > 0) {
+                binding += ",";
+            }
+            binding += "?";
+        }
+
+        return binding;
+    }
+
     static string_view statementBindingStr() {
-        return "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?";
+        static const auto bs = makeBindingStr();
+        return bs;
     }
 
     static string_view updateStatementBindingStr() {
-        static const auto cols = buildUpdateBindStr();
+        static const auto cols = filteredCols({ColType::CORE, ColType::REMAINING}, true);
         return cols;
     }
 
     static string insertCols() {
-        // Remove columns we don't use for insert
-        auto cols = boost::replace_all_copy(string{allSelectCols()}, "created_date,", "");
-        boost::replace_all(cols, "version,", "");
-        boost::replace_all(cols, "updated,", "");
+        auto cols = filteredCols({ColType::IDS, ColType::CORE, ColType::REMAINING});
         return cols;
     }
 
@@ -265,17 +286,67 @@ struct ToAction {
     }
 
 private:
-    static string buildUpdateBindStr() {
-        auto cols = format("{}{}", core_, remaining_);
-        boost::replace_all(cols, "created_date,", "");
-        boost::replace_all(cols, ",", "=?,");
-        cols += "=?";
-        return cols;
-    }
+    // static constexpr string_view ids_ = "id, node, user, version, ";
+    // static constexpr string_view core_ = "origin, priority, status, favorite, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, category";
+    // static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, updated, deleted";
 
-    static constexpr string_view ids_ = "id, node, user, version, ";
-    static constexpr string_view core_ = "origin, priority, status, favorite, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, category";
-    static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, updated, deleted";
+    static constexpr std::array<std::pair<std::string_view, ColType>, 26> cols_ = {
+        std::make_pair(std::string_view{"id"}, ColType::IDS),
+        {"node", ColType::IDS},
+        {"user", ColType::IDS},
+        {"version", ColType::READ_ONLY},
+        {"updated", ColType::READ_ONLY},
+        {"deleted", ColType::READ_ONLY},
+        {"created_date", ColType::READ_ONLY},
+        {"origin", ColType::CORE},
+        {"priority", ColType::CORE},
+        {"status", ColType::CORE},
+        {"favorite", ColType::CORE},
+        {"name", ColType::CORE},
+        {"due_kind", ColType::CORE},
+        {"start_time", ColType::CORE},
+        {"due_by_time", ColType::CORE},
+        {"due_timezone", ColType::CORE},
+        {"completed_time", ColType::CORE},
+        {"category", ColType::CORE},
+        {"descr", ColType::REMAINING},
+        {"time_estimate", ColType::REMAINING},
+        {"difficulty", ColType::REMAINING},
+        {"repeat_kind", ColType::REMAINING},
+        {"repeat_unit", ColType::REMAINING},
+        {"repeat_when", ColType::REMAINING},
+        {"repeat_after", ColType::REMAINING},
+    };
+
+    static std::string filteredCols(std::initializer_list<ColType> ct, bool update = false) {
+        std::string filtered;
+        bool first = true;
+
+        auto filter = [&ct](const auto& row) {
+            return std::find(ct.begin(), ct.end(), row.second) != ct.end();
+        };
+
+        auto relevant = cols_ | std::views::filter(filter) | std::views::transform([](const auto& row) { return row.first; });
+
+        for (const auto& col : relevant) {
+            if (col.empty()) {
+                continue; // why???
+            }
+            if (first) [[unlikely]] {
+                first = false;
+            } else {
+                filtered += ", ";
+            }
+
+            filtered += col;
+
+            if (update) {
+                filtered += "=?";
+            }
+        }
+
+        return filtered;
+    }
 };
 
 enum class DoneChanged {
@@ -578,7 +649,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
                 done = DoneChanged::MARKED_UNDONE;
             }
 
-            auto res = co_await rctx.dbh->exec(format("UPDATE action SET {}, version=version+1 WHERE id=? AND user=? ",
+            auto res = co_await rctx.dbh->exec(format("UPDATE action SET {} WHERE id=? AND user=? ",
                                                       ToAction::updateStatementBindingStr()), dbopts,
                                                ToAction::prepareBindingArgs<false>(new_action, *rctx.uctx, uuid, cuser));
 
@@ -640,7 +711,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
             auto trx = co_await rctx.dbh->transaction();
 
             auto res = co_await rctx.dbh->exec(
-                "UPDATE action SET status=?, completed_time=?, version=version+1 WHERE id=? AND user=?",
+                "UPDATE action SET status=?, completed_time=? WHERE id=? AND user=?",
                 dbopts, (req->done() ? "done" : "active"), when, uuid, cuser);
 
             assert(res.has_value());
@@ -671,7 +742,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
             auto trx = co_await rctx.dbh->transaction();
 
             auto res = co_await rctx.dbh->exec(
-                "UPDATE action SET favorite=?, version=version+1 WHERE id=? AND user=?",
+                "UPDATE action SET favorite=? WHERE id=? AND user=?",
                 dbopts, req->favorite(), uuid, cuser);
 
             assert(res.has_value());
@@ -1248,7 +1319,7 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
             co_await owner_.validateNode(*rctx.dbh, node_uuid, cuser);
             co_await owner_.validateAction(*rctx.dbh, action_uuid, cuser);
 
-            auto res = co_await rctx.dbh->exec("UPDATE action SET node=?, version=version+1 WHERE id=? AND user=? and node != ?",
+            auto res = co_await rctx.dbh->exec("UPDATE action SET node=? WHERE id=? AND user=? and node != ?",
                                                       rctx.uctx->dbOptions(), node_uuid, action_uuid, cuser, node_uuid);
 
             assert(!res.empty());

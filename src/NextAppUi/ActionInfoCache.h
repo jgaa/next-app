@@ -85,6 +85,7 @@ public:
 signals:
     void actionDeleted(const QUuid &uuid);
     void actionReceived(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
+    void actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
     void actionChanged(const QUuid &uuid);
     void stateChanged();
 

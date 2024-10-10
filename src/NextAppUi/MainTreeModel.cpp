@@ -724,6 +724,15 @@ QString MainTreeModel::nodeNameFromQuuid(const QUuid &uuid, bool fullPath)
     return {};
 }
 
+bool MainTreeModel::isChildOfSelected(const QUuid &uuid)
+{
+    if (auto *sel = lookupTreeNode(QUuid{selected()}); sel) {
+        return isDescent(uuid, sel->uuid());
+    }
+
+    return false;
+}
+
 void MainTreeModel::addNode(QVariantMap args)
 {
     nextapp::pb::Node node = toNode(args);

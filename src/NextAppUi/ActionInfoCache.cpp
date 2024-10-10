@@ -6,7 +6,35 @@
 
 #include "logging.h"
 
+using namespace nextapp;
+
 namespace {
+
+pb::ActionInfo toActionInfo(const pb::Action& action) {
+    pb::ActionInfo ai;
+    ai.setId_proto(action.id_proto());
+    ai.setNode(action.node());
+    if (action.hasOrigin()) {
+        ai.setOrigin(action.origin());
+    }
+    ai.setPriority(action.priority());
+    ai.setStatus(action.status());
+    ai.setFavorite(action.favorite());
+    ai.setName(action.name());
+    ai.setCreatedDate(ai.createdDate());
+    ai.due().setKind(action.due().kind());
+    if (action.due().hasStart()) {
+        ai.due().setStart(action.due().start());
+    }
+    if (action.due().hasDue()) {
+        ai.due().setDue(action.due().due());
+    }
+    ai.due().setTimezone(action.due().timezone());
+    ai.setCompletedTime(ai.completedTime());
+    ai.setKind(action.kind());
+    ai.setCategory(action.category());
+    return ai;
+}
 
 template <typename T, typename C>
 bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
@@ -17,6 +45,7 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
     auto it = container.find(uuid);
     if (it == container.end()) {
         it = container.emplace(uuid, std::make_shared<nextapp::pb::ActionInfo>()).first;
+        *it->second = toActionInfo(action);
         added = true;
     }
 
@@ -168,8 +197,16 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
             co_await save(action);
             hot_cache_.erase(uuid);
         } else {
+            co_await save(action);
             if (add(hot_cache_, action)) {
                 emit actionChanged(uuid);
+            }
+            if (update->op() == nextapp::pb::Update::Operation::ADDED) {
+                if (auto ai = get_(uuid)) {
+                    emit actionAdded(ai);
+                } else {
+                    assert(false);
+                }
             }
         }
     }

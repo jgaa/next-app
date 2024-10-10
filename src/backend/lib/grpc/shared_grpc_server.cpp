@@ -131,7 +131,12 @@ optional<string> toAnsiTime(time_t time, const std::chrono::time_zone& ts, bool 
 
     const auto when = round<seconds>(system_clock::from_time_t(time));
     const auto zoned = zoned_time{&ts, when};
-    auto out = format("{:%F %T}", zoned);
+    auto out = format("{:%F %T}", zoned.get_sys_time());
+    LOG_TRACE_N << "Local time: " << format("{:%F %T}", zoned.get_local_time())
+                << " System time " << format("{:%F %T}", zoned.get_sys_time())
+                << " out " << out
+                << " time_t=" << time
+                << " time zone " << ts.name();
     return out;
 }
 

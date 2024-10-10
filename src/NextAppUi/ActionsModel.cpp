@@ -25,6 +25,74 @@ using a_status_t = nextapp::pb::ActionStatusGadget::ActionStatus;
 
 namespace {
 
+template <ProtoMessage T>
+pb::ActionKindGadget::ActionKind toKind(const T& action) {
+    switch(action.status()) {
+        case a_status_t::ACTIVE:
+            if (action.hasDue()) {
+                const auto now = QDateTime::currentDateTime();
+                const auto due = QDateTime::fromSecsSinceEpoch(action.due().due());
+                const auto today = now.date();
+                const auto due_date = due.date();
+
+                switch(action.due().kind()) {
+                    case pb::ActionDueKindGadget::ActionDueKind::DATETIME:
+                    if (action.due().due() < now.toSecsSinceEpoch()) {
+                            return pb::ActionKindGadget::ActionKind::AC_OVERDUE;
+                        }
+                        // falltrough
+                    case pb::ActionDueKindGadget::ActionDueKind::DATE:
+                        if (due_date == today) {
+                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
+                        }
+                        break;
+                    case pb::ActionDueKindGadget::ActionDueKind::WEEK: {
+                        const auto week = getFirstDayOfWeek();
+                        if (due_date >= week && due_date < week.addDays(7)) {
+                            return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
+                        }
+                    }
+                    case pb::ActionDueKindGadget::ActionDueKind::MONTH: {
+                        if (today.year() == due_date.year() && today.month() == due_date.month()) {
+                            return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
+                        }
+                    }
+                    case pb::ActionDueKindGadget::ActionDueKind::QUARTER:
+                        break;
+                    case pb::ActionDueKindGadget::ActionDueKind::YEAR:
+                        if (today.year() == due_date.year()) {
+                            return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
+                        }
+                        break;
+                    case pb::ActionDueKindGadget::ActionDueKind::UNSET:
+                        return pb::ActionKindGadget::ActionKind::AC_UNSCHEDULED;
+                } // action.kind()
+
+                if (action.due.hasStart()) {
+                    const auto start_day = QDateTime::fromSecsSinceEpoch(action.due().start()).date();
+                    if (start_day > today) {
+                        return pb::ActionKindGadget::ActionKind::AC_UPCOMING;
+                    }
+                    return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
+                }
+
+                if (due_date == today)
+                    return pb::ActionKindGadget::ActionKind::AC_TODAY;
+                if (due_date > today) {
+                    return pb::ActionKindGadget::ActionKind::AC_UPCOMING;
+                }
+            }
+            return pb::ActionKindGadget::ActionKind::AC_UNSET;
+        case a_status_t::DONE:
+            return pb::ActionKindGadget::ActionKind::AC_DONE;
+        case a_status_t::ONHOLD:
+            return pb::ActionKindGadget::ActionKind::AC_ON_HOLD;
+    }
+
+    assert(false); // We should probably not get here...
+    return pb::ActionKindGadget::ActionKind::AC_UNSET;
+}
+
 static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
 
 template <typename T>
@@ -124,40 +192,40 @@ int findInsertRow(const T& action, const QList<U>& list) {
     return row;
 }
 
-pb::ActionInfo toActionInfo(const pb::Action& action) {
-    pb::ActionInfo ai;
-    ai.setId_proto(action.id_proto());
-    ai.setNode(action.node());
-    if (action.hasOrigin()) {
-        ai.setOrigin(action.origin());
-    }
-    ai.setPriority(action.priority());
-    ai.setStatus(action.status());
-    ai.setFavorite(action.favorite());
-    ai.setName(action.name());
-    ai.setCreatedDate(ai.createdDate());
-    ai.due().setKind(action.due().kind());
-    if (action.due().hasStart()) {
-        ai.due().setStart(action.due().start());
-    }
-    if (action.due().hasDue()) {
-        ai.due().setDue(action.due().due());
-    }
-    ai.due().setTimezone(action.due().timezone());
-    ai.setCompletedTime(ai.completedTime());
-    ai.setKind(action.kind());
-    ai.setCategory(action.category());
-    return ai;
-}
+// pb::ActionInfo toActionInfo(const pb::Action& action) {
+//     pb::ActionInfo ai;
+//     ai.setId_proto(action.id_proto());
+//     ai.setNode(action.node());
+//     if (action.hasOrigin()) {
+//         ai.setOrigin(action.origin());
+//     }
+//     ai.setPriority(action.priority());
+//     ai.setStatus(action.status());
+//     ai.setFavorite(action.favorite());
+//     ai.setName(action.name());
+//     ai.setCreatedDate(ai.createdDate());
+//     ai.due().setKind(action.due().kind());
+//     if (action.due().hasStart()) {
+//         ai.due().setStart(action.due().start());
+//     }
+//     if (action.due().hasDue()) {
+//         ai.due().setDue(action.due().due());
+//     }
+//     ai.due().setTimezone(action.due().timezone());
+//     ai.setCompletedTime(ai.completedTime());
+//     ai.setKind(action.kind());
+//     ai.setCategory(action.category());
+//     return ai;
+// }
 
-void insertAction(QList<pb::ActionInfo>& list, const pb::Action& action, int row) {
+// void insertAction(QList<pb::ActionInfo>& list, const pb::Action& action, int row) {
 
-    if (row >= list.size()) {
-        list.append(toActionInfo(action));
-    } else {
-        list.insert(row, toActionInfo(action));
-    }
-}
+//     if (row >= list.size()) {
+//         list.append(toActionInfo(action));
+//     } else {
+//         list.insert(row, toActionInfo(action));
+//     }
+// }
 
 } // anon ns
 
@@ -168,26 +236,12 @@ ActionsModel::ActionsModel(QObject *parent)
     flags_.setUnscheduled(true);
     flags_.setUpcoming(true);
 
-    // connect(std::addressof(ServerComm::instance()),
-    //         &ServerComm::receivedActions,
-    //         this,
-    //         &ActionsModel::receivedActions);
-
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::onUpdate,
-            this,
-            &ActionsModel::onUpdate);
-
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedCurrentWorkSessions,
-            this,
-            &ActionsModel::receivedWorkSessions);
-
-    connect(MainTreeModel::instance(),
-            &MainTreeModel::selectedChanged,
-            this,
-            &ActionsModel::selectedChanged);
-
+    connect(std::addressof(ServerComm::instance()), &ServerComm::onUpdate, this, &ActionsModel::onUpdate);
+    connect(std::addressof(ServerComm::instance()), &ServerComm::receivedCurrentWorkSessions, this, &ActionsModel::receivedWorkSessions);
+    connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &ActionsModel::selectedChanged);
+    connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ActionsModel::actionChanged);
+    connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ActionsModel::actionDeleted);
+    connect(ActionInfoCache::instance(), &ActionInfoCache::actionAdded, this, &ActionsModel::actionAdded);
     connect(&ServerComm::instance(), &ServerComm::connectedChanged, this, [this] {
         fetchIf();
     });
@@ -282,8 +336,6 @@ void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
     const auto op = update->op();
     if (update->hasWork()) {
         return doUpdate(update->work(), op);
-    } else if (update->hasAction()) {
-        return doUpdate(update->action(), op);
     }
 }
 
@@ -1208,7 +1260,131 @@ LIMIT {} OFFSET {})",
 void ActionsModel::selectedChanged()
 {
     if (mode_ == FetchWhat::FW_SELECTED_NODE || mode_ == FetchWhat::FW_SELECTED_NODE_AND_CHILDREN) {
-        fetchIf();
+        fetchIf(true);
+    }
+}
+
+void ActionsModel::actionChanged(const QUuid &uuid)
+{
+    if (const auto row = findCurrentRow(actions_, uuid) ; row >= 0) {
+        emit dataChanged(index(row), index(row));
+    }
+}
+
+void ActionsModel::actionDeleted(const QUuid &uuid)
+{
+    if (const auto row = findCurrentRow(actions_, uuid) ; row >= 0) {
+        beginRemoveRows({}, row, row);
+        actions_.erase(actions_.begin() + row);
+        endRemoveRows();
+    }
+}
+
+void ActionsModel::actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &ai)
+{
+    if (ai) {
+        // Determine if we should add it to the list.
+        bool add = false;
+        switch(mode_) {
+        case FetchWhat::FW_ACTIVE:
+            if (ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_TODAY:
+            if (ai->due().due() >= QDateTime::currentDateTime().toSecsSinceEpoch()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
+                && ai->due().due() < QDateTime::currentDateTime().addDays(1).toSecsSinceEpoch()) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_TODAY_AND_OVERDUE:
+            if (ai->due().due() <= QDateTime::currentDateTime().toSecsSinceEpoch()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_TOMORROW:
+            if (ai->due().due() >= QDateTime::currentDateTime().addDays(1).toSecsSinceEpoch()
+                && ai->due().due() < QDateTime::currentDateTime().addDays(2).toSecsSinceEpoch()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_CURRENT_WEEK: {
+            auto start_of_week = getFirstDayOfWeek(QDate::currentDate());
+            if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
+                && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+        } break;
+        case FetchWhat::FW_NEXT_WEEK: {
+            auto start_of_week = getFirstDayOfWeek(QDate::currentDate().addDays(7));
+            if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
+                && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+        } break;
+        case FetchWhat::FW_CURRENT_MONTH: {
+            auto start_of_month = QDate{QDate::currentDate().year(), QDate::currentDate().month(), 1};
+            if (ai->due().due() >= start_of_month.startOfDay().toSecsSinceEpoch()
+                && ai->due().due() < start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+        } break;
+        case FetchWhat::FW_NEXT_MONTH: {
+            auto start_of_month = QDate{QDate::currentDate().year(), QDate::currentDate().month(), 1};
+            if (ai->due().due() >= start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
+                && ai->due().due() < start_of_month.addMonths(2).startOfDay().toSecsSinceEpoch()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+        } break;
+        case FetchWhat::FW_SELECTED_NODE:
+            if (ai->node() == MainTreeModel::instance()->selected()) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_SELECTED_NODE_AND_CHILDREN:
+            if (MainTreeModel::instance()->isChildOfSelected(toQuid(ai->node()))
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_FAVORITES:
+            if (ai->favorite()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_UNASSIGNED:
+            if (!ai->hasDue()
+                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_ON_HOLD:
+            if (ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ONHOLD) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_COMPLETED:
+            if (ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::DONE) {
+                add = true;
+            }
+            break;
+        case FetchWhat::FW_ON_CALENDAR:
+            break;
+        }
+
+        if (add) {
+            beginInsertRows({}, 0, 0);
+            actions_.emplace_front(ai->id_proto(), ai);
+            endInsertRows();
+        }
     }
 }
 
