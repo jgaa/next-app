@@ -548,6 +548,11 @@ message CreateDeviceResp {
     string caCert = 3;
 }
 
+// Versions of various smaller data sets the user must check on startup.
+message DataVersionsInfo {
+    uint64 actionCategoryVersion = 1;
+}
+
 message Update {
     Timestamp when = 1;
 
@@ -750,6 +755,7 @@ message Status {
         CompleteDay day = 31; // for day color
         Nodes nodes = 32;
         CompleteActions completeActions = 33;
+        DataVersionsInfo dataVersions = 34;
     }
 }
 
@@ -805,9 +811,11 @@ service Nextapp {
     rpc GetActionCategories(Empty) returns (Status) {}
     rpc UpdateActionCategory(ActionCategory) returns (Status) {}
     rpc DeleteActionCategory(DeleteActionCategoryReq) returns (Status) {}
+    rpc getDataVersions(Empty) returns (Status) {}
 
     rpc GetNewDays(GetNewReq) returns (stream Status) {}
     rpc GetNewDayColorDefinitions(GetNewReq) returns (Status) {}
     rpc GetNewNodes(GetNewReq) returns (stream Status) {}
     rpc GetNewActions(GetNewReq) returns (stream Status) {}
+
 }

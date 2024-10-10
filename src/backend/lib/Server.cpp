@@ -807,12 +807,36 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             SET NEW.updated = UTC_TIMESTAMP(6);
           END)",
 
-        R"(CREATE OR REPLACE TABLE deleted (
+        R"(CREATE TABLE IF NOT EXISTS deleted (
             id UUID NOT NULL PRIMARY KEY,
             user UUID NOT NULL,
             kind enum ('action', 'action_category', 'node', 'day', 'day_colors') NOT NULL,
-            deleted TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)
+            deleted TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE TABLE IF NOT EXISTS versions (
+            user UUID NOT NULL,
+            kind ENUM ('action_category', 'settings', 'locations') NOT NULL,
+            version INT NOT NULL DEFAULT 1,
+            PRIMARY KEY (user, kind),
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE TRIGGER update_action_category_version
+            AFTER UPDATE ON action_category
+            FOR EACH ROW
+            BEGIN
+                -- Check if a version entry for this user and kind 'action_category' already exists
+                IF EXISTS (SELECT 1 FROM versions WHERE user = NEW.user AND kind = 'action_category') THEN
+                    -- If the entry exists, increment the version
+                    UPDATE versions
+                    SET version = version + 1
+                    WHERE user = NEW.user AND kind = 'action_category';
+                ELSE
+                    -- If the entry does not exist, insert a new row with version 1
+                    INSERT INTO versions (user, kind, version)
+                    VALUES (NEW.user, 'action_category', 1);
+                END IF;
+            END)",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });

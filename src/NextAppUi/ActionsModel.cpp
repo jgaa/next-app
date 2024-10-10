@@ -25,6 +25,8 @@ using a_status_t = nextapp::pb::ActionStatusGadget::ActionStatus;
 
 namespace {
 
+static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
+
 template <ProtoMessage T>
 pb::ActionKindGadget::ActionKind toKind(const T& action) {
     switch(action.status()) {
@@ -58,6 +60,12 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                         }
                     }
                     case pb::ActionDueKindGadget::ActionDueKind::QUARTER:
+                        if (today.year() == due_date.year()) {
+                            const auto quarter = quarters.at(due_date.month() - 1);
+                            if (today.month() >= quarter && today.month() < quarter + 3) {
+                                return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
+                            }
+                        }
                         break;
                     case pb::ActionDueKindGadget::ActionDueKind::YEAR:
                         if (today.year() == due_date.year()) {
@@ -68,7 +76,7 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                         return pb::ActionKindGadget::ActionKind::AC_UNSCHEDULED;
                 } // action.kind()
 
-                if (action.due.hasStart()) {
+                if (action.due().hasStart()) {
                     const auto start_day = QDateTime::fromSecsSinceEpoch(action.due().start()).date();
                     if (start_day > today) {
                         return pb::ActionKindGadget::ActionKind::AC_UPCOMING;
@@ -92,8 +100,6 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
     assert(false); // We should probably not get here...
     return pb::ActionKindGadget::ActionKind::AC_UNSET;
 }
-
-static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
 
 template <typename T>
 concept ActionType = std::is_same_v<T, pb::ActionInfo> || std::is_same_v<T, pb::Action>;
@@ -497,6 +503,8 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) con
         return tr("No due time set");
     case ActionKind::AC_DONE:
         return tr("Done");
+    case ActionKind::AC_ON_HOLD:
+        return tr("On Hold");
     }
     assert(false);
 }
@@ -923,11 +931,9 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         }
         return {};
     case SectionRole:
-        return action.kind();
-    case SectionNameRole: {
-        auto name = toName(action.kind());
-        return name;
-        }
+        return toKind(action);
+    case SectionNameRole:
+        return toName(toKind(action));
     case DueRole:
         // Only return if it's
         return formatDue(action.due());
