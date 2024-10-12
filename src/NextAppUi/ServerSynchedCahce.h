@@ -103,7 +103,7 @@ public:
             if (update.has_value()) {
                 auto &u = update.value();
                 LOG_TRACE_N << "next has value";
-                if (u.error() == nextapp::pb::ErrorGadget::OK) {
+                if (u.error() == nextapp::pb::ErrorGadget::Error::OK) {
                     LOG_TRACE_N << "Got OK from server: " << u.message();
                     //if (u.hasNodes()) {
                     if (hasItems(u)) {

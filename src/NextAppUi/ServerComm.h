@@ -18,6 +18,7 @@
 #include "qcorofuture.h"
 
 #include "logging.h"
+#include "util.h"
 #include "GrpcIncomingStream.h"
 
 template <typename T, typename... Y>
@@ -35,7 +36,7 @@ auto append(const T& list, M event) {
 }
 
 template <typename T>
-auto append(nextapp::pb::StringList& sl, T&& value) {
+auto append(const nextapp::pb::StringList& sl, T&& value) {
     auto list = sl.list();
     list.append(std::forward<T>(value));
     nextapp::pb::StringList new_sl;
@@ -44,7 +45,7 @@ auto append(nextapp::pb::StringList& sl, T&& value) {
 }
 
 template <typename T>
-auto remove(nextapp::pb::StringList& sl, T index) {
+auto remove(const nextapp::pb::StringList& sl, T index) {
     auto list = sl.list();
     list.removeAt(index);
     nextapp::pb::StringList new_sl;
@@ -291,11 +292,12 @@ private:
             //rpc_method->subscribe(this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] () {
                 //respT rval = rpc_method-> template read<respT>();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-            connect(rpc_method.get(), &QGrpcCallReply::finished, this, [this, rpc_method, done=std::move(done), opts=std::move(opts)] (const QGrpcStatus& status) {
+            auto ptr = rpc_method.get();
+            connect(ptr, &QGrpcCallReply::finished, this, [this, rpc_method=std::move(rpc_method), done=std::move(done), opts=std::move(opts)] (const QGrpcStatus& status) {
                 if (!status.isOk()) [[unlikely]] {
                     LOG_ERROR <<  "RPC failed: " << toString(status);
                     if constexpr (IsValidFunctor<doneT, CbError>) {
-                        done(CbError{nextapp::pb::ErrorGadget::GENERIC_ERROR, status.message()});
+                        done(CbError{nextapp::pb::ErrorGadget::Error::GENERIC_ERROR, status.message()});
                         setStatus(Status::ERROR);
                         stop();
                         return;
@@ -371,7 +373,7 @@ private:
     template <ProtoMessage reqT, ProtoMessage replyT = nextapp::pb::Status>
     QCoro::Task<replyT> rpc(
         reqT request,
-        std::shared_ptr<QGrpcCallReply>(::nextapp::pb::Nextapp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
+        std::unique_ptr<QGrpcCallReply>(::nextapp::pb::Nextapp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
         const GrpcCallOptions &options = {}) {
 
         QPromise<nextapp::pb::Status> promise;
@@ -390,13 +392,14 @@ private:
 
         auto handle = (client_.get()->*call)(request, options.qopts);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-            connect(handle.get(), &QGrpcCallReply::finished, this, [this, handle, options, promise=std::move(promise)] (const QGrpcStatus& status) mutable {
+        auto ptr = handle.get();
+        connect(ptr, &QGrpcCallReply::finished, this, [this, handle=std::move(handle), options, promise=std::move(promise)] (const QGrpcStatus& status) mutable {
                 if (!status.isOk()) [[unlikely]] {
                     LOG_ERROR <<  "RPC failed: " << toString(status);
                     setStatus(Status::ERROR);
                     stop();
                     replyT rval;
-                    rval.setError(nextapp::pb::ErrorGadget::GENERIC_ERROR);
+                    rval.setError(nextapp::pb::ErrorGadget::Error::GENERIC_ERROR);
                     rval.setMessage(status.message());
                     promise.start();
                     promise.addResult(std::move(rval));
@@ -424,7 +427,7 @@ private:
             }
 
             replyT errval;
-            errval.setError(nextapp::pb::ErrorGadget::GENERIC_ERROR);
+            errval.setError(nextapp::pb::ErrorGadget::Error::GENERIC_ERROR);
             errval.setMessage("Failed to read RPC response in client");
             promise.start();
             promise.addResult(std::move(errval));
@@ -439,7 +442,7 @@ private:
     template <ProtoMessage reqT, ProtoMessage replyT = nextapp::pb::Status>
     std::shared_ptr<GrpcIncomingStream> rpcOpenReadStream(
         const reqT& request,
-        std::shared_ptr<QGrpcServerStream>(::nextapp::pb::Nextapp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
+        std::unique_ptr<QGrpcServerStream>(::nextapp::pb::Nextapp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
         const GrpcCallOptions &options = {}) {
 
         auto svr_stream = (client_.get()->*call)(request, options.qopts);

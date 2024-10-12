@@ -64,7 +64,7 @@ public:
         }
     };
 
-    GrpcIncomingStream(std::shared_ptr<QGrpcServerStream> stream)
+    GrpcIncomingStream(std::unique_ptr<QGrpcServerStream>&& stream)
         : stream_{std::move(stream)}
     {
         connect(stream_.get(), &QGrpcServerStream::messageReceived, this, &GrpcIncomingStream::messageReceived);
@@ -141,7 +141,7 @@ private:
         }
     }
 
-    std::shared_ptr<QGrpcServerStream> stream_;
+    std::unique_ptr<QGrpcServerStream> stream_;
     State state_{State::IDLE};
 
     // QObject's cant be templates, so we have to use a queue with a known type.

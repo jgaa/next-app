@@ -87,7 +87,9 @@ void GreenDayModel::setReport(const QString &value) {
 void GreenDayModel::setColorUuid(const QString &value) {
     const QUuid uuid{value};
     if (uuid != QUuid{colorUuid()}) {
-        day_.day().setColor(uuid.toString(QUuid::WithoutBraces));
+        auto day = day_.day();
+        day.setColor(uuid.toString(QUuid::WithoutBraces));
+        day_.setDay(day);
         emit colorUuidChanged();
     }
 }
@@ -95,7 +97,10 @@ void GreenDayModel::setColorUuid(const QString &value) {
 void GreenDayModel::commit() {
 
     // Avoid sending `00000000-0000-0000-0000-000000000000` which will not work on the server
-    day_.day().setColor(toValidQuid(day_.day().color()));
+    auto day = day_.day();
+    day.setColor(toValidQuid(day_.day().color()));
+    day_.setDay(day);
+    //day_.day().setColor(toValidQuid(day_.day().color()));
 
     assert(day_.day().date().year() == year_);
     assert(day_.day().date().month() + 1 == month_);
@@ -202,7 +207,10 @@ QCoro::Task<void> GreenDayModel::fetch()
             assert(day_.day().date().mday() == mday_);
         } else {
             QDate date{year_, month_, mday_};
-            day_.day().setDate(toDate(date));
+            auto day = day_.day();
+            day.setDate(toDate(date));
+            day_.setDay(day);
+            //day_.day().setDate(toDate(date));
         }
         valid_ = true; // Non-existent in the db is also a valid state.
     } else {

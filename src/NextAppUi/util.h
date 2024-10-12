@@ -8,6 +8,18 @@ namespace nextapp::pb {
 class Date;
 }
 
+namespace nextapp::pb::ErrorGadget {
+enum class Error;
+}
+
+std::ostream& operator<<(std::ostream& os, const nextapp::pb::ErrorGadget::Error& error);
+
+namespace nextapp::pb::WorkEvent_QtProtobufNested {
+enum class Kind;
+}
+
+std::string toString(const nextapp::pb::WorkEvent_QtProtobufNested::Kind& kind);
+
 [[nodiscard]] QString toValidQuid(const QString& str);
 [[nodiscard]] QUuid toQuid(const QString& str);
 [[nodiscard]] QString toHourMin(const int duration, bool showEmpty = true);
@@ -46,3 +58,4 @@ bool isLastWeek(time_t when);
 bool isCurrentMonth(time_t when);
 bool isLastMonth(time_t when);
 bool isLastYear(time_t when);
+

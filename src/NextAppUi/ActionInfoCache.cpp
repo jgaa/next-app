@@ -22,14 +22,24 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     ai.setFavorite(action.favorite());
     ai.setName(action.name());
     ai.setCreatedDate(ai.createdDate());
-    ai.due().setKind(action.due().kind());
+    auto due = ai.due();
+    due.setKind(action.due().kind());
     if (action.due().hasStart()) {
-        ai.due().setStart(action.due().start());
+        due.setStart(action.due().start());
     }
     if (action.due().hasDue()) {
-        ai.due().setDue(action.due().due());
+        due.setDue(action.due().due());
     }
-    ai.due().setTimezone(action.due().timezone());
+    due.setTimezone(action.due().timezone());
+    ai.setDue(due);
+    // ai.due().setKind(action.due().kind());
+    // if (action.due().hasStart()) {
+    //     ai.due().setStart(action.due().start());
+    // }
+    // if (action.due().hasDue()) {
+    //     ai.due().setDue(action.due().due());
+    // }
+    //ai.due().setTimezone(action.due().timezone());
     ai.setCompletedTime(ai.completedTime());
     ai.setKind(action.kind());
     ai.setCategory(action.category());
@@ -271,13 +281,13 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     } else {
         params.append(QString{});
     }
-    params.append(action.priority());
-    params.append(action.status());
+    params.append(static_cast<quint32>(action.priority()));
+    params.append(static_cast<quint32>(action.status()));
     params.append(action.favorite());
     params.append(action.name());
     params.append(action.descr());
     params.append(toQDate(action.createdDate()));
-    params.append(action.due().kind());
+    params.append(static_cast<quint32>(action.due().kind()));
     if (action.due().hasStart()) {
         params.append(QDateTime::fromSecsSinceEpoch(action.due().start()));
     } else {
@@ -291,12 +301,12 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     params.append(action.due().timezone());
     params.append(QDateTime::fromSecsSinceEpoch(action.completedTime()));
     params.append(static_cast<qlonglong>(action.timeEstimate()));
-    params.append(action.difficulty());
-    params.append(action.repeatKind());
-    params.append(action.repeatUnits());
-    params.append(action.repeatWhen());
+    params.append(static_cast<quint32>(action.difficulty()));
+    params.append(static_cast<quint32>(action.repeatKind()));
+    params.append(static_cast<quint32>(action.repeatUnits()));
+    params.append(static_cast<quint32>(action.repeatWhen()));
     params.append(static_cast<quint32>(action.repeatAfter()));
-    params.append(action.kind());
+    params.append(static_cast<quint32>(action.kind()));
     params.append(static_cast<quint32>(action.version()));
     params.append(static_cast<qlonglong>(action.updated()));
     params.append(action.deleted());

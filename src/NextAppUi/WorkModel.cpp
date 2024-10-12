@@ -65,70 +65,71 @@ void WorkModel::doFetchSome(FetchWhat what, bool firstPage)
     LOG_DEBUG << "WorkModel::fetchSome() called, what=" << what << ", uuid=" << uuid().toString()
               << ", firstPage=" << firstPage;
 
-    nextapp::pb::GetWorkSessionsReq req;
-    currentTreeNode_.clear();
-    fetch_what_ = what;
+    // nextapp::pb::Page page;
+    // nextapp::pb::GetWorkSessionsReq req;
+    // currentTreeNode_.clear();
+    // fetch_what_ = what;
 
-    if (firstPage) {
-        pagination_.reset();
-    } else {
-        req.page().setPrevTime(pagination_.prev);
-    }
+    // if (firstPage) {
+    //     pagination_.reset();
+    // } else {
+    //     page.setPrevTime(pagination_.prev);
+    // }
 
-    req.page().setPageSize(pagination_.pageSize());
+    // page.setPageSize(pagination_.pageSize());
 
-    switch(what) {
-    case TODAY: {
-        auto date = QDate::currentDate();
-        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-        date = date.addDays(1);
-        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    } break;
-    case YESTERDAY: {
-        auto date = QDate::currentDate().addDays(-1);
-        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-        date = date.addDays(1);
-        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    } break;
-    case CURRENT_WEEK: {
-        auto date = getFirstDayOfWeek();
-        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-        date = date.addDays(7);
-        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    } break;
-    case LAST_WEEK: {
-        auto date = getFirstDayOfWeek().addDays(-7);
-        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-        date = date.addDays(7);
-        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    } break;
-    case CURRENT_MONTH: {
-        auto date = QDate::currentDate();
-        date.setDate(date.year(), date.month(), 1);
-        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-        date = date.addMonths(1);
-        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    } break;
-    case LAST_MONTH: {
-        auto date = QDate::currentDate();
-        date.setDate(date.year(), date.month(), 1);
-        date = date.addMonths(-1);
-        req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-        date = date.addMonths(1);
-        req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    } break;
-    case SELECTED_LIST: {
-        if (auto nodeid = MainTreeModel::instance()->selected(); !nodeid.isEmpty()) {
-            req.setNodeId(nodeid);
-            currentTreeNode_ = nodeid;
-        }
-    } break;
-    default:
-        LOG_ERROR << "Unknown what: " << what;
-        return;
-    } // switch what
+    // switch(what) {
+    // case TODAY: {
+    //     auto date = QDate::currentDate();
+    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+    //     date = date.addDays(1);
+    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case YESTERDAY: {
+    //     auto date = QDate::currentDate().addDays(-1);
+    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+    //     date = date.addDays(1);
+    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case CURRENT_WEEK: {
+    //     auto date = getFirstDayOfWeek();
+    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+    //     date = date.addDays(7);
+    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case LAST_WEEK: {
+    //     auto date = getFirstDayOfWeek().addDays(-7);
+    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+    //     date = date.addDays(7);
+    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case CURRENT_MONTH: {
+    //     auto date = QDate::currentDate();
+    //     date.setDate(date.year(), date.month(), 1);
+    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+    //     date = date.addMonths(1);
+    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case LAST_MONTH: {
+    //     auto date = QDate::currentDate();
+    //     date.setDate(date.year(), date.month(), 1);
+    //     date = date.addMonths(-1);
+    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
+    //     date = date.addMonths(1);
+    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
+    // } break;
+    // case SELECTED_LIST: {
+    //     if (auto nodeid = MainTreeModel::instance()->selected(); !nodeid.isEmpty()) {
+    //         req.setNodeId(nodeid);
+    //         currentTreeNode_ = nodeid;
+    //     }
+    // } break;
+    // default:
+    //     LOG_ERROR << "Unknown what: " << what;
+    //     return;
+    // } // switch what
 
-    ServerComm::instance().getWorkSessions(req, uuid());
+    // ServerComm::instance().getWorkSessions(req, uuid());
 }
 
 void WorkModel::setSorting(Sorting sorting)
@@ -437,7 +438,7 @@ bool WorkModel::setData(const QModelIndex &index, const QVariant &value, int rol
                 try {
                     auto seconds = parseDateOrTime(value.toString());
                     nextapp::pb::WorkEvent event;
-                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
                     event.setStart(seconds);
                     ServerComm::instance().sendWorkEvent(work->id_proto(), event);
                 } catch (const std::runtime_error&) {
@@ -454,9 +455,9 @@ bool WorkModel::setData(const QModelIndex &index, const QVariant &value, int rol
                     nextapp::pb::WorkEvent event;
                     if (work->state() != nextapp::pb::WorkSession::State::DONE) {
                         // We have to stop the work.
-                        event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::STOP);
+                        event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::STOP);
                     } else {
-                        event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+                        event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
                     }
                     event.setEnd(seconds);
                     ServerComm::instance().sendWorkEvent(work->id_proto(), event);
@@ -468,7 +469,7 @@ bool WorkModel::setData(const QModelIndex &index, const QVariant &value, int rol
                 try {
                     auto seconds = parseDuration(value.toString());
                     nextapp::pb::WorkEvent event;
-                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
                     event.setPaused(seconds);
                     ServerComm::instance().sendWorkEvent(work->id_proto(), event);
                 } catch (const std::runtime_error&) {
@@ -479,7 +480,7 @@ bool WorkModel::setData(const QModelIndex &index, const QVariant &value, int rol
             case NAME:
                 try {
                     nextapp::pb::WorkEvent event;
-                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
                     event.setName(value.toString());
                     ServerComm::instance().sendWorkEvent(work->id_proto(), event);
                 } catch (const std::runtime_error&) {
@@ -553,11 +554,11 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
     for(const auto &event : work.events()) {
         ++row;
         switch(event.kind()) {
-        case pb::WorkEvent_QtProtobufNested::START:
+        case pb::WorkEvent_QtProtobufNested::Kind::START:
             work.setStart(event.time());
             work.setState(pb::WorkSession::State::ACTIVE);
             break;
-        case pb::WorkEvent_QtProtobufNested::STOP:
+        case pb::WorkEvent_QtProtobufNested::Kind::STOP:
             end_pause(event);
             if (event.hasEnd()) {
                 work.setEnd(event.end());
@@ -566,19 +567,19 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
             }
             work.setState(pb::WorkSession::State::DONE);
             break;
-        case pb::WorkEvent_QtProtobufNested::PAUSE:
+        case pb::WorkEvent_QtProtobufNested::Kind::PAUSE:
             if (!pause_from) {
                 pause_from = event.time();
             }
             work.setState(pb::WorkSession::State::PAUSED);
             break;
-        case pb::WorkEvent_QtProtobufNested::RESUME:
+        case pb::WorkEvent_QtProtobufNested::Kind::RESUME:
             end_pause(event);
             work.setState(pb::WorkSession::State::ACTIVE);
             break;
-        case pb::WorkEvent_QtProtobufNested::TOUCH:
+        case pb::WorkEvent_QtProtobufNested::Kind::TOUCH:
             break;
-        case pb::WorkEvent_QtProtobufNested::CORRECTION:
+        case pb::WorkEvent_QtProtobufNested::Kind::CORRECTION:
             if (event.hasStart()) {
                 work.setStart(event.start());
             }
@@ -607,7 +608,7 @@ WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
             break;
         default:
             assert(false);
-            throw runtime_error{"Invalid work event kind"s + to_string(event.kind())};
+            throw runtime_error{"Invalid work event kind"s + toString(event.kind())};
         }
     }
 
@@ -824,7 +825,7 @@ bool WorkModel::update(const nextapp::pb::WorkSession &session)
     }
 
     nextapp::pb::WorkEvent ev;
-    ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::CORRECTION);
+    ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
 
     if (curr->start() != session.start()) {
         ev.setStart(session.start());
@@ -848,7 +849,12 @@ bool WorkModel::update(const nextapp::pb::WorkSession &session)
         ev.setEnd(session.end());
     }
 
-    req.events().push_back(ev);
+    {
+        auto events = req.events();
+        events.push_back(ev);
+        req.setEvents(events);
+    }
+    //req.events().push_back(ev);
     ev = {};
 
     if (session.state() != curr->state() && curr->state() != nextapp::pb::WorkSession::State::DONE) {
@@ -867,8 +873,11 @@ bool WorkModel::update(const nextapp::pb::WorkSession &session)
         case nextapp::pb::WorkSession::State::DONE:
             // Stop the session if the user changes the state to DONE but did not set an end time.
             if (!session.hasEnd()) {
-                ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::STOP);
-                req.events().push_back(ev);
+                ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::STOP);
+                auto events = req.events();
+                events.push_back(ev);
+                req.setEvents(events);
+                //req.events().push_back(ev);
                 ev = {};
             }
             break;
@@ -879,9 +888,12 @@ bool WorkModel::update(const nextapp::pb::WorkSession &session)
         // Stop the session if the user set a stop date but left the state as ACTIVE or PAUSED
         if (session.hasEnd() && session.state() != nextapp::pb::WorkSession::State::DONE) {
             assert(!curr->hasEnd());
-            ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::STOP);
+            ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::STOP);
             ev.setEnd(session.end());
-            req.events().push_back(ev);
+            auto events = req.events();
+            events.push_back(ev);
+            req.setEvents(events);
+            //req.events().push_back(ev);
             ev = {};
         }
     }

@@ -248,9 +248,15 @@ void ServerComm::getColorsInMonth(unsigned int year, unsigned int month)
 void ServerComm::setDayColor(int year, int month, int day, QUuid colorUuid)
 {
     nextapp::pb::SetColorReq req;
-    req.date().setYear(year);
-    req.date().setMonth(month);
-    req.date().setMday(day);
+    auto d = req.date();
+    d.setYear(year);
+    d.setMonth(month);
+    d.setMday(day);
+    req.setDate(d);
+
+    // req.date().setYear(year);
+    // req.date().setMonth(month);
+    // req.date().setMday(day);
     req.setColor(colorUuid.toString(QUuid::WithoutBraces));
 
     callRpc<nextapp::pb::Status>([this](nextapp::pb::SetColorReq req) {
@@ -645,7 +651,7 @@ void ServerComm::fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp:
         if (status.hasCalendarEvents()) {
             done(std::move(status.calendarEvents()));
         } else {
-            done(CbError{nextapp::pb::ErrorGadget::GENERIC_ERROR, "Missing events"});
+            done(CbError{nextapp::pb::ErrorGadget::Error::GENERIC_ERROR, "Missing events"});
         }
     }, opts);
 }
@@ -658,7 +664,7 @@ void ServerComm::fetchActionCategories(callback_t<nextapp::pb::ActionCategories>
         if (status.hasActionCategories()) {
             done(status.actionCategories());
         } else {
-            done(CbError{nextapp::pb::ErrorGadget::GENERIC_ERROR, "Missing categories"});
+            done(CbError{nextapp::pb::ErrorGadget::Error::GENERIC_ERROR, "Missing categories"});
         }
     });
 }
@@ -807,7 +813,7 @@ void ServerComm::signupOrAdd(const QString &name,
         QSettings settings;
 
         switch(su.error()) {
-        case signup::pb::ErrorGadget::OK:
+        case signup::pb::ErrorGadget::Error::OK:
             signup_status_ = SignupStatus::SIGNUP_OK;
             assert(su.hasSignUpResponse());
             settings.setValue("onboarding", true);
@@ -822,7 +828,7 @@ void ServerComm::signupOrAdd(const QString &name,
                 start();
             }, Qt::QueuedConnection);
             break;
-        case signup::pb::ErrorGadget::EMAIL_ALREADY_EXISTS:
+        case signup::pb::ErrorGadget::Error::EMAIL_ALREADY_EXISTS:
             signup_status_ = SignupStatus::SIGNUP_ERROR;
             addMessage(tr("Your email is already in use for an account."));
             break;
@@ -1101,7 +1107,7 @@ void ServerComm::connectToSignupServer()
         setMessage(tr("Connecting to server ..."));
         return signup_client_->GetInfo({});
     }, [this](const signup::pb::Reply& reply) {
-        if (reply.hasGetInfoResponse() && reply.error() == signup::pb::ErrorGadget::OK) {
+        if (reply.hasGetInfoResponse() && reply.error() == signup::pb::ErrorGadget::Error::OK) {
             LOG_DEBUG << "Received signup info from server ";
             signup_info_ = reply.getInfoResponse();
             signup_status_ = SignupStatus::SIGNUP_HAVE_INFO;
@@ -1145,7 +1151,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
     setStatus(Status::CONNECTING);
     nextapp::pb::Empty req;
     auto res = co_await rpc(req, &nextapp::pb::Nextapp::Client::Hello);
-    if (res.error() == nextapp::pb::ErrorGadget::OK) {
+    if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasSessionId()) {
             session_id_ = res.sessionId().toLatin1();
         }
@@ -1161,7 +1167,7 @@ failed:
 
     res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetServerInfo);
 
-    if (res.error() != nextapp::pb::ErrorGadget::OK) {
+    if (res.error() != nextapp::pb::ErrorGadget::Error::OK) {
         goto failed;
     }
 
@@ -1184,7 +1190,7 @@ failed:
 
     res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetUserGlobalSettings);
 
-    if (res.error() == nextapp::pb::ErrorGadget::OK && res.hasUserGlobalSettings()) {
+    if (res.error() == nextapp::pb::ErrorGadget::Error::OK && res.hasUserGlobalSettings()) {
         userGlobalSettings_ = res.userGlobalSettings();
         LOG_DEBUG_N << "Received global user-settings";
         emit globalSettingsChanged();

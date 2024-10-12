@@ -115,11 +115,11 @@ int comparePriName(const T& left, const U& right) {
 
 int compare(const pb::Due& left, const pb::Due& right) {
     if (left.kind() != right.kind()) {
-        return left.kind() - right.kind();
+        return static_cast<int>(left.kind()) - static_cast<int>(right.kind());
     }
 
     if (left.hasStart() && right.hasStart()) {
-        return left.start() - right.start();
+        return static_cast<int>(left.start()) - static_cast<int>(right.start());
     }
 
     if (left.hasStart() || right.hasStart()) {
@@ -273,7 +273,7 @@ void ActionsModel::deleteAction(const QString &uuid)
 nextapp::pb::Action ActionsModel::newAction()
 {
     nextapp::pb::Action action;
-    action.setPriority(nextapp::pb::ActionPriorityGadget::PRI_NORMAL);
+    action.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
     return action;
 }
 
@@ -914,13 +914,13 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case PriorityRole:
         return static_cast<int>(action.priority());
     case StatusRole:
-        return action.status();
+        return static_cast<uint>(action.status());
     case NodeRole:
         return action.node();
     case CreatedDateRole:
         return QDate{action.createdDate().year(), action.createdDate().month(), action.createdDate().mday()}.toString();
     case DueTypeRole:
-        return action.due().kind();
+        return static_cast<uint>(action.due().kind());
     case DueByTimeRole:
         return static_cast<quint64>(action.due().due());
     case CompletedRole:
@@ -931,7 +931,7 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         }
         return {};
     case SectionRole:
-        return toKind(action);
+        return static_cast<uint>(toKind(action));
     case SectionNameRole:
         return toName(toKind(action));
     case DueRole:
@@ -1437,8 +1437,8 @@ ActionPrx::ActionPrx(QString actionUuid)
 ActionPrx::ActionPrx()
     : valid_{true}
 {
-    action_.setPriority(nextapp::pb::ActionPriorityGadget::PRI_NORMAL);
-    action_.setDifficulty(nextapp::pb::ActionDifficultyGadget::NORMAL);
+    action_.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
+    action_.setDifficulty(nextapp::pb::ActionDifficultyGadget::ActionDifficulty::NORMAL);
 }
 
 void ActionPrx::receivedAction(const nextapp::pb::Status &status)

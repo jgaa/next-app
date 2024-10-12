@@ -265,7 +265,7 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
     }
 
     auto res = co_await ServerComm::instance().getNewDayColorDefinitions(req);
-    if (res.error() == nextapp::pb::ErrorGadget::OK) {
+    if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasDayColorDefinitions()) {
             for(const auto cdd : res.dayColorDefinitions().dayColors()) {
                 QList<QVariant> params;
@@ -320,7 +320,7 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
         if (update.has_value()) {
             auto &u = update.value();
             LOG_TRACE_N << "next has value";
-            if (u.error() == nextapp::pb::ErrorGadget::OK) {
+            if (u.error() == nextapp::pb::ErrorGadget::Error::OK) {
                 LOG_TRACE_N << "Got OK from server";
                 if (u.hasDays()) {
                     LOG_TRACE_N << "Got days from server. Count=" << u.days().days().size();

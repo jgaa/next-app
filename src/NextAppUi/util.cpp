@@ -1,3 +1,6 @@
+
+#include <array>
+
 #include <QString>
 #include <QUuid>
 #include <QDateTime>
@@ -11,9 +14,45 @@
 #include "util.h"
 #include "logging.h"
 #include "ServerComm.h"
+#include "nextapp.qpb.h"
 
 
 using namespace std;
+
+std::ostream& operator<<(std::ostream& os, const nextapp::pb::ErrorGadget::Error& error) {
+    static constexpr auto errors = to_array<string_view>({
+        "OK",
+        "MISSING_TENANT_NAME",
+        "MISSING_USER_NAME",
+        "MISSING_USER_EMAIL",
+        "ALREADY_EXIST",
+        "INVALID_PARENT",
+        "DATABASE_UPDATE_FAILED",
+        "DATABASE_REQUEST_FAILED",
+        "NOT_FOUND",
+        "DIFFEREENT_PARENT",
+        "NO_CHANGES",
+        "CONSTRAINT_FAILED",
+        "GENERIC_ERROR",
+        "INVALID_ACTION",
+        "INVALID_REQUEST",
+        "PAGE_SIZE_TOO_SMALL",
+        "AUTH_MISSING_SESSION_ID",
+        "NO_RELEVANT_DATA",
+        "MISSING_CSR",
+        "INVALID_CSR",
+        "PERMISSION_DENIED",
+        "TENANT_SUSPENDED",
+        "USER_SUSPENDED",
+        "MISSING_USER_ID",
+        "AUTH_FAILED",
+        "CONFLICT",
+        "MISSING_AUTH",
+    });
+
+    assert(errors.size() < static_cast<size_t>(error));
+    return os << errors.at(static_cast<size_t>(error));
+}
 
 QString toValidQuid(const QString &str) {
     QUuid uuid{str};
@@ -186,4 +225,19 @@ nextapp::pb::Date toDate(const QDate &date)
     d.setMonth(date.month() -1);
     d.setMday(date.day());
     return d;
+}
+
+string toString(const nextapp::pb::WorkEvent_QtProtobufNested::Kind &kind)
+{
+    static constexpr auto kinds = to_array<string_view>({
+        "START",
+        "STOP",
+        "PAUSE",
+        "RESUME",
+        "TOUCH",
+        "CORRECTION",
+    });
+
+    assert(kinds.size() < static_cast<size_t>(kind));
+    return string{kinds.at(static_cast<size_t>(kind))};
 }

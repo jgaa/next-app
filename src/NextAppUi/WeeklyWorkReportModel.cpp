@@ -89,7 +89,7 @@ void WeeklyWorkReportModel::fetch()
     }
     nextapp::pb::DetailedWorkSummaryRequest request;
     request.setStart(startTime_);
-    request.setKind(nextapp::pb::WorkSummaryKindGadget::WSK_WEEK);
+    request.setKind(nextapp::pb::WorkSummaryKindGadget::WorkSummaryKind::WSK_WEEK);
 
     ServerComm::instance().getDetailedWorkSummary(request, uuid_);
 }

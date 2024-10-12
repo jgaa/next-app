@@ -29,4 +29,3 @@ namespace nextapp::logging {
 #define LOG_INFO_N    LFLOG_INFO   << __PRETTY_FUNCTION__ << " - "
 #define LOG_DEBUG_N   LFLOG_DEBUG  << __PRETTY_FUNCTION__ << " - "
 #define LOG_TRACE_N   LFLOG_TRACE  << __PRETTY_FUNCTION__ << " - "
-
