@@ -275,4 +275,29 @@ boost::asio::awaitable<void> GrpcServer::loadCert()
     co_return;
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetDataVersions(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+        auto res = co_await rctx.dbh->exec("SELECT version, kind from versions WHERE user=?",
+                                  rctx.uctx->dbOptions(), rctx.uctx->userUuid());
+
+        enum Cols { VERSION, KIND };
+
+        if (res.has_value()) {
+            auto versions = reply->mutable_dataversions();
+
+            for(const auto& row : res.rows()) {
+                const auto& kind = row[KIND].as_string();
+                if (kind == "action_category") {
+                    versions->set_actioncategoryversion(row[VERSION].as_uint64());
+                }
+            }
+        }
+
+    }, __func__);
+}
+
+
 } // ns

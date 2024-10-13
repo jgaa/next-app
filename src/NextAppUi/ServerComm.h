@@ -202,6 +202,7 @@ public:
     QCoro::Task<nextapp::pb::Status> getNewDayColorDefinitions(const nextapp::pb::GetNewReq& req);
     std::shared_ptr<GrpcIncomingStream> synchNodes(const nextapp::pb::GetNewReq& req);
     std::shared_ptr<GrpcIncomingStream> synchActions(const nextapp::pb::GetNewReq& req);
+    QCoro::Task<nextapp::pb::Status> getActionCategories(const nextapp::pb::Empty& req);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
@@ -214,6 +215,14 @@ public:
     void setStatus(Status status);
 
     const QUuid& deviceUuid() const;
+
+    const auto& getServerDataVersions() const noexcept {
+        return server_data_versions_;
+    }
+
+    const auto& getLocalDataVersions() const noexcept {
+        return server_data_versions_;
+    }
 
 signals:
     void versionChanged();
@@ -450,6 +459,8 @@ private:
     }
 
     QCoro::Task<void> startNextappSession();
+    QCoro::Task<bool> getDataVersions();
+    QCoro::Task<bool> getGlobalSetings();
 
     std::pair<QString, QString> createCsr();
     QString toString(const QGrpcStatus& ex);
@@ -474,4 +485,6 @@ private:
     QString messages_;
     QTimer ping_timer_;
     unsigned ping_timer_interval_sec_{60}; // 60 seconds
+    nextapp::pb::DataVersionsInfo server_data_versions_;
+    nextapp::pb::DataVersionsInfo local_data_versions_;
 };

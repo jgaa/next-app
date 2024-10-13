@@ -1,5 +1,7 @@
 #include <algorithm>
 
+#include <QProtobufSerializer>
+
 #include "ActionCategoriesModel.h"
 #include "ServerComm.h"
 #include "util.h"
@@ -29,9 +31,9 @@ ActionCategoriesModel::ActionCategoriesModel(QObject *parent)
         onOnlineChanged(online);
     });
 
-    if (ServerComm::instance().connected()) {
-        setOnline(true);
-    }
+    // if (ServerComm::instance().connected()) {
+    //     setOnline(true);
+    // }
 }
 
 void ActionCategoriesModel::deleteCategory(const QString &id)
@@ -167,7 +169,21 @@ ActionCategoriesModel &ActionCategoriesModel::instance()
     return *instance_;
 }
 
-void ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
+QCoro::Task<bool> ActionCategoriesModel::synch()
+{
+    // See if we need to fetch from server
+    const auto server_ver = ServerComm::instance().getServerDataVersions().actionCategoryVersion();
+    const auto local_ver = ServerComm::instance().getLocalDataVersions().actionCategoryVersion();
+    if (server_ver == 0 || server_ver > local_ver) {
+        if (!co_await synchFromServer()) {
+            co_return false;
+        }
+    }
+
+    co_return co_await loadFromDb();
+}
+
+QCoro::Task<void> ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 {
     if (update->hasActionCategory()) {
 
@@ -177,7 +193,9 @@ void ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> 
             endResetModel();
         });
 
-        const auto& cat = update->actionCategory();
+        // We need a copy since update lilkely goes out of scope before we finish.
+        const auto cat = update->actionCategory();
+
         auto it = std::find_if(action_categories_.begin(), action_categories_.end(),
                                [&cat](const nextapp::pb::ActionCategory& c) {
             return c.id_proto() == cat.id_proto();
@@ -185,7 +203,9 @@ void ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> 
 
         if (update->op() == nextapp::pb::Update::Operation::DELETED) {
             action_categories_.erase(it);
+            co_await remove(cat.id_proto());
         } else {
+            co_await save(cat);
             if (it != action_categories_.end()) {
                 *it = cat;
             } else {
@@ -203,13 +223,8 @@ void ActionCategoriesModel::setOnline(bool value) {
     if (online_ != value) {
         online_ = value;
         emit onlineChanged();
-        if (online_) {
-            fetchIf();
-        } else {
+        if (!online_) {
             setValid(false);
-            beginResetModel();
-            action_categories_.clear();
-            endResetModel();
         }
     }
 }
@@ -222,62 +237,86 @@ void ActionCategoriesModel::setValid(bool value) {
     }
 }
 
-void ActionCategoriesModel::fetchIf()
+QCoro::Task<bool> ActionCategoriesModel::synchFromServer()
 {
-    if (online_) {
-        deleted_entries_.clear();
-        ServerComm::instance().fetchActionCategories([this](auto val) {
-            if (std::holds_alternative<ServerComm::CbError>(val)) {
-                LOG_WARN_N << "Failed to get categories: " << std::get<ServerComm::CbError>(val).message;
-                setValid(false);
-                // TODO: What do we do now? Retry after a while?
-                return;
-            }
+    auto res = co_await ServerComm::instance().getActionCategories({});
+    if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
+        if (res.hasActionCategories()) {
 
-            auto& data = std::get<nextapp::pb::ActionCategories>(val);
-            onReceivedActionCategories(data);
-        });
+            auto& db = NextAppCore::instance()->db();
+            co_await db.query("DELETE FROM action_category");
+
+            const auto& cats = res.actionCategories();
+            for(const auto cat : cats.categories()) {
+                if (!co_await save(cat)) {
+                    co_return false;
+                }
+            }
+        }
+
+        co_return true;
     }
+
+    co_return false;
 }
 
-void ActionCategoriesModel::onReceivedActionCategories(nextapp::pb::ActionCategories &action_categories)
+QCoro::Task<bool> ActionCategoriesModel::loadFromDb()
 {
+    auto& db = NextAppCore::instance()->db();
     beginResetModel();
 
     ScopedExit do_later([this] {
         endResetModel();
     });
 
-    auto old = std::move(action_categories_);
-    action_categories_ = action_categories.categories();
-
-    // Handle the case where the server already sent an update for a newer entry than what we received from our request.
-    for(auto &cat : old) {
-        if (auto it = ranges::find_if(action_categories_,
-                               [&cat](const nextapp::pb::ActionCategory& c) {
-            return c.id_proto() == cat.id_proto();
-        }); it == action_categories_.end()) {
-            if (cat.version() > it->version()) {
-                // Keep the old value
-                *it = std::move(cat);
-            }
+    auto res = co_await db.query("SELECT data FROM action_category");
+    if (res.has_value()) {
+        action_categories_.clear();
+        for(const auto& row : res.value()) {
+            const auto& data = row.at(0).toByteArray();
+            nextapp::pb::ActionCategory cat;
+            QProtobufSerializer serializer;
+            cat.deserialize(&serializer, data);
+            action_categories_.push_back(cat);
         }
+
+        ranges::sort(action_categories_, compare);
+        setValid(true);
+        co_return true;
     }
 
-    // Handle the case where a category was deleted after the server prepared the response, and we already got the notification.
-    for(auto& del : deleted_entries_) {
-        if (auto it = ranges::find_if(action_categories_,
-                               [&del](const nextapp::pb::ActionCategory& c) {
-            return c.id_proto() == del;
-        }); it != action_categories_.end()) {
-            action_categories_.erase(it);
-        }
+    co_return false;
+}
+
+QCoro::Task<bool> ActionCategoriesModel::save(const nextapp::pb::ActionCategory &category)
+{
+    auto& db = NextAppCore::instance()->db();
+    QProtobufSerializer serializer;
+    QList<QVariant> params;
+
+    params.append(category.id_proto());
+    params.append(static_cast<uint>(category.version()));
+    params.append(category.serialize(&serializer));
+
+    const auto res = co_await db.query("INSERT INTO action_category (id, version, data) VALUES (?, ?, ?)", &params);
+
+    if (res.has_value()) {
+        co_return true;
     }
-    deleted_entries_.clear();
 
-    ranges::sort(action_categories_, compare);
+    co_return false;
+}
 
-    setValid(true);
+QCoro::Task<bool> ActionCategoriesModel::remove(const QString &id)
+{
+    auto& db = NextAppCore::instance()->db();
+    DbStore::param_t params;
+    params.append(id);
+    const auto res = co_await db.query("DELETE FROM action_category WHERE id = ?", &params);
+    if (res.has_value()) {
+        co_return true;
+    }
+    co_return false;
 }
 
 nextapp::pb::ActionCategory *ActionCategoriesModel::lookup(const QString &id)

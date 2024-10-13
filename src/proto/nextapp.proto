@@ -811,7 +811,7 @@ service Nextapp {
     rpc GetActionCategories(Empty) returns (Status) {}
     rpc UpdateActionCategory(ActionCategory) returns (Status) {}
     rpc DeleteActionCategory(DeleteActionCategoryReq) returns (Status) {}
-    rpc getDataVersions(Empty) returns (Status) {}
+    rpc GetDataVersions(Empty) returns (Status) {}
 
     rpc GetNewDays(GetNewReq) returns (stream Status) {}
     rpc GetNewDayColorDefinitions(GetNewReq) returns (Status) {}

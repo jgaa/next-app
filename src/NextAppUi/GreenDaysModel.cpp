@@ -206,9 +206,10 @@ QCoro::Task<void> GreenDaysModel::onUpdatedDay(nextapp::pb::CompleteDay complete
 QCoro::Task<void> GreenDaysModel::onOnline()
 {
     //fetchColors();
-    if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
-        co_await synchFromServer();
-    }
+    // if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
+    //     co_await synchFromServer();
+    // }
+    co_return;
 }
 
 void GreenDaysModel::refetchAllMonths()
@@ -234,11 +235,11 @@ void GreenDaysModel::setState(State state) noexcept
     }
 }
 
-QCoro::Task<void>  GreenDaysModel::synchFromServer()
+QCoro::Task<bool>  GreenDaysModel::synchFromServer()
 {
     if (state_ == State::SYNCHING) {
         LOG_DEBUG_N << "We are already synching.";
-        co_return;
+        co_return false;
     }
 
     LOG_DEBUG_N << "Synching green days from server";
@@ -248,10 +249,11 @@ QCoro::Task<void>  GreenDaysModel::synchFromServer()
     if (co_await synchColorsFromServer() && co_await synchDaysFromServer()) {
             setState(State::SYNCHED);
             co_await loadFromCache();
-            co_return;
+            co_return true;
     }
 
     setState(State::ERROR);
+    co_return false;
 }
 
 QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()

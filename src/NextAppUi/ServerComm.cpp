@@ -22,6 +22,9 @@
 #include <openssl/pem.h>
 
 #include "NextAppCore.h"
+#include "GreenDaysModel.h"
+#include "ActionInfoCache.h"
+#include "ActionCategoriesModel.h"
 
 using namespace std;
 
@@ -721,6 +724,11 @@ std::shared_ptr<GrpcIncomingStream> ServerComm::synchActions(const nextapp::pb::
     return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewActions);
 }
 
+QCoro::Task<nextapp::pb::Status> ServerComm::getActionCategories(const nextapp::pb::Empty &req)
+{
+    co_return co_await rpc(req, &nextapp::pb::Nextapp::Client::GetActionCategories);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;
@@ -946,7 +954,6 @@ void ServerComm::onGrpcReady()
     reconnect_after_seconds_ = 0;
     setStatus(Status::ONLINE);
     emit versionChanged();
-    emit connectedChanged();
     for(; !grpc_queue_.empty(); grpc_queue_.pop()) {
         grpc_queue_.front()();
     }
@@ -1188,18 +1195,31 @@ failed:
 
     connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
 
-    res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetUserGlobalSettings);
-
-    if (res.error() == nextapp::pb::ErrorGadget::Error::OK && res.hasUserGlobalSettings()) {
-        userGlobalSettings_ = res.userGlobalSettings();
-        LOG_DEBUG_N << "Received global user-settings";
-        emit globalSettingsChanged();
-    } else if (res.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
-        LOG_INFO_N << "initializing global settings...";
-        res = co_await rpc(userGlobalSettings_, &nextapp::pb::Nextapp::Client::SetUserGlobalSettings);
-    } else {
+    // Do the initial synch.
+    if (!co_await getDataVersions()) {
+        LOG_WARN_N << "Failed to get data versions.";
         goto failed;
-        LOG_ERROR_N << "Failed to get global user-settings: " << res.message();
+    }
+
+    if (!co_await getGlobalSetings()) {
+        LOG_WARN_N << "Failed to get global settings.";
+        goto failed;
+    }
+
+    if (!co_await GreenDaysModel::instance()->synchFromServer()) {
+        LOG_WARN_N << "Failed to get green days.";
+        goto failed;
+    }
+
+
+    if (!co_await ActionCategoriesModel::instance().synch()) {
+        LOG_WARN_N << "Failed to get action categories.";
+        goto failed;
+    }
+
+    if (!co_await ActionInfoCache::instance()->synch()) {
+        LOG_WARN_N << "Failed to get action info.";
+        goto failed;
     }
 
     onGrpcReady();
@@ -1330,4 +1350,42 @@ std::pair<QString /* csr */, QString /* key */> ServerComm::createCsr()
     }
 
     throw runtime_error{"X509_REQ"};
+}
+
+QCoro::Task<bool> ServerComm::getDataVersions()
+{
+    auto res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetDataVersions);
+    if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
+        if (res.hasDataVersions()) {
+            server_data_versions_ = res.dataVersions();
+            co_return true;
+        }
+    }
+
+    co_return false;
+}
+
+QCoro::Task<bool> ServerComm::getGlobalSetings()
+{
+    auto res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetUserGlobalSettings);
+    if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
+        if (res.hasUserGlobalSettings()) {
+            if (res.userGlobalSettings().version() >= userGlobalSettings_.version()) {
+                userGlobalSettings_ = res.userGlobalSettings();
+                LOG_DEBUG_N << "Received global user-settings";
+                emit globalSettingsChanged();
+            }
+        }
+        co_return true;
+    } else if (res.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
+        LOG_INFO_N << "initializing global settings...";
+        res = co_await rpc(userGlobalSettings_, &nextapp::pb::Nextapp::Client::SetUserGlobalSettings);
+        if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
+            co_return true;
+        }
+    } else {
+        LOG_WARN_N << "Failed to get global user-settings: " << res.message();
+    }
+
+    co_return false;
 }

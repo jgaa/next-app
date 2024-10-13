@@ -5,6 +5,8 @@
 #include <QObject>
 #include <QQmlEngine>
 #include <QAbstractListModel>
+#include "qcorotask.h"
+
 #include "NextAppCore.h"
 
 class ActionCategoriesModel : public QAbstractListModel
@@ -55,16 +57,22 @@ public:
 
     static ActionCategoriesModel& instance();
 
+    QCoro::Task<bool> synch();
+
 signals:
     void validChanged();
     void onlineChanged();
 
 private:
-    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    QCoro::Task<void> onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void setOnline(bool value);
     void setValid(bool value);
-    void fetchIf();
-    void onReceivedActionCategories(nextapp::pb::ActionCategories& action_categories);
+    // void fetchIf();
+    // void onReceivedActionCategories(nextapp::pb::ActionCategories& action_categories);
+    QCoro::Task<bool> synchFromServer();
+    QCoro::Task<bool> loadFromDb();
+    QCoro::Task<bool> save(const nextapp::pb::ActionCategory& category);
+    QCoro::Task<bool> remove(const QString& id);
 
     nextapp::pb::ActionCategory *lookup(const QString& id);
 

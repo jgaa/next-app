@@ -132,14 +132,14 @@ ActionInfoCache::ActionInfoCache(QObject *parent)
     assert(!instance_);
     instance_ = this;
 
-    connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
-        //setOnline(ServerComm::instance().connected());
-        if (ServerComm::instance().connected()) {
-            synch();
-        } else {
-            setState(State::LOCAL);
-        }
-    });
+    // connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
+    //     //setOnline(ServerComm::instance().connected());
+    //     if (ServerComm::instance().connected()) {
+    //         synch();
+    //     } else {
+    //         setState(State::LOCAL);
+    //     }
+    // });
 
     // connect(&ServerComm::instance(), &ServerComm::receivedActions, this, &ActionInfoCache::receivedActions);
     // connect(&ServerComm::instance(), &ServerComm::receivedAction, this, &ActionInfoCache::receivedAction);
@@ -148,9 +148,9 @@ ActionInfoCache::ActionInfoCache(QObject *parent)
         onUpdate(update);
     });
 
-    if (ServerComm::instance().connected()) {
-        synch();
-    }
+    // if (ServerComm::instance().connected()) {
+    //     synch();
+    // }
 }
 
 ActionInfoPrx *ActionInfoCache::getAction(QString uuidStr)
@@ -247,8 +247,8 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         (id, node, origin, priority, status, favorite, name, descr, created_date,
         due_kind, start_time, due_by_time, due_timezone, completed_time,
         time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after,
-        kind, version, updated, deleted) VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        kind, category, version, updated, deleted) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
         node = EXCLUDED.node,
         origin = EXCLUDED.origin,
@@ -270,6 +270,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         repeat_when = EXCLUDED.repeat_when,
         repeat_after = EXCLUDED.repeat_after,
         kind = EXCLUDED.kind,
+        category = EXCLUDED.category,
         version = EXCLUDED.version,
         updated = EXCLUDED.updated,
         deleted = EXCLUDED.deleted)";
@@ -307,6 +308,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     params.append(static_cast<quint32>(action.repeatWhen()));
     params.append(static_cast<quint32>(action.repeatAfter()));
     params.append(static_cast<quint32>(action.kind()));
+    params.append(action.category());
     params.append(static_cast<quint32>(action.version()));
     params.append(static_cast<qlonglong>(action.updated()));
     params.append(action.deleted());

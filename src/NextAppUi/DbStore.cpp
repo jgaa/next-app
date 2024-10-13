@@ -191,12 +191,10 @@ bool DbStore::updateSchema(uint version)
 
         R"(CREATE TABLE IF NOT EXISTS "action_category" (
             "id" VARCHAR(32) NOT NULL,
-            "updated" INTEGER NOT NULL,
+            "version" INTEGER NOT NULL,
             "data" BLOB NOT NULL,
             PRIMARY KEY("id")
         ))",
-
-        "CREATE INDEX IF NOT EXISTS action_category_updated_ix ON action_category(updated)",
 
         R"(CREATE TABLE IF NOT EXISTS "action" (
             "id" VARCHAR(32) NOT NULL,

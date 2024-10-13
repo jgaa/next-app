@@ -128,6 +128,8 @@ public:
 
     const nextapp::pb::DayColorDefinitions getAsDayColorDefinitions() const;
 
+    QCoro::Task<bool> synchFromServer();
+
 signals:
     void validChanged();
     void updatedMonth(int year, int month);
@@ -148,7 +150,6 @@ private:
     QCoro::Task<void> onOnline();
     void refetchAllMonths();
     void setState(State state) noexcept;
-    QCoro::Task<void> synchFromServer();
     QCoro::Task<bool> synchColorsFromServer();
     QCoro::Task<bool> synchDaysFromServer();
     QCoro::Task<void> loadFromCache();
