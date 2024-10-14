@@ -164,6 +164,7 @@ message WorkSession {
         ACTIVE = 0;
         PAUSED = 1;
         DONE = 2;
+        DELETED = 3;
     }
 
     string id = 1; // uuid
@@ -175,10 +176,11 @@ message WorkSession {
     uint32 paused = 7; // minutes
     State state = 8;
     int32 version = 9;
-    uint64 touched = 10; // time_t
+    uint64 touched = 10; // time_t (updated manually by the app)
     repeated WorkEvent events = 11;
     string name = 12;
     string notes = 13;
+    uint64 updated = 14; // time_t ms (updated automatically oin changes)
 }
 
 message WorkSessions {
@@ -817,5 +819,6 @@ service Nextapp {
     rpc GetNewDayColorDefinitions(GetNewReq) returns (Status) {}
     rpc GetNewNodes(GetNewReq) returns (stream Status) {}
     rpc GetNewActions(GetNewReq) returns (stream Status) {}
+    rpc GetNewWork(GetNewReq) returns (stream Status) {}
 
 }

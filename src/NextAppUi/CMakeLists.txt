@@ -298,6 +298,8 @@ qt_add_qml_module(${PROJECT_NAME}
         TimeBoxActionsModel.h
         WeeklyWorkReportModel.cpp
         WeeklyWorkReportModel.h
+        WorkCache.cpp
+        WorkCache.h
         WorkModel.cpp
         WorkModel.h
         WorkSessionsModel.cpp

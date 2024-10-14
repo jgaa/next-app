@@ -729,6 +729,11 @@ QCoro::Task<nextapp::pb::Status> ServerComm::getActionCategories(const nextapp::
     co_return co_await rpc(req, &nextapp::pb::Nextapp::Client::GetActionCategories);
 }
 
+std::shared_ptr<GrpcIncomingStream> ServerComm::synchWorkSessions(const nextapp::pb::GetNewReq &req)
+{
+    return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewWork);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;

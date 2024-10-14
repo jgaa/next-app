@@ -203,6 +203,7 @@ public:
     std::shared_ptr<GrpcIncomingStream> synchNodes(const nextapp::pb::GetNewReq& req);
     std::shared_ptr<GrpcIncomingStream> synchActions(const nextapp::pb::GetNewReq& req);
     QCoro::Task<nextapp::pb::Status> getActionCategories(const nextapp::pb::Empty& req);
+    std::shared_ptr<GrpcIncomingStream> synchWorkSessions(const nextapp::pb::GetNewReq& req);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

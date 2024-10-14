@@ -25,11 +25,11 @@ auto eventsToBlob(const pb::WorkSession& ws) {
 
 struct ToWorkSession {
     enum Cols {
-        ID, ACTION, USER, START, END, DURATION, PAUSED, STATE, VERSION, TOUCHED, NAME, NOTES, EVENTS
+        ID, ACTION, USER, START, END, DURATION, PAUSED, STATE, VERSION, TOUCHED, NAME, NOTES, EVENTS, UPDATED
     };
 
     static constexpr string_view selectCols = "id, action, user, start_time, end_time, duration, paused, state, version, touch_time, "
-                                              "name, note, events";
+                                              "name, note, events, updated";
 
 
     static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws, const UserContext& uctx) {
@@ -73,6 +73,8 @@ struct ToWorkSession {
                 LOG_WARN_N << "Invalid WorkSession.State: " << name;
             }
         }
+
+        ws.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
 
         //LOG_TRACE_N << "Loaded WorkSession: " << toJson(ws, 2);
     }
@@ -949,6 +951,74 @@ boost::asio::awaitable<void> GrpcServer::syncActiveWork(RequestCtx&  rctx)
         updateOutcome(work, *rctx.uctx);
         co_await saveWorkSession(work, rctx);
     }
+}
+
+::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::GetNewWork(
+    ::grpc::CallbackServerContext *ctx, const pb::GetNewReq *req)
+{
+    return writeStreamHandler(ctx, req,
+    [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        const auto stream_scope = owner_.server().metrics().data_streams_actions().scoped();
+        const auto uctx = rctx.uctx;
+        const auto& cuser = uctx->userUuid();
+        const auto batch_size = owner_.server().config().options.stream_batch_size;
+
+        // Use batched reading from the database, so that we can get all the data, but
+        // without running out of memory.
+        // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
+        assert(rctx.dbh);
+        co_await  rctx.dbh->start_exec(
+            format("SELECT {} from work_session WHERE user=? AND updated > ?", ToWorkSession::selectCols),
+            uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz()));
+
+        nextapp::pb::Status reply;
+
+        auto *ws = reply.mutable_worksessions();
+        auto num_rows_in_batch = 0u;
+        auto total_rows = 0u;
+        auto batch_num = 0u;
+
+        auto flush = [&]() -> boost::asio::awaitable<void> {
+            reply.set_error(::nextapp::pb::Error::OK);
+            assert(reply.has_worksessions());
+            ++batch_num;
+            reply.set_message(format("Fetched {} work-sessions in batch {}", reply.worksessions().sessions_size(), batch_num));
+            co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
+            reply.Clear();
+            ws = reply.mutable_worksessions();
+            num_rows_in_batch = {};
+        };
+
+        bool read_more = true;
+        for(auto rows = co_await rctx.dbh->readSome()
+           ; read_more
+           ; rows = co_await rctx.dbh->readSome()) {
+
+          read_more = rctx.dbh->shouldReadMore(); // For next iteration
+
+          if (rows.empty()) {
+              LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+              break;
+          }
+
+          for(const auto& row : rows) {
+              auto * session = ws->add_sessions();
+              ToWorkSession::assign(row, *session, *rctx.uctx);
+              ++total_rows;
+              // Do we need to flush?
+              if (++num_rows_in_batch >= batch_size) {
+                  co_await flush();
+              }
+          }
+
+        } // read more from db loop
+
+        co_await flush();
+
+        LOG_DEBUG_N << "Sent " << total_rows << " work-sessions to client.";
+        co_return;
+
+    }, __func__);
 }
 
 

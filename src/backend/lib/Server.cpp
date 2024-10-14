@@ -838,6 +838,22 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
                 END IF;
             END)",
 
+        R"(ALTER TABLE work_session
+            MODIFY COLUMN state ENUM('active', 'paused', 'done', 'deleted') NOT NULL DEFAULT 'active';
+        )",
+
+        "ALTER TABLE work_session ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
+
+        R"(CREATE TRIGGER tr_before_update_work_session
+          BEFORE UPDATE ON work_session
+          FOR EACH ROW
+          BEGIN
+            SET NEW.version = OLD.version + 1;
+            SET NEW.updated = UTC_TIMESTAMP(6);
+          END)",
+
+        "UPDATE work_session SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
+
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
