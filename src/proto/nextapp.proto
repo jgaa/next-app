@@ -704,7 +704,7 @@ message GetWorkSessionsReq {
     Page page = 1;
     SortCols sortCols = 2;
     SortOrder sortOrder = 3;
-    optional TimeSpan timeSpan = 13;
+    optional TimeSpan timeSpan = 4;
 
     oneof filter {
         string actionId = 10;

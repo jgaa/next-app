@@ -10,6 +10,7 @@
 
 #include "QDateTime"
 
+#include "WorkCache.h"
 
 using namespace std;
 
@@ -60,76 +61,104 @@ void WorkModel::fetchSome(FetchWhat what)
     doFetchSome(what, true);
 }
 
-void WorkModel::doFetchSome(FetchWhat what, bool firstPage)
+QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
 {
     LOG_DEBUG << "WorkModel::fetchSome() called, what=" << what << ", uuid=" << uuid().toString()
               << ", firstPage=" << firstPage;
 
-    // nextapp::pb::Page page;
-    // nextapp::pb::GetWorkSessionsReq req;
-    // currentTreeNode_.clear();
-    // fetch_what_ = what;
+    nextapp::pb::Page page;
+    nextapp::pb::GetWorkSessionsReq req;
+    currentTreeNode_.clear();
+    fetch_what_ = what;
 
-    // if (firstPage) {
-    //     pagination_.reset();
-    // } else {
-    //     page.setPrevTime(pagination_.prev);
-    // }
+    if (firstPage) {
+        pagination_.reset();
+    } else {
+        page.setPrevTime(pagination_.prev);
+    }
 
-    // page.setPageSize(pagination_.pageSize());
+    page.setPageSize(pagination_.pageSize());
 
-    // switch(what) {
-    // case TODAY: {
-    //     auto date = QDate::currentDate();
-    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-    //     date = date.addDays(1);
-    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case YESTERDAY: {
-    //     auto date = QDate::currentDate().addDays(-1);
-    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-    //     date = date.addDays(1);
-    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case CURRENT_WEEK: {
-    //     auto date = getFirstDayOfWeek();
-    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-    //     date = date.addDays(7);
-    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case LAST_WEEK: {
-    //     auto date = getFirstDayOfWeek().addDays(-7);
-    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-    //     date = date.addDays(7);
-    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case CURRENT_MONTH: {
-    //     auto date = QDate::currentDate();
-    //     date.setDate(date.year(), date.month(), 1);
-    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-    //     date = date.addMonths(1);
-    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case LAST_MONTH: {
-    //     auto date = QDate::currentDate();
-    //     date.setDate(date.year(), date.month(), 1);
-    //     date = date.addMonths(-1);
-    //     req.timeSpan().setStart(date.startOfDay().toSecsSinceEpoch());
-    //     date = date.addMonths(1);
-    //     req.timeSpan().setEnd(date.startOfDay().toSecsSinceEpoch());
-    // } break;
-    // case SELECTED_LIST: {
-    //     if (auto nodeid = MainTreeModel::instance()->selected(); !nodeid.isEmpty()) {
-    //         req.setNodeId(nodeid);
-    //         currentTreeNode_ = nodeid;
-    //     }
-    // } break;
-    // default:
-    //     LOG_ERROR << "Unknown what: " << what;
-    //     return;
-    // } // switch what
+    switch(what) {
+    case TODAY: {
+        auto date = QDate::currentDate();
+        nextapp::pb::TimeSpan ts;
+        ts.setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addDays(1);
+        ts.setEnd(date.startOfDay().toSecsSinceEpoch());
+        req.setTimeSpan(ts);
+    } break;
+    case YESTERDAY: {
+        auto date = QDate::currentDate().addDays(-1);
+        nextapp::pb::TimeSpan ts;
+        ts.setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addDays(1);
+        ts.setEnd(date.startOfDay().toSecsSinceEpoch());
+        req.setTimeSpan(ts);
+    } break;
+    case CURRENT_WEEK: {
+        auto date = getFirstDayOfWeek();
+        nextapp::pb::TimeSpan ts;
+        ts.setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addDays(7);
+        ts.setEnd(date.startOfDay().toSecsSinceEpoch());
+        req.setTimeSpan(ts);
+    } break;
+    case LAST_WEEK: {
+        auto date = getFirstDayOfWeek().addDays(-7);
+        nextapp::pb::TimeSpan ts;
+        ts.setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addDays(7);
+        ts.setEnd(date.startOfDay().toSecsSinceEpoch());
+        req.setTimeSpan(ts);
+    } break;
+    case CURRENT_MONTH: {
+        auto date = QDate::currentDate();
+        nextapp::pb::TimeSpan ts;
+        date.setDate(date.year(), date.month(), 1);
+        ts.setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addMonths(1);
+        ts.setEnd(date.startOfDay().toSecsSinceEpoch());
+        req.setTimeSpan(ts);
+    } break;
+    case LAST_MONTH: {
+        auto date = QDate::currentDate();
+        nextapp::pb::TimeSpan ts;
+        date.setDate(date.year(), date.month(), 1);
+        date = date.addMonths(-1);
+        ts.setStart(date.startOfDay().toSecsSinceEpoch());
+        date = date.addMonths(1);
+        ts.setEnd(date.startOfDay().toSecsSinceEpoch());
+        req.setTimeSpan(ts);
+    } break;
+    case SELECTED_LIST: {
+        if (auto nodeid = MainTreeModel::instance()->selected(); !nodeid.isEmpty()) {
+            req.setNodeId(nodeid);
+            currentTreeNode_ = nodeid;
+        }
+    } break;
+    default:
+        LOG_ERROR << "Unknown what: " << what;
+        co_return;
+    } // switch what
 
     // ServerComm::instance().getWorkSessions(req, uuid());
+
+    beginResetModel();
+    ScopedExit scoped{[this] { endResetModel(); }};
+
+    if (firstPage) {
+        pagination_.reset();
+    };
+
+    auto res = co_await cache_.getWorkSessions(req);
+
+    if (!res.empty()) {
+        res.reserve(res.size());
+        for (auto& session : res) {
+            session_by_ordered().emplace_back(session);
+        }
+    }
 }
 
 void WorkModel::setSorting(Sorting sorting)
@@ -149,31 +178,37 @@ void WorkModel::setSorting(Sorting sorting)
     sort();
 }
 
-WorkModel::WorkModel(QObject *parent)
-    : QAbstractTableModel{parent}
+WorkModel::WorkModel(WorkCache& cache, QObject *parent)
+    : QAbstractTableModel{parent}, cache_{cache}
 {
-    connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
-        start();
-        setActive(ServerComm::instance().connected());
+    // connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
+    //     start();
+    //     setActive(ServerComm::instance().connected());
+    // });
+
+    // if (ServerComm::instance().connected()) {
+    //     start();
+    //     setActive(true);
+    // }
+
+    connect(&cache_, &WorkCache::stateChanged, this, [&] {
+        if (cache_.valid()) {
+            fetchAll();
+        }
     });
-
-    if (ServerComm::instance().connected()) {
-        start();
-        setActive(true);
-    }
 }
 
-void WorkModel::start()
-{
-    if (!started_) {
-        LOG_DEBUG << "WorkModel::start() called" << uuid().toString();
+// void WorkModel::start()
+// {
+//     if (!started_) {
+//         LOG_DEBUG << "WorkModel::start() called" << uuid().toString();
 
-        connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &WorkModel::onUpdate);
-        connect(&ServerComm::instance(), &ServerComm::receivedWorkSessions, this, &WorkModel::receivedWorkSessions);
-        connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &WorkModel::selectedChanged);
-        started_ = true;
-    }
-}
+//         connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &WorkModel::onUpdate);
+//         connect(&ServerComm::instance(), &ServerComm::receivedWorkSessions, this, &WorkModel::receivedWorkSessions);
+//         connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &WorkModel::selectedChanged);
+//         started_ = true;
+//     }
+// }
 
 // WorkModel *WorkModel::createModel()
 // {
@@ -182,10 +217,10 @@ void WorkModel::start()
 //     return model.release();
 // }
 
-void WorkModel::doStart() {
-    LOG_DEBUG << "WorkModel::doStart() " << uuid().toString();
-    start();
-}
+// void WorkModel::doStart() {
+//     LOG_DEBUG << "WorkModel::doStart() " << uuid().toString();
+//     start();
+// }
 
 void WorkModel::setIsVisible(bool isVisible) {
     if (is_visible_ != isVisible) {
@@ -200,85 +235,12 @@ void WorkModel::setIsVisible(bool isVisible) {
     }
 }
 
-void WorkModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
-{
-    if (update->hasWork()) {
-        // TODO: Set fine-grained update signals
-        beginResetModel();
-        ScopedExit scoped{[this] { endResetModel(); }};
-
-        auto &session = session_by_id();
-
-        try {
-            const auto op = update->op();
-            const auto& work = update->work();
-            switch(op) {
-            case nextapp::pb::Update::Operation::UPDATED:
-                if (auto it =  session.find(toQuid(work.id_proto())); it != session.end()) {
-                    if(exclude_done_ && work.state() == nextapp::pb::WorkSession::State::DONE) {
-                        session.erase(it);
-                    } else {
-                        session.modify(it, [&work](auto& v) {
-                            v.session = work;
-                        });
-                    }
-                    break;
-                } // if we found the session in the cache
-                LOG_WARN << "Got update for work session " << work.id_proto() << " which I know nothing about...";
-                // fall through
-            case nextapp::pb::Update::Operation::ADDED: {
-                    if (exclude_done_) {
-                        if (work.state() != nextapp::pb::WorkSession::State::DONE) {
-                            session_by_ordered().emplace_back(work);
-                        }
-                    } else {
-                        // TODO: Add filters to check if it should be added depending on the current selection
-                        if (fetch_what_ == TODAY && isToday(work.start())) {
-                            session_by_ordered().emplace_back(work);
-                        } else if (fetch_what_ == YESTERDAY && isYesterday(work.start())) {
-                            session_by_ordered().emplace_back(work);
-                        } else if (fetch_what_ == CURRENT_WEEK && isCurrentWeek(work.start())) {
-                            session_by_ordered().emplace_back(work);
-                        } else if (fetch_what_ == LAST_WEEK && isLastWeek(work.start())) {
-                            session_by_ordered().emplace_back(work);
-                        } else if (fetch_what_ == CURRENT_MONTH && isCurrentMonth(work.start())) {
-                            session_by_ordered().emplace_back(work);
-                        } else if (fetch_what_ == LAST_MONTH && isLastMonth(work.start())) {
-                            session_by_ordered().emplace_back(work);
-                        }
-                        // TODO: Add filter to check if the current node is the parent of the current node or its children
-                    }
-                } break;
-            case nextapp::pb::Update::Operation::DELETED: {
-                auto &session = session_by_id();
-                session.erase(toQuid(work.id_proto()));
-            } break;
-
-            case nextapp::pb::Update::Operation::MOVED:
-                // Currently we don't implement moved work sessions
-                fetchIf();
-                break;
-            }
-
-            sort();
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error updating work sessions: " << e.what();
-        }
-    }
-
-    if (update->hasAction()) {
-        if (update->op() == nextapp::pb::Update::Operation::DELETED || update->op() == nextapp::pb::Update::Operation::MOVED) {
-            fetchIf();
-        }
-    }
-}
-
 const nextapp::pb::WorkSession *WorkModel::lookup(const QUuid &id) const
 {
     const auto &sessions = session_by_id();
     auto it = sessions.find(id);
     if (auto it = sessions.find(id); it != sessions.end()) {
-        return &it->session;
+        return it->session.get();
     }
     return nullptr;
 }
@@ -514,147 +476,7 @@ bool WorkModel::canFetchMore(const QModelIndex &parent) const
     return pagination_.hasMore();
 }
 
-WorkModel::Outcome WorkModel::updateOutcome(nextapp::pb::WorkSession &work)
-{
-    Outcome outcome;
-    using namespace nextapp;
 
-    // First event *must* be a start event
-    if (work.events().empty()) {
-        return outcome; // Nothing to do
-    }
-
-    const auto orig_start = work.start() / 60;
-    const auto orig_end = work.hasEnd() ? work.end() / 60 : 0;
-    const auto orig_duration = work.duration() / 60;
-    const auto orig_paused = work.paused() / 60;
-    const auto orig_state = work.state();
-    const auto orig_name = work.name();
-    const auto full_orig_duration = work.duration();
-
-    work.setPaused(0);
-    work.setDuration(0);
-    work.setStart(0);
-
-    if (work.state() != pb::WorkSession::State::DONE) {
-        work.clearEnd();
-    }
-
-    time_t pause_from = 0;
-
-    const auto end_pause = [&](const pb::WorkEvent& event) {
-        if (pause_from > 0) {
-            auto pduration = event.time() - pause_from;
-            work.setPaused(work.paused() + pduration);
-            pause_from = 0;
-        }
-    };
-
-    unsigned row = 0;
-    for(const auto &event : work.events()) {
-        ++row;
-        switch(event.kind()) {
-        case pb::WorkEvent_QtProtobufNested::Kind::START:
-            work.setStart(event.time());
-            work.setState(pb::WorkSession::State::ACTIVE);
-            break;
-        case pb::WorkEvent_QtProtobufNested::Kind::STOP:
-            end_pause(event);
-            if (event.hasEnd()) {
-                work.setEnd(event.end());
-            } else {
-                work.setEnd(event.time());
-            }
-            work.setState(pb::WorkSession::State::DONE);
-            break;
-        case pb::WorkEvent_QtProtobufNested::Kind::PAUSE:
-            if (!pause_from) {
-                pause_from = event.time();
-            }
-            work.setState(pb::WorkSession::State::PAUSED);
-            break;
-        case pb::WorkEvent_QtProtobufNested::Kind::RESUME:
-            end_pause(event);
-            work.setState(pb::WorkSession::State::ACTIVE);
-            break;
-        case pb::WorkEvent_QtProtobufNested::Kind::TOUCH:
-            break;
-        case pb::WorkEvent_QtProtobufNested::Kind::CORRECTION:
-            if (event.hasStart()) {
-                work.setStart(event.start());
-            }
-            if (event.hasEnd()) {
-                if (work.state() != pb::WorkSession::State::DONE) {
-                    throw runtime_error{"Cannot correct end time of an active session"};
-                }
-                work.setEnd(event.end());
-            }
-            if (event.hasDuration()) {
-                work.setDuration(event.duration());
-            }
-            if (event.hasPaused()) {
-                work.setPaused(event.paused());
-                if (pause_from) {
-                    // Start the pause timer at the events time
-                    pause_from = event.time();
-                }
-            }
-            if (event.hasName()) {
-                work.setName(event.name());
-            }
-            if (event.hasNotes()) {
-                work.setNotes(event.notes());
-            }
-            break;
-        default:
-            assert(false);
-            throw runtime_error{"Invalid work event kind"s + toString(event.kind())};
-        }
-    }
-
-    if (pause_from) {
-        // If we are paused, we need to account for the time between the last pause and now
-        pb::WorkEvent event;
-        event.setTime(time({}));
-        end_pause(event);
-    }
-
-    if (!work.start()) [[unlikely]] {
-        work.clearEnd();
-        work.setDuration(0);
-        work.setPaused(0);
-    } else if (work.hasEnd()) {
-        if (work.end() <= work.start()) {
-            work.setDuration(0);
-        } else {
-            auto duration = work.end() - work.start();
-            work.setDuration(std::max<long>(0, duration - work.paused()));
-        }
-    } else {
-        const auto now = time({});
-        if (now <= work.start()) {
-            work.setDuration(0);
-        } else {
-            work.setDuration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));
-        }
-    }
-
-    if (orig_state == pb::WorkSession::State::DONE) {
-        work.setState(orig_state);
-    }
-
-    outcome.start = orig_start != work.start() / 60;
-    outcome.end = orig_end != (work.hasEnd() ? work.end() / 60 : 0);
-    outcome.duration = orig_duration != work.duration() / 60;
-    outcome.paused= orig_paused != work.paused() / 60;
-    outcome.name = orig_name != work.name();
-
-    // LOG_DEBUG << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
-    //           << work.duration()
-    //           << " outcome.duration= " << outcome.duration;
-
-    return outcome;
-}
 
 void WorkModel::setActive(bool active)
 {
@@ -685,7 +507,7 @@ void WorkModel::replace(const nextapp::pb::WorkSessions &sessions)
         size_t new_rows = 0;
         try {
             for (auto session : sessions.sessions()) {
-                updateOutcome(session);
+                //updateOutcome(session);
                 const auto [_, inserted] = session_by_ordered().emplace_back(session);
                 if (inserted) {
                     ++new_rows;
@@ -727,7 +549,7 @@ void WorkModel::sort()
     session_by_ordered().sort(sort_fn.at(sorting_));
 }
 
-void WorkModel::fetchIf()
+QCoro::Task<void> WorkModel::fetchIf()
 {
     if (is_visible_ && is_active_) {
         doFetchSome(fetch_what_, true);
@@ -739,31 +561,31 @@ void WorkModel::receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::W
     replace(*sessions);
 }
 
-void WorkModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions, const ServerComm::MetaData meta)
-{
-    if (meta.requester == uuid()) {
-        replace(*sessions);
-        pagination_.increment();
+// void WorkModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions, const ServerComm::MetaData meta)
+// {
+//     if (meta.requester == uuid()) {
+//         replace(*sessions);
+//         pagination_.increment();
 
-        if (meta.more) {
-            pagination_.more = *meta.more;
-            if (*meta.more) {
-                assert(!sessions->sessions().empty());
-                if (sorting_ == Sorting::SORT_TOUCHED) {
-                    pagination_.prev = sessions->sessions().back().touched();
-                } else {
-                    pagination_.prev = sessions->sessions().back().start();
-                }
-            }
-        } else {
-            pagination_.more = false;
-        }
+//         if (meta.more) {
+//             pagination_.more = *meta.more;
+//             if (*meta.more) {
+//                 assert(!sessions->sessions().empty());
+//                 if (sorting_ == Sorting::SORT_TOUCHED) {
+//                     pagination_.prev = sessions->sessions().back().touched();
+//                 } else {
+//                     pagination_.prev = sessions->sessions().back().start();
+//                 }
+//             }
+//         } else {
+//             pagination_.more = false;
+//         }
 
-        LOG_TRACE << "WorkModel::receivedWorkSessions() called, uuid=" << uuid().toString()
-                  << ", more=" << pagination_.more << ", prev=" << pagination_.prev
-                  << ", page = " << pagination_.page;
-    }
-}
+//         LOG_TRACE << "WorkModel::receivedWorkSessions() called, uuid=" << uuid().toString()
+//                   << ", more=" << pagination_.more << ", prev=" << pagination_.prev
+//                   << ", page = " << pagination_.page;
+//     }
+// }
 
 bool WorkModel::sessionExists(const QString &sessionId)
 {

@@ -13,11 +13,14 @@
 #include <QTimer>
 #include <QSettings>
 
+#include <qcorotask.h>
+
 #include "ServerComm.h"
 #include "util.h"
 #include "nextapp.qpb.h"
 #include "nextapp.h"
 
+class WorkCache;
 
 /*! A model for work sessions
  *
@@ -121,24 +124,24 @@ public:
         Session& operator=(const Session&) = default;
         Session& operator=(Session&&) = default;
 
-        Session(const nextapp::pb::WorkSession& session)
+        Session(const std::shared_ptr<nextapp::pb::WorkSession>& session)
             : session{session}
-            , id{toQuid(session.id_proto())}
-            , action{toQuid(session.action())}
+            , id{toQuid(session->id_proto())}
+            , action{toQuid(session->action())}
         {
         }
 
-        Session& operator=(const nextapp::pb::WorkSession& session)
+        Session& operator=(const std::shared_ptr<nextapp::pb::WorkSession>& session)
         {
             this->session = session;
-            this->id = toQuid(session.id_proto());
-            this->action = toQuid(session.action());
+            this->id = toQuid(session->id_proto());
+            this->action = toQuid(session->action());
             return *this;
         }
 
+        std::shared_ptr<nextapp::pb::WorkSession> session;
         QUuid id;
         QUuid action;
-        nextapp::pb::WorkSession session;
     };
 
     struct id_tag {};
@@ -170,27 +173,25 @@ public:
     Q_INVOKABLE nextapp::pb::WorkSession getSession(const QString& sessionId);
     Q_INVOKABLE nextapp::pb::WorkSession createSession(const QString& actionId, const QString& name);
     Q_INVOKABLE bool update(const nextapp::pb::WorkSession& session);
-    void doFetchSome(FetchWhat what, bool firstPage = true);
-
 
     // If we need to start the model from QML
-    Q_INVOKABLE void doStart();
+    //Q_INVOKABLE void doStart();
 
     bool isVisible() const { return is_visible_; }
     void setIsVisible(bool isVisible);
 
 
-    explicit WorkModel(QObject *parent = nullptr);
+    explicit WorkModel(WorkCache& cache, QObject *parent = nullptr);
 
-    virtual void start();
+    //virtual void start();
 
-    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
 
     // These are the active sessions.
     void receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
 
     // These are the sessions that have been received from the server in response to a request.
-    void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions, const ServerComm::MetaData meta);
+    //void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions, const ServerComm::MetaData meta);
 
     const nextapp::pb::WorkSession *lookup(const QUuid& id) const;
 
@@ -231,7 +232,8 @@ protected:
     void selectedChanged();
     void replace(const nextapp::pb::WorkSessions& sessions);
     void sort();
-    void fetchIf();
+    QCoro::Task<void> fetchIf();
+    QCoro::Task<void> doFetchSome(FetchWhat what, bool firstPage = true);
 
     inline auto& session_by_id() const { return sessions_.get<id_tag>(); }
     inline auto& session_by_ordered() const { return sessions_.get<ordered_tag>(); }
@@ -252,4 +254,5 @@ protected:
     bool exclude_done_ = false; // Needed if we show the current work session list
     bool is_active_ = false;
     bool started_ = false;
+    WorkCache& cache_;
 };

@@ -1,3 +1,5 @@
+
+#include <ranges>
 #include <algorithm>
 #include <QProtobufSerializer>
 
@@ -5,14 +7,18 @@
 #include "DbStore.h"
 #include "NextAppCore.h"
 
+using namespace std;
+
 WorkCache::WorkCache(QObject *parent)
     : QObject{parent}
 {}
 
 QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
 {
+    const auto op = update->op();
     if (update->hasWork()) {
-        const auto &work = update->work();
+        auto work = update->work();
+        updateOutcome(work);
         const QUuid id{work.id_proto()};
         if (work.state() == nextapp::pb::WorkSession::State::DELETED) {
             emit WorkSessionDeleted(id);
@@ -21,16 +27,39 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
         } else {
             if (auto it = items_.find(id); it != items_.end()) {
                 *it->second = work;
-                emit WorkSessionChanged(id);
             } else {
                 it->second = std::make_shared<nextapp::pb::WorkSession>(work);
-                emit WorkSessionAdded(id);
             }
             co_await save(work);
+
+            if (op == nextapp::pb::Update::Operation::ADDED) {
+                emit WorkSessionAdded(id);
+            } else {
+                emit WorkSessionChanged(id);
+            }
+
             auto [it, added] = items_.insert_or_assign(id, std::make_shared<nextapp::pb::WorkSession>(work));
+        }
+    } else if (update->hasAction()) {
+        if (op == nextapp::pb::Update::Operation::DELETED || op == nextapp::pb::Update::Operation::MOVED) {
+            auto action_id = update->action().id_proto();
+            if (ranges::find_if(items_, [&action_id](const auto& pair) {
+                return pair.second->action() == action_id;
+            }) != items_.end()) {
+                const auto id = QUuid{action_id};
+                if (op == nextapp::pb::Update::Operation::DELETED) {
+                    items_.erase(id);
+                    co_await remove(id);
+                    emit WorkSessionDeleted(id);
+                } else {
+                    // If the action is moved, any model may need to re-query the db to sync with the selected node
+                    emit WorkSessionActionMoved(id);
+                }
+            }
         }
     }
 }
+
 
 QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
 {
@@ -105,6 +134,12 @@ void WorkCache::clear()
     items_.clear();
 }
 
+QCoro::Task<std::vector<std::shared_ptr<nextapp::pb::WorkSession>>>
+WorkCache::getWorkSessions(nextapp::pb::GetWorkSessionsReq req)
+{
+
+}
+
 void WorkCache::purge()
 {
     // Clear items with just one reference
@@ -121,4 +156,103 @@ QCoro::Task<void> WorkCache::remove(const QUuid &id)
     params << id.toString();
     auto res = co_await db.query("DELETE FROM work_sessions WHERE id = ?", &params);
     co_return;
+}
+
+WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
+{
+    Outcome outcome;
+    using namespace nextapp;
+
+    // First event *must* be a start event
+    if (work.events().empty()) {
+        return outcome; // Nothing to do
+    }
+
+    const auto orig_start = work.start() / 60;
+    const auto orig_end = work.hasEnd() ? work.end() / 60 : 0;
+    const auto orig_duration = work.duration() / 60;
+    const auto orig_paused = work.paused() / 60;
+    const auto orig_state = work.state();
+    const auto orig_name = work.name();
+    const auto full_orig_duration = work.duration();
+
+    work.setPaused(0);
+    work.setDuration(0);
+    work.setStart(0);
+
+    if (work.state() != pb::WorkSession::State::DONE) {
+        work.clearEnd();
+    }
+
+    time_t pause_from = 0;
+
+    const auto end_pause = [&](const pb::WorkEvent& event) {
+        if (pause_from > 0) {
+            auto pduration = event.time() - pause_from;
+            work.setPaused(work.paused() + pduration);
+            pause_from = 0;
+        }
+    };
+
+    unsigned row = 0;
+    for(const auto &event : work.events()) {
+        ++row;
+        switch(event.kind()) {
+        case pb::WorkEvent_QtProtobufNested::Kind::START:
+            work.setStart(event.time());
+            work.setState(pb::WorkSession::State::ACTIVE);
+            break;
+        case pb::WorkEvent_QtProtobufNested::Kind::STOP:
+            end_pause(event);
+            if (event.hasEnd()) {
+                work.setEnd(event.end());
+            } else {
+                work.setEnd(event.time());
+            }
+            work.setState(pb::WorkSession::State::DONE);
+            break;
+        case pb::WorkEvent_QtProtobufNested::Kind::PAUSE:
+            if (!pause_from) {
+                pause_from = event.time();
+            }
+            work.setState(pb::WorkSession::State::PAUSED);
+            break;
+        case pb::WorkEvent_QtProtobufNested::Kind::RESUME:
+            end_pause(event);
+            work.setState(pb::WorkSession::State::ACTIVE);
+            break;
+        case pb::WorkEvent_QtProtobufNested::Kind::TOUCH:
+            break;
+        case pb::WorkEvent_QtProtobufNested::Kind::CORRECTION:
+            if (event.hasStart()) {
+                work.setStart(event.start());
+            }
+            if (event.hasEnd()) {
+                if (work.state() != pb::WorkSession::State::DONE) {
+                    throw runtime_error{"Cannot correct end time of an active session"};
+                }
+                work.setEnd(event.end());
+            }
+            if (event.hasDuration()) {
+                work.setDuration(event.duration());
+            }
+            if (event.hasPaused()) {
+                work.setPaused(event.paused());
+                if (pause_from) {
+                    // Start the pause timer at the events time
+                    pause_from = event.time();
+                }
+            }
+            if (event.hasName()) {
+                work.setName(event.name());
+            }
+            if (event.hasNotes()) {
+                work.setNotes(event.notes());
+            }
+            break;
+        default:
+            assert(false);
+            throw runtime_error{"Invalid work event kind"s + toString(event.kind())};
+        }
+    }
 }
