@@ -11,7 +11,8 @@ using namespace std;
 
 WorkCache::WorkCache(QObject *parent)
     : QObject{parent}
-{}
+{
+}
 
 QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
 {
@@ -137,7 +138,104 @@ void WorkCache::clear()
 QCoro::Task<std::vector<std::shared_ptr<nextapp::pb::WorkSession>>>
 WorkCache::getWorkSessions(nextapp::pb::GetWorkSessionsReq req)
 {
+    auto& db = NextAppCore::instance()->db();
+    QList<QVariant> params;
+    std::vector<std::shared_ptr<nextapp::pb::WorkSession>> sessions;
 
+    assert(req.hasPage());
+    assert(req.page().pageSize() > 0);
+    auto limit = min<uint>(req.page().pageSize(), 100);
+    auto offset = req.page().hasOffset() ? req.page().offset() : 0;
+
+    string where;
+
+    auto add = [&where](const string& what) {
+        if (where.empty()) {
+            where = " WHERE " + what;
+        } else {
+            where += " AND " + what;
+        }
+    };
+
+    string sql;
+
+    auto order = format("{} {}",
+        req.sortCols() == nextapp::pb::GetWorkSessionsReq::SortCols::FROM_TIME ? "w.start_time" : "w.updated",
+        req.sortOrder() == nextapp::pb::SortOrderGadget::SortOrder::ASCENDING ? "ASC" : "DESC");
+
+    if (req.hasTimeSpan()) {
+        add("w.start_time >= ? AND w.end_time < ?");
+        params << QDateTime::fromSecsSinceEpoch(req.timeSpan().start());
+        params << QDateTime::fromSecsSinceEpoch(req.timeSpan().end());
+    }
+
+    if (req.hasNodeId()) {
+        sql = format(R"(WITH RECURSIVE node_hierarchy AS (
+    -- Base case: Select the node with the given UUID
+    SELECT uuid
+    FROM node
+    WHERE uuid = ?
+
+    -- Recursive case: Select the children of the current node
+    UNION ALL
+    SELECT n.uuid
+    FROM node n
+    JOIN node_hierarchy nh ON n.parent = nh.uuid
+)
+SELECT w.id, w.data
+FROM action a
+JOIN node_hierarchy nh ON a.node = nh.uuid
+JOIN work_session w ON a.id = w.action
+{}
+ORDER BY {}
+LIMIT {} OFFSET {})", where, order, limit, offset);
+        params << req.nodeId();
+
+    } else if (req.hasActionId()) {
+        add("w.action = ?");
+        params << req.actionId();
+    }
+
+    if (sql.empty()) {
+        sql = format(R"(SELECT w.id, w.data FROM work_session w {}
+ORDER BY {}
+LIMIT {} OFFSET {})", where, order, limit, offset);
+    }
+
+    auto res = co_await db.query(QString::fromLatin1(sql), &params);
+    if (!res) {
+        LOG_ERROR_N << "Failed to fetch work sessions: " << res.error();
+        co_return sessions;
+    }
+
+    for (const auto& row : *res) {
+        assert(row.size() >= 2);
+
+        const auto uuid = QUuid(row.at(0).toString());
+
+        if (auto it = items_.find(uuid); it != items_.end()) {
+            sessions.push_back(it->second);
+            continue;
+        }
+
+        QProtobufSerializer serializer;
+        nextapp::pb::WorkSession work;
+        if (!work.deserialize(&serializer, row.at(1).toByteArray())) {
+            LOG_ERROR_N << "Failed to parse work session " << uuid.toString();
+            continue;
+        }
+
+        auto [it, added] = items_.emplace(uuid, std::make_shared<nextapp::pb::WorkSession>(work));
+        sessions.push_back(it->second);
+    }
+
+    co_return sessions;
+}
+
+WorkCache *WorkCache::instance() noexcept
+{
+    static WorkCache instance;
+    return &instance;
 }
 
 void WorkCache::purge()
@@ -154,18 +252,17 @@ QCoro::Task<void> WorkCache::remove(const QUuid &id)
     QList<QVariant> params;
 
     params << id.toString();
-    auto res = co_await db.query("DELETE FROM work_sessions WHERE id = ?", &params);
+    auto res = co_await db.query("DELETE FROM work_session WHERE id = ?", &params);
     co_return;
 }
 
 WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
 {
-    Outcome outcome;
     using namespace nextapp;
 
     // First event *must* be a start event
     if (work.events().empty()) {
-        return outcome; // Nothing to do
+        return {}; // Nothing to do
     }
 
     const auto orig_start = work.start() / 60;
@@ -255,4 +352,21 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
             throw runtime_error{"Invalid work event kind"s + toString(event.kind())};
         }
     }
+
+    if (orig_state == pb::WorkSession::State::DONE) {
+        work.setState(orig_state);
+    }
+
+    Outcome outcome;
+    outcome.start = orig_start != work.start() / 60;
+    outcome.end = orig_end != (work.hasEnd() ? work.end() / 60 : 0);
+    outcome.duration = orig_duration != work.duration() / 60;
+    outcome.paused= orig_paused != work.paused() / 60;
+    outcome.name = orig_name != work.name();
+
+    // LOG_DEBUG << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
+    //           << work.duration()
+    //           << " outcome.duration= " << outcome.duration;
+
+    return outcome;
 }

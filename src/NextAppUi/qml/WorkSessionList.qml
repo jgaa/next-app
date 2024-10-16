@@ -24,8 +24,8 @@ Rectangle {
                 selectedIsActive = false
                 selectedIsStarted = false
             } else {
-                selectedIsActive = WorkSessionsModel.isActive(selectedItem)
-                selectedIsStarted = WorkSessionsModel.isStarted(selectedItem)
+                selectedIsActive = tableView.isActive(selectedItem)
+                //selectedIsStarted = tableView.isStarted(selectedItem)
             }
         }
     }
@@ -52,7 +52,7 @@ Rectangle {
         TableView {
             id: tableView
             anchors.fill: parent
-            //model: NaCore.createWorkModel()
+            model: NaCore.createWorkModel()
             boundsBehavior: Flickable.StopAtBounds
             boundsMovement: Flickable.StopAtBounds
             clip: true
@@ -69,6 +69,11 @@ Rectangle {
                     }
                     somethingChanged()
                 })
+            }
+
+            onVisibleChanged: {
+                console.log("WorkSessionList.onVisibleChanged: ", tableView.visible, ", ", model.isVisible)
+                model.isVisible = tableView.visible
             }
 
             selectionModel: ItemSelectionModel {}
@@ -208,7 +213,7 @@ Rectangle {
             text: qsTr("Note that any worked time, etc. for this session will also be deleted! This action can not be undone.")
             buttons: MessageDialog.Ok | MessageDialog.Cancel
             onAccepted: {
-               WorkSessionsModel.deleteWork(uuid)
+               tableView.model.deleteWork(uuid)
                confirmDelete.close()
             }
 

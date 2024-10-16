@@ -15,29 +15,30 @@ Rectangle {
     property bool ready: false
     property int prev_selection: 0
 
-    Component.onCompleted: {
-        // console.log("WorkSessionsView is now completed");
-    }
-
     onVisibleChanged: {
         if (root.visible) {
             // console.log("WorkSessionsView is now visible.")
             if (!root.ready) {
-                // console.log("WorkSessionsView is now becoming ready.")
+                //console.log("WorkSessionsView is now becoming ready.")
                 root.ready = true
-                workSessions.model = NaCore.createWorkModel()
-                //workSessions.model.setDebug(true)
-                workSessions.model.doStart()
-                workSessions.model.isVisible = true
                 workSessions.model.setSorting(sortCtl.currentIndex)
                 workSessions.model.fetchSome(selectionCtl.currentIndex)
             }
-        } else {
-            // console.log("Component is now hidden");
         }
 
         if (root.ready) {
             workSessions.model.isVisible = root.visible
+        }
+    }
+
+    Connections {
+        target: NaMainTreeModel
+        function onSelectedChanged() {
+            if (root.visible) {
+                //console.log("ActionsListView: Tree selection changed to", NaMainTreeModel.selected)
+                selectionCtl.currentIndex = WorkModel.SELECTED_LIST
+                workSessions.model.fetchSome(WorkModel.SELECTED_LIST)
+            }
         }
     }
 
@@ -64,10 +65,6 @@ Rectangle {
                         ListElement { text: qsTr("Current Month") }
                         ListElement { text: qsTr("Last Month") }
                         ListElement { text: qsTr("Selected list") }
-                    }
-
-                    onAccepted: {
-                        //workSessions.model.fetchSome(selectionCtl.currentIndex)
                     }
 
                     onActivated: (ix) => {

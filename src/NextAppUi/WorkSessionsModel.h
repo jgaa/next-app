@@ -50,7 +50,7 @@ public:
     Q_INVOKABLE void finishAction(const QString& sessionId);
     Q_INVOKABLE void addCalendarEvent(const QString& eventId);
 
-    void start() override;
+    //void start() override;
 
     static WorkSessionsModel& instance() noexcept {
         assert(instance_ != nullptr);

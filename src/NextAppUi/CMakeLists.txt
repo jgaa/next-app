@@ -302,6 +302,8 @@ qt_add_qml_module(${PROJECT_NAME}
         WorkCache.h
         WorkModel.cpp
         WorkModel.h
+        WorkModelBase.cpp
+        WorkModelBase.h
         WorkSessionsModel.cpp
         WorkSessionsModel.h
         nextapp.h

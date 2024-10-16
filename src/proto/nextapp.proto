@@ -42,6 +42,8 @@ message Page {
 
         // We may (almost certainly) get the same row again, but that is better than missing rows with the same time_t
         uint64 prevTime = 4; // time_t
+
+        uint64 offset = 5;
     }
 }
 

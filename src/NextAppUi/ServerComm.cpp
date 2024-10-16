@@ -25,6 +25,7 @@
 #include "GreenDaysModel.h"
 #include "ActionInfoCache.h"
 #include "ActionCategoriesModel.h"
+#include "WorkCache.h"
 
 using namespace std;
 
@@ -1224,6 +1225,11 @@ failed:
 
     if (!co_await ActionInfoCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get action info.";
+        goto failed;
+    }
+
+    if (!co_await WorkCache::instance()->synch()) {
+        LOG_WARN_N << "Failed to get work sessions.";
         goto failed;
     }
 

@@ -49,6 +49,8 @@ public:
     QCoro::Task<std::vector<std::shared_ptr<nextapp::pb::WorkSession>>>
     getWorkSessions(nextapp::pb::GetWorkSessionsReq req);
 
+    static WorkCache *instance() noexcept;
+
 signals:
     void WorkSessionAdded(const QUuid& item);
     void WorkSessionChanged(const QUuid& item);
@@ -60,7 +62,6 @@ private:
     void purge();
     QCoro::Task<void> remove(const QUuid& id);
     static Outcome updateOutcome(nextapp::pb::WorkSession &work);
-
 
     std::map<QUuid, std::shared_ptr<nextapp::pb::WorkSession>> items_;
 };

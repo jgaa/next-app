@@ -16,29 +16,29 @@ using namespace std;
 
 namespace {
 int compareOnTouched (const WorkModel::Session& a, const WorkModel::Session& b) {
-    if (a.session.state() != b.session.state()) {
-        return a.session.state() < b.session.state(); // order active first
+    if (a.session->state() != b.session->state()) {
+        return a.session->state() < b.session->state(); // order active first
     }
 
-    return a.session.touched() > b.session.touched(); // order newest first
+    return a.session->touched() > b.session->touched(); // order newest first
 }
 
 int compareOnStart (const WorkModel::Session& a, const WorkModel::Session& b) {
-    if (a.session.start() == b.session.start()) {
+    if (a.session->start() == b.session->start()) {
         // Avoid inconsistent results
-        return a.session.id_proto() < b.session.id_proto();
+        return a.session->id_proto() < b.session->id_proto();
     }
 
-    return a.session.start() < b.session.start();
+    return a.session->start() < b.session->start();
 }
 
 int compareOnStartDesc (const WorkModel::Session& a, const WorkModel::Session& b) {
-    if (a.session.start() == b.session.start()) {
+    if (a.session->start() == b.session->start()) {
         // Avoid inconsistent results
-        return a.session.id_proto() < b.session.id_proto();
+        return a.session->id_proto() < b.session->id_proto();
     }
 
-    return a.session.start() > b.session.start();
+    return a.session->start() > b.session->start();
 }
 
 constexpr auto sort_fn = to_array({
@@ -50,11 +50,6 @@ constexpr auto sort_fn = to_array({
 
 } // anon ns
 
-void WorkModel::fetchAll()
-{
-    nextapp::pb::GetWorkSessionsReq req;
-    ServerComm::instance().getWorkSessions(req, uuid());
-}
 
 void WorkModel::fetchSome(FetchWhat what)
 {
@@ -66,18 +61,17 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
     LOG_DEBUG << "WorkModel::fetchSome() called, what=" << what << ", uuid=" << uuid().toString()
               << ", firstPage=" << firstPage;
 
-    nextapp::pb::Page page;
     nextapp::pb::GetWorkSessionsReq req;
     currentTreeNode_.clear();
     fetch_what_ = what;
 
+    beginResetModel();
+    ScopedExit scoped{[this] { endResetModel(); }};
+
     if (firstPage) {
         pagination_.reset();
-    } else {
-        page.setPrevTime(pagination_.prev);
+        sessions_.clear();
     }
-
-    page.setPageSize(pagination_.pageSize());
 
     switch(what) {
     case TODAY: {
@@ -144,14 +138,16 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
 
     // ServerComm::instance().getWorkSessions(req, uuid());
 
-    beginResetModel();
-    ScopedExit scoped{[this] { endResetModel(); }};
-
     if (firstPage) {
         pagination_.reset();
     };
 
-    auto res = co_await cache_.getWorkSessions(req);
+
+    nextapp::pb::Page page;
+    page.setPageSize(pagination_.pageSize());
+    page.setOffset(sessions_.size());
+    req.setPage(page);
+    auto res = co_await WorkCache::instance()->getWorkSessions(req);
 
     if (!res.empty()) {
         res.reserve(res.size());
@@ -159,13 +155,21 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
             session_by_ordered().emplace_back(session);
         }
     }
+
+    if (res.size() < pagination_.pageSize()) {
+        pagination_.more = false;
+    } else {
+        pagination_.more = true;
+        pagination_.increment();
+    }
+
+    sort();
 }
 
 void WorkModel::setSorting(Sorting sorting)
 {
     LOG_DEBUG << "WorkModel::setSorting() called, sorting=" << sorting << ", uuid=" << uuid().toString();
     sorting_ = sorting;
-    beginResetModel();
 
     if (pagination_.hasMore()) {
         // We can't re-sort locally unless we have all the data.
@@ -174,12 +178,13 @@ void WorkModel::setSorting(Sorting sorting)
         return;
     }
 
+    beginResetModel();
     ScopedExit scoped{[this] { endResetModel(); }};
     sort();
 }
 
-WorkModel::WorkModel(WorkCache& cache, QObject *parent)
-    : QAbstractTableModel{parent}, cache_{cache}
+WorkModel::WorkModel(QObject *parent)
+    : WorkModelBase{parent}
 {
     // connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
     //     start();
@@ -191,9 +196,17 @@ WorkModel::WorkModel(WorkCache& cache, QObject *parent)
     //     setActive(true);
     // }
 
-    connect(&cache_, &WorkCache::stateChanged, this, [&] {
-        if (cache_.valid()) {
-            fetchAll();
+    connect(WorkCache::instance(), &WorkCache::stateChanged, this, [&] {
+        if (WorkCache::instance()->valid()) {
+            fetchIf();
+        }
+    });
+
+    connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &WorkModel::selectedChanged);
+
+    connect(this, &WorkModelBase::visibleChanged, this, [this] {
+        if (isVisible() && skipped_node_fetch_ && fetch_what_ == SELECTED_LIST) {
+            doFetchSome(FetchWhat::SELECTED_LIST);
         }
     });
 }
@@ -222,239 +235,6 @@ WorkModel::WorkModel(WorkCache& cache, QObject *parent)
 //     start();
 // }
 
-void WorkModel::setIsVisible(bool isVisible) {
-    if (is_visible_ != isVisible) {
-        is_visible_ = isVisible;
-        emit isVisibleChanged();
-
-        LOG_DEBUG << "WorkModel::setIsVisible() called, isVisible=" << isVisible << ", uuid=" << uuid().toString();
-
-        if (isVisible && skipped_node_fetch_ && fetch_what_ == SELECTED_LIST) {
-            doFetchSome(FetchWhat::SELECTED_LIST);
-        }
-    }
-}
-
-const nextapp::pb::WorkSession *WorkModel::lookup(const QUuid &id) const
-{
-    const auto &sessions = session_by_id();
-    auto it = sessions.find(id);
-    if (auto it = sessions.find(id); it != sessions.end()) {
-        return it->session.get();
-    }
-    return nullptr;
-}
-
-int WorkModel::rowCount(const QModelIndex &parent) const
-{
-    if (enable_debug_) {
-        LOG_DEBUG << "WorkModel::rowCount() called " << uuid().toString() << " rows=" << sessions_.size();
-    }
-
-    return sessions_.size();
-}
-
-// This model is used by both ListVew and TableView and
-// needs to handle both roles and coumns.
-// We use goto to avoid duplicating code. Goto is not evil if used with care.
-QVariant WorkModel::data(const QModelIndex &index, int role) const
-{
-    if (enable_debug_) {
-        LOG_TRACE << "WorkModel::data() called, role=" << role << ", uuid=" << uuid().toString()
-                  << "row=" << index.row() << ", col=" << index.column()
-                  << ". valid=" << index.isValid();
-    }
-
-    if (!index.isValid()) {
-        return {};
-    }
-
-    const auto row = index.row();
-    if (row < 0 && row >= sessions_.size()) {
-        return {};
-    }
-
-    const auto& session = *std::next(session_by_ordered().begin(), row);
-
-    switch (role) {
-    case Qt::DisplayRole:
-        switch(index.column()) {
-        case FROM: {
-from:
-            const auto start_time = session.session.start();
-            if (!start_time) {
-                return QString{};
-            }
-            const auto start = QDateTime::fromSecsSinceEpoch(start_time);
-            const auto now = QDateTime::currentDateTime();
-            if (start.date() == now.date()) {
-                return start.toString("hh:mm");
-            }
-            return start.toString("yyyy-MM-dd hh:mm");
-        }
-        case TO: {
-to:
-            if (!session.session.hasEnd()) {
-                return QString{};
-            }
-            const auto start = QDateTime::fromSecsSinceEpoch(session.session.start());
-            const auto end = QDateTime::fromSecsSinceEpoch(session.session.end());
-            if (start.date() == end.date()) {
-                return end.toString("hh:mm");
-            }
-            return end.toString("yyyy-MM-dd hh:mm");
-        }
-        case PAUSE:
-pause:
-            return toHourMin(static_cast<int>(session.session.paused()));
-        case USED:
-used:
-            return toHourMin(static_cast<int>(session.session.duration()));
-        case NAME:
-name:
-            return session.session.name();
-        } // switch col
-
-    case UuidRole:
-        return session.session.id_proto();
-    case IconRole:
-        //return static_cast<int>(session.session.state());
-        switch(session.session.state()) {
-        case nextapp::pb::WorkSession::State::ACTIVE:
-            return QString{QChar{0xf04b}};
-        case nextapp::pb::WorkSession::State::PAUSED:
-            return QString{QChar{0xf04c}};
-        case nextapp::pb::WorkSession::State::DONE:
-            return QString{QChar{0xf04d}};
-        }
-        break;
-    case ActiveRole:
-        return session.session.state() == nextapp::pb::WorkSession::State::ACTIVE;
-    case HasNotesRole:
-        return !session.session.notes().isEmpty();
-    case FromRole:
-        goto from;
-    case ToRole:
-        goto to;
-    case PauseRole:
-        goto pause;
-    case DurationRole:
-        goto used;
-    case NameRole:
-        goto name;
-    case StartedRole:
-        return session.session.start() > 0;
-    }
-    return {};
-}
-
-QHash<int, QByteArray> WorkModel::roleNames() const
-{
-    QHash<int, QByteArray> roles;
-    roles[Qt::DisplayRole] = "display";
-    roles[UuidRole] = "uuid";
-    roles[IconRole] = "icon";
-    roles[ActiveRole] = "active";
-    roles[HasNotesRole] = "hasNotes";
-    roles[FromRole] = "from";
-    roles[ToRole] = "to";
-    roles[PauseRole] = "pause";
-    roles[DurationRole] = "duration";
-    roles[NameRole] = "name";
-    roles[StartedRole] = "started";
-
-    return roles;
-}
-
-QVariant WorkModel::headerData(int section, Qt::Orientation orientation, int role) const
-{
-    if (orientation == Qt::Horizontal && role == Qt::DisplayRole) {
-        switch(section) {
-        case FROM:
-            return tr("From");
-        case TO:
-            return tr("To");
-        case PAUSE:
-            return tr("Pause");
-        case USED:
-            return tr("Used");
-        case NAME:
-            return tr("Name");
-        }
-    }
-
-    return {};
-}
-
-bool WorkModel::setData(const QModelIndex &index, const QVariant &value, int role)
-{
-    if (!index.isValid()) {
-        return false;
-    }
-
-    if (auto work = lookup(toQuid(data(index, UuidRole).toString()))) {
-
-        if (role == Qt::DisplayRole) {
-            switch(index.column()) {
-            case FROM:
-                try {
-                    auto seconds = parseDateOrTime(value.toString());
-                    nextapp::pb::WorkEvent event;
-                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
-                    event.setStart(seconds);
-                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
-                } catch (const std::runtime_error&) {
-                    ;
-                }
-                break;
-            case TO:
-                try {
-                    auto seconds = parseDateOrTime(value.toString());
-                    if (seconds < work->start()) {
-                        throw std::runtime_error{"End time must be after start time"};
-                    }
-
-                    nextapp::pb::WorkEvent event;
-                    if (work->state() != nextapp::pb::WorkSession::State::DONE) {
-                        // We have to stop the work.
-                        event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::STOP);
-                    } else {
-                        event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
-                    }
-                    event.setEnd(seconds);
-                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
-                } catch (const std::runtime_error&) {
-                    ;
-                }
-                break;
-            case PAUSE:
-                try {
-                    auto seconds = parseDuration(value.toString());
-                    nextapp::pb::WorkEvent event;
-                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
-                    event.setPaused(seconds);
-                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
-                } catch (const std::runtime_error&) {
-                    ; // TODO: Tell the user
-                }
-                break;
-
-            case NAME:
-                try {
-                    nextapp::pb::WorkEvent event;
-                    event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
-                    event.setName(value.toString());
-                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
-                } catch (const std::runtime_error&) {
-                    ; // TODO: Tell the user
-                }
-                break;
-            }
-        }
-    }
-
-    return false;
-}
 
 void WorkModel::fetchMore(const QModelIndex &parent)
 {
@@ -478,71 +258,70 @@ bool WorkModel::canFetchMore(const QModelIndex &parent) const
 
 
 
-void WorkModel::setActive(bool active)
-{
-    if (active != is_active_) {
-        is_active_ = active;
-        emit activeChanged();
-        QTimer::singleShot(0, this, &WorkModel::fetchIf);
-    }
-}
+// void WorkModel::setActive(bool active)
+// {
+//     if (active != is_active_) {
+//         is_active_ = active;
+//         emit activeChanged();
+//         QTimer::singleShot(0, this, &WorkModel::fetchIf);
+//     }
+// }
 
 void WorkModel::selectedChanged()
 {
+    if (!isVisible()) {
+        return;
+    }
+
     LOG_DEBUG << "Tree selection changed...";
     if (fetch_what_ == SELECTED_LIST) {
         // TODO: Handle race condition when we select a node wile we are still fetching some other nodes data
-        if (!is_visible_) {
-            LOG_DEBUG << "Skipped fetching selected node, as the model is not visible";
-            skipped_node_fetch_ = true;
-        } else {
-            doFetchSome(SELECTED_LIST);
-        }
+        doFetchSome(SELECTED_LIST);
     }
 }
 
-void WorkModel::replace(const nextapp::pb::WorkSessions &sessions)
-{
-    auto add_sessions = [this, &sessions]() {
-        size_t new_rows = 0;
-        try {
-            for (auto session : sessions.sessions()) {
-                //updateOutcome(session);
-                const auto [_, inserted] = session_by_ordered().emplace_back(session);
-                if (inserted) {
-                    ++new_rows;
-                }
-            }
-            sort();
-        } catch (const std::exception& e) {
-            LOG_ERROR << "Error parsing work sessions: " << e.what();
-        }
+// void WorkModel::replace(const nextapp::pb::WorkSessions &sessions)
+// {
+//     auto add_sessions = [this, &sessions]() {
+//         size_t new_rows = 0;
+//         try {
+//             for (auto session : sessions.sessions()) {
+//                 //updateOutcome(session);
+//                 const auto [_, inserted] = session_by_ordered().emplace_back(session);
+//                 if (inserted) {
+//                     ++new_rows;
+//                 }
+//             }
+//             sort();
+//         } catch (const std::exception& e) {
+//             LOG_ERROR << "Error parsing work sessions: " << e.what();
+//         }
 
-        return new_rows;
-    };
+//         return new_rows;
+//     };
 
-    if (pagination_.isFirstPage()) {
-        beginResetModel();
-        ScopedExit scoped{[this] { endResetModel(); }};
-        sessions_.clear();
-        add_sessions();
-    } else {
-        // Find out how many new rows we have
-        // We will almost certainly have one duplicate, a the last row from the previous
-        const auto& ses_by_id = session_by_id();
-        const auto new_rows = std::ranges::count_if(sessions.sessions(), [&ses_by_id](const auto& s) {
-            return !ses_by_id.contains(toQuid((s.id_proto())));
-        });
+//     if (pagination_.isFirstPage()) {
+//         beginResetModel();
+//         ScopedExit scoped{[this] { endResetModel(); }};
+//         sessions_.clear();
+//         add_sessions();
+//     } else {
+//         // Find out how many new rows we have
+//         // We will almost certainly have one duplicate, a the last row from the previous
+//         const auto& ses_by_id = session_by_id();
+//         const auto new_rows = std::ranges::count_if(sessions.sessions(), [&ses_by_id](const auto& s) {
+//             return !ses_by_id.contains(toQuid((s.id_proto())));
+//         });
 
-        beginInsertRows(QModelIndex(), sessions_.size(), sessions_.size() + new_rows -1);
-        ScopedExit scoped{[this] { endInsertRows(); }};
-        const auto addes_rows = add_sessions();
-        assert(addes_rows == new_rows);
-        sort();
-    }
+//         beginInsertRows(QModelIndex(), sessions_.size(), sessions_.size() + new_rows -1);
+//         ScopedExit scoped{[this] { endInsertRows(); }};
+//         const auto addes_rows = add_sessions();
+//         assert(addes_rows == new_rows);
+//         sort();
+//     }
 
-    LOG_TRACE << "WorkModel::replace(): I now have " << sessions_.size() << " work-sessions cached.";
-}
+//     LOG_TRACE << "WorkModel::replace(): I now have " << sessions_.size() << " work-sessions cached.";
+// }
 
 void WorkModel::sort()
 {
@@ -552,14 +331,16 @@ void WorkModel::sort()
 QCoro::Task<void> WorkModel::fetchIf()
 {
     if (is_visible_ && is_active_) {
-        doFetchSome(fetch_what_, true);
+        co_await doFetchSome(fetch_what_, true);
     }
+
+    co_return;
 }
 
-void WorkModel::receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions)
-{
-    replace(*sessions);
-}
+// void WorkModel::receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions)
+// {
+//     replace(*sessions);
+// }
 
 // void WorkModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions, const ServerComm::MetaData meta)
 // {
@@ -587,16 +368,6 @@ void WorkModel::receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::W
 //     }
 // }
 
-bool WorkModel::sessionExists(const QString &sessionId)
-{
-    if (!sessionId.isEmpty()) {
-        if (auto session = lookup(toQuid(sessionId))) {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 nextapp::pb::WorkSession WorkModel::getSession(const QString &sessionId)
 {

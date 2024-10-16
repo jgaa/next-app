@@ -1027,7 +1027,7 @@ bool ActionsModel::canFetchMore(const QModelIndex &parent) const
 {
     LOG_DEBUG_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
               << ", page = " << pagination_.page;
-    return pagination_.hasMore();
+    return isVisible() && pagination_.hasMore();
 }
 
 QCoro::Task<void> ActionsModel::fetchIf(bool restart)
@@ -1260,11 +1260,16 @@ LIMIT {} OFFSET {})",
 
     } else {
         LOG_ERROR << "Failed to query actions from local db";
+        pagination_.more = false;
     }
 }
 
 void ActionsModel::selectedChanged()
 {
+    if (!isVisible()) {
+        return;
+    }
+
     if (mode_ == FetchWhat::FW_SELECTED_NODE || mode_ == FetchWhat::FW_SELECTED_NODE_AND_CHILDREN) {
         fetchIf(true);
     }

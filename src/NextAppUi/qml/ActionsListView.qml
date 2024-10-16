@@ -30,12 +30,14 @@ Rectangle {
     Connections {
         target: NaMainTreeModel
         onSelectedChanged: {
-            //console.log("ActionsListView: Tree selection changed to", NaMainTreeModel.selected)
-            if (NaMainTreeModel.selected != ""
-                    && ActionsModel.mode !== ActionsModel.FW_SELECTED_NODE
-                    && ActionsModel.mode !== ActionsModel.FW_SELECTED_NODE_AND_CHILDREN) {
-                selectionCtl.currentIndex = ActionsModel.FW_SELECTED_NODE
-                ActionsModel.mode = ActionsModel.FW_SELECTED_NODE
+            if (root.visible) {
+                //console.log("ActionsListView: Tree selection changed to", NaMainTreeModel.selected)
+                if (NaMainTreeModel.selected != ""
+                        && ActionsModel.mode !== ActionsModel.FW_SELECTED_NODE
+                        && ActionsModel.mode !== ActionsModel.FW_SELECTED_NODE_AND_CHILDREN) {
+                    selectionCtl.currentIndex = ActionsModel.FW_SELECTED_NODE
+                    ActionsModel.mode = ActionsModel.FW_SELECTED_NODE
+                }
             }
         }
     }

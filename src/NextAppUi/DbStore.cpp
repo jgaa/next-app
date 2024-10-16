@@ -241,9 +241,15 @@ bool DbStore::updateSchema(uint version)
             "duration" INTEGER,
             "paused" INTEGER,
             "data" BLOB NOT NULL,
-            "upated" INTEGER NOT NULL,
-            PRIMARY KEY("id")
+            "updated" INTEGER NOT NULL,
+            PRIMARY KEY("id"))
         )",
+
+        "CREATE INDEX IF NOT EXISTS work_session_action_state ON work_session(state, start_time)",
+        "CREATE INDEX IF NOT EXISTS work_session_updated ON work_session(updated, state)",
+        "CREATE INDEX IF NOT EXISTS work_session_action ON work_session(action, state)",
+        "CREATE INDEX IF NOT EXISTS work_session_start_time ON work_session(start_time, state)",
+
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({

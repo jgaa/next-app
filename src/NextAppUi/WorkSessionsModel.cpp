@@ -3,6 +3,7 @@
 #include "WorkSessionsModel.h"
 #include "ActionsModel.h"
 #include "ServerComm.h"
+#include "NextAppCore.h"
 #include "logging.h"
 #include <algorithm>
 #include <iterator>
@@ -85,25 +86,25 @@ void WorkSessionsModel::addCalendarEvent(const QString &eventId)
     ServerComm::instance().addWorkFromTimeBlock(eventId);
 }
 
-void WorkSessionsModel::start()
-{
-    if (!started()) {
-        WorkModel::start();
+// void WorkSessionsModel::start()
+// {
+//     if (!started()) {
+//         WorkModel::start();
 
-        connect(std::addressof(ServerComm::instance()),
-                &ServerComm::receivedCurrentWorkSessions,
-                this,
-                &WorkSessionsModel::receivedCurrentWorkSessions);
-    }
+//         connect(std::addressof(ServerComm::instance()),
+//                 &ServerComm::receivedCurrentWorkSessions,
+//                 this,
+//                 &WorkSessionsModel::receivedCurrentWorkSessions);
+//     }
 
-    fetch();
+//     fetch();
 
-    if (!timer_) {
-        timer_ = new QTimer(this);
-    }
-    connect(timer_, &QTimer::timeout, this, &WorkSessionsModel::onTimer);
-    timer_->start(5000);
-}
+//     if (!timer_) {
+//         timer_ = new QTimer(this);
+//     }
+//     connect(timer_, &QTimer::timeout, this, &WorkSessionsModel::onTimer);
+//     timer_->start(5000);
+// }
 
 void WorkSessionsModel::fetch()
 {
@@ -126,45 +127,45 @@ void WorkSessionsModel::onTimer()
 
 void WorkSessionsModel::updateSessionsDurations()
 {
-    auto& sessions = session_by_ordered();
-    int row = 0;
-    bool changed = false;
-    for(auto it = sessions.begin(); it != sessions.end(); ++it, ++row ){
-        sessions.modify(it, [this, row, &changed](auto& v ) {
-            const auto outcome = updateOutcome(v.session);
-            if (outcome.changed()) {
-                if (outcome.start) {
-                    const auto ix = index(row, FROM);
-                    dataChanged(ix, ix);
-                    changed = true;
-                }
-                if (outcome.end) {
-                    const auto ix = index(row, TO);
-                    dataChanged(ix, ix);
-                    changed = true;
-                }
-                if (outcome.duration) {
-                    const auto ix = index(row, USED);
-                    dataChanged(ix, ix, {});
-                    changed = true;
-                }
-                if (outcome.paused) {
-                    const auto ix = index(row, PAUSE);
-                    dataChanged(ix, ix);
-                    changed = true;
-                }
-                if (outcome.name) {
-                    const auto ix = index(row, NAME);
-                    dataChanged(ix, ix);
-                    changed = true;
-                }
-            }
-        });
-    }
+    // auto& sessions = session_by_ordered();
+    // int row = 0;
+    // bool changed = false;
+    // for(auto it = sessions.begin(); it != sessions.end(); ++it, ++row ){
+    //     sessions.modify(it, [this, row, &changed](auto& v ) {
+    //         const auto outcome = updateOutcome(v.session);
+    //         if (outcome.changed()) {
+    //             if (outcome.start) {
+    //                 const auto ix = index(row, FROM);
+    //                 dataChanged(ix, ix);
+    //                 changed = true;
+    //             }
+    //             if (outcome.end) {
+    //                 const auto ix = index(row, TO);
+    //                 dataChanged(ix, ix);
+    //                 changed = true;
+    //             }
+    //             if (outcome.duration) {
+    //                 const auto ix = index(row, USED);
+    //                 dataChanged(ix, ix, {});
+    //                 changed = true;
+    //             }
+    //             if (outcome.paused) {
+    //                 const auto ix = index(row, PAUSE);
+    //                 dataChanged(ix, ix);
+    //                 changed = true;
+    //             }
+    //             if (outcome.name) {
+    //                 const auto ix = index(row, NAME);
+    //                 dataChanged(ix, ix);
+    //                 changed = true;
+    //             }
+    //         }
+    //     });
+    // }
 
-    if (changed) {
-        emit updatedDuration();
-    }
+    // if (changed) {
+    //     emit updatedDuration();
+    // }
 }
 
 
