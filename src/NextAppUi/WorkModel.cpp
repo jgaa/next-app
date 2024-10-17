@@ -198,8 +198,29 @@ WorkModel::WorkModel(QObject *parent)
 
     connect(WorkCache::instance(), &WorkCache::stateChanged, this, [&] {
         if (WorkCache::instance()->valid()) {
+            setActive(true);
             fetchIf();
+        } else {
+            setActive(false);
         }
+    });
+
+    setActive(WorkCache::instance()->valid());
+
+    connect(WorkCache::instance(), &WorkCache::WorkSessionAdded, this, [this](const auto& item) {
+        fetchIf();
+    });
+
+    connect(WorkCache::instance(), &WorkCache::WorkSessionChanged, this, [this](const auto& item) {
+        fetchIf();
+    });
+
+    connect(WorkCache::instance(), &WorkCache::WorkSessionActionMoved, this, [this](const auto& item) {
+        fetchIf();
+    });
+
+    connect(WorkCache::instance(), &WorkCache::WorkSessionDeleted, this, [this](const auto& item) {
+        fetchIf();
     });
 
     connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &WorkModel::selectedChanged);
@@ -210,31 +231,6 @@ WorkModel::WorkModel(QObject *parent)
         }
     });
 }
-
-// void WorkModel::start()
-// {
-//     if (!started_) {
-//         LOG_DEBUG << "WorkModel::start() called" << uuid().toString();
-
-//         connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &WorkModel::onUpdate);
-//         connect(&ServerComm::instance(), &ServerComm::receivedWorkSessions, this, &WorkModel::receivedWorkSessions);
-//         connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &WorkModel::selectedChanged);
-//         started_ = true;
-//     }
-// }
-
-// WorkModel *WorkModel::createModel()
-// {
-//     auto model = make_unique<WorkModel>();
-//     QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
-//     return model.release();
-// }
-
-// void WorkModel::doStart() {
-//     LOG_DEBUG << "WorkModel::doStart() " << uuid().toString();
-//     start();
-// }
-
 
 void WorkModel::fetchMore(const QModelIndex &parent)
 {
@@ -256,17 +252,6 @@ bool WorkModel::canFetchMore(const QModelIndex &parent) const
     return pagination_.hasMore();
 }
 
-
-
-// void WorkModel::setActive(bool active)
-// {
-//     if (active != is_active_) {
-//         is_active_ = active;
-//         emit activeChanged();
-//         QTimer::singleShot(0, this, &WorkModel::fetchIf);
-//     }
-// }
-
 void WorkModel::selectedChanged()
 {
     if (!isVisible()) {
@@ -279,49 +264,6 @@ void WorkModel::selectedChanged()
         doFetchSome(SELECTED_LIST);
     }
 }
-
-// void WorkModel::replace(const nextapp::pb::WorkSessions &sessions)
-// {
-//     auto add_sessions = [this, &sessions]() {
-//         size_t new_rows = 0;
-//         try {
-//             for (auto session : sessions.sessions()) {
-//                 //updateOutcome(session);
-//                 const auto [_, inserted] = session_by_ordered().emplace_back(session);
-//                 if (inserted) {
-//                     ++new_rows;
-//                 }
-//             }
-//             sort();
-//         } catch (const std::exception& e) {
-//             LOG_ERROR << "Error parsing work sessions: " << e.what();
-//         }
-
-//         return new_rows;
-//     };
-
-//     if (pagination_.isFirstPage()) {
-//         beginResetModel();
-//         ScopedExit scoped{[this] { endResetModel(); }};
-//         sessions_.clear();
-//         add_sessions();
-//     } else {
-//         // Find out how many new rows we have
-//         // We will almost certainly have one duplicate, a the last row from the previous
-//         const auto& ses_by_id = session_by_id();
-//         const auto new_rows = std::ranges::count_if(sessions.sessions(), [&ses_by_id](const auto& s) {
-//             return !ses_by_id.contains(toQuid((s.id_proto())));
-//         });
-
-//         beginInsertRows(QModelIndex(), sessions_.size(), sessions_.size() + new_rows -1);
-//         ScopedExit scoped{[this] { endInsertRows(); }};
-//         const auto addes_rows = add_sessions();
-//         assert(addes_rows == new_rows);
-//         sort();
-//     }
-
-//     LOG_TRACE << "WorkModel::replace(): I now have " << sessions_.size() << " work-sessions cached.";
-// }
 
 void WorkModel::sort()
 {
@@ -336,38 +278,6 @@ QCoro::Task<void> WorkModel::fetchIf()
 
     co_return;
 }
-
-// void WorkModel::receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions)
-// {
-//     replace(*sessions);
-// }
-
-// void WorkModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions> &sessions, const ServerComm::MetaData meta)
-// {
-//     if (meta.requester == uuid()) {
-//         replace(*sessions);
-//         pagination_.increment();
-
-//         if (meta.more) {
-//             pagination_.more = *meta.more;
-//             if (*meta.more) {
-//                 assert(!sessions->sessions().empty());
-//                 if (sorting_ == Sorting::SORT_TOUCHED) {
-//                     pagination_.prev = sessions->sessions().back().touched();
-//                 } else {
-//                     pagination_.prev = sessions->sessions().back().start();
-//                 }
-//             }
-//         } else {
-//             pagination_.more = false;
-//         }
-
-//         LOG_TRACE << "WorkModel::receivedWorkSessions() called, uuid=" << uuid().toString()
-//                   << ", more=" << pagination_.more << ", prev=" << pagination_.prev
-//                   << ", page = " << pagination_.page;
-//     }
-// }
-
 
 nextapp::pb::WorkSession WorkModel::getSession(const QString &sessionId)
 {

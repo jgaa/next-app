@@ -20,12 +20,17 @@
 #include "nextapp.qpb.h"
 #include "nextapp.h"
 
+/*! Base class for Work Session models.
+ *
+ */
+
 class WorkModelBase: public QAbstractTableModel
 {
     Q_OBJECT
     QML_ELEMENT
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY visibleChanged)
+    Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
 public:
     enum Roles {
         UuidRole = Qt::UserRole + 1,
@@ -129,6 +134,7 @@ public:
 
 signals:
     void visibleChanged();
+    void activeChanged();
 
 protected:
     inline auto& session_by_id() const { return sessions_.get<id_tag>(); }

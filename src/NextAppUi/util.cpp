@@ -50,8 +50,9 @@ std::ostream& operator<<(std::ostream& os, const nextapp::pb::ErrorGadget::Error
         "MISSING_AUTH",
     });
 
-    assert(errors.size() < static_cast<size_t>(error));
-    return os << errors.at(static_cast<size_t>(error));
+    const auto err = static_cast<size_t>(error);
+    assert(err < errors.size());
+    return os << errors.at(err);
 }
 
 QString toValidQuid(const QString &str) {

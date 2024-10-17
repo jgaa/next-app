@@ -4,6 +4,7 @@
 #include "ActionsModel.h"
 #include "ServerComm.h"
 #include "NextAppCore.h"
+#include "WorkCache.h"
 #include "logging.h"
 #include <algorithm>
 #include <iterator>
@@ -22,6 +23,14 @@ WorkSessionsModel::WorkSessionsModel(QObject *parent)
     assert(instance_ == nullptr);
     instance_ = this;
     exclude_done_ = true;
+
+    connect(WorkCache::instance(), &WorkCache::activeChanged, this, &WorkSessionsModel::fetch);
+    connect(WorkCache::instance(), &WorkCache::activeDurationChanged, this, &WorkSessionsModel::onDurationChanged);
+    connect(this, &WorkSessionsModel::visibleChanged, [this]() {
+        if (isVisible()) {
+            fetch();
+        }
+    });
 }
 
 void WorkSessionsModel::startWork(const QString &actionId)
@@ -86,33 +95,17 @@ void WorkSessionsModel::addCalendarEvent(const QString &eventId)
     ServerComm::instance().addWorkFromTimeBlock(eventId);
 }
 
-// void WorkSessionsModel::start()
-// {
-//     if (!started()) {
-//         WorkModel::start();
-
-//         connect(std::addressof(ServerComm::instance()),
-//                 &ServerComm::receivedCurrentWorkSessions,
-//                 this,
-//                 &WorkSessionsModel::receivedCurrentWorkSessions);
-//     }
-
-//     fetch();
-
-//     if (!timer_) {
-//         timer_ = new QTimer(this);
-//     }
-//     connect(timer_, &QTimer::timeout, this, &WorkSessionsModel::onTimer);
-//     timer_->start(5000);
-// }
-
 void WorkSessionsModel::fetch()
 {
-    if (ServerComm::instance().connected()) {
-        ServerComm::instance().getActiveWorkSessions();
+    beginResetModel();
+    ScopedExit reset{[this] { endResetModel(); }};
+
+    auto active = WorkCache::instance()->getActive();
+    sessions_.clear();
+    for (const auto& session : active) {
+        sessions_.push_back(session);
     }
 }
-
 
 bool WorkSessionsModel::actionIsInSessionList(const QUuid &actionId) const
 {
@@ -120,52 +113,20 @@ bool WorkSessionsModel::actionIsInSessionList(const QUuid &actionId) const
     return actions.find(actionId) != actions.end();
 }
 
-void WorkSessionsModel::onTimer()
+// Assume that the order of the changes is the same as the order of the sessions
+void WorkSessionsModel::onDurationChanged(const WorkCache::active_duration_changes_t &changes)
 {
-    updateSessionsDurations();
+    uint row = 0;
+    for (const auto& change : changes) {
+        if (change.duration) {
+            QModelIndex index = createIndex(row, USED);
+            emit dataChanged(index, index);
+        }
+        if (change.paused) {
+            QModelIndex index = createIndex(row, PAUSE);
+            emit dataChanged(index, index);
+        }
+        ++row;
+    }
 }
-
-void WorkSessionsModel::updateSessionsDurations()
-{
-    // auto& sessions = session_by_ordered();
-    // int row = 0;
-    // bool changed = false;
-    // for(auto it = sessions.begin(); it != sessions.end(); ++it, ++row ){
-    //     sessions.modify(it, [this, row, &changed](auto& v ) {
-    //         const auto outcome = updateOutcome(v.session);
-    //         if (outcome.changed()) {
-    //             if (outcome.start) {
-    //                 const auto ix = index(row, FROM);
-    //                 dataChanged(ix, ix);
-    //                 changed = true;
-    //             }
-    //             if (outcome.end) {
-    //                 const auto ix = index(row, TO);
-    //                 dataChanged(ix, ix);
-    //                 changed = true;
-    //             }
-    //             if (outcome.duration) {
-    //                 const auto ix = index(row, USED);
-    //                 dataChanged(ix, ix, {});
-    //                 changed = true;
-    //             }
-    //             if (outcome.paused) {
-    //                 const auto ix = index(row, PAUSE);
-    //                 dataChanged(ix, ix);
-    //                 changed = true;
-    //             }
-    //             if (outcome.name) {
-    //                 const auto ix = index(row, NAME);
-    //                 dataChanged(ix, ix);
-    //                 changed = true;
-    //             }
-    //         }
-    //     });
-    // }
-
-    // if (changed) {
-    //     emit updatedDuration();
-    // }
-}
-
 

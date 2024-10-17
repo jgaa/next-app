@@ -9,9 +9,33 @@
 
 using namespace std;
 
+namespace {
+    void sortActive(WorkCache::active_t& active)
+    {
+        std::ranges::sort(active, [](const auto& lhs, const auto& rhs) {
+            // Sort on state, and then touched time DESC
+            if (lhs->state() != rhs->state()) {
+                return lhs->state() < rhs->state();
+            }
+            if (lhs->touched() != rhs->touched()) {
+                return lhs->touched() > rhs->touched();
+            }
+            return false;
+        });
+    }
+}
+
 WorkCache::WorkCache(QObject *parent)
     : QObject{parent}
 {
+    timer_ = new QTimer(this);
+    connect(timer_, &QTimer::timeout, this, &WorkCache::onTimer);
+    timer_->start(5000);
+
+    connect(&ServerComm::instance(), &ServerComm::onUpdate, this,
+    [this](const std::shared_ptr<nextapp::pb::Update>& update) {
+        onUpdate(update);
+    });
 }
 
 QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
@@ -20,18 +44,41 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
     if (update->hasWork()) {
         auto work = update->work();
         updateOutcome(work);
+        const auto id_str = work.id_proto();
         const QUuid id{work.id_proto()};
+        bool active_changed = false;
+        bool exist_in_active = false;
+
+        // Remove from Active if the work session is not active or paused
+        if (auto it = std::ranges::find_if(active_, [&id_str, &work](const auto& ws) {
+            return ws->id_proto() == id_str;
+        }); it != active_.end()) {
+            if (work.state() != nextapp::pb::WorkSession::State::ACTIVE
+                && work.state() != nextapp::pb::WorkSession::State::PAUSED) {
+                active_.erase(it);
+                active_changed = true;
+            } else {
+                exist_in_active = true;
+                LOG_TRACE_N << "Active changed. id=" << id_str
+                            << ", touched=" << work.touched()
+                            << ", name=" << work.name();
+            }
+        }
+
         if (work.state() == nextapp::pb::WorkSession::State::DELETED) {
             emit WorkSessionDeleted(id);
             items_.erase(id);
             co_await remove(id);
         } else {
+            std::shared_ptr<nextapp::pb::WorkSession> wsp;
             if (auto it = items_.find(id); it != items_.end()) {
+                wsp = it->second;
                 *it->second = work;
             } else {
-                it->second = std::make_shared<nextapp::pb::WorkSession>(work);
+                wsp = std::make_shared<nextapp::pb::WorkSession>(work);
+                items_.emplace(id, wsp);
             }
-            co_await save(work);
+            co_await save(*wsp);
 
             if (op == nextapp::pb::Update::Operation::ADDED) {
                 emit WorkSessionAdded(id);
@@ -39,7 +86,17 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
                 emit WorkSessionChanged(id);
             }
 
-            auto [it, added] = items_.insert_or_assign(id, std::make_shared<nextapp::pb::WorkSession>(work));
+            if (wsp->state() == nextapp::pb::WorkSession::State::ACTIVE
+                || wsp->state() == nextapp::pb::WorkSession::State::PAUSED) {
+                if (!exist_in_active) {
+                    active_.push_back(wsp);
+                }
+            }
+
+            if (active_changed || exist_in_active) {
+                sortActive(active_);
+                emit activeChanged();
+            }
         }
     } else if (update->hasAction()) {
         if (op == nextapp::pb::Update::Operation::DELETED || op == nextapp::pb::Update::Operation::MOVED) {
@@ -117,11 +174,32 @@ QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
 
 QCoro::Task<bool> WorkCache::loadFromCache()
 {
-    co_return true;
-}
+    // Load the active sessions
+    auto& db = NextAppCore::instance()->db();
+    DbStore::param_t params;
+    params << static_cast<uint>(nextapp::pb::WorkSession::State::DONE);
+    auto res = co_await db.query("SELECT data FROM work_session WHERE state <?", &params);
 
-QCoro::Task<bool> WorkCache::loadSomeFromCache(std::optional<QString> id)
-{
+    if (res) {
+        for (const auto& row : *res) {
+            QProtobufSerializer serializer;
+            nextapp::pb::WorkSession work;
+            if (!work.deserialize(&serializer, row.at(0).toByteArray())) {
+                LOG_ERROR_N << "Failed to parse work session";
+                continue;
+            }
+
+            auto [it, _] = items_.emplace(QUuid{work.id_proto()}, std::make_shared<nextapp::pb::WorkSession>(work));
+            updateOutcome(*it->second);
+            active_.emplace_back(it->second);
+        }
+    } else {
+        LOG_ERROR_N << "Failed to load work sessions: " << res.error();
+        co_return false;
+    }
+
+    sortActive(active_);
+
     co_return true;
 }
 
@@ -133,6 +211,7 @@ std::shared_ptr<GrpcIncomingStream> WorkCache::openServerStream(nextapp::pb::Get
 void WorkCache::clear()
 {
     items_.clear();
+    active_.clear();
 }
 
 QCoro::Task<std::vector<std::shared_ptr<nextapp::pb::WorkSession>>>
@@ -246,6 +325,35 @@ void WorkCache::purge()
     });
 }
 
+void WorkCache::onTimer()
+{
+    updateSessionsDurations();
+}
+
+void WorkCache::updateSessionsDurations()
+{
+    int row = 0;
+    bool changed = false;
+    active_duration_changes_t changes;
+    changes.reserve(active_.size());
+    for(auto& ws : active_) {
+        const auto outcome = updateOutcome(*ws);
+        auto& change = changes.emplace_back();
+        if (outcome.changed()) {
+            change.duration = outcome.duration;
+            change.paused = outcome.paused;
+            if (change.paused || change.duration) {
+                changed = true;
+            }
+        }
+    }
+
+    if (changed) {
+        LOG_DEBUG_N << "Active duration changed. Emitting signal.";
+        emit activeDurationChanged(changes);
+    }
+}
+
 QCoro::Task<void> WorkCache::remove(const QUuid &id)
 {
     auto& db = NextAppCore::instance()->db();
@@ -319,6 +427,7 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
             work.setState(pb::WorkSession::State::ACTIVE);
             break;
         case pb::WorkEvent_QtProtobufNested::Kind::TOUCH:
+            work.setTouched(event.time());
             break;
         case pb::WorkEvent_QtProtobufNested::Kind::CORRECTION:
             if (event.hasStart()) {
@@ -353,6 +462,33 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
         }
     }
 
+    if (pause_from) {
+        // If we are paused, we need to account for the time between the last pause and now
+        pb::WorkEvent event;
+        event.setTime(time({}));
+        end_pause(event);
+    }
+
+    if (!work.start()) [[unlikely]] {
+        work.clearEnd();
+        work.setDuration(0);
+        work.setPaused(0);
+    } else if (work.hasEnd()) {
+        if (work.end() <= work.start()) {
+                work.setDuration(0);
+            } else {
+                auto duration = work.end() - work.start();
+                work.setDuration(std::max<long>(0, duration - work.paused()));
+            }
+    } else {
+        const auto now = time({});
+        if (now <= work.start()) {
+                work.setDuration(0);
+            } else {
+                work.setDuration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));
+            }
+    }
+
     if (orig_state == pb::WorkSession::State::DONE) {
         work.setState(orig_state);
     }
@@ -364,9 +500,9 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
     outcome.paused= orig_paused != work.paused() / 60;
     outcome.name = orig_name != work.name();
 
-    // LOG_DEBUG << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
-    //           << work.duration()
-    //           << " outcome.duration= " << outcome.duration;
+    LOG_DEBUG << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
+              << work.duration()
+              << " outcome.duration= " << outcome.duration;
 
     return outcome;
 }

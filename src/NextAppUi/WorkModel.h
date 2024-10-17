@@ -94,8 +94,6 @@ public:
     void fetchMore(const QModelIndex &parent) override;
     bool canFetchMore(const QModelIndex &parent) const override;
 
-    Outcome updateOutcome(nextapp::pb::WorkSession &work);
-
 signals:
     void somethingChanged();
     void activeChanged();

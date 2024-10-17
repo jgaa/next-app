@@ -759,6 +759,8 @@ boost::asio::awaitable<void> GrpcServer::resumeWorkSession(pb::WorkSession &work
         auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
         *update.mutable_work() = work;
     }
+
+    co_return;
 }
 
 void GrpcServer::updateOutcome(pb::WorkSession &work, const UserContext& uctx)

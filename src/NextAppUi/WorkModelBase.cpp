@@ -126,6 +126,14 @@ void WorkModelBase::setIsVisible(bool isVisible) {
     }
 }
 
+void WorkModelBase::setActive(bool active)
+{
+    if (is_active_ != active) {
+        is_active_ = active;
+        emit activeChanged();
+    }
+}
+
 QHash<int, QByteArray> WorkModelBase::roleNames() const
 {
     QHash<int, QByteArray> roles;

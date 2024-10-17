@@ -13,6 +13,7 @@
 #include <QTimer>
 
 #include "WorkModel.h"
+#include "WorkCache.h"
 #include "util.h"
 #include "nextapp.qpb.h"
 
@@ -70,9 +71,7 @@ signals:
     void updatedDuration();
 
 private:
-    void onTimer();
-    void updateSessionsDurations();
+    void onDurationChanged(const WorkCache::active_duration_changes_t& changes);
 
     static WorkSessionsModel* instance_;
-    QTimer *timer_ = {};
 };
