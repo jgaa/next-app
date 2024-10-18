@@ -18,19 +18,18 @@ using namespace std;
 WorkSessionsModel* WorkSessionsModel::instance_;
 
 WorkSessionsModel::WorkSessionsModel(QObject *parent)
-    : WorkModel{parent}
+    : WorkModelBase{parent}
 {
     assert(instance_ == nullptr);
     instance_ = this;
-    exclude_done_ = true;
 
-    connect(WorkCache::instance(), &WorkCache::activeChanged, this, &WorkSessionsModel::fetch);
+    connect(WorkCache::instance(), &WorkCache::activeChanged, this, &WorkSessionsModel::fetchIf);
+    connect(WorkCache::instance(), &WorkCache::WorkSessionAdded, this, &WorkSessionsModel::fetchIf);
+    connect(WorkCache::instance(), &WorkCache::WorkSessionChanged, this, &WorkSessionsModel::fetchIf);
+    connect(WorkCache::instance(), &WorkCache::WorkSessionActionMoved, this, &WorkSessionsModel::fetchIf);
+    connect(WorkCache::instance(), &WorkCache::WorkSessionDeleted, this, &WorkSessionsModel::fetchIf);
     connect(WorkCache::instance(), &WorkCache::activeDurationChanged, this, &WorkSessionsModel::onDurationChanged);
-    connect(this, &WorkSessionsModel::visibleChanged, [this]() {
-        if (isVisible()) {
-            fetch();
-        }
-    });
+    connect(this, &WorkSessionsModel::visibleChanged, this, &WorkSessionsModel::fetchIf);
 }
 
 void WorkSessionsModel::startWork(const QString &actionId)
@@ -111,6 +110,13 @@ bool WorkSessionsModel::actionIsInSessionList(const QUuid &actionId) const
 {
     const auto& actions = session_by_action();
     return actions.find(actionId) != actions.end();
+}
+
+void WorkSessionsModel::fetchIf()
+{
+    if (isVisible()) {
+        fetch();
+    }
 }
 
 // Assume that the order of the changes is the same as the order of the sessions

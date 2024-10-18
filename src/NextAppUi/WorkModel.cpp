@@ -152,7 +152,8 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
     if (!res.empty()) {
         res.reserve(res.size());
         for (auto& session : res) {
-            session_by_ordered().emplace_back(session);
+            //session_by_ordered().emplace_back(session);
+            sessions_.emplace_back(session);
         }
     }
 

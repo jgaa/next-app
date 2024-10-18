@@ -12,7 +12,7 @@
 #include <QUuid>
 #include <QTimer>
 
-#include "WorkModel.h"
+#include "WorkModelBase.h"
 #include "WorkCache.h"
 #include "util.h"
 #include "nextapp.qpb.h"
@@ -22,7 +22,7 @@
 
   Also the static interface to anything work related
 */
-class WorkSessionsModel : public WorkModel
+class WorkSessionsModel : public WorkModelBase
 {
     Q_OBJECT
     QML_ELEMENT
@@ -58,13 +58,13 @@ public:
         return *instance_;
     }
 
-    void fetch();
-
     bool canAddNew() const noexcept {
         return true;
     }
 
     bool actionIsInSessionList(const QUuid& actionId) const;
+
+    void fetchIf();
 
 signals:
     void canAddNewChanged();
@@ -72,6 +72,7 @@ signals:
 
 private:
     void onDurationChanged(const WorkCache::active_duration_changes_t& changes);
+    void fetch();
 
     static WorkSessionsModel* instance_;
 };

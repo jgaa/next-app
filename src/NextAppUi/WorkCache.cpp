@@ -80,17 +80,17 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
             }
             co_await save(*wsp);
 
-            if (op == nextapp::pb::Update::Operation::ADDED) {
-                emit WorkSessionAdded(id);
-            } else {
-                emit WorkSessionChanged(id);
-            }
-
             if (wsp->state() == nextapp::pb::WorkSession::State::ACTIVE
                 || wsp->state() == nextapp::pb::WorkSession::State::PAUSED) {
                 if (!exist_in_active) {
                     active_.push_back(wsp);
                 }
+            }
+
+            if (op == nextapp::pb::Update::Operation::ADDED) {
+                emit WorkSessionAdded(id);
+            } else {
+                emit WorkSessionChanged(id);
             }
 
             if (active_changed || exist_in_active) {

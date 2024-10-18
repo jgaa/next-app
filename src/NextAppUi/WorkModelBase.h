@@ -137,9 +137,9 @@ signals:
     void activeChanged();
 
 protected:
-    inline auto& session_by_id() const { return sessions_.get<id_tag>(); }
-    inline auto& session_by_ordered() const { return sessions_.get<ordered_tag>(); }
-    inline auto& session_by_action() const { return sessions_.get<action_tag>(); }
+    inline const auto& session_by_id() const { return sessions_.get<id_tag>(); }
+    inline const auto& session_by_ordered() const { return sessions_.get<ordered_tag>(); }
+    inline const auto& session_by_action() const { return sessions_.get<action_tag>(); }
     inline auto& session_by_id() { return sessions_.get<id_tag>(); }
     inline auto& session_by_ordered() { return sessions_.get<ordered_tag>(); }
     inline auto& session_by_action() { return sessions_.get<action_tag>(); }
