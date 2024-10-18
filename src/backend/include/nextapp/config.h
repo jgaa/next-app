@@ -13,6 +13,8 @@ namespace nextapp {
 struct ServerConfig {
     size_t io_threads = std::min<size_t>(std::max<size_t>(2,std::thread::hardware_concurrency()), 8);
     size_t time_block_max_actions = 24;
+    uint32_t session_timeout_sec = 60 * 5;
+    uint32_t session_timer_interval_sec = 15;
 };
 
 struct GrpcConfig {
@@ -22,7 +24,7 @@ struct GrpcConfig {
     // Keepalive options
     unsigned keepalive_time_sec = 10;
     unsigned keepalive_timeout_sec = 20;
-    unsigned min_recv_ping_interval_without_cata_sec = 5;
+    unsigned min_recv_ping_interval_without_data_sec = 5;
     unsigned max_ping_strikes = 7;
 };
 

@@ -80,6 +80,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
         ServerWriteReactorImpl(GrpcServer& owner, ::grpc::CallbackServerContext *context)
             : owner_{owner}, context_{context} {
+            LOG_DEBUG_N << "Remote client " << uuid() << " is subscribing to updates.";
         }
 
         ~ServerWriteReactorImpl() {
@@ -92,6 +93,12 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             try {
                 auto session = owner_.sessionManager().getExistingSession(context_);
                 assert(session);
+                session->addCleanup([w=weak_from_this(), sid=session->sessionId()] {
+                    if (auto self = w.lock()) {
+                        LOG_TRACE << "Session " << sid << " was closed. Closing subscription.";
+                        self->close();
+                    }
+                });
                 session->user().addPublisher(self_);
                 session_ = session;
                 LOG_DEBUG << "Remote client " << context_->peer() << " is subscribing to updates as subscriber " << uuid()
@@ -109,6 +116,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
         /*! Callback event when the RPC is completed */
         void OnDone() override {
+            LOG_TRACE_N << "OnDone called for subscriber " << uuid();
             {
                 scoped_lock lock{mutex_};
                 state_ = State::DONE;
@@ -116,10 +124,14 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
             if (auto session = session_.lock()) {
                 session->user().removePublisher(uuid());
+                owner_.sessionManager().removeSession(session->sessionId());
+            } else {
+                LOG_TRACE_N << "Session was gone for subscriber " << uuid();
             }
 
             self_.reset();
         }
+
 
         /*! Callback event when a write operation is complete */
         void OnWriteDone(bool ok) override {
@@ -146,6 +158,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 LOG_TRACE_N << "Queued message for subscriber " << uuid() << " from session " << session->sessionId() << " for user " << session->user().userUuid();
                 scoped_lock lock{mutex_};
                 updates_.emplace(message);
+                session->touch();
             } else {
                 LOG_DEBUG_N << "Session is gone for subscriber " << uuid() << ". Closing subscription.";
                 close();
@@ -173,6 +186,10 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             }
 
             StartWrite(updates_.front().get());
+
+            if (auto session = session_.lock()) {
+                session->touch();
+            }
 
             // TODO: Implement finish if the server shuts down.
             //Finish(::grpc::Status::OK);
@@ -230,7 +247,7 @@ void GrpcServer::start() {
     builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, config().keepalive_time_sec * 1000);
     builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, config().keepalive_timeout_sec * 1000);
     builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
-    builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, config().min_recv_ping_interval_without_cata_sec * 1000);
+    builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, config().min_recv_ping_interval_without_data_sec * 1000);
     builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
     builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, config().max_ping_strikes);
 
@@ -254,6 +271,9 @@ void GrpcServer::start() {
 void GrpcServer::stop() {
     LOG_INFO << "Shutting down GrpcServer.";
     active_ = false;
+
+    sessionManager_.shutdown();
+
     for(auto& [_, wp] : publishers_) {
         if (auto pub = wp.lock()) {
             pub->close();

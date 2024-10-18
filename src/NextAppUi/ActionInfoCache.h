@@ -129,7 +129,6 @@ public:
         co_return true;
     }
 
-
 private:
     //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);

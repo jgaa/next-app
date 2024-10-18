@@ -113,9 +113,9 @@ MainTreeModel::MainTreeModel(QObject *parent)
     connect(std::addressof(ServerComm::instance()), &ServerComm::connectedChanged,
             this, &MainTreeModel::onOnline);
 
-    if (ServerComm::instance().connected()) {
-        onOnline();
-    }
+    // if (ServerComm::instance().connected()) {
+    //     onOnline();
+    // }
 }
 
 void MainTreeModel::setSelected(const QString& newSel)
@@ -308,13 +308,17 @@ QString MainTreeModel::toString(const nextapp::pb::Node::Kind &kind)
 void MainTreeModel::addNode(TreeNode *parent, const nextapp::pb::Node &node)
 {
     const int row = getInsertRow(parent, node);
-    beginInsertRows(getIndex(parent), row, row);
+    if (!suspend_model_notifications_) {
+        beginInsertRows(getIndex(parent), row, row);
+    }
     auto new_node = make_shared<TreeNode>(node, parent);
     uuid_index_[new_node->uuid()] = new_node.get();
     insertNode(parent->children(), new_node, row);
-    endInsertRows();
+    if (!suspend_model_notifications_) {
+        endInsertRows();
+    }
 
-    if (parent == &root_ && row == 0) {
+    if (parent == &root_ && row == 0 && !suspend_model_notifications_) {
         emit useRootChanged();
     }
 }
@@ -502,9 +506,13 @@ bool MainTreeModel::isDescent(const QUuid &nodeUuid, const QUuid &descentOf)
 
 QCoro::Task<void> MainTreeModel::onOnline()
 {
-    if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
-        co_await synch();
+    if (ServerComm::instance().status() != ServerComm::Status::ONLINE) {
+        setState(State::LOCAL);
     }
+    //     co_await synch();
+    // }
+
+    co_return;
 }
 
 QCoro::Task<bool> MainTreeModel::loadFromCache()
@@ -556,6 +564,18 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
 
 std::shared_ptr<GrpcIncomingStream> MainTreeModel::openServerStream(nextapp::pb::GetNewReq req) {
     return ServerComm::instance().synchNodes(req);
+}
+
+QCoro::Task<bool> MainTreeModel::doSynch()
+{
+    beginResetModel();
+    suspend_model_notifications_ = true;
+    ScopedExit guard{[this] {
+        endResetModel();
+        suspend_model_notifications_ = false;
+    }};
+
+    co_return co_await synch();
 }
 
 QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)

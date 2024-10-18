@@ -49,7 +49,7 @@ public:
     }
 
     virtual QCoro::Task<bool> synch() {
-        if (state() > State::LOCAL && state() < State::ERROR) {
+        if (state() > State::LOCAL && state() < State::VALID) {
             // Already synching
             co_return false;
         }

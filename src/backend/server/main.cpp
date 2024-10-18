@@ -155,6 +155,8 @@ int main(int argc, char* argv[]) {
              "Address and port to use for gRPC")
             ("grpc-tls-mode", po::value(&config.grpc.tls_mode)->default_value(config.grpc.tls_mode),
              "TLS mode; one of 'ca' or 'none'. Ca will use a self-signed server cert.")
+            ("session-timeout", po::value(&config.svr.session_timeout_sec)->default_value(config.svr.session_timeout_sec),
+             "Client-session timeout in seconds. Client sessions are removed after this period." )
             ;
 
         po::options_description metrics("Metrics");

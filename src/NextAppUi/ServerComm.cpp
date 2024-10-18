@@ -25,6 +25,7 @@
 #include "GreenDaysModel.h"
 #include "ActionInfoCache.h"
 #include "ActionCategoriesModel.h"
+#include "MainTreeModel.h"
 #include "WorkCache.h"
 
 using namespace std;
@@ -1217,6 +1218,10 @@ failed:
         goto failed;
     }
 
+    if (!co_await MainTreeModel::instance()->doSynch()) {
+        LOG_WARN_N << "Failed to get nodes.";
+        goto failed;
+    }
 
     if (!co_await ActionCategoriesModel::instance().synch()) {
         LOG_WARN_N << "Failed to get action categories.";

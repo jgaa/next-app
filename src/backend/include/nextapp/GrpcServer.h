@@ -194,6 +194,7 @@ public:
                         LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
                         RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx, allowNewSession)};
+                        rctx.session().touch();
 
                         if constexpr (UnaryFnWithoutContext<FnT, ReplyT>) {
                             co_await fn(reply);
@@ -254,6 +255,7 @@ public:
                     LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
                     RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx)};
+                    rctx.session().touch();
                     rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
                     co_await fn(stream, rctx);
                     if (!rctx.updates.empty()) {
@@ -395,7 +397,6 @@ private:
     // A gRPC server object
     std::unique_ptr<::grpc::Server> grpc_server_;
 
-    mutable std::map<boost::uuids::uuid, std::shared_ptr<UserContext>> sessions_;
     std::map<boost::uuids::uuid, std::weak_ptr<Publisher>> publishers_;
     mutable std::mutex mutex_;
     std::atomic_bool active_{false};

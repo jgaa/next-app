@@ -210,6 +210,8 @@ public:
     }
     std::shared_ptr<GrpcIncomingStream> openServerStream(nextapp::pb::GetNewReq req) override;
 
+    // Call this in stead of synch() to avoid problems with a populated model
+    QCoro::Task<bool> doSynch();
 
 private:
     void addNode(TreeNode *parent, const nextapp::pb::Node& node);
@@ -231,4 +233,5 @@ private:
     QString selected_;
     static MainTreeModel *instance_;
     State state_{State::LOCAL};
+    bool suspend_model_notifications_{false};
 };

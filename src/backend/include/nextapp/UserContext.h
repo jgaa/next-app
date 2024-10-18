@@ -38,6 +38,7 @@ class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
     class Session : public std::enable_shared_from_this<Session> {
     public:
+        using cleanup_t = std::function<void()>;
 
         Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid devid, boost::uuids::uuid sessionid, Metrics::gauge_scoped_t scope)
             : user_(user), sessionid_{sessionid}, deviceid_{devid}, instance_scope_{std::move(scope)} {
@@ -56,11 +57,33 @@ public:
             return *user_;
         }
 
+        void touch();
+
+        std::chrono::steady_clock::time_point touched() const;
+
+        // Call when the session is removed
+        void cleanup() {
+            for(auto& c : cleanup_) {
+                try {
+                    c();
+                } catch(const std::exception& e) {
+                    LOG_WARN_N << "Exception in cleanup: " << e.what();
+                }
+            }
+        }
+
+        void addCleanup(cleanup_t cleanup) {
+            cleanup_.push_back(std::move(cleanup));
+        }
+
     private:
         std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
         const boost::uuids::uuid sessionid_;
         const boost::uuids::uuid deviceid_;
         const Metrics::gauge_scoped_t instance_scope_;
+        std::vector<cleanup_t> cleanup_;
+        std::atomic<std::chrono::steady_clock::time_point> last_access_{std::chrono::steady_clock::now()};
+        std::chrono::steady_clock::time_point created_{std::chrono::steady_clock::now()};
     };
 
 
@@ -112,6 +135,10 @@ public:
         sessions_.push_back(std::move(session));
     }
 
+    void removeSession(const boost::uuids::uuid& sessionId) {
+        std::erase_if(sessions_, [&sessionId](const auto& s) { return s->sessionId() == sessionId; });
+    }
+
     void setSettings(pb::UserGlobalSettings settings) {
         settings_ = std::move(settings);
     }
@@ -151,13 +178,20 @@ public:
 
     void setUserSettings(const boost::uuids::uuid& userUuid, pb::UserGlobalSettings settings);
 
+    void shutdown();
+
 private:
-     boost::asio::awaitable<std::shared_ptr<UserContext>> getUserContext(const boost::uuids::uuid& deviceId, const ::grpc::ServerContextBase* context);
+    void removeSession_(const boost::uuids::uuid& sessionId);
+    void startNextTimer();
+    void onTimer();
+    static boost::asio::io_context& ioContext() noexcept ;
+    boost::asio::awaitable<std::shared_ptr<UserContext>> getUserContext(const boost::uuids::uuid& deviceId, const ::grpc::ServerContextBase* context);
 
     std::shared_mutex mutex_;
     std::unordered_map<boost::uuids::uuid, UserContext::Session *, UuidHash> sessions_;
     std::unordered_map<boost::uuids::uuid, std::shared_ptr<UserContext>, UuidHash> users_;
     Server& server_;
+    boost::asio::steady_timer timer_{ioContext()};
     const bool skip_tls_auth_;
 };
 

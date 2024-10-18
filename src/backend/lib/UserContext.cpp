@@ -28,7 +28,9 @@ auto to_string_view(const boost::mysql::blob_view& blob) {
 SessionManager::SessionManager(Server &server)
     : server_{server}
     , skip_tls_auth_{server.config().grpc.tls_mode == "none"}
-{}
+{
+    startNextTimer();
+}
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone, bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions)
     : user_uuid_{userUuid},
@@ -245,6 +247,24 @@ initial_auth_ok:
     throw server_err{pb::Error::AUTH_FAILED, "Session not found"};
 }
 
+void SessionManager::removeSession(const boost::uuids::uuid &sessionId)
+{
+    unique_lock lock{mutex_};
+    removeSession_(sessionId);
+}
+
+void SessionManager::removeSession_(const boost::uuids::uuid &sessionId)
+{
+    LOG_TRACE_N << "Removing session " << sessionId;
+    if (auto it = sessions_.find(sessionId); it != sessions_.end()) {
+        auto session = it->second;
+        sessions_.erase(it);
+        session->user().removeSession(sessionId);
+    } else {
+        LOG_WARN_N << "Session " << sessionId << " not found.";
+    }
+}
+
 void SessionManager::setUserSettings(const boost::uuids::uuid &userUuid, pb::UserGlobalSettings settings)
 {
     unique_lock lock{mutex_};
@@ -253,6 +273,96 @@ void SessionManager::setUserSettings(const boost::uuids::uuid &userUuid, pb::Use
     } else {
         LOG_WARN_N << "User " << userUuid << " not found in cache";
     }
+}
+
+void SessionManager::shutdown()
+{
+
+    timer_.cancel();
+    std::vector<std::shared_ptr<UserContext::Session>> to_clean;
+    bool has_more = false;
+
+    do {
+        {
+            unique_lock lock{mutex_};
+            while(!sessions_.empty()) {
+                LOG_DEBUG_N << "Removing session " << sessions_.begin()->first << " due to shutdown.";
+                auto session = sessions_.begin()->second;
+                to_clean.push_back(session->shared_from_this());
+                removeSession_(session->sessionId());
+            }
+        }
+
+        while(!to_clean.empty()) {
+            auto session = to_clean.back();
+            to_clean.pop_back();
+            session->cleanup();
+        }
+
+        {
+            unique_lock lock{mutex_};
+            has_more = !sessions_.empty();
+        }
+
+    } while(has_more);
+}
+
+void SessionManager::startNextTimer()
+{
+    timer_.expires_after(chrono::seconds{server_.config().svr.session_timer_interval_sec});
+    timer_.async_wait([this](const boost::system::error_code& ec) {
+        if (ec) {
+            LOG_WARN << "Timer error: " << ec.message();
+            return;
+        }
+
+        if (!server_.is_done()) {
+            onTimer();
+            startNextTimer();
+        }
+    });
+}
+
+void SessionManager::onTimer()
+{
+    LOG_TRACE_N << "Checking sessions...";
+
+    const auto secs = server_.config().svr.session_timeout_sec;
+    const auto now = chrono::steady_clock::now();
+
+    std::vector<std::shared_ptr<UserContext::Session>> to_clean;
+
+    {
+        unique_lock lock{mutex_};
+        for(auto it = sessions_.begin(); it != sessions_.end();) {
+            auto& session = it->second;
+            ++it;
+
+            const auto expieres = session->touched() + chrono::seconds{secs};
+
+            // Show the difference between the two time points in seconds
+            auto diff = chrono::duration_cast<chrono::seconds>(now - session->touched());
+            LOG_TRACE_N << "Session " << session->sessionId() << " touched " << diff.count() << " seconds ago.";
+
+            if (expieres < now) {
+                to_clean.push_back(session->shared_from_this());
+                LOG_DEBUG_N << "Session " << session->sessionId() << " expired.";
+                removeSession_(session->sessionId());
+            }
+        }
+    }
+
+    while(!to_clean.empty()) {
+        LOG_INFO << "Session " << to_clean.back()->sessionId() << " is done.";
+        auto session = to_clean.back();
+        to_clean.pop_back();
+        session->cleanup();
+    }
+}
+
+boost::asio::io_context &SessionManager::ioContext() noexcept
+{
+    return Server::instance().ctx();
 }
 
 boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserContext(
@@ -350,6 +460,18 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
     throw runtime_error{"Failed to create UserContext"};
 }
 
+void UserContext::Session::touch() {
+    //last_access_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+    last_access_ = chrono::steady_clock::now();
+    LOG_TRACE_N << "Touching session " << sessionid_ << " for user " << user_->userUuid() << " on device " << deviceid_
+                << " lifetime="
+                << std::chrono::duration_cast<chrono::seconds>(last_access_.load() - created_) << "s";
+}
+
+std::chrono::steady_clock::time_point UserContext::Session::touched() const {
+    //return last_access_.load(std::memory_order_relaxed);
+    return last_access_;
+}
 
 
 } // ns
