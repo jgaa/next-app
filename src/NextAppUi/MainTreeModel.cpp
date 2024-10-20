@@ -509,9 +509,6 @@ QCoro::Task<void> MainTreeModel::onOnline()
     if (ServerComm::instance().status() != ServerComm::Status::ONLINE) {
         setState(State::LOCAL);
     }
-    //     co_await synch();
-    // }
-
     co_return;
 }
 

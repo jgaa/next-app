@@ -844,6 +844,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         "ALTER TABLE work_session ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
 
+        "CREATE INDEX work_session_ix_updated ON work_session (user, updated)",
+
         R"(CREATE TRIGGER tr_before_update_work_session
           BEFORE UPDATE ON work_session
           FOR EACH ROW
@@ -853,6 +855,30 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
           END)",
 
         "UPDATE work_session SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
+
+        "ALTER TABLE time_block ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
+        R"(ALTER TABLE time_block
+            MODIFY COLUMN kind ENUM('reservation','actions', 'deleted') NOT NULL DEFAULT 'reservation';
+        )",
+
+        "ALTER TABLE time_block MODIFY COLUMN start_time DATETIME NULL",
+        "ALTER TABLE time_block MODIFY COLUMN end_time DATETIME NULL",
+
+        "UPDATE time_block SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
+
+        "DROP TRIGGER IF EXISTS tr_before_update_time_block",
+        R"(CREATE TRIGGER tr_before_update_time_block
+          BEFORE UPDATE ON time_block
+          FOR EACH ROW
+          BEGIN
+            SET NEW.version = OLD.version + 1;
+            SET NEW.updated = UTC_TIMESTAMP(6);
+          END)",
+
+        "CREATE INDEX time_block_ix_updated ON time_block (user, updated)",
+
+        // time_block_actions is not replicated. A simlar table is maintained locally by the client
+        // based on the actions in the time_block.
 
         "SET FOREIGN_KEY_CHECKS=1"
     });

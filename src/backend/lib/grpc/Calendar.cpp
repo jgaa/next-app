@@ -25,10 +25,10 @@ namespace {
 
 struct ToTimeBlock {
     enum Columns {
-        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY, ACTIONS, VERSION
+        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY, ACTIONS, VERSION, UPDATED
     };
 
-    static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, actions, version";
+    static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, actions, version, updated";
 
     static void assign(const boost::mysql::row_view& row, pb::TimeBlock& tb, const UserContext& uctx) {
         tb.set_id(pb_adapt(row.at(ID).as_string()));
@@ -54,6 +54,7 @@ struct ToTimeBlock {
         }
 
         tb.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
+        tb.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
     }
 };
 
@@ -174,13 +175,19 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 
             auto trx = co_await rctx.dbh->transaction();
             co_await owner_.validateTimeBlock(*rctx.dbh, id, cuser);
-            auto res = co_await rctx.dbh->exec("DELETE FROM time_block WHERE id=? AND user=?", id, cuser);
+
+            auto res = co_await rctx.dbh->exec(
+                format("UPDATE time_block SET start_time=NULL, end_time=NULL, name='', kind='deleted', category='', actions=NULL WHERE id=? AND user=? ",
+                       ToTimeBlock::columns),
+                id, cuser);
 
             co_await trx.commit();
 
+            // Remove all data. We don't actually delete the row, but mark it as deleted
             if (!res.empty() && res.affected_rows() > 0) [[likely]] {
                 pb::TimeBlock tb;
                 tb.set_id(id);
+                tb.set_kind(pb::TimeBlock::Kind::TimeBlock_Kind_DELETED);
                 rctx.publishLater(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_DELETED));
             }
 
@@ -207,7 +214,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 
             // Get time blocks for the calendar
             auto res = co_await rctx.dbh->exec(
-                format("SELECT {} FROM time_block tb WHERE tb.user=? AND tb.start_time >= ? AND tb.end_time <= ? "
+                format("SELECT {} FROM time_block tb WHERE tb.user=? AND tb.start_time >= ? AND tb.end_time <= ? and Kind != 'deleted'"
                        "ORDER BY tb.start_time, tb.end_time, id",
                        tb_col_names),
                 cuser, toAnsiTime(req->start()), toAnsiTime(req->end()));
@@ -252,6 +259,72 @@ boost::asio::awaitable<void> GrpcServer::validateTimeBlock(jgaa::mysqlpool::Mysq
     co_return;
 }
 
+::grpc::ServerWriteReactor<pb::Status> *
+GrpcServer::NextappImpl::GetNewTimeBlocks(::grpc::CallbackServerContext *ctx, const pb::GetNewReq *req)
+{
+    return writeStreamHandler(ctx, req,
+    [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        const auto stream_scope = owner_.server().metrics().data_streams_actions().scoped();
+        const auto uctx = rctx.uctx;
+        const auto& cuser = uctx->userUuid();
+        const auto batch_size = owner_.server().config().options.stream_batch_size;
 
+        // Use batched reading from the database, so that we can get all the data, but
+        // without running out of memory.
+        // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
+        assert(rctx.dbh);
+        co_await  rctx.dbh->start_exec(
+            format("SELECT {} from time_block WHERE user=? AND updated > ?", ToTimeBlock::columns),
+            uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz()));
+
+        nextapp::pb::Status reply;
+
+        auto *tb = reply.mutable_timeblocks();
+        auto num_rows_in_batch = 0u;
+        auto total_rows = 0u;
+        auto batch_num = 0u;
+
+        auto flush = [&]() -> boost::asio::awaitable<void> {
+            reply.set_error(::nextapp::pb::Error::OK);
+            assert(reply.has_worksessions());
+            ++batch_num;
+            reply.set_message(format("Fetched {} time-blocks in batch {}", reply.worksessions().sessions_size(), batch_num));
+            co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
+            reply.Clear();
+            tb = reply.mutable_timeblocks();
+            num_rows_in_batch = {};
+        };
+
+        bool read_more = true;
+        for(auto rows = co_await rctx.dbh->readSome()
+             ; read_more
+             ; rows = co_await rctx.dbh->readSome()) {
+
+            read_more = rctx.dbh->shouldReadMore(); // For next iteration
+
+            if (rows.empty()) {
+                LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+                break;
+            }
+
+            for(const auto& row : rows) {
+                auto * b = tb->add_blocks();
+                ToTimeBlock::assign(row, *b, *rctx.uctx);
+                ++total_rows;
+                // Do we need to flush?
+                if (++num_rows_in_batch >= batch_size) {
+                    co_await flush();
+                }
+            }
+
+        } // read more from db loop
+
+        co_await flush();
+
+        LOG_DEBUG_N << "Sent " << total_rows << " time-blocks to client.";
+        co_return;
+
+    }, __func__);
+}
 
 } // namespace nextapp::grpc

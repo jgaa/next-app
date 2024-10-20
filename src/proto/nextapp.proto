@@ -485,6 +485,7 @@ message TimeBlock {
     enum Kind {
         RESERVATION = 0;
         ACTIONS = 1;
+        DELETED = 2;
     }
 
     string id = 1;
@@ -498,6 +499,11 @@ message TimeBlock {
     // These must be in sync (updated in one transaction)
     StringList actions = 7;
     int32 version = 8;
+    uint64 updated = 9; // time_t as ms
+}
+
+message TimeBlocks {
+    repeated TimeBlock blocks = 1;
 }
 
 message DeleteTimeblockReq {
@@ -760,6 +766,7 @@ message Status {
         Nodes nodes = 32;
         CompleteActions completeActions = 33;
         DataVersionsInfo dataVersions = 34;
+        TimeBlocks timeBlocks = 35;
     }
 }
 
@@ -822,5 +829,6 @@ service Nextapp {
     rpc GetNewNodes(GetNewReq) returns (stream Status) {}
     rpc GetNewActions(GetNewReq) returns (stream Status) {}
     rpc GetNewWork(GetNewReq) returns (stream Status) {}
+    rpc GetNewTimeBlocks(GetNewReq) returns (stream Status) {}
 
 }
