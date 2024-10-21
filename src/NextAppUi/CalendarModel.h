@@ -6,6 +6,7 @@
 #include <QAudioOutput>
 #include <QMediaPlayer>
 
+#include "CalendarCache.h"
 #include "CalendarDayModel.h"
 
 #include "nextapp.qpb.h"
@@ -88,9 +89,12 @@ signals:
     void targetChanged();
 
 private:
-    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
-    void onCalendarEventUpdated(const nextapp::pb::CalendarEvents& events, nextapp::pb::Update::Operation op);
-    void fetchIf();
+    //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    //void onCalendarEventUpdated(const nextapp::pb::CalendarEvents& events, nextapp::pb::Update::Operation op);
+    QCoro::Task<void> onCalendarEventAddedOrUpdated(const QUuid id);
+    QCoro::Task<void> onCalendarEventRemoved(const QUuid id);
+    //QCoro::Task<void> onCalendarEventUpdated(const QUuid& id);
+    QCoro::Task<void> fetchIf();
     void setOnline(bool online);
     void onReceivedCalendarData(nextapp::pb::CalendarEvents& data);
     void updateDayModels();
@@ -108,7 +112,7 @@ private:
     QDate last_;
     QDate target_;
     CalendarMode mode_ = CM_UNSET;
-    QList<nextapp::pb::CalendarEvent> all_events_;
+    QList<std::shared_ptr<nextapp::pb::CalendarEvent>> all_events_;
     std::unordered_map<const QObject *, std::unique_ptr<CalendarDayModel>> day_models_;
     std::unique_ptr<QTimer> minute_timer_;
     QAudioOutput audio_output_;

@@ -32,7 +32,7 @@ WorkCache::WorkCache(QObject *parent)
     connect(timer_, &QTimer::timeout, this, &WorkCache::onTimer);
     timer_->start(5000);
 
-    connect(&ServerComm::instance(), &ServerComm::onUpdate, this,
+    connect(&ServerComm::instance(), &ServerComm::onUpdate,
     [this](const std::shared_ptr<nextapp::pb::Update>& update) {
         onUpdate(update);
     });

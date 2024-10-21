@@ -35,6 +35,12 @@ int version(const nextapp::pb::CalendarEvent& event) {
     return -1;
 };
 
+QDate get_date(const nextapp::pb::CalendarEvent& event) {
+    if (event.hasTimeSpan()) {
+        return QDateTime::fromSecsSinceEpoch(event.timeSpan().start()).date();
+    }
+    return {};
+}
 
 } // anon ns
 
@@ -48,7 +54,6 @@ CalendarModel::CalendarModel()
         setOnline(ServerComm::instance().connected());
     });
 
-    connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &CalendarModel::onUpdate);
     connect(&ServerComm::instance(), &ServerComm::firstDayOfWeekChanged, [this] {
         LOG_DEBUG_N << "First day of week changed";
         if (mode_ == CM_WEEK) {
@@ -61,6 +66,13 @@ CalendarModel::CalendarModel()
         }
     });
 
+    connect(CalendarCache::instance(), &CalendarCache::eventRemoved, this, &CalendarModel::onCalendarEventRemoved);
+    connect(CalendarCache::instance(), &CalendarCache::eventAdded, this, &CalendarModel::onCalendarEventAddedOrUpdated);
+    connect(CalendarCache::instance(), &CalendarCache::eventUpdated, this, &CalendarModel::onCalendarEventAddedOrUpdated);
+    connect(CalendarCache::instance(), &CalendarCache::stateChanged, [this] {
+        fetchIf();
+    });
+
     connect(&next_audio_event_, &QTimer::timeout, this, &CalendarModel::onAudioEvent);
 
     setOnline(ServerComm::instance().connected());
@@ -68,6 +80,7 @@ CalendarModel::CalendarModel()
     minute_timer_ = std::make_unique<QTimer>(this);
     connect(minute_timer_.get(), &QTimer::timeout, this, &CalendarModel::onMinuteTimer);
     minute_timer_->start(1000);
+    fetchIf();
 }
 
 CalendarDayModel *CalendarModel::getDayModel(QObject *obj, int index) {
@@ -139,7 +152,7 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
 void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
 {
     auto it = std::ranges::find_if(all_events_, [&eventId](const auto& event) {
-        return event.id_proto() == eventId;
+        return event->id_proto() == eventId;
     });
 
     if (it == all_events_.end()) {
@@ -148,13 +161,13 @@ void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
     }
 
     auto& event = *it;
-    auto ts = event.timeSpan();
+    auto ts = event->timeSpan();
     const auto length = ts.end() - ts.start();
 
     ts.setStart(start);
     ts.setEnd(start + length);
 
-    auto tb = event.timeBlock();
+    auto tb = event->timeBlock();
     tb.setTimeSpan(ts);
 
     ServerComm::instance().updateTimeBlock(tb);
@@ -261,7 +274,7 @@ void CalendarModel::removeAction(const QString &eventId, const QString &action)
 nextapp::pb::CalendarEvent *CalendarModel::lookup(const QString &eventId)
 {
     auto it = std::ranges::find_if(all_events_, [&eventId](const auto& event) {
-        return event.id_proto() == eventId;
+        return event->id_proto() == eventId;
     });
 
     if (it == all_events_.end()) {
@@ -269,7 +282,7 @@ nextapp::pb::CalendarEvent *CalendarModel::lookup(const QString &eventId)
         return nullptr;
     }
 
-    return &*it;
+    return it->get();
 }
 
 void CalendarModel::setValid(bool value) {
@@ -292,24 +305,9 @@ void CalendarModel::setTarget(QDate target)
     emit targetChanged();
 }
 
-QDate get_date(const nextapp::pb::CalendarEvent& event) {
-    if (event.hasTimeSpan()) {
-        return QDateTime::fromSecsSinceEpoch(event.timeSpan().start()).date();
-    }
-    return {};
-}
-
-void CalendarModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
+QCoro::Task<void> CalendarModel::onCalendarEventAddedOrUpdated(const QUuid id)
 {
-    // TODO: Handle Action updates (done, blocked, deleted)
-    // TODO: Handle other events that have cascading delete effects on the calendar
-    if (update->hasCalendarEvents()) {
-        onCalendarEventUpdated(update->calendarEvents(), update->op());
-    }
-}
-
-void CalendarModel::onCalendarEventUpdated(const nextapp::pb::CalendarEvents &events, nextapp::pb::Update::Operation op)
-{
+    const auto id_str = id.toString(QUuid::WithoutBraces);
     std::set<QDate> modified_dates;
     std::vector<QDate> dates;
 
@@ -317,72 +315,56 @@ void CalendarModel::onCalendarEventUpdated(const nextapp::pb::CalendarEvents &ev
     ranges::copy(
         views::transform(day_models_, [](const auto& pair) {
             return pair.second->date();
-    }), std::back_inserter(dates));
+        }), std::back_inserter(dates));
 
-    for(const auto& event : events.events()) {
-        auto event_it = std::ranges::find_if(all_events_, [&event](const auto& e) {
-            return e.id_proto() == event.id_proto();
-        });
+    auto event_it = std::ranges::find_if(all_events_, [&id_str](const auto& e) {
+        return e->id_proto() == id_str;
+    });
 
-        nextapp::pb::CalendarEvent *existing = (event_it == all_events_.end()) ? nullptr : &*event_it;
+    nextapp::pb::CalendarEvent *existing = (event_it == all_events_.end()) ? nullptr : event_it->get();
 
-        if (existing
-            && op != nextapp::pb::Update_QtProtobufNested::Operation::DELETED
-            && version(*existing) > version(event)) {
-            LOG_TRACE_N << "Ignoring event with lower version: " << event.id_proto() << " with version " << version(event);
-            continue;
+    auto event = CalendarCache::instance()->getFromCache(id);
+    if (!event) {
+        LOG_WARN_N << "Failed to get event from cache: " << id_str;
+        co_return;
+    }
+
+    if (existing && version(*existing) > version(*event)) {
+        LOG_TRACE_N << "Ignoring event with lower version: " << event->id_proto() << " with version " << version(*event);
+        co_return;
+    }
+
+    QDate new_date = get_date(*event);
+    QDate old_date = existing ? get_date(*existing) : QDate();
+
+    if (!existing) {
+        if (std::ranges::find(dates.begin(), dates.end(), new_date) != dates.end()) {
+            all_events_.push_back(event);
         }
+        co_return;
+    }
 
-        QDate new_date = get_date(event);
-        QDate old_date = existing ? get_date(*existing) : QDate();
+    assert(old_date.isValid());
 
-        switch(op) {
-            case nextapp::pb::Update_QtProtobufNested::Operation::DELETED:
-                if (existing) {
-                    all_events_.erase(event_it);
-                } else {
-                    continue; // irrelevant
-                }
-                break;
-            case nextapp::pb::Update_QtProtobufNested::Operation::ADDED:
-add:
-                if (std::ranges::find(dates.begin(), dates.end(), new_date) != dates.end()) {
-                    all_events_.push_back(event);
-                } else {
-                    continue ; // irrelevant
-                }
-                break;
-            case nextapp::pb::Update_QtProtobufNested::Operation::UPDATED:
-                if (existing) {
-                    assert(old_date.isValid());
+    // Check id the updated event's date is inside our range of dates
+    if (std::ranges::find(dates.begin(), dates.end(), new_date) != dates.end()) {
+        LOG_TRACE_N << "Updating event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start()
+                    << " from incoming event with start-time " << event->timeSpan().start();
+        *event_it = event;
+        existing = event_it->get();
+        LOG_TRACE_N << "Updated event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start();
+    } else {
+        // We had it, but now it's outside our range of dates
+        all_events_.erase(event_it);
+        new_date = {};
+    }
 
-                    // Check id the updated event's date is inside our range of dates
-                    if (std::ranges::find(dates.begin(), dates.end(), new_date) != dates.end()) {
-                        LOG_TRACE_N << "Updating event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start() << " from incoming event with start-time " << event.timeSpan().start();
-                        *event_it = event;
-                        existing = &*event_it;
-                        LOG_TRACE_N << "Updated event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start();
-                    } else {
-                        // We had it, but now it's outside our range of dates
-                        all_events_.erase(event_it);
-                        new_date = {};
-                    }
-                } else /* an event may have moved into our range */ {
-                    goto add;
-                }
-                break;
-            case nextapp::pb::Update_QtProtobufNested::Operation::MOVED:
-                assert(false && "Move not used/implemented");
-                break;
-        }
+    if (old_date.isValid()) {
+        modified_dates.insert(old_date);
+    }
 
-        if (old_date.isValid()) {
-            modified_dates.insert(old_date);
-        }
-
-        if (new_date.isValid()) {
-            modified_dates.insert(new_date);
-        }
+    if (new_date.isValid()) {
+        modified_dates.insert(new_date);
     }
 
     if (!modified_dates.empty()) {
@@ -397,26 +379,47 @@ add:
     }
 }
 
-void CalendarModel::fetchIf()
+QCoro::Task<void> CalendarModel::onCalendarEventRemoved(const QUuid id)
+{
+    const auto id_str = id.toString(QUuid::WithoutBraces);
+    auto it = std::ranges::find_if(all_events_, [&id_str](const auto& event) {
+        return event->id_proto() == id_str;
+    });
+
+    if (it != all_events_.end()) {
+        all_events_.erase(it);
+        sort();
+        updateDayModels();
+        setValid(true);
+    }
+
+    co_return;
+}
+
+
+QCoro::Task<void> CalendarModel::fetchIf()
 {
     setValid(false);
 
     if (mode_ == CM_UNSET) {
-        return;
+        co_return;
     }
 
-    if (online_ && !day_models_.empty()) {
-        ServerComm::instance().fetchCalendarEvents(first_, last_, [this](auto val) ->void {
-            if (std::holds_alternative<ServerComm::CbError>(val)) {
-                LOG_WARN_N << "Failed to get calendar events: " << std::get<ServerComm::CbError>(val).message;
-                setValid(false);
-                // TODO: What do we do now? Retry after a while?
-                return;
-            }
+    if (CalendarCache::instance()->state() == CalendarCache::State::VALID) {
 
-            auto& events = std::get<nextapp::pb::CalendarEvents>(val);
-            onReceivedCalendarData(events);
-        });
+        auto events = co_await CalendarCache::instance()->getCalendarEvents(first_, last_.addDays(1));
+
+        LOG_TRACE_N << "Received calendar data: " << events.size() << " events.";
+
+        // Reset all the day models
+        for (auto& [_, dm] : day_models_) {
+            dm->events() = {};
+        }
+
+        all_events_ = events;
+
+        updateDayModels();
+        setValid(online_);
     }
 }
 
@@ -433,22 +436,6 @@ void CalendarModel::setOnline(bool online)
     }
 }
 
-void CalendarModel::onReceivedCalendarData(nextapp::pb::CalendarEvents &data)
-{
-    // We now have the data for all the days we handle.
-    LOG_TRACE_N << "Received calendar data: " << data.events().size() << " events.";
-
-    // Reset all the day models
-    for (auto& [_, dm] : day_models_) {
-        dm->events() = {};
-    }
-
-    all_events_ = data.events();
-
-    updateDayModels();
-    setValid(online_);
-}
-
 void CalendarModel::updateDayModels()
 {
     // Assign the events for one day to any day model that has that date
@@ -462,8 +449,8 @@ void CalendarModel::updateDayModels()
         }
     };
 
-    auto get_date = [](const auto& it) {
-        return QDateTime::fromSecsSinceEpoch(it->timeSpan().start()).date();
+    auto get_date = [](const nextapp::pb::CalendarEvent& ce) {
+        return QDateTime::fromSecsSinceEpoch(ce.timeSpan().start()).date();
     };
 
     // Clear the data in all the day-models, since our data probably has changed
@@ -476,11 +463,11 @@ void CalendarModel::updateDayModels()
     auto start_of_day = events.begin();
     if (start_of_day != events.end()) {
 
-        auto date = get_date(start_of_day);
+        auto date = get_date(**start_of_day);
 
         // Step trough the days and update the day-models
         for (auto it = events.begin(); it != events.end(); ++it) {
-            const auto cdate = get_date(it);
+            const auto cdate = get_date(**it);
             if ( date != cdate) {
                 // Start of a new day
                 handle_day(date, start_of_day, it);
@@ -498,7 +485,9 @@ void CalendarModel::updateDayModels()
 
 void CalendarModel::sort()
 {
-    ranges::sort(all_events_, compare);
+    ranges::sort(all_events_, [](const auto& a, const auto& b) {
+        return compare(*a, *b);
+    });
 }
 
 void CalendarModel::updateDayModelsDates()
@@ -557,7 +546,8 @@ void CalendarModel::setAudioTimers()
     const auto pre_ending_mins = settings.value("alarms/calendarEvent.SoonToEndMinutes", 5).toInt();
     const auto pre_start_mins = settings.value("alarms/calendarEvent.SoonToStartMinutes", 1).toInt();
 
-    for(const auto &ev : all_events_) {
+    for(const auto &ev_p : all_events_) {
+        const auto& ev = *ev_p;
         if (ev.hasTimeSpan()) {
             const auto starting = ev.timeSpan().start();
 

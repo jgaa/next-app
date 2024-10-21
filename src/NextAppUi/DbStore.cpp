@@ -74,6 +74,12 @@ void DbStore::start() {
         emit error(GENERIC_ERROR);
         return;
     }
+
+    {
+        QSqlQuery query{*db_};
+        query.exec("PRAGMA foreign_keys = ON");
+    }
+
     const auto version = getDbVersion();
 
     if (!updateSchema(version)) {
@@ -242,13 +248,36 @@ bool DbStore::updateSchema(uint version)
             "paused" INTEGER,
             "data" BLOB NOT NULL,
             "updated" INTEGER NOT NULL,
-            PRIMARY KEY("id"))
+            PRIMARY KEY("id"),
+            FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE)
         )",
 
         "CREATE INDEX IF NOT EXISTS work_session_action_state ON work_session(state, start_time)",
         "CREATE INDEX IF NOT EXISTS work_session_updated ON work_session(updated, state)",
         "CREATE INDEX IF NOT EXISTS work_session_action ON work_session(action, state)",
         "CREATE INDEX IF NOT EXISTS work_session_start_time ON work_session(start_time, state)",
+
+        R"(CREATE TABLE IF NOT EXISTS time_block (
+            "id" VARCHAR(32) NOT NULL,
+            "start_time" DATETIME,
+            "end_time" DATETIME,
+            "kind" INTEGER,
+            "data" BLOB NOT NULL,
+            "updated" INTEGER NOT NULL,
+            PRIMARY KEY("id"))
+        )",
+
+        "CREATE INDEX IF NOT EXISTS time_block_start_time ON time_block(start_time)",
+        "CREATE INDEX IF NOT EXISTS time_block_end_time ON time_block(end_time)",
+        "CREATE INDEX IF NOT EXISTS time_block_updated ON time_block(updated)",
+
+        R"(CREATE TABLE IF NOT EXISTS time_block_actions (
+            time_block VARCHAR(32) NOT NULL,
+            action VARCHAR(32) NOT NULL,
+            PRIMARY KEY(time_block, action),
+            FOREIGN KEY(time_block) REFERENCES time_block(id) ON DELETE CASCADE,
+            FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE)
+        )",
 
     });
 

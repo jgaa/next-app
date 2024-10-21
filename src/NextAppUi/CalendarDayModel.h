@@ -46,7 +46,7 @@ public:
     };
 
 
-    using events_t = std::span<const nextapp::pb::CalendarEvent>;
+    using events_t = std::span<const std::shared_ptr<nextapp::pb::CalendarEvent>>;
     CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, int index,  QObject* parent = nullptr);
     ~CalendarDayModel();
 

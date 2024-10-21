@@ -42,14 +42,14 @@ items_t calculatePlacement(CalendarDayModel::events_t events) {
     vector<Item *> current;
 
     for(auto& event : events) {
-        if (!event.hasTimeBlock()) {
-            LOG_WARN_N << "Event " << event.id_proto() << " has no time-block";
+        if (!event->hasTimeBlock()) {
+            LOG_WARN_N << "Event " << event->id_proto() << " has no time-block";
             continue;
         }
 
-        auto& curr = items.emplace_back(event,
-                                        static_cast<time_t>(event.timeSpan().start()),
-                                        static_cast<time_t>(event.timeSpan().end()));
+        auto& curr = items.emplace_back(*event,
+                                        static_cast<time_t>(event->timeSpan().start()),
+                                        static_cast<time_t>(event->timeSpan().end()));
 
         // Remove expired entries
         std::erase_if(current, [&curr](const auto& v) {
@@ -182,7 +182,7 @@ nextapp::pb::CalendarEvent CalendarDayModel::event(int index) const noexcept {
 
     if (index < 0 || index >= events_.size())
         return {};
-    return events_[index];
+    return *events_[index];
 }
 
 void CalendarDayModel::addCalendarEvents()
@@ -249,7 +249,7 @@ void CalendarDayModel::moveEvent(const QString &eventId, time_t start, time_t en
         return;
     }
     auto it = std::ranges::find_if(events_, [&eventId](const auto& event) {
-        return event.id_proto() == eventId;
+        return event->id_proto() == eventId;
     });
     if (it == events_.end()) {
         LOG_WARN_N << "No event found with id: " << eventId;
@@ -257,7 +257,7 @@ void CalendarDayModel::moveEvent(const QString &eventId, time_t start, time_t en
     }
 
     auto& event = *it;
-    auto ts = event.timeSpan();
+    auto ts = event->timeSpan();
     if (start) {
         LOG_TRACE_N << "Moving start from " << QDateTime::fromSecsSinceEpoch(ts.start()).toString() << " to " << QDateTime::fromSecsSinceEpoch(start).toString();
         ts.setStart(start);
@@ -267,7 +267,7 @@ void CalendarDayModel::moveEvent(const QString &eventId, time_t start, time_t en
         ts.setEnd(end);
     }
 
-    auto tb = event.timeBlock();
+    auto tb = event->timeBlock();
     tb.setTimeSpan(ts);
 
     ServerComm::instance().updateTimeBlock(tb);
@@ -277,7 +277,7 @@ void CalendarDayModel::deleteEvent(const QString &eventId)
 {
     // Find the event
     auto it = std::ranges::find_if(events_, [&eventId](const auto& event) {
-        return event.id_proto() == eventId;
+        return event->id_proto() == eventId;
     });
 
     if (it == events_.end()) {
@@ -285,7 +285,7 @@ void CalendarDayModel::deleteEvent(const QString &eventId)
         return;
     }
 
-    if (it->hasTimeBlock()) {
+    if ((*it)->hasTimeBlock()) {
         calendar_.deleteTimeBlock(eventId);
     } else {
         LOG_WARN_N << "I don't know how to delete this event";
@@ -296,11 +296,11 @@ void CalendarDayModel::deleteEvent(const QString &eventId)
 nextapp::pb::TimeBlock CalendarDayModel::tbById(const QString &eventId) const
 {
     auto it = std::ranges::find_if(events_, [&eventId](const auto& event) {
-        return event.id_proto() == eventId;
+        return event->id_proto() == eventId;
     });
 
-    if (it != events_.end() && it->hasTimeBlock()) {
-        return it->timeBlock();
+    if (it != events_.end() && (*it)->hasTimeBlock()) {
+        return (*it)->timeBlock();
     }
 
     return {};
@@ -341,11 +341,11 @@ nextapp::pb::TimeBlock *CalendarDayModel::lookupTimeBlock(const QUuid &eventId) 
 {
     const auto id = eventId.toString(QUuid::WithoutBraces);
     auto it = std::ranges::find_if(events_, [&id](const auto& event) {
-        return event.id_proto() == id;
+        return event->id_proto() == id;
     });
 
-    if (it != events_.end() && it->hasTimeBlock()) {
-        return &it->timeBlock();
+    if (it != events_.end() && (*it)->hasTimeBlock()) {
+        return &(*it)->timeBlock();
     }
 
     return {};

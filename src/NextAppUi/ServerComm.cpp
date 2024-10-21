@@ -27,6 +27,7 @@
 #include "ActionCategoriesModel.h"
 #include "MainTreeModel.h"
 #include "WorkCache.h"
+#include "CalendarCache.h"
 
 using namespace std;
 
@@ -736,6 +737,11 @@ std::shared_ptr<GrpcIncomingStream> ServerComm::synchWorkSessions(const nextapp:
     return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewWork);
 }
 
+std::shared_ptr<GrpcIncomingStream> ServerComm::synchTimeBlocks(const nextapp::pb::GetNewReq &req)
+{
+    return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewTimeBlocks);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;
@@ -1235,6 +1241,11 @@ failed:
 
     if (!co_await WorkCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get work sessions.";
+        goto failed;
+    }
+
+    if (!co_await CalendarCache::instance()->synch()) {
+        LOG_WARN_N << "Failed to get time-blocks for the calendar.";
         goto failed;
     }
 

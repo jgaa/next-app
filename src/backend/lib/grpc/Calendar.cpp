@@ -286,9 +286,9 @@ GrpcServer::NextappImpl::GetNewTimeBlocks(::grpc::CallbackServerContext *ctx, co
 
         auto flush = [&]() -> boost::asio::awaitable<void> {
             reply.set_error(::nextapp::pb::Error::OK);
-            assert(reply.has_worksessions());
+            assert(reply.has_timeblocks());
             ++batch_num;
-            reply.set_message(format("Fetched {} time-blocks in batch {}", reply.worksessions().sessions_size(), batch_num));
+            reply.set_message(format("Fetched {} time-blocks in batch {}", reply.timeblocks().blocks().size(), batch_num));
             co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
             reply.Clear();
             tb = reply.mutable_timeblocks();

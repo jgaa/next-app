@@ -267,6 +267,8 @@ qt_add_qml_module(${PROJECT_NAME}
         ActionInfoCache.h
         ActionsModel.cpp
         ActionsModel.h
+        CalendarCache.cpp
+        CalendarCache.h
         CalendarDayModel.cpp
         CalendarDayModel.h
         CalendarModel.cpp
