@@ -117,18 +117,6 @@ public:
 
     void setToday(bool today);
 
-    // int year() const noexcept {
-    //     return date_.year();
-    // }
-
-    // int month() const noexcept {
-    //     return date_.month();
-    // }
-
-    // int day() const noexcept {
-    //     return date_.day();
-    // }
-
     int roundToMinutes() const noexcept;
 
     void emitTimeChanged() {

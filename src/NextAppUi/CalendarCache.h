@@ -42,7 +42,8 @@ signals:
 
 private:
     QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
-    [[nodiscard]] QCoro::Task<bool> save(const QProtobufMessage& item) override;
+    QCoro::Task<bool> save(const QProtobufMessage& item) override;
+    QCoro::Task<bool> save_(const nextapp::pb::TimeBlock& block);
     QCoro::Task<bool> loadFromCache() override;
 
     bool hasItems(const nextapp::pb::Status& status) const noexcept override {

@@ -21,21 +21,22 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
     const auto op = update->op();
 
     if (update->hasCalendarEvents()) {
-        const auto ce_list = update->calendarEvents().events();
+        const auto& ce_list = update->calendarEvents().events();
 
         for (const auto& ce : ce_list) {
             const QUuid id{ce.id_proto()};
 
             if (ce.hasTimeBlock()) {
-                const auto& tb = ce.timeBlock();
+                const auto tb = ce.timeBlock();
                 if (op == ::nextapp::pb::Update::Operation::DELETED) {
+                    assert(tb.kind() == nextapp::pb::TimeBlock::Kind::DELETED);
                     events_.erase(id);
-                    co_await save(ce); // deletes the time block
+                    co_await save_(tb); // deletes the time block
                     emit eventRemoved(id);
                     continue;
                 }
                 assert(tb.kind() != nextapp::pb::TimeBlock::Kind::DELETED);
-                co_await save(ce);
+                co_await save_(tb);
 
                 if (auto it = events_.find(id); it != events_.end()) {
                     *it->second = ce;
@@ -56,30 +57,33 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
 
 QCoro::Task<bool> CalendarCache::save(const QProtobufMessage &item)
 {
-    auto& db = NextAppCore::instance()->db();
+    return save_(static_cast<const nextapp::pb::TimeBlock&>(item));
+}
 
-    auto& tb = static_cast<const nextapp::pb::TimeBlock&>(item);
+QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
+{
+    auto& db = NextAppCore::instance()->db();
 
     // Remove all old references
     {
         QList<QVariant> params;
         const QString sql = "DELETE FROM time_block_actions WHERE time_block = ?";
-        params << tb.id_proto();
+        params << tblock.id_proto();
         const auto rval = co_await db.query(sql, &params);
         if (!rval) {
-            LOG_ERROR_N << "Failed to delete time block: " << tb.id_proto() << " err=" << rval.error();
+            LOG_ERROR_N << "Failed to delete time block: " << tblock.id_proto() << " err=" << rval.error();
             co_return false;
         }
     }
 
-    if (tb.kind() == nextapp::pb::TimeBlock::Kind::DELETED) {
+    if (tblock.kind() == nextapp::pb::TimeBlock::Kind::DELETED) {
         QList<QVariant> params;
-        co_await remove(tb);
-        params << tb.id_proto();
+        co_await remove(tblock);
+        params << tblock.id_proto();
         QString sql = "DELETE FROM time_block WHERE id = ?";
         const auto rval = co_await db.query(sql, &params);
         if (!rval) {
-            LOG_ERROR_N << "Failed to delete time block: " << tb.id_proto() << " err=" << rval.error();
+            LOG_ERROR_N << "Failed to delete time block: " << tblock.id_proto() << " err=" << rval.error();
             co_return false;
         }
     } else {
@@ -93,33 +97,34 @@ QCoro::Task<bool> CalendarCache::save(const QProtobufMessage &item)
             updated = excluded.updated)";
 
         QList<QVariant> params;
-        params << tb.id_proto();
-        params << QDateTime::fromSecsSinceEpoch(tb.timeSpan().start());
-        params << QDateTime::fromSecsSinceEpoch(tb.timeSpan().end());
-        params << static_cast<int>(tb.kind());
+        params << tblock.id_proto();
+        params << QDateTime::fromSecsSinceEpoch(tblock.timeSpan().start());
+        params << QDateTime::fromSecsSinceEpoch(tblock.timeSpan().end());
+        params << static_cast<int>(tblock.kind());
         QProtobufSerializer serializer;
-        params << tb.serialize(&serializer);
-        params << static_cast<qlonglong>(tb.updated());
+        params << tblock.serialize(&serializer);
+        params << static_cast<qlonglong>(tblock.updated());
 
         const auto rval = co_await db.query(sql, &params);
         if (!rval) {
-            LOG_ERROR_N << "Failed to update action: " << tb.id_proto() << " " << tb.name()
+            LOG_ERROR_N << "Failed to update action: " << tblock.id_proto() << " " << tblock.name()
             << " err=" << rval.error();
             co_return false; // TODO: Add proper error handling. Probably a full resynch.
         }
     }
 
     // Add current refrerences
-    if (tb.kind() != nextapp::pb::TimeBlock::Kind::DELETED) {
+    if (tblock.kind() != nextapp::pb::TimeBlock::Kind::DELETED) {
         QList<QVariant> params;
-        for(const auto& aid : tb.actions().list()) {
+        const auto& al = tblock.actions();
+        for(const auto aid : al.list()) {
             const QString sql = "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)";
             params.clear();
-            params << tb.id_proto();
+            params << tblock.id_proto();
             params << aid;
             const auto rval = co_await db.query(sql, &params);
             if (!rval) {
-                LOG_WARN_N << "Failed to insert time block reference: " << tb.id_proto() << " err=" << rval.error();
+                LOG_WARN_N << "Failed to insert time block reference: " << tblock.id_proto() << " err=" << rval.error();
                 co_return false;
             }
         }
