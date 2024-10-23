@@ -16,6 +16,7 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
 
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, [this](const QUuid &uuid) {
         if (tb_) {
+            LOG_TRACE_N << "Action changed for time-box " << tb_->id_proto() << " and uuid " << uuid.toString(QUuid::WithoutBraces);
             if (actions_.list().contains(uuid.toString(QUuid::WithoutBraces))) {
                 sync();
             }
@@ -78,6 +79,7 @@ nextapp::pb::TimeBlock *TimeBoxActionsModel::getTb()
 
 void TimeBoxActionsModel::sync()
 {
+    LOG_TRACE_N << "Syncing time-box actions for tb " << tb_->id_proto();
     beginResetModel();
 
     const ScopedExit later { [this] {

@@ -880,6 +880,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         // time_block_actions is not replicated. A simlar table is maintained locally by the client
         // based on the actions in the time_block.
 
+        "ALTER TABLE action MODIFY COLUMN node UUID NULL",
+
         "SET FOREIGN_KEY_CHECKS=1"
     });
 

@@ -35,7 +35,7 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                 const auto now = QDateTime::currentDateTime();
                 const auto due = QDateTime::fromSecsSinceEpoch(action.due().due());
                 const auto today = now.date();
-                const auto due_date = due.date();
+                const auto due_date = due.date().addDays(due.time().msec() == 0 && due.time().second() == 0 && due.time().minute() == 0 ? -1 : 0);
 
                 switch(action.due().kind()) {
                     case pb::ActionDueKindGadget::ActionDueKind::DATETIME:
@@ -1071,7 +1071,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     switch(mode_) {
     case FetchWhat::FW_ACTIVE:
         // Fetch all active actions with start-time before tomorrow.
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.start_time < ?
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.start_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1083,7 +1083,7 @@ LIMIT {} OFFSET {})",
     case FetchWhat::FW_TODAY:
         // Only show todays actions and actions completed today.
         // Order by priority and due time
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1094,7 +1094,7 @@ LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_TODAY_AND_OVERDUE:
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time < ?
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1104,7 +1104,7 @@ LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_TOMORROW:
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1116,7 +1116,7 @@ LIMIT {} OFFSET {})",
 
     case FetchWhat::FW_CURRENT_WEEK: {
         // Fetch all active actions with start-time before tomorrow.
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1129,7 +1129,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_NEXT_WEEK: {
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1141,7 +1141,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_CURRENT_MONTH: {
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1153,7 +1153,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_NEXT_MONTH: {
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),

@@ -38,6 +38,19 @@ Dialog {
         }
     }
 
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {
+            // Handle the click event or simply ignore it
+            console.log("MouseArea clicked")
+        }
+    }
+
+    // Disable drag events
+    DragHandler {
+        acceptedButtons: []
+    }
+
     function assign() {
         if (aprx.valid && !root.assigned) {
 
@@ -314,6 +327,19 @@ Dialog {
                         Layout.leftMargin: root.leftMarginForControls
                         id: completedTimeCtl
                         color: Colors.disabledText
+                    }
+
+                    Label {
+                        Layout.alignment: Qt.AlignLeft
+                        color: Colors.disabledText
+                        text: qsTr("uuid")
+                    }
+
+                    TextInput  {
+                        Layout.leftMargin: root.leftMarginForControls
+                        text: root.action.id_proto
+                        color: Colors.disabledText
+                        readOnly: true
                     }
 
                     Label {

@@ -78,7 +78,6 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
 
     if (tblock.kind() == nextapp::pb::TimeBlock::Kind::DELETED) {
         QList<QVariant> params;
-        co_await remove(tblock);
         params << tblock.id_proto();
         QString sql = "DELETE FROM time_block WHERE id = ?";
         const auto rval = co_await db.query(sql, &params);

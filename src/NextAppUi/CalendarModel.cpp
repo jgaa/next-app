@@ -337,26 +337,26 @@ QCoro::Task<void> CalendarModel::onCalendarEventAddedOrUpdated(const QUuid id)
     QDate new_date = get_date(*event);
     QDate old_date = existing ? get_date(*existing) : QDate();
 
-    if (!existing) {
+    if (existing) {
+        // Check id the updated event's date is inside our range of dates
+        if (std::ranges::find(dates.begin(), dates.end(), new_date) != dates.end()) {
+            LOG_TRACE_N << "Updating event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start()
+                        << " from incoming event with start-time " << event->timeSpan().start();
+            *event_it = event;
+            existing = event_it->get();
+            LOG_TRACE_N << "Updated event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start();
+        } else {
+            // We had it, but now it's outside our range of dates
+            all_events_.erase(event_it);
+            new_date = {};
+        }
+    } else {
+        // New event?
         if (std::ranges::find(dates.begin(), dates.end(), new_date) != dates.end()) {
             all_events_.push_back(event);
+        } else {
+            co_return; // Not in our range of dates, so we ignore it
         }
-        co_return;
-    }
-
-    assert(old_date.isValid());
-
-    // Check id the updated event's date is inside our range of dates
-    if (std::ranges::find(dates.begin(), dates.end(), new_date) != dates.end()) {
-        LOG_TRACE_N << "Updating event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start()
-                    << " from incoming event with start-time " << event->timeSpan().start();
-        *event_it = event;
-        existing = event_it->get();
-        LOG_TRACE_N << "Updated event: " << existing->id_proto() << " with start_time " << existing->timeSpan().start();
-    } else {
-        // We had it, but now it's outside our range of dates
-        all_events_.erase(event_it);
-        new_date = {};
     }
 
     if (old_date.isValid()) {
@@ -387,10 +387,17 @@ QCoro::Task<void> CalendarModel::onCalendarEventRemoved(const QUuid id)
     });
 
     if (it != all_events_.end()) {
+        assert(*it);
+        const auto event_day = get_date(**it);
         all_events_.erase(it);
         sort();
         updateDayModels();
         setValid(true);
+        for (auto& [_, day] : day_models_) {
+            if (event_day == day->date()) {
+                day->setValid(true, true); // Trigger a redraw
+            }
+        }
     }
 
     co_return;

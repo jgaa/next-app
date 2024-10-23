@@ -33,9 +33,15 @@ struct ToTimeBlock {
     static void assign(const boost::mysql::row_view& row, pb::TimeBlock& tb, const UserContext& uctx) {
         tb.set_id(pb_adapt(row.at(ID).as_string()));
         tb.set_user(pb_adapt(row.at(USER).as_string()));
-        tb.set_name(pb_adapt(row.at(NAME).as_string()));
-        tb.mutable_timespan()->set_start(toTimeT(row.at(START_TIME).as_datetime()));
-        tb.mutable_timespan()->set_end(toTimeT(row.at(END_TIME).as_datetime()));
+        if (row.at(NAME).is_string()) {
+            tb.set_name(pb_adapt(row.at(NAME).as_string()));
+        }
+        if (row.at(START_TIME).is_datetime()) {
+            tb.mutable_timespan()->set_start(toTimeT(row.at(START_TIME).as_datetime()));
+        }
+        if (row.at(END_TIME).is_datetime()) {
+            tb.mutable_timespan()->set_end(toTimeT(row.at(END_TIME).as_datetime()));
+        }
         pb::TimeBlock::Kind kind;
         if (pb::TimeBlock_Kind_Parse(toUpper(row.at(KIND).as_string()), &kind)) {
             tb.set_kind(kind);
@@ -177,7 +183,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
             co_await owner_.validateTimeBlock(*rctx.dbh, id, cuser);
 
             auto res = co_await rctx.dbh->exec(
-                format("UPDATE time_block SET start_time=NULL, end_time=NULL, name='', kind='deleted', category='', actions=NULL WHERE id=? AND user=? ",
+                format("UPDATE time_block SET start_time=NULL, end_time=NULL, name='', kind='deleted', category=NULL, actions=NULL WHERE id=? AND user=? ",
                        ToTimeBlock::columns),
                 id, cuser);
 

@@ -209,6 +209,7 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
         } else {
             co_await save(action);
             if (add(hot_cache_, action)) {
+                LOG_TRACE_N << "Action " << action.id_proto() << ' ' << action.name() << " changed.";
                 emit actionChanged(uuid);
             }
             if (update->op() == nextapp::pb::Update::Operation::ADDED) {
@@ -453,6 +454,7 @@ std::shared_ptr<nextapp::pb::ActionInfo> &ActionInfoCache::get_(const QString &a
 ActionInfoPrx::ActionInfoPrx(QUuid actionUuid, ActionInfoCache *model)
 : uuid_{actionUuid}
 {
+    LOG_TRACE_N << "ActionInfoPrx: " << actionUuid.toString();
     connect(model, &ActionInfoCache::actionReceived, this, &ActionInfoPrx::setAction);
     connect(model, &ActionInfoCache::actionDeleted, this, &ActionInfoPrx::actionDeleted);
     connect(model, &ActionInfoCache::actionChanged, this, &ActionInfoPrx::onActionChanged);
@@ -464,6 +466,7 @@ const nextapp::pb::ActionInfo *ActionInfoPrx::getActionInfo(const QUuid &uuid)
 }
 
 void ActionInfoPrx::onActionChanged(const QUuid &uuid) {
+    LOG_TRACE_N << "Action " << uuid.toString() << " changed. My uuid is " << uuid_.toString();
     if (uuid_ == uuid) {
         if (!action_) {
             auto action = ActionInfoCache::instance()->get(uuid_.toString(QUuid::WithoutBraces));
