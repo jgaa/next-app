@@ -333,4 +333,60 @@ GrpcServer::NextappImpl::GetNewTimeBlocks(::grpc::CallbackServerContext *ctx, co
     }, __func__);
 }
 
+boost::asio::awaitable<void> GrpcServer::deleteActionInTimeBlocks(const std::string& uuid, RequestCtx& rctx) {
+
+    const auto& dbopts = rctx.uctx->dbOptions();
+    enum Cols {
+        ID,
+        ACTIONS
+    };
+
+    const auto res = co_await rctx.dbh->exec(
+        "SELECT tb.id, tb.actions FROM time_block tb JOIN time_block_actions tba ON tba.time_block = tb.id "
+        "WHERE tba.action=? AND tba.user=?",
+        dbopts, uuid, rctx.uctx->userUuid());
+
+    for(const auto& row : res.rows()) {
+        const auto& tb_id = row.at(ID).as_string();
+
+        if (const auto& actions = row.at(ACTIONS); actions.is_blob()) {
+            const auto blob = row.at(ACTIONS).as_blob();
+            pb::StringList sl;
+            if (sl.ParseFromArray(blob.data(), blob.size())) {
+                auto *list = sl.mutable_list();
+                if (auto it = ranges::find(*list, uuid); it != list->end()) {
+                    list->erase(it);
+                    co_await rctx.dbh->exec("DELETE FROM time_block_actions WHERE time_block=? AND action=?",
+                                            dbopts, tb_id, uuid);
+
+                    const auto update_res = co_await rctx.dbh->exec(
+                        "UPDATE time_block SET actions=? WHERE id=? AND user=?",
+                        toBlob(sl), tb_id, rctx.uctx->userUuid());
+
+                    if (!update_res.affected_rows()) [[unlikely]] {
+                        LOG_WARN_N << "Failed to update time block with id=" << tb_id;
+                    } else {
+                        // Publish an updated CalendarEvent with the updated list of actions
+                        const auto fres = co_await rctx.dbh->exec(
+                            format("SELECT {} FROM time_block WHERE id=? and user=?", ToTimeBlock::columns),
+                            dbopts, tb_id, rctx.uctx->userUuid());
+                        if (res.rows().size() == 1) {
+                            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+                            auto *ev = update.mutable_calendarevents()->add_events();
+                            auto *tb = ev->mutable_timeblock();
+
+                            ToTimeBlock::assign(fres.rows().front(), *tb, *rctx.uctx);
+                            ev->set_id(tb->id());
+                            ev->set_user(rctx.uctx->userUuid());
+                            ev->mutable_timespan()->CopyFrom(tb->timespan());
+                        } else {
+                            assert(false);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 } // namespace nextapp::grpc

@@ -230,7 +230,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     auto& db = NextAppCore::instance()->db();
     QList<QVariant> params;
 
-    if (action.deleted()) {
+    if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
         QString sql = R"(DELETE FROM action WHERE id = ?)";
         params.append(action.id_proto());
         LOG_TRACE_N << "Deleting action " << action.id_proto() << " " << action.name();
@@ -312,7 +312,6 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     params.append(action.category());
     params.append(static_cast<quint32>(action.version()));
     params.append(static_cast<qlonglong>(action.updated()));
-    params.append(action.deleted());
 
     const auto rval = co_await db.query(sql, &params);
     if (!rval) {

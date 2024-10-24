@@ -1023,5 +1023,35 @@ boost::asio::awaitable<void> GrpcServer::syncActiveWork(RequestCtx&  rctx)
     }, __func__);
 }
 
+boost::asio::awaitable<void> GrpcServer::deleteWorkSession(const std::string& uuid, RequestCtx& rctx) {
+    const auto& dbopts = rctx.uctx->dbOptions();
+    const auto& cuser = rctx.uctx->userUuid();
+
+    const auto res = co_await rctx.dbh->exec(
+        "SELECT id FROM work_session WHERE id=? AND user=?", uuid, cuser);
+    for(const auto& row : res.rows()) {
+        const auto dres = co_await rctx.dbh->exec(R"(UPDATE work_session SET "
+            action=NULL,
+            state='deleted'
+            start_time=NULL,
+            end_time=NULL,
+            duration=0,
+            paused=0,
+            name=NULL,
+            note=NULL,
+            events=NULL
+        WHERE id=? AND user=?)", dbopts, uuid, cuser);
+
+        const auto fres = co_await rctx.dbh->exec(
+            format("SELECT {} from work_session where id=? and user = ?",
+                   ToWorkSession::selectCols), uuid, rctx.uctx->userUuid());
+        if (res.has_value() && !res.rows().empty()) {
+            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+            auto *ws = update.mutable_work();
+            assert(ws);
+            ToWorkSession::assign(res.rows().front(), *ws, *rctx.uctx);
+        }
+    }
+}
 
 } // ns

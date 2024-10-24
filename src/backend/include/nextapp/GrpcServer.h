@@ -321,6 +321,12 @@ done:
     boost::asio::awaitable<pb::WorkSession> fetchWorkSession(const std::string& uuid, RequestCtx& rctx);
     boost::asio::awaitable<void> saveWorkSession(nextapp::pb::WorkSession& work, RequestCtx& rctx, bool touch = true);
     boost::asio::awaitable<boost::mysql::results> insertWork(const pb::WorkSession& work, RequestCtx& rctx, bool addStartEvent = true);
+    boost::asio::awaitable<void> getAction(nextapp::pb::Action& action, const std::string& uuid, RequestCtx& rctx);
+
+    boost::asio::awaitable<void> deleteWorkSession(const std::string& uuid, RequestCtx& rctx);
+    boost::asio::awaitable<void> deleteNode(const std::string& uuid, RequestCtx& rctx);
+    boost::asio::awaitable<void> deleteActionInTimeBlocks(const std::string& uuid, RequestCtx& rctx);
+    boost::asio::awaitable<void> deleteAction(const std::string& uuid, RequestCtx& rctx);
 
     bool active() const noexcept {
         return active_;

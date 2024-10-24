@@ -242,30 +242,7 @@ struct ToNode {
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-            // Get the existing node
-
-            const auto uctx = rctx.uctx;
-            const auto& cuser = uctx->userUuid();
-
-            auto node = co_await owner_.fetcNode(req->uuid(), cuser, rctx);
-
-            auto res = co_await owner_.server().db().exec(format("DELETE from node where id=? and user=?", ToNode::selectCols),
-                                                          req->uuid(), cuser);
-
-            if (!res.has_value() || res.affected_rows() == 0) {
-                throw server_err{pb::Error::NOT_FOUND, format("Node {} not found", req->uuid())};
-            }
-
-            node.set_deleted(true);
-
-            reply->set_error(pb::Error::OK);
-            *reply->mutable_node() = node;
-
-            // Notify clients
-            auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
-            *update->mutable_node() = node;
-            rctx.publishLater(update);
-
+            co_await owner_.deleteNode(req->uuid(), rctx);
             co_return;
         });
 }
@@ -429,6 +406,40 @@ boost::asio::awaitable<void> GrpcServer::validateNode(jgaa::mysqlpool::Mysqlpool
         throw server_err{pb::Error::INVALID_PARENT, "Node id must exist and be owned by the user"};
     }
     co_return;
+}
+
+boost::asio::awaitable<void> GrpcServer::deleteNode(const std::string& uuid, RequestCtx& rctx) {
+    const auto dbopts = rctx.uctx->dbOptions();
+    const auto& cuser = rctx.uctx->userUuid();
+
+    // The cascading effects from deleting a node may be massive, so we will not
+    // manually handle the cascading effects, but rely on the database to handle it.
+    // The user-app must re-load all models who depends on nodes/this node to get the
+    // correct state.
+
+    // We will first delete the node to create the cascading effect where all the dependent
+    // objects are recursively deleted by the database.
+    // Then we will add a new, empty node in state deleted to support replication to clients.
+
+    LOG_DEBUG_N << "Deleting node " << uuid << " for user " << cuser;
+
+    auto trx = co_await rctx.dbh->transaction();
+    const auto dres = co_await rctx.dbh->exec("DELETE from node where id=? and user=?", dbopts, uuid, cuser);
+    if (dres.affected_rows() == 0) {
+        throw server_err{pb::Error::NOT_FOUND, format("Node {} not found", uuid)};
+    }
+
+    co_await rctx.dbh->exec("INSERT INTO node (id, user, active, deleted) VALUES (?, ?, 0, 1)", dbopts, uuid, cuser);
+
+    auto res = co_await rctx.dbh->exec(format("SELECT {} from node where id=? and user=?",
+                                              ToNode::selectCols),
+                                       uuid, cuser);
+    if (!res.rows().empty()) {
+        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+        ToNode::assign(res.rows().front(), *update.mutable_node(), rctx);
+    }
+
+    co_await trx.commit();
 }
 
 } // ns

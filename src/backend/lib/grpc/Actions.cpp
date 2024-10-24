@@ -31,7 +31,7 @@ struct ToActionCategory {
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, UPDATED, DELETED, CREATED_DATE, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
+        ID, NODE, USER, VERSION, UPDATED, CREATED_DATE, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER// remaining
     };
 
@@ -124,7 +124,9 @@ struct ToAction {
     template <ActionType T>
     static void assign(const boost::mysql::row_view& row, T& obj, const UserContext& uctx) {
         obj.set_id(pb_adapt(row.at(ID).as_string()));
-        obj.set_node(pb_adapt(row.at(NODE).as_string()));
+        if (row.at(NODE).is_string()) {
+            obj.set_node(pb_adapt(row.at(NODE).as_string()));
+        }
         obj.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
 
         if (row.at(ORIGIN).is_string()) {
@@ -155,7 +157,9 @@ struct ToAction {
             }
         }
 
-        obj.set_name(pb_adapt(row.at(NAME).as_string()));
+        if (row.at(NAME).is_string()) {
+            obj.set_name(pb_adapt(row.at(NAME).as_string()));
+        }
 
         {
             auto * date = obj.mutable_createddate();
@@ -191,44 +195,8 @@ struct ToAction {
         if (obj.status() == pb::ActionStatus::DONE) {
             obj.set_kind(pb::ActionKind::AC_DONE);
         } else {
-            // If we have due_by_time set, we can see a) if it's expired, b) if it's today and c) it it's in the future
-            // We need to convert the time from the database and the time right now to the time-zone used by the client to get it right.
-            if (row.at(DUE_BY_TIME).is_datetime()) {
-                const auto due = row.at(DUE_BY_TIME).as_datetime();
-                const auto due_when = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(due.as_time_point() - 1s)};
-
-                LOG_TRACE_N << format("Due due={}, due_when={}", due.as_time_point(), due_when);
-
-                optional<chrono::year_month_day> start;
-                if (row.at(START_TIME).is_datetime()) {
-                    const auto start_time = row.at(START_TIME).as_datetime();
-                    start = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(start_time.as_time_point())};
-
-                    LOG_TRACE_N << format("Start start_time={}, start={}", start_time.as_time_point(), *start);
-                }
-
-                //const auto now_zt = std::chrono::zoned_time(&uctx.tz(), chrono::system_clock::now());
-                const auto now = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(chrono::system_clock::now())};
-
-                LOG_TRACE_N << format("Now now={}", now);
-
-                if (due_when.year() == now.year() && due_when.month() == now.month() && due_when.day() == now.day()) {
-                    obj.set_kind(pb::ActionKind::AC_TODAY);
-                } else if (due_when < now) {
-                    obj.set_kind(pb::ActionKind::AC_OVERDUE);
-                } else if (due_when > now) {
-                    if (start <= now) {
-                        obj.set_kind(pb::ActionKind::AC_ACTIVE);
-                    } else{
-                        obj.set_kind(pb::ActionKind::AC_UPCOMING);
-                    }
-                } else {
-                    assert(false); // Not possible!
-                    obj.set_kind(pb::ActionKind::AC_TODAY); // Just in case the impossible occur in release build
-                }
-            } else {
-                obj.set_kind(pb::ActionKind::AC_UNSCHEDULED);
-            }
+            // TODO: Add this. Currently the client will do this for all received actions.
+            obj.set_kind(pb::ActionKind::AC_UNSET);
         }
 
         if (row.at(COMPLETED_TIME).is_datetime()) {
@@ -280,23 +248,17 @@ struct ToAction {
                 }
             }
             obj.set_repeatafter(row.at(REPEAT_AFTER).as_int64());
-            obj.set_deleted(row.at(DELETED).as_int64() == 1);
             obj.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
         }
     }
 
 private:
-    // static constexpr string_view ids_ = "id, node, user, version, ";
-    // static constexpr string_view core_ = "origin, priority, status, favorite, name, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, category";
-    // static constexpr string_view remaining_ = ", descr, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, updated, deleted";
-
     static constexpr std::array<std::pair<std::string_view, ColType>, 26> cols_ = {
         std::make_pair(std::string_view{"id"}, ColType::IDS),
         {"node", ColType::IDS},
         {"user", ColType::IDS},
         {"version", ColType::READ_ONLY},
         {"updated", ColType::READ_ONLY},
-        {"deleted", ColType::READ_ONLY},
         {"created_date", ColType::READ_ONLY},
         {"origin", ColType::CORE},
         {"priority", ColType::CORE},
@@ -363,34 +325,28 @@ boost::asio::awaitable<void>
 
     const auto dbopts = rctx.uctx->dbOptions();
 
+    auto *action = reply->mutable_action();
+    co_await grpc.getAction(*action, actionId, rctx);
+
     auto res = co_await rctx.dbh->exec(
         format(R"(SELECT {} from action WHERE id=? AND user=? )",
                ToAction::allSelectCols()), dbopts, actionId, rctx.uctx->userUuid());
 
     assert(res.has_value());
-    if (!res.rows().empty()) {
-        const auto& row = res.rows().front();
-        auto *action = reply->mutable_action();
-        ToAction::assign(row, *action, *rctx.uctx);
-        if (publish) {
-            auto& update = rctx.publishLater(op);
-            *update.mutable_action() = *action;
-        }
+    if (publish) {
+        auto& update = rctx.publishLater(op);
+        *update.mutable_action() = *action;
+    }
 
-        switch (done) {
-        case DoneChanged::MARKED_DONE:
-            co_await grpc.handleActionDone(*action, rctx, ctx);
-            break;
-        case DoneChanged::MARKED_UNDONE:
-            co_await grpc.handleActionActive(*action, rctx, ctx);
-            break;
-        default:
-            break;
-        }
-
-    } else {
-        reply->set_error(pb::Error::NOT_FOUND);
-        reply->set_message(format("Action with id={} not found for the current user.", actionId));
+    switch (done) {
+    case DoneChanged::MARKED_DONE:
+        co_await grpc.handleActionDone(*action, rctx, ctx);
+        break;
+    case DoneChanged::MARKED_UNDONE:
+        co_await grpc.handleActionActive(*action, rctx, ctx);
+        break;
+    default:
+        break;
     }
 
     LOG_TRACE << "Reply: " << grpc.toJsonForLog(*reply);
@@ -675,22 +631,60 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
             const auto& cuser = uctx->userUuid();
             const auto& uuid = validatedUuid(req->actionid());
 
-            auto res = co_await rctx.dbh->exec("DELETE FROM action WHERE id=? AND user=?",
-                                                          uuid, cuser);
-
-            assert(res.has_value());
-            if (res.affected_rows() == 1) {
-                reply->set_deletedactionid(uuid);
-                auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
-                update.mutable_action()->set_id(uuid);
-            } else {
-                reply->set_uuid(uuid);
-                reply->set_error(pb::Error::NOT_FOUND);
-                reply->set_message(format("Action with id={} not found for the current user.", uuid));
-            }
-
+            co_await owner_.deleteAction(uuid, rctx);
+            reply->set_deletedactionid(uuid);
             co_return;
         }, __func__);
+}
+
+boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, RequestCtx& rctx) {
+    const auto& cuser = rctx.uctx->userUuid();
+    const auto dbopts = rctx.uctx->dbOptions();
+    const auto uctx = rctx.uctx;
+
+    auto trx = co_await rctx.dbh->transaction();
+
+    co_await deleteActionInTimeBlocks(uuid, rctx);
+
+    // Fetch all work-sessions that have this action and delete them
+    auto wss = co_await rctx.dbh->exec("SELECT id FROM work_session WHERE action=? AND user=?", dbopts, uuid, cuser);
+    for (const auto& ws : wss.rows()) {
+        co_await deleteWorkSession(ws.at(0).as_string(), rctx);
+    }
+
+    // Now, mark the action as deleted
+    const auto res = co_await rctx.dbh->exec(R"(UPDATE action SET
+        node=NULL,
+        origin=NULL,
+        priority='pri_normal',
+        status='deleted',
+        favorite=0,
+        name=NULL,
+        descr=NULL,
+        due_kind='unset',
+        start_time=NULL,
+        due_by_time=NULL,
+        due_timezone=NULL,
+        completed_time=NULL,
+        time_estimate=NULL,
+        difficulty='diff_normal',
+        repeat_kind='never',
+        repeat_unit='days',
+        repeat_when='at_date',
+        category=NULL,
+        WHERE id=? AND user=?)", dbopts, uuid, cuser);
+
+    auto pub = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+    if (auto* action = pub.mutable_action()) {
+        co_await getAction(*action, uuid, rctx);
+    } else {
+        assert(false);
+    }
+
+    co_await trx.commit();
+
+    assert(res.has_value());
+    co_return;
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply)
@@ -710,7 +704,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
 
             auto trx = co_await rctx.dbh->transaction();
 
-            auto res = co_await rctx.dbh->exec(
+            const auto res = co_await rctx.dbh->exec(
                 "UPDATE action SET status=?, completed_time=? WHERE id=? AND user=?",
                 dbopts, (req->done() ? "done" : "active"), when, uuid, cuser);
 
@@ -1522,6 +1516,22 @@ GrpcServer::NextappImpl::GetNewActions(::grpc::CallbackServerContext *ctx, const
         co_return;
 
     }, __func__);
+}
+
+boost::asio::awaitable<void> GrpcServer::getAction(nextapp::pb::Action& action, const std::string& uuid, RequestCtx& rctx) {
+
+    const auto res = co_await rctx.dbh->exec(
+        format(R"(SELECT {} from action WHERE id=? AND user=? )",
+               ToAction::allSelectCols()), rctx.uctx->dbOptions(), uuid, rctx.uctx->userUuid());
+
+    assert(res.has_value());
+    if (!res.rows().empty()) {
+        const auto& row = res.rows().front();
+        ToAction::assign(row, action, *rctx.uctx);
+    } else {
+        throw server_err{pb::Error::NOT_FOUND, format("Action {} not found for user {}", uuid, rctx.uctx->userUuid())};
+    }
+
 }
 
 

@@ -260,6 +260,7 @@ enum ActionStatus {
     ACTIVE  = 0;
     DONE    = 1;
     ONHOLD  = 2;
+    DELETED = 3;
 }
 
 enum ActionDueKind {
@@ -404,7 +405,6 @@ message Action {
     ActionKind kind = 19;
     int32 version   = 20;
     string category = 21;
-    bool deleted = 22;
     int64 updated = 23; // time_t as ms
 }
 

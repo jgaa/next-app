@@ -76,21 +76,22 @@ void Server::init()
 
 void Server::run()
 {
-    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+    try {
+        asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
             co_await db().init();
             if (!co_await checkDb()) {
                 LOG_ERROR << "The database version is wrong. Please upgrade before starting the server.";
-                stop();
+                throw std::runtime_error("Database version is wrong");
             }
 
             co_await loadCertAuthority();
             co_await startGrpcService();
-        },
-        [](std::exception_ptr ptr) {
-            if (ptr) {
-                std::rethrow_exception(ptr);
-            }
-        });
+        }, boost::asio::use_future).get();
+    } catch (const std::exception& ex) {
+        LOG_ERROR << "Caught exception during initialization: " << ex.what();
+        stop();
+        throw runtime_error{"Startup failed"};
+    }
 
     if (!config().enable_http) {
         LOG_INFO << "HTTP server (metrics) is disabled.";
@@ -743,7 +744,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=0",
 
         "ALTER TABLE day ADD COLUMN IF NOT EXISTS updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6)",
-        "CREATE INDEX day_ix1 ON day (user, updated)",
+        "CREATE INDEX day_updated_ix ON day (user, updated)",
         "ALTER TABLE day ADD COLUMN IF NOT EXISTS deleted SMALLINT NOT NULL DEFAULT 0",
         "UPDATE day SET updated = UTC_TIMESTAMP(6) WHERE updated IS NULL",
         "UPDATE day SET deleted = 0 WHERE deleted IS NULL",
@@ -877,10 +878,50 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         "CREATE INDEX time_block_ix_updated ON time_block (user, updated)",
 
+        "ALTER TABLE action DROP FOREIGN KEY action_ibfk_1",
+        "ALTER TABLE action DROP FOREIGN KEY action_ibfk_3",
+        "ALTER TABLE work DROP FOREIGN KEY work_ibfk_1",
+        "ALTER TABLE node DROP FOREIGN KEY node_parent_fk",
+        "ALTER TABLE action2location DROP FOREIGN KEY action2location_ibfk_1",
+        "ALTER TABLE work_session DROP FOREIGN KEY work_session_ibfk_1",
+
         // time_block_actions is not replicated. A simlar table is maintained locally by the client
         // based on the actions in the time_block.
 
         "ALTER TABLE action MODIFY COLUMN node UUID NULL",
+        "ALTER TABLE action MODIFY name VARCHAR(256) NULL",
+
+        R"(ALTER TABLE action
+            MODIFY COLUMN status ENUM('active','done','onhold', 'deleted') NOT NULL DEFAULT 'active';
+        )",
+
+        "ALTER TABLE action DROP COLUMN deleted",
+
+        "ALTER TABLE work_session MODIFY COLUMN action UUID NULL",
+        "ALTER TABLE work_session MODIFY COLUMN name VARCHAR(256) NULL",
+
+        "ALTER TABLE node MODIFY COLUMN name VARCHAR(256) NULL",
+
+        R"(ALTER TABLE action
+            ADD CONSTRAINT `action_ibfk_1` FOREIGN KEY (`node`) REFERENCES `node` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+            ADD CONSTRAINT `action_ibfk_3` FOREIGN KEY (`origin`) REFERENCES `action` (`id`) ON DELETE CASCADE
+        )",
+
+        R"(ALTER TABLE work
+            ADD CONSTRAINT `work_ibfk_1` FOREIGN KEY (`node`) REFERENCES `node` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+        )",
+
+        R"(ALTER TABLE node
+            ADD CONSTRAINT `node_parent_fk` FOREIGN KEY (`parent`) REFERENCES `node` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+        )",
+
+        R"(ALTER TABLE action2location
+            ADD CONSTRAINT `action2location_ibfk_1` FOREIGN KEY (`action`) REFERENCES `action` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+        )",
+
+        R"(ALTER TABLE work_session
+            ADD CONSTRAINT `work_session_ibfk_1` FOREIGN KEY (`action`) REFERENCES `action` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+        )",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
