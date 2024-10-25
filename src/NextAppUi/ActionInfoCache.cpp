@@ -203,9 +203,9 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
         const auto &action = update->action();
         const auto uuid = toQuid(action.id_proto());
         if (deleted) [[unlikely ]] {
-            emit actionDeleted(uuid);
             co_await save(action);
             hot_cache_.erase(uuid);
+            emit actionDeleted(uuid);
         } else {
             co_await save(action);
             if (add(hot_cache_, action)) {
@@ -248,8 +248,8 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         (id, node, origin, priority, status, favorite, name, descr, created_date,
         due_kind, start_time, due_by_time, due_timezone, completed_time,
         time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after,
-        kind, category, version, updated, deleted) VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        kind, category, version, updated) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
         node = EXCLUDED.node,
         origin = EXCLUDED.origin,
@@ -273,8 +273,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         kind = EXCLUDED.kind,
         category = EXCLUDED.category,
         version = EXCLUDED.version,
-        updated = EXCLUDED.updated,
-        deleted = EXCLUDED.deleted)";
+        updated = EXCLUDED.updated)";
 
     params.append(action.id_proto());
     params.append(action.node());

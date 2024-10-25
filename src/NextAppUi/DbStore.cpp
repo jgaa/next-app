@@ -227,7 +227,6 @@ bool DbStore::updateSchema(uint version)
             "kind" INTEGER NOT NULL,
             "version" INTEGER NOT NULL,
             "updated" INTEGER NOT NULL,
-            "deleted" BOOLEAN NOT NULL,
             PRIMARY KEY("id")
         ))",
 

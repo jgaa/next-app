@@ -34,7 +34,9 @@ struct ToWorkSession {
 
     static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws, const UserContext& uctx) {
         ws.set_id(pb_adapt(row.at(ID).as_string()));
-        ws.set_action(pb_adapt(row.at(ACTION).as_string()));
+        if (row.at(ACTION).is_string()) {
+            ws.set_action(pb_adapt(row.at(ACTION).as_string()));
+        }
         ws.set_user(pb_adapt(row.at(USER).as_string()));
         if (row.at(START).is_datetime()) {
             ws.set_start(toTimeT(row.at(START).as_datetime(), uctx.tz()));
@@ -48,7 +50,9 @@ struct ToWorkSession {
         ws.set_duration(row.at(DURATION).as_int64());
         ws.set_paused(row.at(PAUSED).as_int64() != 0);
         ws.set_version(row.at(VERSION).as_int64());
-        ws.set_name(pb_adapt(row.at(NAME).as_string()));
+        if (row.at(NAME).is_string()) {
+            ws.set_name(pb_adapt(row.at(NAME).as_string()));
+        }
         if (row.at(NOTES).is_string()) {
             ws.set_notes(pb_adapt(row.at(NOTES).as_string()));
         }
@@ -115,7 +119,7 @@ struct ToWorkSession {
             }
 
             auto res = co_await rctx.dbh->exec(
-                "SELECT action FROM work_session WHERE user=? and state!='done'", dbopts, cuser);
+                "SELECT action FROM work_session WHERE user=? and state!='done' AND state != 'deleted'", dbopts, cuser);
             if (res.has_value()) {
                 for(const auto& r : res.rows()) {
                     const auto id = r.at(0).as_string();
@@ -318,23 +322,7 @@ struct ToWorkSession {
 {
     return unaryHandler(ctx, req, reply,
         [this, ctx, req] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-            const auto uctx = rctx.uctx;
-            const auto& cuser = uctx->userUuid();
-            auto dbopts = uctx->dbOptions();
-            dbopts.reconnect_and_retry_query = false;
-
-            auto res = co_await owner_.server().db().exec(
-                "DELETE FROM work_session WHERE id=? AND user=?", req->worksessionid(), cuser);
-
-            if (res.affected_rows()) {
-                pb::WorkSession ws;
-                ws.set_id(req->worksessionid());
-                auto update = newUpdate(pb::Update::Operation::Update_Operation_DELETED);
-                *update->mutable_work() = ws;
-                rctx.publishLater(update);
-                *reply->mutable_work() = ws;
-            }
-
+            co_await owner_.deleteWorkSession(req->worksessionid(), rctx);
             co_return;
         }, __func__);
 }
@@ -1027,30 +1015,30 @@ boost::asio::awaitable<void> GrpcServer::deleteWorkSession(const std::string& uu
     const auto& dbopts = rctx.uctx->dbOptions();
     const auto& cuser = rctx.uctx->userUuid();
 
-    const auto res = co_await rctx.dbh->exec(
-        "SELECT id FROM work_session WHERE id=? AND user=?", uuid, cuser);
-    for(const auto& row : res.rows()) {
-        const auto dres = co_await rctx.dbh->exec(R"(UPDATE work_session SET "
-            action=NULL,
-            state='deleted'
-            start_time=NULL,
-            end_time=NULL,
-            duration=0,
-            paused=0,
-            name=NULL,
-            note=NULL,
-            events=NULL
+    const auto res = co_await rctx.dbh->exec(R"(UPDATE work_session SET
+        action=NULL,
+        state='deleted',
+        start_time=NULL,
+        end_time=NULL,
+        duration=0,
+        paused=0,
+        name=NULL,
+        note=NULL,
+        events=NULL
         WHERE id=? AND user=?)", dbopts, uuid, cuser);
 
+    if (res.affected_rows() > 0) {
         const auto fres = co_await rctx.dbh->exec(
-            format("SELECT {} from work_session where id=? and user = ?",
-                   ToWorkSession::selectCols), uuid, rctx.uctx->userUuid());
-        if (res.has_value() && !res.rows().empty()) {
+            format("SELECT {} from work_session where id=? and user=?",
+                   ToWorkSession::selectCols), dbopts, uuid, cuser);
+        if (!fres.rows().empty()) {
             auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
             auto *ws = update.mutable_work();
             assert(ws);
-            ToWorkSession::assign(res.rows().front(), *ws, *rctx.uctx);
+            ToWorkSession::assign(fres.rows().front(), *ws, *rctx.uctx);
         }
+    } else {
+        throw server_err{pb::Error::NOT_FOUND, "Work session not found"};
     }
 }
 

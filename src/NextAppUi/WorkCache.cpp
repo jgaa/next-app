@@ -121,6 +121,12 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
 
 QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
 {
+    const auto& work = static_cast<const nextapp::pb::WorkSession&>(item);
+    if (work.state() == nextapp::pb::WorkSession::State::DELETED) {
+        co_await remove(QUuid{work.id_proto()});
+        co_return true;
+    }
+
     auto& db = NextAppCore::instance()->db();
     QList<QVariant> params;
 
@@ -138,7 +144,6 @@ QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
         updated = EXCLUDED.updated
     )";
 
-    const auto& work = static_cast<const nextapp::pb::WorkSession&>(item);
     params << work.id_proto();
     params << work.action();
     params << static_cast<uint>(work.state());
