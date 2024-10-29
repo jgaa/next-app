@@ -365,28 +365,28 @@ void ServerComm::fetchDay(int year, int month, int day)
     }, req);
 }
 
-void ServerComm::getActions(nextapp::pb::GetActionsReq &filter)
-{
-    callRpc<nextapp::pb::Status>([this, filter]() {
-        return client_->GetActions(filter);
-    } , [this](const nextapp::pb::Status& status) {
-        if (status.hasActions()) {
-            auto actions = make_shared<nextapp::pb::Actions>(status.actions());
-            emit receivedActions(actions,
-                status.hasHasMore() && status.hasMore(),
-                status.hasFromStart() && status.fromStart());
-        }
-    });
-}
+// void ServerComm::getActions(nextapp::pb::GetActionsReq &filter)
+// {
+//     callRpc<nextapp::pb::Status>([this, filter]() {
+//         return client_->GetActions(filter);
+//     } , [this](const nextapp::pb::Status& status) {
+//         if (status.hasActions()) {
+//             auto actions = make_shared<nextapp::pb::Actions>(status.actions());
+//             emit receivedActions(actions,
+//                 status.hasHasMore() && status.hasMore(),
+//                 status.hasFromStart() && status.fromStart());
+//         }
+//     });
+// }
 
-void ServerComm::getAction(nextapp::pb::GetActionReq &req)
-{
-    callRpc<nextapp::pb::Status>([this, req]() {
-        return client_->GetAction(req);
-    }, [this](const nextapp::pb::Status& status) {
-        emit receivedAction(status);
-    });
-}
+// void ServerComm::getAction(nextapp::pb::GetActionReq &req)
+// {
+//     callRpc<nextapp::pb::Status>([this, req]() {
+//         return client_->GetAction(req);
+//     }, [this](const nextapp::pb::Status& status) {
+//         emit receivedAction(status);
+//     });
+// }
 
 void ServerComm::addAction(const nextapp::pb::Action &action)
 {
@@ -1224,26 +1224,31 @@ failed:
         goto failed;
     }
 
+    LOG_DEBUG_N << "Fetching nodes...";
     if (!co_await MainTreeModel::instance()->doSynch()) {
         LOG_WARN_N << "Failed to get nodes.";
         goto failed;
     }
 
+    LOG_DEBUG_N << "Fetching  action categories...";
     if (!co_await ActionCategoriesModel::instance().synch()) {
         LOG_WARN_N << "Failed to get action categories.";
         goto failed;
     }
 
+    LOG_DEBUG_N << "Fetching  actions...";
     if (!co_await ActionInfoCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get action info.";
         goto failed;
     }
 
+    LOG_DEBUG_N << "Fetching work csessions...";
     if (!co_await WorkCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get work sessions.";
         goto failed;
     }
 
+    LOG_DEBUG_N << "Fetching time blocks...";
     if (!co_await CalendarCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get time-blocks for the calendar.";
         goto failed;

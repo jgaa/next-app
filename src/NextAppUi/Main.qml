@@ -215,6 +215,7 @@ ApplicationWindow {
                 visible: sidebar.currentMainItem !== 2
                 mode: CalendarModel.CM_DAY
                 days: 1
+                primaryForActionList: true
             }
         }
     } //Green SplitView

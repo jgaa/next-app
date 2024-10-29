@@ -8,6 +8,7 @@
 #include <QStringListModel>
 #include <QUuid>
 #include <QSettings>
+#include <QDate>
 
 #include "qcorotask.h"
 
@@ -28,10 +29,20 @@ struct ActionData {
 class ActionPrx : public QObject {
     Q_OBJECT
     QML_ELEMENT
+public:
+
+    enum class State {
+        FETCHING,
+        VALID,
+        FAILED
+    };
+
+    Q_ENUM(State)
 
     Q_PROPERTY(nextapp::pb::Action action READ getAction NOTIFY actionChanged)
     Q_PROPERTY(bool valid READ getValid NOTIFY validChanged)
-public:
+    Q_PROPERTY(State state MEMBER state_ NOTIFY stateChanged FINAL)
+
     ActionPrx(QString actionUuid);
     ActionPrx();
 
@@ -40,18 +51,30 @@ public:
     }
 
     bool getValid() const noexcept {
-        return valid_;
+        return state_ == State::VALID;
     }
-
-    void receivedAction(const nextapp::pb::Status& status);
 
 signals:
     void actionChanged();
     void validChanged();
+    void stateChanged();
 
 private:
-    bool valid_{true};
-    QString uuid_;
+    QCoro::Task<void> fetch();
+
+    void setState(State state) {
+        if (state != state_) {
+            state_ = state;
+            emit stateChanged();
+
+            if (state != State::FETCHING) {
+                emit validChanged();
+            }
+        }
+    }
+
+    State state_{State::FETCHING};
+    QUuid uuid_;
     nextapp::pb::Action action_;
 };
 
@@ -202,7 +225,6 @@ public:
     //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
-    void doUpdate(const nextapp::pb::Action& action, nextapp::pb::Update::Operation op);
     void doUpdate(const nextapp::pb::WorkSession& work, nextapp::pb::Update::Operation op);
     FetchWhat mode() const noexcept { return mode_; }
     void setMode(FetchWhat mode);
@@ -242,6 +264,7 @@ private:
     nextapp::pb::GetActionsFlags flags_{};
     Pagination pagination_;
     Sorting sort_{SORT_DEFAULT};
+    QDate current_calendar_date_;
 
     // QAbstractItemModel interface
 public:

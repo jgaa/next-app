@@ -60,7 +60,7 @@ public:
      *  @param index The index of the day in the current window. Starts at 0.
      */
     Q_INVOKABLE CalendarDayModel* getDayModel(QObject *obj, int index);
-    Q_INVOKABLE void set(CalendarMode mode, int year, int month, int day);
+    Q_INVOKABLE void set(CalendarMode mode, int year, int month, int day, bool primaryForActionList = false);
     Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);
     Q_INVOKABLE void deleteTimeBlock(const QString& eventId);
     Q_INVOKABLE time_t getDate(int index);
@@ -105,6 +105,7 @@ private:
     void updateToday();
     void setAudioTimers();
     void onAudioEvent();
+    void updateIfPrimary();
 
     bool valid_ = false;
     bool online_ = false;
@@ -120,4 +121,5 @@ private:
     QTimer next_audio_event_;
     const nextapp::pb::CalendarEvent *audio_event_{};
     AudioEventType audio_event_type_{AudioEventType::AE_PRE};
+    bool is_primary_ = false;
 };

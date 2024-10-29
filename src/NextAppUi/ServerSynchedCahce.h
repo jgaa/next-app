@@ -5,6 +5,7 @@
 
 #include "NextAppCore.h"
 #include "logging.h"
+#include "format_wrapper.h"
 
 /*! Server sync helper
  *
@@ -83,7 +84,7 @@ public:
 
     QCoro::Task<bool> synchFromServer()
     {
-        static const QString version_query = QString::fromStdString(format("SELECT MAX(updated) FROM {}", itemName()));
+        static const QString version_query = QString::fromStdString(NA_FORMAT("SELECT MAX(updated) FROM {}", itemName()));
         // Get a stream of updates from servercomm.
         auto& db = NextAppCore::instance()->db();
         const auto last_updated = co_await db.queryOne<qlonglong>(version_query);

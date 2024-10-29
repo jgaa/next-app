@@ -190,7 +190,7 @@ struct ToAction {
             }
         }
 
-        LOG_TRACE << "Assigning action*: " << toJson(obj, 2);
+        //LOG_TRACE << "Assigning action*: " << toJson(obj, 2);
 
         if (obj.status() == pb::ActionStatus::DONE) {
             obj.set_kind(pb::ActionKind::AC_DONE);
@@ -208,8 +208,12 @@ struct ToAction {
         }
 
         if constexpr (std::is_same_v<T, pb::Action>) {
-            obj.set_descr(pb_adapt(row.at(DESCR).as_string()));
-            obj.set_timeestimate(row.at(TIME_ESTIMATE).as_int64());
+            if (row.at(DESCR).is_string()) {
+                obj.set_descr(pb_adapt(row.at(DESCR).as_string()));
+            }
+            if (row.at(TIME_ESTIMATE).is_int64()) {
+                obj.set_timeestimate(row.at(TIME_ESTIMATE).as_int64());
+            }
             *obj.mutable_createddate() = toDate(row.at(CREATED_DATE).as_datetime());
             {
                 pb::ActionDifficulty ad;
@@ -630,8 +634,9 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             const auto& uuid = validatedUuid(req->actionid());
-
+            auto trx = co_await rctx.dbh->transaction();
             co_await owner_.deleteAction(uuid, rctx);
+            co_await trx.commit();
             reply->set_deletedactionid(uuid);
             co_return;
         }, __func__);
@@ -641,8 +646,6 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
     const auto& cuser = rctx.uctx->userUuid();
     const auto dbopts = rctx.uctx->dbOptions();
     const auto uctx = rctx.uctx;
-
-    auto trx = co_await rctx.dbh->transaction();
 
     co_await deleteActionInTimeBlocks(uuid, rctx);
 
@@ -667,21 +670,20 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
         due_timezone=NULL,
         completed_time=NULL,
         time_estimate=NULL,
-        difficulty='diff_normal',
+        difficulty='normal',
         repeat_kind='never',
         repeat_unit='days',
         repeat_when='at_date',
-        category=NULL,
+        repeat_after=0,
+        category=NULL
         WHERE id=? AND user=?)", dbopts, uuid, cuser);
 
-    auto pub = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+    auto& pub = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
     if (auto* action = pub.mutable_action()) {
         co_await getAction(*action, uuid, rctx);
     } else {
         assert(false);
     }
-
-    co_await trx.commit();
 
     assert(res.has_value());
     co_return;
@@ -713,7 +715,7 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
                 co_await replyWithAction(owner_, uuid, rctx, ctx, reply, done);
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
-                reply->set_message(format("Action with id={} was not updated.", uuid));
+                reply->set_message(format("Action with id={} was not updated. affected_rows={}", uuid, res.affected_rows()));
             }
 
             co_await trx.commit();
@@ -1284,17 +1286,24 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
         "select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?",
         orig.id(), rctx.uctx->userUuid());
 
-    // Do the actual delete. There is a potential race-condition here, but it is not a big deal, as it only affect notifications
-    const auto res = co_await rctx.dbh->exec(
-        "DELETE FROM action WHERE id IN (select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?)",
-        orig.id(), rctx.uctx->userUuid());
+    // // Do the actual delete. There is a potential race-condition here, but it is not a big deal, as it only affect notifications
+    // const auto res = co_await rctx.dbh->exec(
+    //     "DELETE FROM action WHERE id IN (select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?)",
+    //     orig.id(), rctx.uctx->userUuid());
 
-    if (res.affected_rows() && dres.has_value()) {
-        for(const auto drow : dres.rows()) {
-            auto id = drow.at(0).as_string();
-            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
-            update.mutable_action()->set_id(pb_adapt(id));
-        }
+    // if (res.affected_rows() && dres.has_value()) {
+    //     for(const auto drow : dres.rows()) {
+    //         auto id = drow.at(0).as_string();
+    //         auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+    //         update.mutable_action()->set_id(pb_adapt(id));
+    //     }
+    // }
+
+    // There should only be at maximum one item in the result set.
+    assert(dres.rows().size() <= 1);
+    for(const auto drow : dres.rows()) {
+        auto id = drow.at(0).as_string();
+        co_await deleteAction(id, rctx);
     }
 
     co_return;

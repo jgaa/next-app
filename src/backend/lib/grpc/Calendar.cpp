@@ -343,7 +343,7 @@ boost::asio::awaitable<void> GrpcServer::deleteActionInTimeBlocks(const std::str
 
     const auto res = co_await rctx.dbh->exec(
         "SELECT tb.id, tb.actions FROM time_block tb JOIN time_block_actions tba ON tba.time_block = tb.id "
-        "WHERE tba.action=? AND tba.user=?",
+        "WHERE tba.action=? AND tb.user=?",
         dbopts, uuid, rctx.uctx->userUuid());
 
     for(const auto& row : res.rows()) {
@@ -370,7 +370,7 @@ boost::asio::awaitable<void> GrpcServer::deleteActionInTimeBlocks(const std::str
                         const auto fres = co_await rctx.dbh->exec(
                             format("SELECT {} FROM time_block WHERE id=? and user=?", ToTimeBlock::columns),
                             dbopts, tb_id, rctx.uctx->userUuid());
-                        if (res.rows().size() == 1) {
+                        if (fres.rows().size() == 1) {
                             auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
                             auto *ev = update.mutable_calendarevents()->add_events();
                             auto *tb = ev->mutable_timeblock();

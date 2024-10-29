@@ -121,6 +121,20 @@ void NextAppCore::emitSettingsChanged() {
     emit settingsChanged();
 }
 
+void NextAppCore::setProperty(const QString &name, const QVariant &value)
+{
+    LOG_TRACE_N << "Setting property " << name;
+    properties_[name] = value;
+    emit propertyChanged(name);
+}
+
+QVariant NextAppCore::getProperty(const QString &name) const noexcept {
+    if (auto it = properties_.find(name); it != properties_.end()) {
+        return it->second;
+    }
+    return {};
+}
+
 time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)
 {
     try {

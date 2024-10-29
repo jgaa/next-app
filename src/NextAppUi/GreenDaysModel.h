@@ -97,6 +97,7 @@ public:
     GreenDaysModel();
 
     static GreenDaysModel* instance() noexcept {
+        assert(instance_);
         return instance_;
     }
 

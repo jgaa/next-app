@@ -11,6 +11,7 @@
 #include "ServerComm.h"
 #include "NextAppCore.h"
 #include "util.h"
+#include "ActionsModel.h"
 
 using namespace std;
 
@@ -99,10 +100,11 @@ CalendarDayModel *CalendarModel::getDayModel(QObject *obj, int index) {
     return dm.get();
 }
 
-void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
+void CalendarModel::set(CalendarMode mode, int year, int month, int day, bool primaryForActionList) {
     const auto was_valid = valid_;
 
     LOG_TRACE_N << "mode_=" << mode_ << " mode=" << mode << " year=" << year << " month=" << month << " day=" << day;
+    is_primary_ = primaryForActionList;
 
     bool need_fetch = false;
 
@@ -120,6 +122,9 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
     case CM_UNSET:
         setValid(false);
         need_fetch = false;
+        if (primaryForActionList) {
+            NextAppCore::instance()->setProperty("primaryForActionList", QDate{});
+        }
         return;
     case CM_DAY:
         first = when;
@@ -147,6 +152,8 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day) {
     if (need_fetch) {
         fetchIf();
     }
+
+    updateIfPrimary();
 }
 
 void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
@@ -506,7 +513,7 @@ void CalendarModel::updateDayModelsDates()
 
 void CalendarModel::alignDates()
 {
-    set(mode_, target_.year(), target_.month(), target_.day());
+    set(mode_, target_.year(), target_.month(), target_.day(), is_primary_);
 }
 
 void CalendarModel::onMinuteTimer()
@@ -645,5 +652,13 @@ void CalendarModel::onAudioEvent()
 
     // Set the timer for the next event
     setAudioTimers();
+}
+
+void CalendarModel::updateIfPrimary()
+{
+    if (is_primary_) {
+        assert(first_ == last_);
+        NextAppCore::instance()->setProperty("primaryForActionList", first_);
+    }
 }
 

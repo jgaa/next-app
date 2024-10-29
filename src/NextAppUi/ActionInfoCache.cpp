@@ -6,6 +6,7 @@
 
 #include "logging.h"
 
+using namespace std;
 using namespace nextapp;
 
 namespace {
@@ -32,14 +33,6 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     }
     due.setTimezone(action.due().timezone());
     ai.setDue(due);
-    // ai.due().setKind(action.due().kind());
-    // if (action.due().hasStart()) {
-    //     ai.due().setStart(action.due().start());
-    // }
-    // if (action.due().hasDue()) {
-    //     ai.due().setDue(action.due().due());
-    // }
-    //ai.due().setTimezone(action.due().timezone());
     ai.setCompletedTime(ai.completedTime());
     ai.setKind(action.kind());
     ai.setCategory(action.category());
@@ -115,10 +108,6 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
         changed = true;
     }
 
-    if (added && cache) {
-        cache->actionWasAdded(it->second);
-    }
-
     return changed;
 }
 
@@ -153,46 +142,120 @@ ActionInfoCache::ActionInfoCache(QObject *parent)
     // }
 }
 
-ActionInfoPrx *ActionInfoCache::getAction(QString uuidStr)
-{
-    auto uuid = toQuid(uuidStr);
-    auto ai = std::make_unique<ActionInfoPrx>(uuid, this);
-
-    if (auto& existing = get_(uuid)) {
-        ai->setAction(existing);
-    } else {
-        fetchFromDb(uuid);
-    }
-
-    QQmlEngine::setObjectOwnership(ai.get(), QQmlEngine::JavaScriptOwnership);
-    return ai.release();
-}
-
-std::shared_ptr<nextapp::pb::ActionInfo> ActionInfoCache::get(const QString &action_uuid, bool doFetch)
+QCoro::Task<std::shared_ptr<pb::ActionInfo> > ActionInfoCache::get(const QString &action_uuid, bool fetch)
 {
     const auto uuid = toQuid(action_uuid);
-    if (auto action = get_(uuid)) {
-        return action;
-    }
-
-    if (doFetch) {
-        fetchFromDb(uuid);
-    }
-
-    return {};
+    co_return co_await get(uuid, fetch);
 }
 
-// void ActionInfoCache::setOnline(bool online) {
-//     if (online_ == online) {
-//         return;
-//     }
-//     online_ = online;
-//     emit onlineChanged();
-// }
-
-void ActionInfoCache::actionWasAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &ai)
+QCoro::Task<std::shared_ptr<pb::ActionInfo> > ActionInfoCache::get(const QUuid &uuid, bool fetch)
 {
-    emit actionReceived(ai);
+    if (auto action = get_(uuid)) {
+        co_return action;
+    }
+
+    if (fetch) {
+        co_await fetchFromDb(uuid);
+        co_return get_(uuid);
+    }
+
+    co_return {};
+}
+
+QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid &action_uuid)
+{
+    auto& db = NextAppCore::instance()->db();
+    DbStore::param_t params;
+    params << action_uuid.toString(QUuid::WithoutBraces);
+
+    QString query = "SELECT id, node, origin, priority, status, favorite, name, created_date, "
+                    " due_kind, start_time, due_by_time, due_timezone, completed_time, "
+                    " time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, "
+                    " descr,"
+                    " kind, version, category FROM action where id=?";
+
+    enum Cols {
+        ID,
+        NODE,
+        ORIGIN,
+        PRIORITY,
+        STATUS,
+        FAVORITE,
+        NAME,
+        CREATED_DATE,
+        DUE_KIND,
+        START_TIME,
+        DUE_BY_TIME,
+        DUE_TIMEZONE,
+        COMPLETED_TIME,
+        TIME_ESTIMATE,
+        DIFFICULTY,
+        REPEAT_KIND,
+        REPEAT_UNIT,
+        REPEAT_WHEN,
+        REPEAT_AFTER,
+        DESCR,
+        KIND,
+        VERSION,
+        CATEGORY
+    };
+
+    auto rval = co_await db.query(query, &params);
+    if (rval && !rval->empty()) {
+        auto& row = rval->front();
+        auto item = make_shared<pb::Action>();
+        const auto id = row[ID].toString();
+        const auto uuid = QUuid{id};
+        if (uuid.isNull()) {
+            LOG_WARN_N << "Invalid UUID: " << id;
+            co_return {};
+        }
+        item->setId_proto(id);
+        item->setNode(row[NODE].toString());
+        item->setOrigin(row[ORIGIN].toString());
+        item->setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
+        item->setStatus(static_cast<nextapp::pb::ActionStatusGadget::ActionStatus>(row[STATUS].toInt()));
+        item->setFavorite(row[FAVORITE].toBool());
+        item->setName(row[NAME].toString());
+        item->setCreatedDate(toDate(row[CREATED_DATE].toDate()));
+        item->setCompletedTime(row[COMPLETED_TIME].toDateTime().toSecsSinceEpoch());
+        if (row[TIME_ESTIMATE].isValid()) {
+            item->setTimeEstimate(row[TIME_ESTIMATE].toLongLong());
+        }
+        if (row[DIFFICULTY].isValid()) {
+            item->setDifficulty(static_cast<nextapp::pb::ActionDifficultyGadget::ActionDifficulty>(row[DIFFICULTY].toInt()));
+        }
+        if (row[REPEAT_KIND].isValid()) {
+            item->setRepeatKind(static_cast<nextapp::pb::Action::RepeatKind>(row[REPEAT_KIND].toInt()));
+        }
+        if (row[REPEAT_UNIT].isValid()) {
+            item->setRepeatUnits(static_cast<nextapp::pb::Action::RepeatUnit>(row[REPEAT_UNIT].toInt()));
+        }
+        if (row[REPEAT_WHEN].isValid()) {
+            item->setRepeatWhen(static_cast<nextapp::pb::Action::RepeatWhen>(row[REPEAT_WHEN].toInt()));
+        }
+        if (row[REPEAT_AFTER].isValid()) {
+            item->setRepeatAfter(row[REPEAT_AFTER].toInt());
+        }
+        if (row[DESCR].isValid()) {
+            item->setDescr(row[DESCR].toString());
+        }
+
+        item->setKind(static_cast<nextapp::pb::ActionKindGadget::ActionKind>(row[KIND].toInt()));
+        item->setVersion(row[VERSION].toUInt());
+        item->setCategory(row[CATEGORY].toString());
+
+
+        nextapp::pb::Due due;
+        due.setKind(static_cast<nextapp::pb:: ActionDueKindGadget::ActionDueKind >(row[DUE_KIND].toInt()));
+        due.setStart(row[START_TIME].toDateTime().toSecsSinceEpoch());
+        due.setDue(row[DUE_BY_TIME].toDateTime().toSecsSinceEpoch());
+        due.setTimezone(row[DUE_TIMEZONE].toString());
+        item->setDue(due);
+
+        co_return item;
+    }
+    co_return {};
 }
 
 QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
@@ -203,21 +266,24 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
         const auto &action = update->action();
         const auto uuid = toQuid(action.id_proto());
         if (deleted) [[unlikely ]] {
+            assert(action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED);
             co_await save(action);
             hot_cache_.erase(uuid);
             emit actionDeleted(uuid);
         } else {
+            assert(action.status() != nextapp::pb::ActionStatusGadget::ActionStatus::DELETED);
             co_await save(action);
-            if (add(hot_cache_, action)) {
-                LOG_TRACE_N << "Action " << action.id_proto() << ' ' << action.name() << " changed.";
-                emit actionChanged(uuid);
-            }
+            const auto changed = add(hot_cache_, action);
             if (update->op() == nextapp::pb::Update::Operation::ADDED) {
+                LOG_TRACE_N << "Action " << action.id_proto() << ' ' << action.name() << " added.";
                 if (auto ai = get_(uuid)) {
                     emit actionAdded(ai);
                 } else {
                     assert(false);
                 }
+            } else if (changed) {
+                LOG_TRACE_N << "Action " << action.id_proto() << ' ' << action.name() << " changed.";
+                emit actionChanged(uuid);
             }
         }
     }
@@ -357,6 +423,8 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
         CATEGORY
     };
 
+    uint count = 0;
+
     auto rval = co_await db.query(query);
     if (rval) {
         for (const auto& row : rval.value()) {
@@ -388,10 +456,11 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
             item.setDue(due);
 
             hot_cache_[uuid] = std::make_shared<nextapp::pb::ActionInfo>(std::move(item));
+            ++count;
         }
     }
 
-    co_return true;
+    co_return count > 0;
 }
 
 std::shared_ptr<GrpcIncomingStream> ActionInfoCache::openServerStream(nextapp::pb::GetNewReq req)
@@ -404,74 +473,33 @@ void ActionInfoCache::clear()
     hot_cache_.clear();
 }
 
-std::shared_ptr<nextapp::pb::ActionInfo> &ActionInfoCache::get_(const QUuid &action_uuid)
+std::shared_ptr<nextapp::pb::ActionInfo> ActionInfoCache::get_(const QUuid &action_uuid)
 {
-    static std::shared_ptr<nextapp::pb::ActionInfo> empty_action;
-    assert(!empty_action);
-
     auto it = hot_cache_.find(action_uuid);
     if (it != hot_cache_.end()) {
         return it->second;
     }
 
-    return empty_action;
+    return {};
 }
 
-QCoro::Task<void> ActionInfoCache::fetchFromDb(QUuid action_uuid)
+QCoro::Task<bool> ActionInfoCache::fetchFromDb(QUuid action_uuid)
 {
     assert(hot_cache_.find(action_uuid) == hot_cache_.end());
-
-    co_await loadSomeFromCache(action_uuid.toString(QUuid::WithoutBraces));
-
-    emit actionChanged(action_uuid);
-}
-
-// void ActionInfoCache::fetch(const QUuid &action_uuid)
-// {
-//     if (pending_fetch_.count(action_uuid)) {
-//         return;
-//     }
-
-// #ifdef _DEBUG
-//     assert(!get_(action_uuid));
-// #endif
-
-//     pending_fetch_.insert(action_uuid);
-
-//     nextapp::pb::GetActionReq req;
-//     req.setUuid(action_uuid.toString(QUuid::WithoutBraces));
-//     ServerComm::instance().getAction(req);
-// }
-
-std::shared_ptr<nextapp::pb::ActionInfo> &ActionInfoCache::get_(const QString &action_uuid)
-{
-    return get_(toQuid(action_uuid));
-}
-
-
-ActionInfoPrx::ActionInfoPrx(QUuid actionUuid, ActionInfoCache *model)
-: uuid_{actionUuid}
-{
-    LOG_TRACE_N << "ActionInfoPrx: " << actionUuid.toString();
-    connect(model, &ActionInfoCache::actionReceived, this, &ActionInfoPrx::setAction);
-    connect(model, &ActionInfoCache::actionDeleted, this, &ActionInfoPrx::actionDeleted);
-    connect(model, &ActionInfoCache::actionChanged, this, &ActionInfoPrx::onActionChanged);
-}
-
-const nextapp::pb::ActionInfo *ActionInfoPrx::getActionInfo(const QUuid &uuid)
-{
-    return action_.get();
-}
-
-void ActionInfoPrx::onActionChanged(const QUuid &uuid) {
-    LOG_TRACE_N << "Action " << uuid.toString() << " changed. My uuid is " << uuid_.toString();
-    if (uuid_ == uuid) {
-        if (!action_) {
-            auto action = ActionInfoCache::instance()->get(uuid_.toString(QUuid::WithoutBraces));
-            if (action) {
-                setAction(std::move(action));
-            }
-        }
-        emit actionChanged();
+    const auto result = co_await loadSomeFromCache(action_uuid.toString(QUuid::WithoutBraces));
+    if (result) {
+        emit actionChanged(action_uuid);
     }
+    co_return result;
+}
+
+std::shared_ptr<nextapp::pb::ActionInfo> ActionInfoCache::get_(const QString &action_uuid)
+{
+    QUuid uuid{action_uuid};
+    if (!uuid.isNull()) [[likely]] {
+        return get_(uuid);
+    }
+
+    LOG_WARN_N << "Invalid UUID: " << action_uuid;
+    return {};
 }

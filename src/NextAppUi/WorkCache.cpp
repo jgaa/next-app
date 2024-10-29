@@ -6,6 +6,7 @@
 #include "WorkCache.h"
 #include "DbStore.h"
 #include "NextAppCore.h"
+#include "format_wrapper.h"
 
 using namespace std;
 
@@ -243,7 +244,7 @@ WorkCache::getWorkSessions(nextapp::pb::GetWorkSessionsReq req)
 
     string sql;
 
-    auto order = format("{} {}",
+    auto order = NA_FORMAT("{} {}",
         req.sortCols() == nextapp::pb::GetWorkSessionsReq::SortCols::FROM_TIME ? "w.start_time" : "w.updated",
         req.sortOrder() == nextapp::pb::SortOrderGadget::SortOrder::ASCENDING ? "ASC" : "DESC");
 
@@ -254,7 +255,7 @@ WorkCache::getWorkSessions(nextapp::pb::GetWorkSessionsReq req)
     }
 
     if (req.hasNodeId()) {
-        sql = format(R"(WITH RECURSIVE node_hierarchy AS (
+        sql = NA_FORMAT(R"(WITH RECURSIVE node_hierarchy AS (
     -- Base case: Select the node with the given UUID
     SELECT uuid
     FROM node
@@ -281,7 +282,7 @@ LIMIT {} OFFSET {})", where, order, limit, offset);
     }
 
     if (sql.empty()) {
-        sql = format(R"(SELECT w.id, w.data FROM work_session w {}
+        sql = NA_FORMAT(R"(SELECT w.id, w.data FROM work_session w {}
 ORDER BY {}
 LIMIT {} OFFSET {})", where, order, limit, offset);
     }

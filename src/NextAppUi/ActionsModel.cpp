@@ -95,6 +95,8 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
             return pb::ActionKindGadget::ActionKind::AC_DONE;
         case a_status_t::ONHOLD:
             return pb::ActionKindGadget::ActionKind::AC_ON_HOLD;
+        case a_status_t::DELETED:
+            return pb::ActionKindGadget::ActionKind::AC_UNSET;
     }
 
     assert(false); // We should probably not get here...
@@ -198,41 +200,6 @@ int findInsertRow(const T& action, const QList<U>& list) {
     return row;
 }
 
-// pb::ActionInfo toActionInfo(const pb::Action& action) {
-//     pb::ActionInfo ai;
-//     ai.setId_proto(action.id_proto());
-//     ai.setNode(action.node());
-//     if (action.hasOrigin()) {
-//         ai.setOrigin(action.origin());
-//     }
-//     ai.setPriority(action.priority());
-//     ai.setStatus(action.status());
-//     ai.setFavorite(action.favorite());
-//     ai.setName(action.name());
-//     ai.setCreatedDate(ai.createdDate());
-//     ai.due().setKind(action.due().kind());
-//     if (action.due().hasStart()) {
-//         ai.due().setStart(action.due().start());
-//     }
-//     if (action.due().hasDue()) {
-//         ai.due().setDue(action.due().due());
-//     }
-//     ai.due().setTimezone(action.due().timezone());
-//     ai.setCompletedTime(ai.completedTime());
-//     ai.setKind(action.kind());
-//     ai.setCategory(action.category());
-//     return ai;
-// }
-
-// void insertAction(QList<pb::ActionInfo>& list, const pb::Action& action, int row) {
-
-//     if (row >= list.size()) {
-//         list.append(toActionInfo(action));
-//     } else {
-//         list.insert(row, toActionInfo(action));
-//     }
-// }
-
 } // anon ns
 
 ActionsModel::ActionsModel(QObject *parent)
@@ -248,11 +215,18 @@ ActionsModel::ActionsModel(QObject *parent)
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ActionsModel::actionChanged);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ActionsModel::actionDeleted);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionAdded, this, &ActionsModel::actionAdded);
-    connect(&ServerComm::instance(), &ServerComm::connectedChanged, this, [this] {
-        fetchIf();
+    // connect(&ServerComm::instance(), &ServerComm::connectedChanged, this, [this] {
+    //     fetchIf();
+    // });
+    connect(NextAppCore::instance(), &NextAppCore::propertyChanged, this, [this](const QString& name) {
+        if (mode_ == FetchWhat::FW_ON_CALENDAR && name == "primaryForActionList") {
+            QMetaObject::invokeMethod(this, [this] {
+                fetchIf();
+            }, Qt::QueuedConnection);
+        }
     });
 
-    fetchIf();
+    //fetchIf();
 }
 
 void ActionsModel::addAction(const nextapp::pb::Action &action)
@@ -297,30 +271,6 @@ void ActionsModel::markActionAsFavorite(const QString &actionUuid, bool favorite
     ServerComm::instance().markActionAsFavorite(actionUuid, favorite);
 }
 
-
-// void ActionsModel::receivedActions(const std::shared_ptr<nextapp::pb::Actions> &actions,
-//                                    bool more, bool first)
-// {
-//     LOG_TRACE_N << "Received " << actions->actions().size() << " actions. More=" << more << ", first=" << first;
-//     if (first) {
-//         pagination_.reset();
-//     }
-//     pagination_.increment(actions->actions().size());
-//     pagination_.more = more;
-
-//     beginResetModel();
-//     if (first) {
-//         actions_ = actions->actions();
-//     } else {
-//         actions_.append(actions_.begin(), actions_.end());
-//     }
-
-//     std::ranges::sort(actions_, [](const auto& left, const auto& right) {
-//         return comparePred(left, right);
-//     });
-//     endResetModel();
-// }
-
 template <typename T, typename U>
 int findCurrentRow(const T& list, const U& key) {
     const QUuid id{key};
@@ -351,78 +301,6 @@ void ActionsModel::receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkS
     for(const auto& session: sessions->sessions()) {
         worked_on_.insert(toQuid(session.action()));
     }
-}
-
-void ActionsModel::doUpdate(const nextapp::pb::Action &action, nextapp::pb::Update::Operation op)
-{
-    // TODO: Re-implement
-
-    // if (op == pb::Update::Operation::ADDED || op == pb::Update::Operation::UPDATED) {
-    //     if (action.node() != MainTreeModel::instance()->selected()) {
-    //         return; // Irrelevant
-    //     }
-    // }
-
-    // switch(op) {
-    // case pb::Update::Operation::ADDED: {
-    // insert_as_new:
-    //     auto row = findInsertRow(action, actions_);
-    //     beginInsertRows({}, row, row);
-    //     insertAction(actions_, action, row);
-    //     endInsertRows();
-    // }
-    // break;
-    // case pb::Update::Operation::MOVED:
-    //     // TODO: Optimize so that we only add/remove the moved node, but adhers to the current selection
-    //     fetchIf(true);
-    //     break;
-    // case pb::Update::Operation::UPDATED: {
-    //     auto row = findInsertRow(action, actions_);
-    //     if (auto currentRow = findCurrentRow(actions_, action.id_proto()) ; currentRow >=0 ) {
-    //         if (actions_.at(currentRow).version() > action.version()) {
-    //             // We have a newer version already. Ignore
-    //             LOG_DEBUG << "Ignoring update of Action " << action.id_proto() << " \"" << action.name()
-    //                       << "\", version " << action.version() << ": we already have a newer version.";
-    //             return;
-    //         }
-
-    //         if (row != currentRow) {
-    //             beginMoveRows({}, currentRow, currentRow, {}, min<int>(row, actions_.size()));
-    //             if (row > currentRow) {
-    //                 --row; // Compensate for the deleted row
-    //             }
-    //             actions_.removeAt(currentRow);
-    //             insertAction(actions_, action, row);
-    //             endMoveRows();
-    //             const auto cix = index(row);
-    //             emit dataChanged(cix, cix);
-    //         } else {
-    //             // Update in place
-    //             auto &crow = actions_[currentRow];
-    //             assert(crow.id_proto() == action.id_proto());
-    //             crow = toActionInfo(action);
-    //             //LOG_TRACE << "Updated action " << action.id_proto() << " \"" << action.name() << "\" in place. favorite=" << crow.favorite();
-    //             const auto cix = index(currentRow);
-    //             emit dataChanged(cix, cix);
-    //         }
-    //     } else {
-    //         // Not found
-    //         LOG_DEBUG << "Did not find updated action  " << action.id_proto() << " \"" << action.name()
-    //                   << "\" in the current list af actions. Inserting it as new.";
-    //         goto insert_as_new;
-    //     }
-    // }
-    // break;
-    // case pb::Update::Operation::DELETED: {
-    //     // The deleted event gives us an empty Action with just the id field containing information.
-    //     if (auto currentRow = findCurrentRow(actions_, action.id_proto()) ; currentRow >=0 ) {
-    //         beginRemoveRows({}, currentRow, currentRow);
-    //         actions_.removeAt(currentRow);
-    //         endRemoveRows();
-    //     }
-    // }
-    // break;
-    // }
 }
 
 // Send a data changed event for the action referenced in the work session.
@@ -537,7 +415,7 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget
 
     switch(dt) {
     case ActionDueKind::DATETIME:
-        return tr("Time") + " " + QString::fromUtf8(std::format("{:%F %R}", zoned));
+        return tr("Time") + " " + QString::fromUtf8(NA_FORMAT("{:%F %R}", zoned));
     case ActionDueKind::DATE: {
             // Check if it is tomorrow
             if (ymd == current_ymd) {
@@ -549,18 +427,18 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget
             }
         }
 
-        return select(format("{:%F}", zoned), tr("Today"), tr("Day"));
+        return select(NA_FORMAT("{:%F}", zoned), tr("Today"), tr("Day"));
     case ActionDueKind::WEEK:
-        return select(format("{:%W %Y}", zoned), tr("This week"), tr("Week"), tr("W"));
+        return select(NA_FORMAT("{:%W %Y}", zoned), tr("This week"), tr("Week"), tr("W"));
     case ActionDueKind::MONTH:
-        return select(std::format("{:%b %Y}", zoned), tr("This month"), tr("Month"));
+        return select(NA_FORMAT("{:%b %Y}", zoned), tr("This month"), tr("Month"));
     case ActionDueKind::QUARTER: {
         const auto month = static_cast<unsigned>(ymd.month());
         const auto quarter = (month - 1) / 3 + 1;
-        return select(std::format("{} {:%Y}", quarter, zoned), tr("This Quarter"), tr("Quarter"), tr("Q"));
+        return select(NA_FORMAT("{} {:%Y}", quarter, zoned), tr("This Quarter"), tr("Quarter"), tr("Q"));
         }
     case ActionDueKind::YEAR:
-            return select(std::format("{:%Y}", zoned), tr("This year"), tr("Year"));
+            return select(NA_FORMAT("{:%Y}", zoned), tr("This year"), tr("Year"));
     case ActionDueKind::UNSET:
         return tr("No due time set");
     }
@@ -1071,7 +949,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     switch(mode_) {
     case FetchWhat::FW_ACTIVE:
         // Fetch all active actions with start-time before tomorrow.
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.start_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.start_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1083,7 +961,7 @@ LIMIT {} OFFSET {})",
     case FetchWhat::FW_TODAY:
         // Only show todays actions and actions completed today.
         // Order by priority and due time
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1094,7 +972,7 @@ LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_TODAY_AND_OVERDUE:
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1104,7 +982,7 @@ LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_TOMORROW:
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1116,7 +994,7 @@ LIMIT {} OFFSET {})",
 
     case FetchWhat::FW_CURRENT_WEEK: {
         // Fetch all active actions with start-time before tomorrow.
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1129,7 +1007,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_NEXT_WEEK: {
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1141,7 +1019,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_CURRENT_MONTH: {
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1153,7 +1031,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_NEXT_MONTH: {
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1165,7 +1043,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_SELECTED_NODE:
-        sql = format(R"(SELECT a.id FROM action a
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a
 JOIN node n ON a.node = n.uuid
 WHERE a.status={} AND n.uuid = ?
 ORDER BY {}
@@ -1178,7 +1056,7 @@ LIMIT {} OFFSET {})",
 
     case FetchWhat::FW_SELECTED_NODE_AND_CHILDREN:
         // This is where ChatGPT shines ;)
-        sql = format(R"(WITH RECURSIVE node_hierarchy AS (
+        sql = NA_FORMAT(R"(WITH RECURSIVE node_hierarchy AS (
     -- Base case: Select the node with the given UUID
     SELECT uuid
     FROM node
@@ -1203,32 +1081,49 @@ LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_FAVORITES:
-        sql = format(R"(SELECT a.id FROM action a WHERE a.favorite = 1 AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.favorite = 1 AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
         break;
 
     case FetchWhat::FW_ON_CALENDAR:
-        // TODO: Implment when we have the calendar in the db
+        // Get the date of the rightside calendar
+        if (auto prop = NextAppCore::instance()->getProperty("primaryForActionList"); prop.isValid()) {
+            auto cal_date = prop.toDate();
+            if (cal_date.isValid()) {
+                sql = NA_FORMAT(R"(SELECT DISTINCT a.id FROM action a
+                    JOIN time_block_actions tba on a.id=tba.action
+                    JOIN time_block tb on tba.time_block=tb.id
+                    WHERE a.status != {}
+                    AND tb.start_time >= ? AND tb.end_time <= ?
+                    ORDER BY {} LIMIT {} OFFSET {})",
+                             static_cast<uint>(a_status_t::DELETED),
+                             sorting.at(sort_),
+                             pagination_.pageSize(), pagination_.nextOffset());
+
+                params << cal_date;
+                params << cal_date.addDays(1);
+            }
+        }
         break;
 
     case FetchWhat::FW_UNASSIGNED:
-        sql = format(R"(SELECT a.id FROM action a WHERE a.due_by_time IS NULL AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.due_by_time IS NULL AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
         break;
 
     case FetchWhat::FW_ON_HOLD:
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ONHOLD),
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
         break;
 
     case FetchWhat::FW_COMPLETED:
-        sql = format(R"(SELECT a.id FROM action a WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::DONE),
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
@@ -1423,47 +1318,31 @@ QMimeData *ActionsModel::mimeData(const QModelIndexList &indexes) const
 }
 
 ActionPrx::ActionPrx(QString actionUuid)
-    : valid_{false}, uuid_{actionUuid}
+    : uuid_{QUuid{actionUuid}}
 {
     if (QUuid{actionUuid}.isNull()) {
         throw runtime_error{"Invalid uuid for action"};
     }
 
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::receivedAction,
-            this,
-            &ActionPrx::receivedAction);
-
-    pb::GetActionReq req;
-    req.setUuid(actionUuid);
-    ServerComm::instance().getAction(req);
+    fetch();
 }
 
+// For a new action
 ActionPrx::ActionPrx()
-    : valid_{true}
+    : state_{State::VALID}
 {
     action_.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
     action_.setDifficulty(nextapp::pb::ActionDifficultyGadget::ActionDifficulty::NORMAL);
 }
 
-void ActionPrx::receivedAction(const nextapp::pb::Status &status)
+QCoro::Task<void> ActionPrx::fetch()
 {
-    if (!valid_) {
-        if (status.hasAction()) {
-            const auto& action = status.action();
-            if (action.id_proto() == uuid_) {
-                valid_ = true;
-                action_ = action;
-                emit actionChanged();
-                emit validChanged();
-                return;
-            }
-        }
-
-        if (status.error() != pb::ErrorGadget::Error::OK) {
-            // TODO: Add uuid to status so we can validate it's the relevant failure
-            // TODO: Make sure that the UI handles the failure to get a action
-            emit actionChanged();
-        }
+    if (auto a = co_await ActionInfoCache::instance()->getAction(uuid_)) {
+        action_ = *a;
+        emit actionChanged();
+        setState(State::VALID);
+    } else {
+        LOG_WARN << "Failed to get action " << uuid_.toString();
+        setState(State::FAILED);
     }
 }

@@ -18,6 +18,7 @@ Rectangle {
     property var when: new Date()
     property int mode: CalendarModel.CM_DAY
     property int days: 1
+    property bool primaryForActionList: false
 
     onVisibleChanged: {
         // console.log("CalendarView: Visible changed to ", visible)
@@ -39,7 +40,7 @@ Rectangle {
     }
 
     function refresh() {
-        root.model.set(root.mode, root.when.getFullYear(), root.when.getMonth() +1, root.when.getDate())
+        root.model.set(root.mode, root.when.getFullYear(), root.when.getMonth() +1, root.when.getDate(), primaryForActionList)
     }
 
     ColumnLayout {

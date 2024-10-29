@@ -129,6 +129,7 @@ if (NOT ANDROID)
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
     target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_85_0)
+
     include(FetchContent)
         FetchContent_Declare(
             android_openssl
@@ -138,6 +139,15 @@ else()
         FetchContent_MakeAvailable(android_openssl)
         set(OPENSSL_INCLUDE "${android_openssl_SOURCE_DIR}/ssl_3/include")
         include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
+
+        FetchContent_Declare(
+          fmt
+          GIT_REPOSITORY https://github.com/fmtlib/fmt
+          GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
+        FetchContent_MakeAvailable(fmt)
+        include_directories(${fmt_SOURCE_DIR}/include)
+        set(FMT_TARGET fmt)
+        set(FMT_DEPS fmt::fmt)
 endif()
 
 set_source_files_properties(qml/Colors.qml
@@ -311,6 +321,7 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
+        format_wrapper.h
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
@@ -356,7 +367,7 @@ else ()
     set(OPEN_SSL_DEPS OpenSSL::SSL OpenSSL::Crypto)
 endif()
 
-add_dependencies(${PROJECT_NAME} logfault NextappGrpcClient NextappProtoMessageLib ${OPENSSL_TARGET})
+add_dependencies(${PROJECT_NAME} logfault NextappGrpcClient NextappProtoMessageLib ${OPENSSL_TARGET} ${FMT_TARGET})
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
@@ -377,6 +388,7 @@ target_link_libraries(${PROJECT_NAME}
         NextappGrpcClient
         NextappProtoMessageLib
         ${OPEN_SSL_DEPS}
+        ${FMT_DEPS}
 )
 
 if(ANDROID)

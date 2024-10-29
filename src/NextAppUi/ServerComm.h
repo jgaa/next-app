@@ -167,8 +167,8 @@ public:
 
     void fetchDay(int year, int month, int day);
 
-    void getActions(nextapp::pb::GetActionsReq &filter);
-    void getAction(nextapp::pb::GetActionReq &req);
+    //void getActions(nextapp::pb::GetActionsReq &filter);
+    //void getAction(nextapp::pb::GetActionReq &req);
     void addAction(const nextapp::pb::Action& action);
     void updateAction(const nextapp::pb::Action& action);
     void deleteAction(const QString& actionUuid);

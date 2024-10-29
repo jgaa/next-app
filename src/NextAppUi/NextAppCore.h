@@ -44,6 +44,8 @@ public:
     static Q_INVOKABLE CalendarModel *createCalendarModel();
     Q_INVOKABLE void openFile(const QString& path);
     Q_INVOKABLE void emitSettingsChanged();
+    Q_INVOKABLE void setProperty(const QString& name, const QVariant& value);
+    Q_INVOKABLE QVariant getProperty(const QString& name) const noexcept;
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
@@ -117,6 +119,7 @@ signals:
     void heightChanged();
     void dragEnabledChanged();
     void settingsChanged();
+    void propertyChanged(const QString& name);
 
 private:
     static NextAppCore *instance_;
@@ -131,4 +134,5 @@ private:
     QTimer audio_play_delay_;
     QString sound_file_;
     double volume_{};
+    std::map<QString, QVariant> properties_;
 };

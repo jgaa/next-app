@@ -12,49 +12,6 @@
 
 #include "ServerSynchedCahce.h"
 
-class ActionInfoCache;
-
-class ActionInfoPrx : public QObject
-{
-    Q_OBJECT
-    QML_ELEMENT
-
-    Q_PROPERTY(nextapp::pb::ActionInfo *action READ getAction NOTIFY actionChanged)
-
-public:
-    ActionInfoPrx(QUuid actionUuid, ActionInfoCache *model);
-
-    const nextapp::pb::ActionInfo* getActionInfo(const QUuid &uuid);
-
-    void setAction(const std::shared_ptr<nextapp::pb::ActionInfo>& action) {
-        action_ = action;
-        emit actionChanged();
-    }
-
-    void actionDeleted(QUuid uuid) {
-        if (uuid_ == uuid) {
-            //valid_ = false;
-            action_.reset();
-            emit actionChanged();
-        }
-    }
-
-    nextapp::pb::ActionInfo *getAction() {
-        return action_.get();
-    }
-
-    void onActionChanged(const QUuid &uuid);
-
-signals:
-    void actionChanged();
-
-private:
-    //bool valid_{true};
-    QUuid uuid_;
-    std::shared_ptr<nextapp::pb::ActionInfo> action_;
-};
-
-
 class ActionInfoCache : public QObject
     , public ServerSynchedCahce<nextapp::pb::Action, ActionInfoCache>
 {
@@ -71,20 +28,18 @@ public:
         return instance_;
     }
 
-    Q_INVOKABLE ActionInfoPrx *getAction(QString uuid);
-
     // Get an entry if it exitst in the cache.
-    std::shared_ptr<nextapp::pb::ActionInfo> get(const QString &action_uuid, bool fetch = false);
+    QCoro::Task<std::shared_ptr<nextapp::pb::ActionInfo>> get(const QString &action_uuid, bool fetch = false);
+    QCoro::Task<std::shared_ptr<nextapp::pb::ActionInfo>> get(const QUuid &uuid, bool fetch = false);
+    QCoro::Task<std::shared_ptr<nextapp::pb::Action>> getAction(const QUuid &action_uuid);
 
     bool online() const noexcept {
         return state() == State::VALID;
     }
 
-    void actionWasAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
-
 signals:
     void actionDeleted(const QUuid &uuid);
-    void actionReceived(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
+    // Added to cache
     void actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
     void actionChanged(const QUuid &uuid);
     void stateChanged();
@@ -113,40 +68,24 @@ public:
     template <typename T>
     QCoro::Task<bool> fill(T& items) {
         for (auto& item : items) {
-            const QUuid& id = item.uuid;
-            if (auto a = get_(id)) {
-                item.action = a;
-                continue;
-            }
-            co_await fetchFromDb(id);
-            if (auto a = get_(id)) {
-                item.action = a;
-            } else {
-                LOG_WARN << "Cannot find action with id: " << id.toString()
-                         << " in the db.";
+            if (item.action = co_await get(item.uuid, true); !item.action) {
+                LOG_WARN << "Cannot find action with id: " << item.uuid.toString();
             }
         }
         co_return true;
     }
 
 private:
-    //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
-    //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
-    //void receivedAction(const nextapp::pb::Status& status);
-
-    std::shared_ptr<nextapp::pb::ActionInfo>& get_(const QString &action_uuid);
-    std::shared_ptr<nextapp::pb::ActionInfo>& get_(const QUuid &action_uuid);
+    std::shared_ptr<nextapp::pb::ActionInfo> get_(const QString &action_uuid);
+    std::shared_ptr<nextapp::pb::ActionInfo> get_(const QUuid &action_uuid);
 
     // Fetches from db and adds to cache. Returns the item from the cache.
-    QCoro::Task<void> fetchFromDb(QUuid action_uuid);
+    QCoro::Task<bool> fetchFromDb(QUuid action_uuid);
 
     static ActionInfoCache *instance_;
 
     /* The idea is to have two caches, one hot with all the items currently used,
      * and one cold with the most recent items organized as a LRU cache.
-     * In time we should probably add a third cache in a local sqlite database and
-     * keep it syncronized with the server.
      */
     std::map<QUuid, std::shared_ptr<nextapp::pb::ActionInfo>> hot_cache_;
-    //std::set<QUuid> pending_fetch_;
 };
