@@ -27,7 +27,7 @@ Dialog {
     }
 
     ColumnLayout {
-        enabled: ActionCategoriesModel.valid
+        enabled: NaAcModel.valid
         id: list
         anchors.fill: parent
 
@@ -37,7 +37,7 @@ Dialog {
 
         ListView {
             id: listCtl
-            model: ActionCategoriesModel
+            model: NaAcModel
             Layout.fillHeight: true
             Layout.fillWidth: true
             clip: true

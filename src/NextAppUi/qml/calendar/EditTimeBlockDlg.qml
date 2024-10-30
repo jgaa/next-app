@@ -133,7 +133,7 @@ Dialog {
                     Rectangle {
                         height: nameCtl.implicitHeight
                         width: 10
-                        color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(category) : "transparent"
+                        color: NaAcModel.valid ? NaAcModel.getColorFromUuid(category) : "transparent"
                         //radius: 5
                     }
 

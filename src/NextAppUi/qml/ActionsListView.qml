@@ -18,13 +18,13 @@ Rectangle {
 
     onVisibleChanged: {
         //console.log("ActionsView visible changed to", root.visible)
-        ActionsModel.isVisible = root.visible
+        NaActionsModel.isVisible = root.visible
     }
 
     // onVisibleChanged is not called when the view is part of the initial view stack
     Component.onCompleted: {
         //console.log("ActionsView completed")
-        ActionsModel.isVisible = root.visible
+        NaActionsModel.isVisible = root.visible
     }
 
     Connections {
@@ -33,10 +33,10 @@ Rectangle {
             if (root.visible) {
                 //console.log("ActionsListView: Tree selection changed to", NaMainTreeModel.selected)
                 if (NaMainTreeModel.selected != ""
-                        && ActionsModel.mode !== ActionsModel.FW_SELECTED_NODE
-                        && ActionsModel.mode !== ActionsModel.FW_SELECTED_NODE_AND_CHILDREN) {
-                    selectionCtl.currentIndex = ActionsModel.FW_SELECTED_NODE
-                    ActionsModel.mode = ActionsModel.FW_SELECTED_NODE
+                        && NaActionsModel.mode !== NaActionsModel.FW_SELECTED_NODE
+                        && NaActionsModel.mode !== NaActionsModel.FW_SELECTED_NODE_AND_CHILDREN) {
+                    selectionCtl.currentIndex = NaActionsModel.FW_SELECTED_NODE
+                    NaActionsModel.mode = NaActionsModel.FW_SELECTED_NODE
                 }
             }
         }
@@ -57,7 +57,7 @@ Rectangle {
                 spacing: 6
                 StyledComboBox {
                     id: selectionCtl
-                    currentIndex: ActionsModel.mode
+                    currentIndex: NaActionsModel.mode
                     Layout.preferredWidth: 220
                     model: ListModel {
                         ListElement { text: qsTr("Active") }
@@ -79,7 +79,7 @@ Rectangle {
 
                     onActivated: (ix) => {
                         // console.log("Selection changed to", ix)
-                        ActionsModel.mode = ix
+                        NaActionsModel.mode = ix
                     }
                 }
 
@@ -93,7 +93,7 @@ Rectangle {
 
                 StyledComboBox {
                     id: sortingCtl
-                    currentIndex: ActionsModel.sort
+                    currentIndex: NaActionsModel.sort
                     Layout.preferredWidth: 220
                     model: ListModel {
                         ListElement { text: qsTr("Default") }
@@ -110,7 +110,7 @@ Rectangle {
 
                     onActivated: (ix) => {
                         // console.log("Sorting changed to", ix)
-                        ActionsModel.sort = ix
+                        NaActionsModel.sort = ix
                     }
                 }
             }
@@ -132,7 +132,7 @@ Rectangle {
 
         onApply: {
             // console.log("Filter applied")
-            ActionsModel.filter = filter.filter
+            NaActionsModel.filter = filter.filter
         }
     }
 }

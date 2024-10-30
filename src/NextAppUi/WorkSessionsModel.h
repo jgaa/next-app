@@ -26,7 +26,6 @@ class WorkSessionsModel : public WorkModelBase
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_SINGLETON
 
 
     enum Roles {

@@ -22,7 +22,7 @@ Popup {
 
     onVisibleChanged: {
         if (visible) {
-            flags = ActionsModel.flags
+            flags = NaActionsModel.flags
             done.isChecked = flags.done
             active.isChecked = flags.active
             unscheduled.isChecked = flags.unscheduled
@@ -70,7 +70,7 @@ Popup {
                     popup.flags.unscheduled = unscheduled.isChecked
                     //popup.flags.upcoming = upcoming.isChecked
 
-                    ActionsModel.flags = flags
+                    NaActionsModel.flags = flags
                     popup.close()
                 }
             }

@@ -256,7 +256,7 @@ Dialog {
 
                         onCurrentIndexChanged: {
                             if (currentIndex >= 0) {
-                                whenControl.due = ActionsModel.changeDue(currentIndex, whenControl.due)
+                                whenControl.due = NaActionsModel.changeDue(currentIndex, whenControl.due)
                             }
                         }
                     }
@@ -610,9 +610,9 @@ Dialog {
         }
 
         if (root.action.id_proto !== "") { // edit
-            ActionsModel.updateAction(root.action)
+            NaActionsModel.updateAction(root.action)
         } else {
-            ActionsModel.addAction(root.action)
+            NaActionsModel.addAction(root.action)
         }
 
         close()

@@ -259,7 +259,7 @@ ApplicationWindow {
         openDialog("EditActionDlg.qml", {
             node: mainTree.selectedItemUuid,
             title: qsTr("New Action"),
-            aprx: ActionsModel.getAction("")
+            aprx: NaActionsModel.getAction("")
         });
     }
 

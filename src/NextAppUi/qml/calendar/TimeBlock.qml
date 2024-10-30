@@ -113,7 +113,7 @@ Rectangle {
 
     Rectangle {
         id: cat
-        color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(root.category) : "transparent"
+        color: NaAcModel.valid ? NaAcModel.getColorFromUuid(root.category) : "transparent"
         width: expandAreaTop.width
         height: parent.height
         radius: 5
@@ -195,7 +195,7 @@ Rectangle {
                     Rectangle {
                         height: nameCtl.implicitHeight
                         width: 10
-                        color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(category) : "transparent"
+                        color: NaAcModel.valid ? NaAcModel.getColorFromUuid(category) : "transparent"
                         //radius: 5
                     }
 

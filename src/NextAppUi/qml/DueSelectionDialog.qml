@@ -57,7 +57,7 @@ Popup {
 
         Button {
             id: btn1
-            text: ActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.DATETIME)
+            text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.DATETIME)
             Layout.fillWidth: true
             onClicked: {
                 maybeDueType = NextappPB.ActionDueKind.DATETIME
@@ -68,7 +68,7 @@ Popup {
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.DATE)
+            text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.DATE)
             Layout.fillWidth: true
             onClicked: {
                 maybeDueType = NextappPB.ActionDueKind.DATE
@@ -79,7 +79,7 @@ Popup {
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.WEEK)
+            text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.WEEK)
             Layout.fillWidth: true
             onClicked: {
                 maybeDueType = NextappPB.ActionDueKind.WEEK
@@ -90,7 +90,7 @@ Popup {
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.MONTH)
+            text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.MONTH)
             Layout.fillWidth: true
             onClicked: {
                 maybeDueType = NextappPB.ActionDueKind.MONTH
@@ -101,7 +101,7 @@ Popup {
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.QUARTER)
+            text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.QUARTER)
             Layout.fillWidth: true
             onClicked: {
                 maybeDueType = NextappPB.ActionDueKind.QUARTER
@@ -112,7 +112,7 @@ Popup {
         }
 
         Button {
-            text: ActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.YEAR)
+            text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.YEAR)
             Layout.fillWidth: true
             onClicked: {
                 maybeDueType = NextappPB.ActionDueKind.YEAR
@@ -149,7 +149,7 @@ Popup {
 
         onSelectedDateClosed: (date, accepted) => {
             if (accepted) {
-                due = ActionsModel.adjustDue(date.getTime() / 1000, maybeDueType);
+                due = NaActionsModel.adjustDue(date.getTime() / 1000, maybeDueType);
                 selectionChanged(due)
             }
 

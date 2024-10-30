@@ -82,7 +82,6 @@ class ActionsModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_SINGLETON
 
     struct Pagination {
         unsigned next_offset{};
@@ -265,6 +264,7 @@ private:
     Pagination pagination_;
     Sorting sort_{SORT_DEFAULT};
     QDate current_calendar_date_;
+    bool valid_{false};
 
     // QAbstractItemModel interface
 public:

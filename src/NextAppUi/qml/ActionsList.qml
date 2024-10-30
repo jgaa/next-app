@@ -31,7 +31,7 @@ Rectangle {
                 Text {
                     leftPadding: 10
                     id: label
-                    text: ActionsModel.toName(parent.section)
+                    text: NaActionsModel.toName(parent.section)
                     font.bold: true
                     color: MaterialDesignStyling.onPrimaryContainer
                     anchors.verticalCenter: parent.verticalCenter
@@ -64,7 +64,7 @@ Rectangle {
                 delegate: sectionHeading
             }
 
-            model: ActionsModel
+            model: NaActionsModel
 
             delegate: Item {
                 id: actionItem
@@ -176,7 +176,7 @@ Rectangle {
                             uncheckedColor: "orange"
 
                             onClicked: {
-                                ActionsModel.markActionAsDone(uuid, isChecked)
+                                NaActionsModel.markActionAsDone(uuid, isChecked)
                             }
 
                             Text {
@@ -194,7 +194,7 @@ Rectangle {
                         Rectangle {
                             width: 12
                             height: 20
-                            color: ActionCategoriesModel.valid ? ActionCategoriesModel.getColorFromUuid(actionItem.category) : "lightgray"
+                            color: NaAcModel.valid ? NaAcModel.getColorFromUuid(actionItem.category) : "lightgray"
                             visible: actionItem.category !== ""
                         }
 
@@ -222,7 +222,7 @@ Rectangle {
                             text: ""
 
                             onClicked: {
-                                ActionsModel.markActionAsFavorite(uuid, !favorite)
+                                NaActionsModel.markActionAsFavorite(uuid, !favorite)
                             }
                         }
 
@@ -239,7 +239,7 @@ Rectangle {
                             autoToggle: false
 
                             onClicked: {
-                                WorkSessionsModel.startWork(uuid)
+                                NaWorkSessionsModel.startWork(uuid)
                             }
                         }
                     }
@@ -307,7 +307,7 @@ Rectangle {
             text: qsTr("Start Work Session")
             icon.source: "../icons/fontawsome/clock.svg"
             onTriggered: {
-                WorkSessionsModel.startWork(contextMenu.uuid)
+                NaWorkSessionsModel.startWork(contextMenu.uuid)
             }
         }
         Action {
@@ -342,7 +342,7 @@ Rectangle {
         text: qsTr("Note that any sub-items and all related information, including worked time, etc. will also be deleted! This action can not be undone.")
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: {
-           ActionsModel.deleteAction(uuid)
+           NaActionsModel.deleteAction(uuid)
            confirmDelete.close()
         }
 
@@ -355,15 +355,15 @@ Rectangle {
         Common.openDialog("EditActionDlg.qml", root, {
             node: NaMainTreeModel.selected,
             title: qsTr("Edit Action"),
-            aprx: ActionsModel.getAction(uuid)
+            aprx: NaActionsModel.getAction(uuid)
         });
     }
 
     function openAddWorkDialog(uuid, name) {
         Common.openDialog("EditWorkSession.qml", root, {
-            ws: WorkSessionsModel.createSession(uuid, name),
+            ws: NaWorkSessionsModel.createSession(uuid, name),
             title: qsTr("Add Work Session"),
-            model: WorkSessionsModel
+            model: NaWorkSessionsModel
         });
     }
 }

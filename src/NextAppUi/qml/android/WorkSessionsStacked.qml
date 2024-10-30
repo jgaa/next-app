@@ -24,7 +24,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             id: workSessionList
-            model: WorkSessionsModel
+            model: NaWorkSessionsModel
         }
 
         GridLayout {
@@ -34,9 +34,9 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== ""
                 onClicked: {
                     if (workSessionList.selectedIsActive) {
-                        WorkSessionsModel.pause(workSessionList.selectedItem)
+                        NaWorkSessionsModel.pause(workSessionList.selectedItem)
                     } else {
-                        WorkSessionsModel.resume(workSessionList.selectedItem)
+                        NaWorkSessionsModel.resume(workSessionList.selectedItem)
                     }
                 }
             }
@@ -47,7 +47,7 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {
-                    WorkSessionsModel.done(workSessionList.selectedItem)
+                    NaWorkSessionsModel.done(workSessionList.selectedItem)
                 }
             }
 
@@ -57,7 +57,7 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {
-                    WorkSessionsModel.finishAction(workSessionList.selectedItem)
+                    NaWorkSessionsModel.finishAction(workSessionList.selectedItem)
                 }
             }
 
@@ -67,7 +67,7 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {
-                    WorkSessionsModel.touch(workSessionList.selectedItem)
+                    NaWorkSessionsModel.touch(workSessionList.selectedItem)
                 }
             }
         }

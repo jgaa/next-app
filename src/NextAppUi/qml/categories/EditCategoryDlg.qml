@@ -14,7 +14,7 @@ Dialog {
     width: Math.min(600, NaCore.width, Screen.width)
     height: Math.min(800, NaCore.height - 100, Screen.height)
     standardButtons: Dialog.Ok
-    property NextappPB.actionCategory actionCategory: ActionCategoriesModel.get(-1)
+    property NextappPB.actionCategory actionCategory: NaAcModel.get(-1)
 
     function enableSave(enable) {
         if (enable) {
@@ -48,7 +48,7 @@ Dialog {
         anchors.fill: parent
         rowSpacing: 4
         columns: 2
-        enabled: ActionCategoriesModel.valid
+        enabled: NaAcModel.valid
 
         Label {
             text: qsTr("Category Name")
@@ -107,9 +107,9 @@ Dialog {
             actionCategory.descr = descrtiption.text
 
             if (actionCategory.id_proto === "") {
-                ActionCategoriesModel.createCategory(actionCategory)
+                NaAcModel.createCategory(actionCategory)
             } else {
-                ActionCategoriesModel.updateCategory(actionCategory)
+                NaAcModel.updateCategory(actionCategory)
             }
         }
     }

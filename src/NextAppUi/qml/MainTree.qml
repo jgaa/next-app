@@ -296,7 +296,7 @@ Rectangle {
 
                                 var uuid = drop.getDataAsString("text/app.nextapp.action")
                                 var currNode = drop.getDataAsString("text/app.nextapp.curr.node")
-                                drop.accepted = ActionsModel.moveToNode(uuid, treeDelegate.uuid)
+                                drop.accepted = NaActionsModel.moveToNode(uuid, treeDelegate.uuid)
                                 return
                             }
 
@@ -437,7 +437,7 @@ Rectangle {
         openDialog("EditActionDlg.qml", {
             node: parentNode.uuid,
             title: qsTr("New action"),
-            aprx: ActionsModel.getAction("")
+            aprx: NaActionsModel.getAction("")
         });
     }
 

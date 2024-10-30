@@ -765,12 +765,12 @@ bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid
 
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
-    return actions_.size();
+    return valid_ ? actions_.size() : 0;
 }
 
 QVariant ActionsModel::data(const QModelIndex &index, int role) const
 {
-    if (!index.isValid()) {
+    if (!valid_ || !index.isValid()) {
         return {};
     }
 
@@ -780,6 +780,10 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     }
 
     auto& data = actions_.at(row);
+    if (!data.action) {
+        LOG_WARN_N << "Missing action at row " << row;
+        return {};
+    }
     assert(data.action);
 
     const auto& action = *data.action;
@@ -905,7 +909,7 @@ bool ActionsModel::canFetchMore(const QModelIndex &parent) const
 {
     LOG_DEBUG_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
               << ", page = " << pagination_.page;
-    return isVisible() && pagination_.hasMore();
+    return valid_ ? (isVisible() && pagination_.hasMore()) : false;
 }
 
 QCoro::Task<void> ActionsModel::fetchIf(bool restart)
@@ -923,8 +927,9 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
         "a.completed_time DESC",
     });
 
+    valid_ = false;
     beginResetModel();
-    ScopedExit reset_model([this] {
+    ScopedExit reset_model([&] {
         endResetModel();
     });
 
@@ -1152,6 +1157,7 @@ LIMIT {} OFFSET {})",
 
         pagination_.more = result->size() == pagination_.pageSize();
         pagination_.increment(result->size());
+        valid_ = true;
 
     } else {
         LOG_ERROR << "Failed to query actions from local db";

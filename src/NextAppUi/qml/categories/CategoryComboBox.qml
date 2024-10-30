@@ -8,7 +8,7 @@ import nextapp.pb as NextappPB
 
 ComboBox {
     id: root
-    model: ActionCategoriesModel
+    model: NaAcModel
     textRole: "name"
     property string uuid: ""
     currentIndex: -1

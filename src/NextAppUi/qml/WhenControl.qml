@@ -13,7 +13,7 @@ Item {
 
     Button {
         id: btn
-        //text: ActionsModel.formatWhen(when, dueType)
+        //text: NaActionsModel.formatWhen(when, dueType)
         icon.source: "../icons/fontawsome/calendar.svg"
         icon.color: "blue"
         width: parent.width
@@ -29,7 +29,7 @@ Item {
                 }
 
                 Text {
-                    text: ActionsModel.formatDue(root.due)
+                    text: NaActionsModel.formatDue(root.due)
                     verticalAlignment: Text.AlignVCenter
                     font: btn.font // Inherit font from Button
                 }

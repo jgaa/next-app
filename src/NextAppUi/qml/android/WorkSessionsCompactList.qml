@@ -26,7 +26,7 @@ Rectangle {
                 selectedItem = ""
                 selectedIsActive = false
             } else {
-                selectedIsActive = WorkSessionsModel.isActive(selectedItem)
+                selectedIsActive = NaWorkSessionsModel.isActive(selectedItem)
             }
         }
     }
@@ -185,7 +185,7 @@ Rectangle {
         text: qsTr("Note that any worked time, etc. for this session will also be deleted! This action can not be undone.")
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: {
-           WorkSessionsModel.deleteWork(uuid)
+           NaWorkSessionsModel.deleteWork(uuid)
            confirmDelete.close()
         }
 

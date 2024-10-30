@@ -18,6 +18,10 @@
 #include "ActionInfoCache.h"
 #include "ActionCategoriesModel.h"
 #include "TimeBoxActionsModel.h"
+#include "ActionCategoriesModel.h"
+#include "ActionsModel.h"
+#include "GreenDaysModel.h"
+#include "WorkSessionsModel.h"
 #include "nextapp.qpb.h"
 
 #include "logging.h"
@@ -184,8 +188,12 @@ int main(int argc, char *argv[])
 
     NextAppCore core;
     ServerComm comms;
+    ActionCategoriesModel ac_model;
     ActionInfoCache ai_cache;
     MainTreeModel main_tree;
+    ActionsModel actions_model;
+    GreenDaysModel green_days;
+    WorkSessionsModel work_sessions;
 
     auto& engine = NextAppCore::engine();
 
@@ -195,8 +203,12 @@ int main(int argc, char *argv[])
 
     qmlRegisterSingletonInstance<NextAppCore>("Nextapp.Models", 1, 0, "NaCore", &core);
     qmlRegisterSingletonInstance<ServerComm>("Nextapp.Models", 1, 0, "NaComm", &comms);
+    qmlRegisterSingletonInstance<ActionCategoriesModel>("Nextapp.Models", 1, 0, "NaAcModel", &ac_model);
     qmlRegisterSingletonInstance<ActionInfoCache>("Nextapp.Models", 1, 0, "NaAiCache", &ai_cache);
     qmlRegisterSingletonInstance<MainTreeModel>("Nextapp.Models", 1, 0, "NaMainTreeModel", &main_tree);
+    qmlRegisterSingletonInstance<ActionsModel>("Nextapp.Models", 1, 0, "NaActionsModel", &actions_model);
+    qmlRegisterSingletonInstance<GreenDaysModel>("Nextapp.Models", 1, 0, "NaGreenDaysModel", &green_days);
+    qmlRegisterSingletonInstance<WorkSessionsModel>("Nextapp.Models", 1, 0, "NaWorkSessionsModel", &work_sessions);
 
 #ifdef WITH_TREE_MODEL_TESTING
     new QAbstractItemModelTester{&main_tree, QAbstractItemModelTester::FailureReportingMode::Fatal, &engine};

@@ -22,7 +22,7 @@ Rectangle {
             Layout.preferredWidth: 800
             Layout.minimumWidth: 300
             id: workSessionList
-            model: WorkSessionsModel
+            model: NaWorkSessionsModel
         }
 
         // Right buttons
@@ -38,7 +38,7 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== "" && workSessionList.selectedIsActive
 
                 onClicked: {
-                    WorkSessionsModel.pause(workSessionList.selectedItem)
+                    NaWorkSessionsModel.pause(workSessionList.selectedItem)
                 }
             }
 
@@ -48,7 +48,7 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {
-                    WorkSessionsModel.touch(workSessionList.selectedItem)
+                    NaWorkSessionsModel.touch(workSessionList.selectedItem)
                 }
             }
 
@@ -58,7 +58,7 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== "" && !workSessionList.selectedIsActive
 
                 onClicked: {
-                    WorkSessionsModel.resume(workSessionList.selectedItem)
+                    NaWorkSessionsModel.resume(workSessionList.selectedItem)
                 }
             }
 
@@ -68,7 +68,7 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {
-                    WorkSessionsModel.done(workSessionList.selectedItem)
+                    NaWorkSessionsModel.done(workSessionList.selectedItem)
                 }
             }
 
@@ -78,7 +78,7 @@ Rectangle {
                 enabled: workSessionList.selectedItem !== ""
 
                 onClicked: {
-                    WorkSessionsModel.finishAction(workSessionList.selectedItem)
+                    NaWorkSessionsModel.finishAction(workSessionList.selectedItem)
                 }
             }
 
@@ -108,7 +108,7 @@ Rectangle {
                 let uuid = drop.getDataAsString("text/app.nextapp.calendar.event")
                 // console.log("WorkSessionsViewDropped calendar event ", uuid, " at x=", drop.x, ", y=", drop.y)
 
-                WorkSessionsModel.addCalendarEvent(uuid)
+                NaWorkSessionsModel.addCalendarEvent(uuid)
                 drop.accepted = true
             }
         }

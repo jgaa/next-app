@@ -18,7 +18,6 @@ class NextAppCore : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
-    //QML_SINGLETON
 
     Q_PROPERTY(QString qtVersion READ qtVersion CONSTANT)
     Q_PROPERTY(bool isMobile READ isMobile CONSTANT)

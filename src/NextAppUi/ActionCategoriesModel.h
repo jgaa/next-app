@@ -13,7 +13,6 @@ class ActionCategoriesModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_SINGLETON
 
     enum Roles {
         NameRole = Qt::UserRole + 1,
