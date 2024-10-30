@@ -19,7 +19,7 @@ Rectangle {
     property string selectedItemUuid: NaMainTreeModel.selected
     property bool hasSelection: selectedItemUuid !== ""
 
-    // color: MaterialDesignStyling.surface
+    color: MaterialDesignStyling.surface
 
     ColumnLayout {
         anchors.fill: parent
@@ -48,6 +48,20 @@ Rectangle {
 
                     function onUseRootChanged() {
                         console.log("onUseRootChanged: Tree Model was reset. It has ", treeView.model.rowCount(), " items")
+                        treeView.expandRecursively(-1, 2)
+                    }
+
+                    function onValidChanged() {
+                        console.log("onValidChanged: Tree Model was reset. It has ", treeView.model.rowCount(), " items")
+                        if (treeView.model.valid) {
+                            treeView.expandRecursively(-1, 2)
+                        }
+                    }
+                }
+
+                onVisibleChanged: {
+                    if (visible) {
+                        console.log("TreeView visible")
                         treeView.expandRecursively(-1, 2)
                     }
                 }

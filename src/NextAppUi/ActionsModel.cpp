@@ -927,14 +927,26 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
         "a.completed_time DESC",
     });
 
-    valid_ = false;
-    beginResetModel();
+    bool started_reset = false;
+
     ScopedExit reset_model([&] {
-        endResetModel();
+        if (started_reset) {
+            endResetModel();
+        }
     });
+
+    auto start_reset = [&] {
+        if (!started_reset) {
+            beginResetModel();
+            started_reset = true;
+        }
+    };
 
     if (restart) {
         pagination_.reset();
+        actions_.clear();
+        valid_ = false;
+        start_reset();
     }
 
     if (!isVisible() ) {
@@ -1146,9 +1158,10 @@ LIMIT {} OFFSET {})",
         }
 
         // Send the list to the cache to fill in the data-pointers
-        auto cache = ActionInfoCache::instance()->fill(new_actions);
+        co_await ActionInfoCache::instance()->fill(new_actions);
 
         // Insert or replace the new list depending on it's page.
+        start_reset();
         if (pagination_.isFirstPage()) {
             actions_ = std::move(new_actions);
         } else {
@@ -1158,10 +1171,12 @@ LIMIT {} OFFSET {})",
         pagination_.more = result->size() == pagination_.pageSize();
         pagination_.increment(result->size());
         valid_ = true;
-
     } else {
         LOG_ERROR << "Failed to query actions from local db";
         pagination_.more = false;
+        valid_ = false;
+        start_reset();
+        actions_.clear();
     }
 }
 
