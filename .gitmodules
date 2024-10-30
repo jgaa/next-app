@@ -16,6 +16,3 @@
 [submodule "dependencies/yahat-cpp"]
 	path = dependencies/yahat-cpp
 	url = https://github.com/jgaa/yahat-cpp.git
-[submodule "dependencies/fmt"]
-	path = dependencies/fmt
-	url = https://github.com/fmtlib/fmt.git
