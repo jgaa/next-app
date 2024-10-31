@@ -111,6 +111,8 @@ public:
         return *db_;
     }
 
+    void showSyncPopup(bool visible);
+
 signals:
     void allBaseModelsCreated();
     void onlineChanged(bool online);
@@ -124,6 +126,8 @@ private:
     static NextAppCore *instance_;
     QGuiApplication *app_{qApp};
     std::unique_ptr<DbStore> db_;
+    std::unique_ptr<QQmlComponent> sync_popup_component_;
+    QObject* sync_popup_{} ;
 
     int height_{0};
     int width_{0};

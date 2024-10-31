@@ -1,8 +1,13 @@
 #include "NextAppCore.h"
-#include <QDateTime>
-#include <QQmlEngine>
+
 #include <CalendarModel.h>
+#include <QDateTime>
 #include <QDesktopServices>
+#include <QQmlApplicationEngine>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickWindow>
 
 #include "WeeklyWorkReportModel.h"
 #include "util.h"
@@ -236,6 +241,28 @@ void NextAppCore::setDragEnabled(bool drag_enabled) {
     LOG_TRACE_N << "Drag enabled: " << drag_enabled;
     drag_enabled_ = drag_enabled;
     emit dragEnabledChanged();
+}
+
+void NextAppCore::showSyncPopup(bool visible)
+{
+    if (visible && !sync_popup_component_) {
+        sync_popup_component_ = make_unique<QQmlComponent>(&engine(), QUrl(QStringLiteral("qrc:/qt/qml/NextAppUi/qml/SynchPopup.qml")));
+        auto* sync_popup_ = sync_popup_component_->create();
+    }
+
+    //assert(sync_popup_ != nullptr);
+    if (!sync_popup_) {
+        LOG_WARN_N << "Sync popup not created";
+        return;
+    }
+    auto * rootObject = engine().rootObjects().first();
+
+    if (QQuickWindow *window = qobject_cast<QQuickWindow*>(rootObject)) {
+        if (QQuickItem* item = qobject_cast<QQuickItem*>(sync_popup_)) {
+            item->setParentItem(window->contentItem());
+            sync_popup_->setProperty("visible", visible);
+        }
+    }
 }
 
 

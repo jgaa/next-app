@@ -1194,7 +1194,13 @@ failed:
         stop();
         co_return;
     }
+
     setStatus(Status::INITIAL_SYNC);
+
+    NextAppCore::instance()->showSyncPopup(true);
+    ScopedExit hide_popup_on_exit{[] {
+        NextAppCore::instance()->showSyncPopup(false);
+    }};
 
     res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetServerInfo);
 
@@ -1256,7 +1262,7 @@ failed:
         goto failed;
     }
 
-    LOG_DEBUG_N << "Fetching work csessions...";
+    LOG_DEBUG_N << "Fetching work sessions...";
     if (!co_await WorkCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get work sessions.";
         goto failed;

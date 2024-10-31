@@ -6,7 +6,7 @@ add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-set(SERVER_ADDRESS "http://127.0.0.1:10101" CACHE STRING "Default address to signup server")
+set(SERVER_ADDRESS "https://signup.ws.dev.next-app.org:10322" CACHE STRING "Default address to signup server")
 add_definitions("-DSERVER_ADDRESS=\"${SERVER_ADDRESS}\"")
 
 option(NEXTAPP_WITH_TREE_MODEL_TESTING "Enable ongoing tests for the MainTreeModel" OFF)
@@ -238,6 +238,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/StyledComboBox.qml
         qml/StyledHeaderView.qml
         qml/StyledTabButton.qml
+        qml/SynchPopup.qml
         qml/WeeklyHoursView.qml
         qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
