@@ -5,6 +5,7 @@ import QtQuick.Effects
 import QtQuick.Dialogs
 import NextAppUi
 import nextapp.pb as NextappPB
+import Nextapp.Models
 
 ComboBox {
     id: root

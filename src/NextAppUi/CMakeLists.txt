@@ -14,7 +14,15 @@ if (NEXTAPP_WITH_TREE_MODEL_TESTING)
     add_definitions(-DWITH_TREE_MODEL_TESTING)
 endif()
 
+option(USE_STATIC_QT "Build with static Qt libraries" OFF)
 option(WITH_TESTS "Enable Tests" ON)
+
+if(USE_STATIC_QT)
+    set(BUILD_SHARED_LIBS OFF)
+else()
+    set(BUILD_SHARED_LIBS ON)
+endif()
+
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT ON)
@@ -34,8 +42,12 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+#set(QT6_IS_SHARED_LIBS_BUILD OFF)
+if(USE_STATIC_QT)
+    # Use target_compile_definitions instead of add_definitions for modern CMake
+    add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
+endif()
 
-set(QT6_IS_SHARED_LIBS_BUILD OFF)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Grpc Concurrent Test Multimedia Sql)
 
@@ -52,6 +64,36 @@ qt_policy(
 )
 
 qt_standard_project_setup()
+
+if(USE_STATIC_QT)
+    set(FFMPEG_MEDIAPLUGIN_LIB "${CMAKE_PREFIX_PATH}/plugins/multimedia/libffmpegmediaplugin.a")
+    find_package(FFMPEG REQUIRED)
+    message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
+
+    # There is a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
+    set(OPTIMIZED_FFMPEG_LIBRARIES "")
+    set(NEXT_IS_OPTIMIZED FALSE)
+    foreach(item IN LISTS FFMPEG_LIBRARIES)
+        if(item STREQUAL "optimized")
+            set(NEXT_IS_OPTIMIZED TRUE)
+        elseif(item STREQUAL "debug")
+            set(NEXT_IS_OPTIMIZED FALSE)
+        else()
+            if(NEXT_IS_OPTIMIZED)
+                list(APPEND OPTIMIZED_FFMPEG_LIBRARIES "${item}")
+            endif()
+        endif()
+    endforeach()
+
+
+    # Print the optimized libraries for verification
+    message(STATUS "Optimized Libraries: ${OPTIMIZED_FFMPEG_LIBRARIES}")
+
+    set(Boost_USE_STATIC_LIBS ON)
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+    find_package(Threads REQUIRED)
+endif()
+
 
 set(QCORO_BUILD_EXAMPLES OFF)
 set(QCORO_BUILD_TESTING OFF)
@@ -124,8 +166,14 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 if (NOT ANDROID)
-    find_package(Boost REQUIRED)
-    find_package(OpenSSL REQUIRED)
+    find_package(Boost CONFIG REQUIRED)
+    #find_package(OpenSSL CONFIG REQUIRED)
+
+    find_package(OpenSSL CONFIG QUIET)
+    if(NOT OpenSSL_FOUND)
+        find_package(OpenSSL REQUIRED)
+    endif()
+
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
     target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_85_0)
@@ -369,8 +417,28 @@ endif()
 
 add_dependencies(${PROJECT_NAME} logfault NextappGrpcClient NextappProtoMessageLib ${OPENSSL_TARGET} ${FMT_TARGET})
 
+if(USE_STATIC_QT)
+    qt_import_plugins(${PROJECT_NAME}
+    #qt6_import_qt_plugins(${PROJECT_NAME}
+        PLUGINS
+            ffmpegmediaplugin
+            qxcb
+            # Other plugins as required
+        STATIC
+    )
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        QT_MULTIMEDIA_PLUGIN=ffmpeg
+        QT_QPA_STATIC
+        )
+endif()
+
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
+        NextappGrpcClient
+        NextappProtoMessageLib
+        QCoro6::Core
+        QCoro6::Qml
+        QCoro6::Quick
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
@@ -382,14 +450,13 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Test
         Qt6::Multimedia
         Qt6::Sql
-        QCoro6::Core
-        QCoro6::Qml
-        QCoro6::Quick
-        NextappGrpcClient
-        NextappProtoMessageLib
+        $<$<BOOL:${USE_STATIC_QT}>:${FFMPEG_MEDIAPLUGIN_LIB}>
+        $<$<BOOL:${USE_STATIC_QT}>:${OPTIMIZED_FFMPEG_LIBRARIES}>
+        $<$<BOOL:${USE_STATIC_QT}>:dl>
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}
 )
+
 
 if(ANDROID)
     target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)

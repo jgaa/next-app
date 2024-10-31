@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
 #ifdef _DEBUG
         "trace";
 #else
-        "info";
+        "debug";
 #endif
     QGuiApplication app(argc, argv);
 
@@ -91,12 +91,17 @@ int main(int argc, char *argv[])
     } else {
         QGuiApplication::setOrganizationName("TheLastViking");
     }
+
+    QString app_name = "nextapp";
 #ifdef DEVEL_SETTINGS
-        QGuiApplication::setApplicationName("nextapp-devel");
-#else
-    QGuiApplication::setApplicationName("nextapp");
+    app_name = "nextapp-devel";
 #endif
 
+    if (const auto* org = getenv("NEXTAPP_NAME")) {
+        app_name = org;
+    }
+
+    QGuiApplication::setApplicationName(app_name);
     QGuiApplication::setApplicationVersion(NEXTAPP_VERSION);
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/NextAppUi/icons/nextapp.svg"));
 

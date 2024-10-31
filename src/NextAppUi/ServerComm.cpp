@@ -1167,7 +1167,18 @@ QCoro::Task<void> ServerComm::startNextappSession()
 {
     LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
 
+    QSettings settings;
     session_id_.clear();
+
+    if (settings.value("sync/resync", "false") == "true") {
+        LOG_WARN << "Resyncing from the server. Will delete the local cache.";
+
+        // Clear the local cache.
+        co_await NextAppCore::instance()->db().clear();
+
+        settings.setValue("sync/resync", "false");
+    }
+
     setStatus(Status::CONNECTING);
     nextapp::pb::Empty req;
     auto res = co_await rpc(req, &nextapp::pb::Nextapp::Client::Hello);
@@ -1209,16 +1220,19 @@ failed:
     connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
 
     // Do the initial synch.
+    LOG_DEBUG_N << "Fetching data versions...";
     if (!co_await getDataVersions()) {
         LOG_WARN_N << "Failed to get data versions.";
         goto failed;
     }
 
+    LOG_DEBUG_N << "Fetching global settings...";
     if (!co_await getGlobalSetings()) {
         LOG_WARN_N << "Failed to get global settings.";
         goto failed;
     }
 
+    LOG_DEBUG_N << "Fetching green days...";
     if (!co_await GreenDaysModel::instance()->synchFromServer()) {
         LOG_WARN_N << "Failed to get green days.";
         goto failed;

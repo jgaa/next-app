@@ -20,6 +20,7 @@ Item {
         settings.setValue("logging/path", logPath.text)
         settings.setValue("logging/level", uiStyle.currentIndex.toString())
         settings.setValue("logging/prune", prune.checked ? "true" : "false")
+        settings.setValue("sync/resync", resync.checked ? "true" : "false")
         settings.sync()
     }
 
@@ -67,6 +68,17 @@ Item {
             id: prune
             text: qsTr("Prune log when starting")
             checked: settings.value("logging/prune") == "true"
+        }
+
+        Label {
+            text: qsTr("Clear cache")
+            color: "red"
+        }
+
+        CheckBox {
+            id: resync
+            text: qsTr("Do a full re-synch when connecting to the server")
+            checked: settings.value("sync/resync") === "true"
         }
 
         Item {

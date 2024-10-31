@@ -259,14 +259,19 @@ QCoro::Task<bool>  GreenDaysModel::synchFromServer()
 
 QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
 {
+    LOG_DEBUG_N << "Synching colors from server";
     nextapp::pb::GetNewReq req;
     auto& db = NextAppCore::instance()->db();
+
+    LOG_DEBUG_N << "Getting last updated";
     const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day_colors");
 
     if (last_updated) {
+        LOG_DEBUG_N << "Setting last updated " << last_updated.value();
         req.setSince(last_updated.value());
     }
 
+    LOG_DEBUG_N << "Caling getNewDayColorDefinitions";
     auto res = co_await ServerComm::instance().getNewDayColorDefinitions(req);
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasDayColorDefinitions()) {
@@ -298,26 +303,34 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
             }
         }
 
+        LOG_DEBUG_N << "Return true";
         co_return true;
     }
 
+    LOG_DEBUG_N << "Return false end";
     co_return false;
 }
 
 QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
 {
     // Get a stream of updates from servercomm.
+    LOG_DEBUG_N << "Synching days from server";
     nextapp::pb::GetNewReq req;
     auto& db = NextAppCore::instance()->db();
+
+    LOG_TRACE_N << "Getting last updated";
     const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day");
 
     if (last_updated) {
+        LOG_TRACE_N << "Setting last updated " << last_updated.value();
         req.setSince(last_updated.value());
     }
+
+    LOG_TRACE_N << "Calling synchGreenDays";
     auto stream = ServerComm::instance().synchGreenDays(req);
 
     bool looks_ok = false;
-    LOG_TRACE_N << "Entering message-loop";
+    LOG_DEBUG_N << "Entering message-loop";
     while (auto update = co_await stream->next<nextapp::pb::Status>()) {
         LOG_TRACE_N << "next returned something";
         if (update.has_value()) {
@@ -344,6 +357,7 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
         }
     }
 
+    LOG_DEBUG_N << "End of message-loop. Returns true";
     co_return true;
 }
 

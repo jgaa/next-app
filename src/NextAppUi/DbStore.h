@@ -57,6 +57,9 @@ public:
         }
     }
 
+    // Re-create the database. Deletes all the data.
+    QCoro::Task<bool> clear();
+
     void queryImpl(const QString& sql, const param_t *params, QPromise<rval_t> *promise);
 
 signals:
@@ -71,14 +74,16 @@ signals:
 
 private:
     void start();
+    void createDbObject();
     void initImpl(QPromise<rval_t>& promise);
     bool updateSchema(uint version);
     uint getDbVersion();
 
     QThread* thread_{};
-    QSqlDatabase *db_{};
+    std::unique_ptr<QSqlDatabase> db_;
     bool ready_{false};
     QString data_dir_;
+    QString db_path_;
     std::mutex mutex_;
 };
 

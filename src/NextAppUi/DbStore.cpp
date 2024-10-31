@@ -53,9 +53,16 @@ void DbStore::start() {
         }
     }
 
+    createDbObject();
+    connect(this, &DbStore::doQuery, this, &DbStore::queryImpl, Qt::QueuedConnection);
+    emit initialized();
+}
+
+void DbStore::createDbObject()
+{
     LOG_TRACE_N << "Initializing db store";
 
-    db_ = new QSqlDatabase{QSqlDatabase::addDatabase("QSQLITE")};
+    db_ = make_unique<QSqlDatabase>(QSqlDatabase::addDatabase("QSQLITE"));
     data_dir_ = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     LOG_INFO << "Using data dir: " << data_dir_;
     if (!QFile::exists(data_dir_)) {
@@ -63,15 +70,18 @@ void DbStore::start() {
         if (!QDir{}.mkpath(data_dir_)) {
             LOG_ERROR << "Failed to create database directory: " << data_dir_;
             emit error(GENERIC_ERROR);
+            assert(false);
             return;
         }
     }
-    auto db_path = data_dir_ + "/db.sqlite";
 
-    db_->setDatabaseName(db_path);
+    db_path_ = data_dir_ + "/db.sqlite";
+
+    db_->setDatabaseName(db_path_);
     if (!db_->open()) {
-        LOG_ERROR << "Failed to open database: \"" << db_path << "\", error=" << db_->lastError().text();
+        LOG_ERROR << "Failed to open database: \"" << db_path_ << "\", error=" << db_->lastError().text();
         emit error(GENERIC_ERROR);
+        assert(false);
         return;
     }
 
@@ -84,10 +94,8 @@ void DbStore::start() {
 
     if (!updateSchema(version)) {
         // TODO: Do something!
+        assert(false);
     }
-
-    connect(this, &DbStore::doQuery, this, &DbStore::queryImpl, Qt::QueuedConnection);
-    emit initialized();
 }
 
 QCoro::Task<DbStore::rval_t> DbStore::query(const QString &sql, const QList<QVariant> *params)
@@ -103,6 +111,22 @@ QCoro::Task<DbStore::rval_t> DbStore::query(const QString &sql, const QList<QVar
     auto future = promise.future();
 
     co_return co_await qCoro(future).takeResult();
+}
+
+QCoro::Task<bool> DbStore::clear()
+{
+    LOG_INFO_N << "Clearing the database. All data will be deleted.";
+    db_->close();
+    db_.reset();
+
+    // delete the file pointed to by db_path
+    QFile file(db_path_);
+    if (!file.remove()) {
+        LOG_WARN << "Failed to remove database file: " << db_path_;
+    }
+
+    createDbObject();
+    co_return true;
 }
 
 void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QPromise<rval_t> *promise)
