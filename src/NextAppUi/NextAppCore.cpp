@@ -82,7 +82,8 @@ int NextAppCore::weekFromDate(const QDateTime &date)
 WorkModel *NextAppCore::createWorkModel()
 {
     auto model = make_unique<WorkModel>();
-    QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
+    //QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
+    QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::CppOwnership);
     return model.release();
 }
 
@@ -213,19 +214,13 @@ time_t NextAppCore::parseHourMin(const QString &str)
 QCoro::Task<void> NextAppCore::modelsAreCreated()
 {
     LOG_INFO << "All models are created. Starting to initialize NextappCore...";
-    db_->init();
+    co_await db_->init();
     bool emitted = false;
 
-    connect(&engine(), &QQmlApplicationEngine::objectCreated, [&](QObject *object, const QUrl &url) {
-        LOG_TRACE << "QQmlApplicationEngine loaded " << url.toDisplayString();
-
-        if (!emitted) {
-            emit allBaseModelsCreated();
-            emitted = true;
-            if (ServerComm::instance().status() == ServerComm::Status::READY_TO_CONNECT) {
-                LOG_DEBUG << "Starting server-comm...";
-                ServerComm::instance().start();
-            }
+    QTimer::singleShot(100ms, this, [this] {
+        if (ServerComm::instance().status() == ServerComm::Status::READY_TO_CONNECT) {
+            LOG_DEBUG << "Starting server-comm...";
+            ServerComm::instance().start();
         }
     });
 

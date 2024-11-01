@@ -48,14 +48,7 @@ public:
         co_return vals.error();
     }
 
-    void init() {
-        // Once called, the database will be initialized in the worker thread.
-        if constexpr (use_worker_thread) {
-            mutex_.unlock();
-        } else {
-            start();
-        }
-    }
+    QCoro::Task<bool> init();
 
     // Re-create the database. Deletes all the data.
     QCoro::Task<bool> clear();

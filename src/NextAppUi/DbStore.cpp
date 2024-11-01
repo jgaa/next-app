@@ -14,6 +14,8 @@
 #include "qcorofuture.h"
 #include <QSqlError>
 #include <QSqlRecord>
+#include "qcorosignal.h"
+
 
 #include "DbStore.h"
 
@@ -111,6 +113,19 @@ QCoro::Task<DbStore::rval_t> DbStore::query(const QString &sql, const QList<QVar
     auto future = promise.future();
 
     co_return co_await qCoro(future).takeResult();
+}
+
+QCoro::Task<bool> DbStore::init() {
+    // Once called, the database will be initialized in the worker thread.
+    if constexpr (use_worker_thread) {
+        mutex_.unlock();
+        //co_await
+    } else {
+        start();
+    }
+
+    // TODO: Handle errors
+    co_return true;
 }
 
 QCoro::Task<bool> DbStore::clear()
