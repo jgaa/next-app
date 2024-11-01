@@ -12,35 +12,12 @@
 using namespace std;
 using namespace nextapp;
 
-// GreenDayModel::GreenDayModel(uint day, uint month, uint year, GreenDaysModel *parent)
-//     : QObject{parent}, day_{day}, month_{month}, year_{year}
-// {
-//     assert(parent);
-// }
-
-// GreenDaysModel &GreenDayModel::parent()
-// {
-//     auto *p = QObject::parent();
-//     assert(p);
-//     return dynamic_cast<GreenDaysModel&>(*p);
-// }
-
 GreenDaysModel *GreenDaysModel::instance_;
 
 GreenDaysModel::GreenDaysModel()
 {
     instance_ = this;
     years_to_cache_.emplace(QDate::currentDate().year());
-
-    // connect(std::addressof(ServerComm::instance()),
-    //         &ServerComm::receivedDayColorDefinitions,
-    //         this,
-    //         &GreenDaysModel::fetchedColors);
-
-    // connect(std::addressof(ServerComm::instance()),
-    //         &ServerComm::receivedMonth,
-    //         this,
-    //         &GreenDaysModel::fetchedMonth);
 
     connect(std::addressof(ServerComm::instance()),
             &ServerComm::onUpdate,
@@ -86,7 +63,9 @@ GreenMonthModel *GreenDaysModel::getMonth(int year, int month)
         fetchMonth(year, month);
     }
 
-    return new GreenMonthModel(year, month, *this);
+    auto *mm  = new GreenMonthModel(year, month, *this);
+    //QQmlEngine::setObjectOwnership(mm, QQmlEngine::CppOwnership);
+    return mm;
 }
 
 std::optional<GreenDaysModel::ColorDef> GreenDaysModel::getDayColor(const QUuid &uuid) const

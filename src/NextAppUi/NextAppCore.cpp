@@ -56,8 +56,6 @@ NextAppCore::NextAppCore() {
         // TODO: Connect to server
 
     });
-
-    db_->init();
 }
 
 
@@ -210,6 +208,28 @@ time_t NextAppCore::parseHourMin(const QString &str)
     }
 
     return -1;
+}
+
+QCoro::Task<void> NextAppCore::modelsAreCreated()
+{
+    LOG_INFO << "All models are created. Starting to initialize NextappCore...";
+    db_->init();
+    bool emitted = false;
+
+    connect(&engine(), &QQmlApplicationEngine::objectCreated, [&](QObject *object, const QUrl &url) {
+        LOG_TRACE << "QQmlApplicationEngine loaded " << url.toDisplayString();
+
+        if (!emitted) {
+            emit allBaseModelsCreated();
+            emitted = true;
+            if (ServerComm::instance().status() == ServerComm::Status::READY_TO_CONNECT) {
+                LOG_DEBUG << "Starting server-comm...";
+                ServerComm::instance().start();
+            }
+        }
+    });
+
+    co_return;
 }
 
 QQmlApplicationEngine &NextAppCore::engine()

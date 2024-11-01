@@ -34,6 +34,7 @@ using namespace std;
 ostream& operator << (ostream&o, const ServerComm::Status& v) {
     static constexpr auto names = to_array<string_view>({
         "OFFLINE",
+        "READY_TO_CONNECT"
         "CONNECTING",
         "INITIAL_SYNC",
         "ONLINE",
@@ -93,7 +94,7 @@ ServerComm::ServerComm()
             LOG_DEBUG << "Auto-login is enabled. Starting the server comm...";
             signup_status_ = SignupStatus::SIGNUP_OK;
             emit signupStatusChanged();
-            start();
+            setStatus(Status::READY_TO_CONNECT);
         }
     } else {
         LOG_WARN << "Server address is unset.";
@@ -125,6 +126,12 @@ ServerComm::~ServerComm()
 
 void ServerComm::start()
 {
+    LOG_DEBUG_N << "starting server-comm.";
+
+    ScopedExit log{[] {
+        LOG_DEBUG << "exiting ServerComm::start()";
+    }};
+
     QSettings settings;
     // TODO: Clear the uuid and let the server decide the session-id.
     //       We can't change the channel medatada with QT gRPC, so we have to wait until

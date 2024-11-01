@@ -124,7 +124,10 @@ ApplicationWindow {
                 //anchors.fill: parent
                 currentIndex: sidebar.currentMainItem
 
-                DaysInYear {}
+                DaysInYear {
+                    // Layout.fillWidth: true
+                    // Layout.fillHeight: true
+                }
 
                 SplitView {
                     // Orange

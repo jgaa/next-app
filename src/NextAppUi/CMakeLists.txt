@@ -217,8 +217,8 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/CommonElements.qml
         qml/CurrentWorkSessionsView.qml
         qml/DatePicker.qml
-        qml/DayDialog.qml
-        qml/DaysInYear.qml
+        qml/greendays/DayDialog.qml
+        qml/greendays/DaysInYear.qml
         qml/DisabledDimmer.qml
         qml/DlgInputField.qml
         qml/DueSelectionDialog.qml
@@ -371,6 +371,8 @@ qt_add_qml_module(${PROJECT_NAME}
         util.cpp
         util.h
         format_wrapper.h
+        QML_FILES qml/greendays/GdQuarter.qml
+        QML_FILES qml/greendays/GdMonth.qml
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)

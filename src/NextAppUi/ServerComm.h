@@ -61,6 +61,7 @@ class ServerComm : public QObject
 public:
     enum Status {
         OFFLINE,
+        READY_TO_CONNECT,
         CONNECTING,
         INITIAL_SYNC,
         ONLINE,

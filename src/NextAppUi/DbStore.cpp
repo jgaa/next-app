@@ -308,8 +308,13 @@ bool DbStore::updateSchema(uint version)
         v1_bootstrap,
     });
 
-    LOG_INFO << "Will upgrade the database structure from version " << version
-             << " to version " << latest_version;
+    if (version == latest_version) {
+        LOG_INFO << "The local database is at the current schema #" << version;
+        return true;
+    }
+
+    LOG_INFO << "Will upgrade the database schema from #" << version
+             << " to #" << latest_version;
 
     // Here we will run all SQL queries for upgrading from the specified version to the current version.
     auto relevant = ranges::drop_view(versions, version);

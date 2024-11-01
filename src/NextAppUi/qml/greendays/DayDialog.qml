@@ -28,7 +28,7 @@ Dialog {
         // console.log("Report is ", model.report)
 
         // if (valid && !colorts_initialized) {
-        //     //select.currentIndex = DayColorModel.getIndexForColorUuid(model.colorUuid)
+        //     //select.currentIndex = NaDayColorModel.getIndexForColorUuid(model.colorUuid)
         // }
     }
 
@@ -43,8 +43,8 @@ Dialog {
         Label { text: qsTr("Day Color") }
         ComboBox {
             id: select
-            model: DayColorModel.names
-            currentIndex: dayDlg.model.valid ? DayColorModel.getIndexForColorUuid(dayDlg.model.colorUuid) : -1
+            model: NaDayColorModel.names
+            currentIndex: dayDlg.model.valid ? NaDayColorModel.getIndexForColorUuid(dayDlg.model.colorUuid) : -1
 
             delegate: ItemDelegate {
                 width: parent.width
@@ -98,7 +98,7 @@ Dialog {
     }
 
     onAccepted: {
-        model.colorUuid = DayColorModel.getUuid(select.currentIndex)
+        model.colorUuid = NaDayColorModel.getUuid(select.currentIndex)
         model.notes = notes.text
         model.report = report.text
         model.commit();

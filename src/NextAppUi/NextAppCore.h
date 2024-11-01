@@ -84,9 +84,7 @@ public:
         emit onlineChanged(online);
     }
 
-    void modelsAreCreated() {
-        emit allBaseModelsCreated();
-    }
+    QCoro::Task<void> modelsAreCreated();
 
     static NextAppCore *instance() {
         assert(instance_ != nullptr);

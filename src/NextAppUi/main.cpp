@@ -75,8 +75,8 @@ int main(int argc, char *argv[])
 {
     //qRegisterProtobufTypes();
 
-    volatile auto registration = &qml_register_types_nextapp_pb;
-    Q_UNUSED(registration);
+    // volatile auto registration = &qml_register_types_nextapp_pb;
+    // Q_UNUSED(registration);
     std::string log_level_qt =
 #ifdef _DEBUG
         "trace";
@@ -166,6 +166,8 @@ int main(int argc, char *argv[])
             }
         }
 
+        LOG_INFO << app_name << ' ' << NEXTAPP_VERSION << " starting up.";
+
 #ifdef USE_ANDROID_UI
         if (style.empty()) {
             style = "Material";
@@ -188,30 +190,35 @@ int main(int argc, char *argv[])
         }
     }
 
-    nextapp::pb::Nextapp::Client cli{&app};
-    auto info = cli.GetServerInfo({});
+    // nextapp::pb::Nextapp::Client cli{&app};
+    // auto info = cli.GetServerInfo({});
 
+    LOG_TRACE_N << "Constructing static models...";
     NextAppCore core;
     ServerComm comms;
     ActionCategoriesModel ac_model;
     ActionInfoCache ai_cache;
     MainTreeModel main_tree;
     ActionsModel actions_model;
+    DayColorModel day_colors;
     GreenDaysModel green_days;
     WorkSessionsModel work_sessions;
 
+    LOG_TRACE_N << "Constructing QMLApplicatioonEngine...";
     auto& engine = NextAppCore::engine();
 
-
+    LOG_TRACE_N << "Registering types...";
     qRegisterMetaType<ActionCategoriesModel*>("ActionCategoriesModel*");
     qRegisterMetaType<TimeBoxActionsModel*>("TimeBoxActionsModel*");
 
+    LOG_TRACE_N << "Registering static models for QML...";
     qmlRegisterSingletonInstance<NextAppCore>("Nextapp.Models", 1, 0, "NaCore", &core);
     qmlRegisterSingletonInstance<ServerComm>("Nextapp.Models", 1, 0, "NaComm", &comms);
     qmlRegisterSingletonInstance<ActionCategoriesModel>("Nextapp.Models", 1, 0, "NaAcModel", &ac_model);
     qmlRegisterSingletonInstance<ActionInfoCache>("Nextapp.Models", 1, 0, "NaAiCache", &ai_cache);
     qmlRegisterSingletonInstance<MainTreeModel>("Nextapp.Models", 1, 0, "NaMainTreeModel", &main_tree);
     qmlRegisterSingletonInstance<ActionsModel>("Nextapp.Models", 1, 0, "NaActionsModel", &actions_model);
+    qmlRegisterSingletonInstance<DayColorModel>("Nextapp.Models", 1, 0, "NaDayColorModel", &day_colors);
     qmlRegisterSingletonInstance<GreenDaysModel>("Nextapp.Models", 1, 0, "NaGreenDaysModel", &green_days);
     qmlRegisterSingletonInstance<WorkSessionsModel>("Nextapp.Models", 1, 0, "NaWorkSessionsModel", &work_sessions);
 
@@ -221,37 +228,33 @@ int main(int argc, char *argv[])
 
     string_view main_qml = "qrc:/qt/qml/NextAppUi/Main.qml";
 #if defined(__ANDROID__) || defined(USE_ANDROID_UI)
-    // Code specific to Android
     qputenv("QT_QUICK_CONTROLS_STYLE", "Material");
     main_qml = "qrc:/qt/qml/NextAppUi/qml/android/main.qml";
 #endif
 
     LOG_INFO << "Loading main QML file: " << main_qml;
-    //engine.loadFromModule("NextAppUi", main_qml);
     engine.addImportPath("qrc:/qt/qml/NextAppUi/qml");
     engine.load(QUrl{QString::fromUtf8(main_qml)});
     if (engine.rootObjects().isEmpty()) {
-        qWarning() << "Failed to initialize engine!";
+        LOG_ERROR_N << "Failed to initialize QML engine!";
         return -1;
-    }
-
-    {
-        auto colors = engine.singletonInstance<DayColorModel*>("NextAppUi","DayColorModel");
-        assert(colors);
-        colors->start();
     }
 
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,
         &app,
-        []() { QCoreApplication::exit(-1); },
+        []() {
+            LOG_ERROR_N << "Failed to create QML UI!";
+            QCoreApplication::exit(-1);
+        },
         Qt::QueuedConnection);
+
+    LOG_INFO << "Device supports OpenSSL: " << QSslSocket::supportsSsl();
 
     NextAppCore::instance()->modelsAreCreated();
 
-    qDebug() << "Device supports OpenSSL: " << QSslSocket::supportsSsl();
-
+    LOG_DEBUG_N << "Handing the main thread over to QT";
     auto ret = app.exec();
 
     if (auto server_comm =  engine.singletonInstance<ServerComm*>(

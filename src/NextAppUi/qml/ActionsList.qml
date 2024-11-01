@@ -10,7 +10,7 @@ import "common.js" as Common
 
 Rectangle {
     id: root
-    anchors.fill: parent
+    //anchors.fill: parent
     property string selectedItemUuid: NaMainTreeModel.selected
     property var priorityColors: ["magenta", "red", "orangered", "orange", "green", "blue", "lightblue", "gray"]
     property var statusIcons: ["\uf058", "\uf111", "\uf0c8"]

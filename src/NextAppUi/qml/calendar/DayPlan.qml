@@ -248,7 +248,7 @@ Rectangle {
         }
         contentItem: ColumnLayout {
             spacing: 10
-            anchors.fill: timeboxPopup
+            anchors.fill: parent
 
             Item {
                 Layout.fillWidth: true
