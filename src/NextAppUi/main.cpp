@@ -200,8 +200,8 @@ int main(int argc, char *argv[])
     ActionInfoCache ai_cache;
     MainTreeModel main_tree;
     ActionsModel actions_model;
-    DayColorModel day_colors;
     GreenDaysModel green_days;
+    DayColorModel day_colors;
     WorkSessionsModel work_sessions;
 
     LOG_TRACE_N << "Constructing QMLApplicatioonEngine...";

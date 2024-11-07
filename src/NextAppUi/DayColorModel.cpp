@@ -11,10 +11,6 @@ using namespace std;
 DayColorModel::DayColorModel(QObject *parent)
     : QObject{parent}
 {
-}
-
-void DayColorModel::start()
-{
     connect(GreenDaysModel::instance(),
             &GreenDaysModel::dayColorsChanged,
             this,

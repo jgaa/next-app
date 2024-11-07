@@ -4,26 +4,13 @@ Build the docker-image for static QT.
 
 ```sh
 
-docker build -t qt-static .
+./build-nextapp.sh
 
 ```
 
-To build NextApp, I use this manual steps at the moment.
-
-```sh
-
-docker run -v {$HOME}/src/next-app/:/next-app:ro --rm --name qt-static -it qt-static
-
-adduser build
-
-su - build
-mkdir build
-cd build
-
-cmake /next-app/src/NextAppUi  -DCMAKE_PREFIX_PATH=/opt/qt-static   -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake   -DVCPKG_TARGET_TRIPLET=x64-linux-static  -DUSE_STATIC_QT=ON -DQT_QMAKE_EXECUTABLE:FILEPATH=/opt/qt-static/bin/qmake -DVCPKG_TARGET_TRIPLET=x64-linux && VERBOSE=1 cmake --build . -j
-
-```
-
-This build the nextapp app for Linux, but unfortunately, it crashes if I start it
-under Ubuntu Noble. I'll fix that when time allows it.
+This will build a docker container with QT built statically under
+Ununtu 24.04 (Noble), and then build the nextapp QT app from the locally
+checked out source code. The container ends up at about ~23GB and takes about 30
+minutes to build on my workstation. The statically built `nextapp` Linux *AMD64* binary
+is about 180MB.
 

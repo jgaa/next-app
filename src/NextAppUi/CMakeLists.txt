@@ -17,11 +17,12 @@ endif()
 option(USE_STATIC_QT "Build with static Qt libraries" OFF)
 option(WITH_TESTS "Enable Tests" ON)
 
-if(USE_STATIC_QT)
-    set(BUILD_SHARED_LIBS OFF)
-else()
-    set(BUILD_SHARED_LIBS ON)
-endif()
+# if(USE_STATIC_QT)
+#     set(BUILD_SHARED_LIBS OFF)
+#     set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib .so .dll)
+# else()
+#     set(BUILD_SHARED_LIBS ON)
+# endif()
 
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -70,27 +71,34 @@ if(USE_STATIC_QT)
     find_package(FFMPEG REQUIRED)
     message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
 
-    # There is a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
-    set(OPTIMIZED_FFMPEG_LIBRARIES "")
-    set(NEXT_IS_OPTIMIZED FALSE)
-    foreach(item IN LISTS FFMPEG_LIBRARIES)
-        if(item STREQUAL "optimized")
-            set(NEXT_IS_OPTIMIZED TRUE)
-        elseif(item STREQUAL "debug")
-            set(NEXT_IS_OPTIMIZED FALSE)
-        else()
-            if(NEXT_IS_OPTIMIZED)
-                list(APPEND OPTIMIZED_FFMPEG_LIBRARIES "${item}")
-            endif()
-        endif()
-    endforeach()
+    # There is some tiemes a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
+    if("optimized" IN_LIST FFMPEG_LIBRARIES)
+        set(OPTIMIZED_FFMPEG_LIBRARIES "")
+        set(NEXT_IS_OPTIMIZED FALSE)
 
+        foreach(item IN LISTS FFMPEG_LIBRARIES)
+            if(item STREQUAL "optimized")
+                set(NEXT_IS_OPTIMIZED TRUE)
+            elseif(item STREQUAL "debug")
+                set(NEXT_IS_OPTIMIZED FALSE)
+            else()
+                if(NEXT_IS_OPTIMIZED)
+                    list(APPEND OPTIMIZED_FFMPEG_LIBRARIES "${item}")
+                endif()
+            endif()
+        endforeach()
+    else()
+        # If "optimized" is not found, use FFMPEG_LIBRARIES directly
+        set(OPTIMIZED_FFMPEG_LIBRARIES "${FFMPEG_LIBRARIES}")
+    endif()
 
     # Print the optimized libraries for verification
     message(STATUS "Optimized Libraries: ${OPTIMIZED_FFMPEG_LIBRARIES}")
 
     set(Boost_USE_STATIC_LIBS ON)
     set(OPENSSL_USE_STATIC_LIBS TRUE)
+    set(BUILD_SHARED_LIBS OFF)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib .so .dll)
     find_package(Threads REQUIRED)
 endif()
 
@@ -453,6 +461,9 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Test
         Qt6::Multimedia
         Qt6::Sql
+        Qt6::QJpegPlugin
+        # QT insists on linking FFMPEG_MEDIAPLUGIN_LIB after the ffmpeg libraries it depends on,
+        # which don't work with static linking. So we have to add it manually before it's dependencies.
         $<$<BOOL:${USE_STATIC_QT}>:${FFMPEG_MEDIAPLUGIN_LIB}>
         $<$<BOOL:${USE_STATIC_QT}>:${OPTIMIZED_FFMPEG_LIBRARIES}>
         $<$<BOOL:${USE_STATIC_QT}>:dl>

@@ -3,11 +3,12 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
 import NextAppUi
+import Nextapp.Models
 
 Dialog {
     id: dayDlg
     property var date
-    property GreenDayModel model
+    property var model
     property alias notes: notes.text
     property alias report: report.text
     property bool valid: model.valid

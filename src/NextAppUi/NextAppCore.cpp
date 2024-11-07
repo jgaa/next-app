@@ -81,7 +81,10 @@ int NextAppCore::weekFromDate(const QDateTime &date)
 
 WorkModel *NextAppCore::createWorkModel()
 {
+    // TODO: Use QQmlEngine::JavaScriptOwnership or track lifetime. Right now we leak memory.
+    LOG_DEBUG_N << "Creating a new WorkModel.";
     auto model = make_unique<WorkModel>();
+    // Causes crash!
     //QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
     QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::CppOwnership);
     return model.release();

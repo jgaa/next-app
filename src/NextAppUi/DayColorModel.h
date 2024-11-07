@@ -10,13 +10,10 @@ class DayColorModel : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_SINGLETON
 
     Q_PROPERTY(QStringList names READ getNames NOTIFY colorsChanged)
 public:
     explicit DayColorModel(QObject *parent = nullptr);
-
-    void start();
 
     // Return a list of the names in the same order as we have them stored
     // Then we can use the indes to get the full record.

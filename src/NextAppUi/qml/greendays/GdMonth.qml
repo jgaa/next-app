@@ -138,7 +138,7 @@ Rectangle {
                                     return; // or maybe throw
                                 }
 
-                                var component = Qt.createComponent("../qml/DayDialog.qml");
+                                var component = Qt.createComponent("DayDialog.qml");
                                 if( component.status === Component.Error ) {
                                     console.debug("Error:"+ component.errorString() );
                                     return; // or maybe throw

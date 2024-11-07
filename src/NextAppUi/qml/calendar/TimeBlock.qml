@@ -20,7 +20,7 @@ Rectangle {
     property string end
     property string category
     property string duration
-    required property CalendarDayModel model
+    required property var model
 
     property bool haveDragIcons: true // height > 20 && width > 50
     property real minuteHight: parent.hourHeight / 60.0

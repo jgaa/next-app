@@ -27,11 +27,15 @@ RUN apt-get update && apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libclang-dev \
-    libcups2-dev libcupsfilters-dev \
+    libcups2-dev \
+    libcupsfilters-dev \
     libcurl4-openssl-dev \
+    libegl1-mesa-dev \
     libfontconfig1-dev \
     libfreetype-dev \
-    libgl1-mesa-dev libglew-dev libglu1-mesa-dev libegl1-mesa-dev \
+    libgl1-mesa-dev \
+    libglew-dev \
+    libglu1-mesa-dev \
     libgstreamer-plugins-base1.0-dev \
     libgstreamer1.0-dev \
     libharfbuzz-dev \
@@ -40,13 +44,13 @@ RUN apt-get update && apt-get install -y \
     libjpeg-turbo8-dev \
     libpng-dev \
     libpulse-dev \
+    libsm-dev \
     libsqlite3-dev \
     libswscale-dev \
     libv4l-dev \
     libva-dev \
-    libvdpau-dev \
+    libwayland-dev \
     libx11-dev \
-    libx11-dev libxext-dev libxrandr-dev libxrender-dev libwayland-dev \
     libx11-xcb-dev \
     libxcb-cursor-dev \
     libxcb-glx0-dev \
@@ -71,6 +75,7 @@ RUN apt-get update && apt-get install -y \
     libxi-dev \
     libxkbcommon-dev \
     libxkbcommon-x11-dev \
+    libxrandr-dev \
     libxrender-dev \
     nasm \
     ninja-build \
@@ -82,7 +87,6 @@ RUN apt-get update && apt-get install -y \
     wget \
     zip unzip tar wget \
     zlib1g-dev \
-    libsm-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install vcpkg
@@ -107,12 +111,15 @@ WORKDIR ${QT_DIR}/qt
 
 RUN ./init-repository --module-subset=default,-qtwebengine
 
-RUN ./configure -prefix ${QT_INSTALL_DIR} -static -release -opensource -confirm-license -no-pch -nomake examples -nomake tests -openssl-linked -opengl desktop -sql-sqlite -skip qtwebengine -vcpkg --feature-protobufquick --feature-qtprotobufgen -feature-xcb
+RUN ./configure -prefix ${QT_INSTALL_DIR} -static -release -opensource -confirm-license -no-pch -nomake examples -nomake tests -openssl-linked -opengl desktop -sql-sqlite -skip qtwebengine -vcpkg --feature-protobufquick --feature-qtprotobufgen -feature-xcb -qt-libpng -qt-libjpeg
 # Build and install Qt
 RUN cmake --build . --parallel
 RUN cmake --install .
 
-RUN egrep -i 'grpc|proto' config.summary
+RUN useradd -m -s /bin/bash build && \
+    echo "build ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+USER build
+WORKDIR /home/build
 
 # Default command
 CMD ["/bin/bash"]
