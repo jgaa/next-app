@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import NextAppUi
 import nextapp.pb as NextappPB
 //import "common.js" as CommonJS
+import Nextapp.Models
 
 Popup {
     id: dusroot

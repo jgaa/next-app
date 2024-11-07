@@ -3,6 +3,7 @@ import QtQuick.Controls
 import NextAppUi
 import nextapp.pb as NextappPB
 import "common.js" as Common
+import Nextapp.Models
 
 Item {
     id: root

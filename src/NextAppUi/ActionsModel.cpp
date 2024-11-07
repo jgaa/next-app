@@ -458,28 +458,29 @@ QString ActionsModel::whenListElement(uint64_t when,
 {
     using namespace nextapp::pb::ActionDueKindGadget;
 
-    if (when == 0 || dt > btn) {
-        switch(btn) {
-        case ActionDueKind::DATETIME:
-            return tr("Date and Time");
-        case ActionDueKind::DATE:
-            return tr("Date");
-        case ActionDueKind::WEEK:
-            return tr("Week");
-        case ActionDueKind::MONTH:
-            return tr("Month");
-        case ActionDueKind::QUARTER:
-            return tr("Quarter");
-        case ActionDueKind::YEAR:
-            return tr("Year");
-        case ActionDueKind::UNSET:
-            return tr("No due time set");
-        default:
-            ;
-        }
+    //if (when == 0 || dt > btn) {
+    switch(btn) {
+    case ActionDueKind::DATETIME:
+        return tr("Date and Time");
+    case ActionDueKind::DATE:
+        return tr("Date");
+    case ActionDueKind::WEEK:
+        return tr("Week");
+    case ActionDueKind::MONTH:
+        return tr("Month");
+    case ActionDueKind::QUARTER:
+        return tr("Quarter");
+    case ActionDueKind::YEAR:
+        return tr("Year");
+    case ActionDueKind::UNSET:
+        return tr("No due time set");
+    default:
+        ;
     }
 
-    return formatWhen(when, btn);
+    return {};
+
+    //return formatWhen(when, btn);
 }
 
 
