@@ -955,7 +955,6 @@ void ServerComm::initGlobalSettings()
         if (status.hasUserGlobalSettings()) {
             userGlobalSettings_ = status.userGlobalSettings();
             LOG_DEBUG_N << "Received global user-settings";
-            emit globalSettingsChanged();
         } else if (status.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
             LOG_INFO_N << "initializing global settings...";
             saveGlobalSettings(userGlobalSettings_);
@@ -966,6 +965,7 @@ void ServerComm::initGlobalSettings()
             return;
         }
         onGrpcReady();
+        emit globalSettingsChanged();
     }, opts);
 }
 

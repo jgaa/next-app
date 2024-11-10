@@ -26,6 +26,8 @@ class CalendarDayModel : public QObject
     Q_PROPERTY(bool today READ today NOTIFY todayChanged)
     Q_PROPERTY(int now READ now NOTIFY timeChanged)
     Q_PROPERTY(QString timeStr READ timeStr NOTIFY timeChanged)
+    Q_PROPERTY(int workHoursStart MEMBER work_start_ NOTIFY workHoursChanged)
+    Q_PROPERTY(int workHoursEnd MEMBER work_end_ NOTIFY workHoursChanged)
 
 public:
     struct Pool {
@@ -130,13 +132,18 @@ signals:
     void resetModel();
     void timeChanged();
     void todayChanged();
+    void workHoursChanged();
 
 private:
+    void setWorkHours();
+
     QDate date_;
     bool today_ = false;
     const int index_;
     bool valid_ = false;
     events_t events_;
+    int work_start_ = 0; // Minutes since midnight
+    int work_end_ = 0; // Minutes since midnight
     QObject& component_;
     Pool timx_boxes_pool_{QStringLiteral("qrc:/qt/qml/NextAppUi/qml/calendar/TimeBlock.qml")};
     CalendarModel& calendar_;

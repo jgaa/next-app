@@ -148,6 +148,10 @@ public:
         return instance().server_info_;
     }
 
+    const nextapp::pb::UserGlobalSettings& globalSettings() const noexcept {
+        return userGlobalSettings_;
+    }
+
     void getColorsInMonth(unsigned year, unsigned month);
 
     void setDayColor(int year, int month, int day, QUuid colorUuid);

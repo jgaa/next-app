@@ -13,6 +13,15 @@ Rectangle {
     property var model: null
     property var scroller: null
 
+    Rectangle {
+        id: workHours
+        color: MaterialDesignStyling.surfaceContainerHigh
+        height: (model.workHoursEnd - model.workHoursStart) * (hourHeight / 60.0)
+        width: parent.width
+        y: model.workHoursStart * (hourHeight / 60.0)
+        visible: model.workHoursStart > 0 && model.workHoursEnd > 0
+    }
+
     Connections {
         target: model
 
@@ -43,6 +52,7 @@ Rectangle {
         onPaint: {
             // console.log("DayPlan: Redraing Canvas")
 
+            // Background
             var ctx = getContext("2d");
             ctx.beginPath();
             ctx.strokeStyle = MaterialDesignStyling.outline;
@@ -53,6 +63,18 @@ Rectangle {
                 ctx.lineTo(width, y);
             }
             ctx.stroke()
+
+            // console.log("model.workHoursStart=", model.workHoursStart, ", model.workHoursEnd=", model.workHoursEnd)
+            // // Work-hours background
+            // if (model.workHoursStart > 0 && model.workHoursEnd > 0) {
+            //     console.log("Drawing work hours background")
+            //     ctx.beginPath();
+            //     ctx.fillStyle = "yellow"; //MaterialDesignStyling.tertiaryContainer;
+            //     var y = model.workHoursStart * hourHeight;
+            //     var h = (model.workHoursEnd - model.workHoursStart) * hourHeight;
+            //     ctx.fillRect(0, y, width, h);
+            //     ctx.stroke()
+            // }
 
             ctx.beginPath();
             ctx.save()

@@ -151,6 +151,8 @@ CalendarDayModel::CalendarDayModel(QDate date, QObject& component, CalendarModel
     , component_{component}
     , calendar_{calendar}
 {
+    connect(&ServerComm::instance(), &ServerComm::globalSettingsChanged, this, &CalendarDayModel::setWorkHours);
+    setWorkHours();
 }
 
 CalendarDayModel::~CalendarDayModel()
@@ -384,6 +386,32 @@ void CalendarDayModel::setToday(bool today) {
 
 int CalendarDayModel::roundToMinutes() const noexcept {
     return 5;
+}
+
+void CalendarDayModel::setWorkHours()
+{
+    const auto& gs = ServerComm::instance().globalSettings();
+
+    const auto old_start = work_start_;
+    const auto old_end = work_end_;
+
+    if (gs.hasDefaultWorkHours()) {
+        work_start_ = gs.defaultWorkHours().start() / 60;
+        work_end_ = gs.defaultWorkHours().end() / 60;
+
+        if (work_start_ >= work_end_ || work_start_ < 0 || work_end_ > 1440) {
+            LOG_DEBUG_N << "Ignoring invalid work-hours.";
+            work_start_ = work_end_ = 0;
+        }
+
+    } else {
+        work_start_ = work_end_ = 0;
+
+    }
+
+    if (old_start != work_start_ || old_end != work_end_) {
+        emit workHoursChanged();
+    }
 }
 
 QObject *CalendarDayModel::Pool::get(QObject *parent)
