@@ -49,17 +49,26 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                         }
                         break;
                     case pb::ActionDueKindGadget::ActionDueKind::WEEK: {
+                        if (due_date == today) {
+                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
+                        }
                         const auto week = getFirstDayOfWeek();
                         if (due_date >= week && due_date < week.addDays(7)) {
                             return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
                         }
                     }
                     case pb::ActionDueKindGadget::ActionDueKind::MONTH: {
+                        if (due_date == today) {
+                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
+                        }
                         if (today.year() == due_date.year() && today.month() == due_date.month()) {
                             return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
                         }
                     }
                     case pb::ActionDueKindGadget::ActionDueKind::QUARTER:
+                        if (due_date == today) {
+                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
+                        }
                         if (today.year() == due_date.year()) {
                             const auto quarter = quarters.at(due_date.month() - 1);
                             if (today.month() >= quarter && today.month() < quarter + 3) {
@@ -68,6 +77,9 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                         }
                         break;
                     case pb::ActionDueKindGadget::ActionDueKind::YEAR:
+                        if (due_date == today) {
+                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
+                        }
                         if (today.year() == due_date.year()) {
                             return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
                         }
@@ -75,6 +87,10 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                     case pb::ActionDueKindGadget::ActionDueKind::UNSET:
                         return pb::ActionKindGadget::ActionKind::AC_UNSCHEDULED;
                 } // action.kind()
+
+                if (action.due().due() < now.toSecsSinceEpoch()) {
+                    return pb::ActionKindGadget::ActionKind::AC_OVERDUE;
+                }
 
                 if (action.due().hasStart()) {
                     const auto start_day = QDateTime::fromSecsSinceEpoch(action.due().start()).date();
@@ -921,7 +937,7 @@ bool ActionsModel::canFetchMore(const QModelIndex &parent) const
 QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 {
     static constexpr auto sorting = to_array<string_view>({
-        "a.due_by_time, a.name",
+        "a.priority, a.due_by_time, a.name",
         "a.priority, a.start_time, a.name",
         "a.priority, a.due_by_time, a.name",
         "a.start_time, a.name",
@@ -932,6 +948,10 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
         "a.completed_time",
         "a.completed_time DESC",
     });
+
+    static constexpr string_view sort_completed_prefix = "is_completed DESC, a.completed_time DESC,";
+
+    const auto sort_completed = sort_ < SORT_COMPLETED_DATE ? sort_completed_prefix : "";
 
     bool started_reset = false;
 
@@ -983,25 +1003,34 @@ LIMIT {} OFFSET {})",
 
     case FetchWhat::FW_TODAY:
         // Only show todays actions and actions completed today.
-        // Order by priority and due time
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id,
+CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a
+WHERE (a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?)
+OR a.completed_time >= ? AND a.completed_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
-                     sorting.at(sort_),
+                     format("{}{}", sort_completed, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
-        params.push_back(date.startOfDay());
-        params.push_back(date.addDays(1).startOfDay());
+        params << date.startOfDay();
+        params << date.addDays(1).startOfDay();
+        params << date.startOfDay();
+        params << date.addDays(1).startOfDay();
         break;
 
     case FetchWhat::FW_TODAY_AND_OVERDUE:
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id,
+CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a
+WHERE (a.status={} AND a.due_by_time <= ?)
+OR a.completed_time >= ? AND a.completed_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
-                     sorting.at(sort_),
+                     format("{}{}", sort_completed, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(date.addDays(1).startOfDay());
+        params << date.startOfDay();
+        params << date.addDays(1).startOfDay();
         break;
 
     case FetchWhat::FW_TOMORROW:

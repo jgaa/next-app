@@ -176,7 +176,7 @@ Rectangle {
             Layout.fillWidth: true
             interactive: false
             clip: true
-            model: root.model? root.model.getTimeBoxActionsModel(root.uuid, root) : null
+            model: root.model !== null ? root.model.getTimeBoxActionsModel(root.uuid, root) : null
 
             delegate: Rectangle {
                 id: actionItem
@@ -238,7 +238,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 20
             Layout.leftMargin: expandAreaTop.width
-            text: qsTr("Duration ") + duration
+            text: qsTr("Duration ") + root.duration
             color: MaterialDesignStyling.onPrimary
             visible: parent.height - header.height - actionsCtl.height >= height - 2
         }

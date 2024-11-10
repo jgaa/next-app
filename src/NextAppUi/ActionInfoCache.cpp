@@ -366,7 +366,11 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         params.append(QVariant{});
     }
     params.append(action.due().timezone());
-    params.append(QDateTime::fromSecsSinceEpoch(action.completedTime()));
+    if (auto seconds = action.completedTime()) {
+        params.append(QDateTime::fromSecsSinceEpoch(seconds));
+    } else {
+        params.append(QVariant{});
+    }
     params.append(static_cast<qlonglong>(action.timeEstimate()));
     params.append(static_cast<quint32>(action.difficulty()));
     params.append(static_cast<quint32>(action.repeatKind()));
@@ -446,7 +450,9 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
             item.setKind(static_cast<nextapp::pb::ActionKindGadget::ActionKind>(row[KIND].toInt()));
             item.setVersion(row[VERSION].toUInt());
             item.setCategory(row[CATEGORY].toString());
-            item.setCompletedTime(row[COMPLETED_TIME].toDateTime().toSecsSinceEpoch());
+            if (row[COMPLETED_TIME].isValid()) {
+                item.setCompletedTime(row[COMPLETED_TIME].toDateTime().toSecsSinceEpoch());
+            }
 
             nextapp::pb::Due due;
             due.setKind(static_cast<nextapp::pb:: ActionDueKindGadget::ActionDueKind >(row[DUE_KIND].toInt()));
