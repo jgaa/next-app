@@ -311,6 +311,8 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/layer-group.svg
         icons/fontawsome/hourglass-half.svg
         icons/fontawsome/arrows-up-down-left-right.svg
+        icons/fontawsome/rotate.svg
+        icons/refresh.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg

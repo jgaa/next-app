@@ -219,6 +219,7 @@ public:
     Q_INVOKABLE nextapp::pb::Due adjustDue(time_t start, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const;
     Q_INVOKABLE nextapp::pb::Due changeDue(int shortcut, const nextapp::pb::Due& fromDue) const;
     Q_INVOKABLE bool moveToNode(const QString& actionUuid, const QString& nodeUuid);
+    Q_INVOKABLE void refresh();
 
    //QCoro::Task<void> fetch(nextapp::pb::GetActionsReq& filter);
     //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);

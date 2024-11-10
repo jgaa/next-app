@@ -58,7 +58,7 @@ Rectangle {
                 StyledComboBox {
                     id: selectionCtl
                     currentIndex: NaActionsModel.mode
-                    Layout.preferredWidth: 220
+                    Layout.preferredWidth: 200
                     model: ListModel {
                         ListElement { text: qsTr("Active") }
                         ListElement { text: qsTr("Today") }
@@ -94,7 +94,7 @@ Rectangle {
                 StyledComboBox {
                     id: sortingCtl
                     currentIndex: NaActionsModel.sort
-                    Layout.preferredWidth: 220
+                    Layout.preferredWidth: 200
                     model: ListModel {
                         ListElement { text: qsTr("Default") }
                         ListElement { text: qsTr("Priority, Start Date, Name") }
@@ -111,6 +111,23 @@ Rectangle {
                     onActivated: (ix) => {
                         // console.log("Sorting changed to", ix)
                         NaActionsModel.sort = ix
+                    }
+                }
+
+                StyledButton {
+                    Layout.preferredWidth: parent.height
+                    //text: qsTr("Refresh")
+                    text: "";
+                    onClicked: {
+                        NaActionsModel.refresh()
+                    }
+
+                    Image {
+                        id: refreschIcon
+                        source: "qrc:/qt/qml/NextAppUi/icons/refresh.svg"
+                        fillMode: Image.PreserveAspectFit
+                        sourceSize: Qt.size(18, 18)
+                        anchors.centerIn: parent
                     }
                 }
             }

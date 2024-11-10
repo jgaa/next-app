@@ -764,6 +764,11 @@ bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid
     return false;
 }
 
+void ActionsModel::refresh()
+{
+    fetchIf(true);
+}
+
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
     return valid_ ? actions_.size() : 0;
