@@ -266,7 +266,7 @@ bool DbStore::updateSchema(uint version)
             "kind" INTEGER NOT NULL,
             "version" INTEGER NOT NULL,
             "updated" INTEGER NOT NULL,
-            PRIMARY KEY("id")
+             PRIMARY KEY("id")
         ))",
 
         "CREATE INDEX IF NOT EXISTS action_updated_ix ON action(updated)",

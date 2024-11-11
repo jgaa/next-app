@@ -355,21 +355,32 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     params.append(action.descr());
     params.append(toQDate(action.createdDate()));
     params.append(static_cast<quint32>(action.due().kind()));
-    if (action.due().hasStart()) {
-        params.append(QDateTime::fromSecsSinceEpoch(action.due().start()));
-    } else {
-        params.append(QVariant{});
-    }
-    if (action.due().hasDue()) {
-        params.append(QDateTime::fromSecsSinceEpoch(action.due().due()));
-    } else {
-        params.append(QVariant{});
-    }
-    params.append(action.due().timezone());
-    if (auto seconds = action.completedTime()) {
-        params.append(QDateTime::fromSecsSinceEpoch(seconds));
-    } else {
-        params.append(QVariant{});
+    if (action.hasDue()) {
+        if (action.due().hasStart()) {
+            params.append(QDateTime::fromSecsSinceEpoch(action.due().start()));
+        } else {
+            params.append(QVariant{});
+        }
+        if (action.due().hasDue()) {
+            auto end = QDateTime::fromSecsSinceEpoch(action.due().due());
+            // Handle the case where the due time is 00:00:00 at the next day.
+            // Set it to the last second the day before so queries will work as expected.
+            if (action.due().kind() != nextapp::pb::ActionDueKindGadget::ActionDueKind::DATETIME) {
+                const auto time = end.time();
+                if (time.hour() == 0 && time.minute() == 0 && time.second() == 0) {
+                    end = end.addSecs(-1);
+                };
+            };
+            params.append(end);
+        } else {
+            params.append(QVariant{});
+        }
+        params.append(action.due().timezone());
+        if (auto seconds = action.completedTime()) {
+            params.append(QDateTime::fromSecsSinceEpoch(seconds));
+        } else {
+            params.append(QVariant{});
+        }
     }
     params.append(static_cast<qlonglong>(action.timeEstimate()));
     params.append(static_cast<quint32>(action.difficulty()));

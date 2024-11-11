@@ -25,50 +25,55 @@ using a_status_t = nextapp::pb::ActionStatusGadget::ActionStatus;
 
 namespace {
 
+QDateTime before(QDateTime when) {
+    return when.addSecs(-1);
+}
+
 static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
 
 template <ProtoMessage T>
 pb::ActionKindGadget::ActionKind toKind(const T& action) {
     switch(action.status()) {
         case a_status_t::ACTIVE:
-            if (action.hasDue()) {
+            if (action.hasDue() && action.due().hasDue() && action.due().due()) {
                 const auto now = QDateTime::currentDateTime();
                 const auto due = QDateTime::fromSecsSinceEpoch(action.due().due());
                 const auto today = now.date();
-                const auto due_date = due.date().addDays(due.time().msec() == 0 && due.time().second() == 0 && due.time().minute() == 0 ? -1 : 0);
+                auto due_date = due.date(); //.addDays((due.time().hour() == 0 && due.time().second() == 0 && due.time().minute() == 0) ? -1 : 0);
+
+                if (due_date < today) {
+                    return pb::ActionKindGadget::ActionKind::AC_OVERDUE;
+                }
+
+                if (action.due().kind() != pb::ActionDueKindGadget::ActionDueKind::DATETIME) {
+                    if (due_date == today) {
+                        return pb::ActionKindGadget::ActionKind::AC_TODAY;
+                    }
+                };
 
                 switch(action.due().kind()) {
                     case pb::ActionDueKindGadget::ActionDueKind::DATETIME:
-                    if (action.due().due() < now.toSecsSinceEpoch()) {
+                        if (action.due().due() < now.toSecsSinceEpoch()) {
                             return pb::ActionKindGadget::ActionKind::AC_OVERDUE;
                         }
-                        // falltrough
-                    case pb::ActionDueKindGadget::ActionDueKind::DATE:
                         if (due_date == today) {
                             return pb::ActionKindGadget::ActionKind::AC_TODAY;
                         }
                         break;
+                    case pb::ActionDueKindGadget::ActionDueKind::DATE:
+                        break;
                     case pb::ActionDueKindGadget::ActionDueKind::WEEK: {
-                        if (due_date == today) {
-                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
-                        }
                         const auto week = getFirstDayOfWeek();
                         if (due_date >= week && due_date < week.addDays(7)) {
                             return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
                         }
                     }
                     case pb::ActionDueKindGadget::ActionDueKind::MONTH: {
-                        if (due_date == today) {
-                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
-                        }
                         if (today.year() == due_date.year() && today.month() == due_date.month()) {
                             return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
                         }
                     }
                     case pb::ActionDueKindGadget::ActionDueKind::QUARTER:
-                        if (due_date == today) {
-                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
-                        }
                         if (today.year() == due_date.year()) {
                             const auto quarter = quarters.at(due_date.month() - 1);
                             if (today.month() >= quarter && today.month() < quarter + 3) {
@@ -77,9 +82,6 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                         }
                         break;
                     case pb::ActionDueKindGadget::ActionDueKind::YEAR:
-                        if (due_date == today) {
-                            return pb::ActionKindGadget::ActionKind::AC_TODAY;
-                        }
                         if (today.year() == due_date.year()) {
                             return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
                         }
@@ -87,10 +89,6 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                     case pb::ActionDueKindGadget::ActionDueKind::UNSET:
                         return pb::ActionKindGadget::ActionKind::AC_UNSCHEDULED;
                 } // action.kind()
-
-                if (action.due().due() < now.toSecsSinceEpoch()) {
-                    return pb::ActionKindGadget::ActionKind::AC_OVERDUE;
-                }
 
                 if (action.due().hasStart()) {
                     const auto start_day = QDateTime::fromSecsSinceEpoch(action.due().start()).date();
@@ -100,8 +98,6 @@ pb::ActionKindGadget::ActionKind toKind(const T& action) {
                     return pb::ActionKindGadget::ActionKind::AC_ACTIVE;
                 }
 
-                if (due_date == today)
-                    return pb::ActionKindGadget::ActionKind::AC_TODAY;
                 if (due_date > today) {
                     return pb::ActionKindGadget::ActionKind::AC_UPCOMING;
                 }
@@ -561,13 +557,14 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
 
     switch(kind) {
     case pb::ActionDueKindGadget::ActionDueKind::DATETIME:
-        end = start = when;
+        start = when;
+        end = when;
         break;
     case pb::ActionDueKindGadget::ActionDueKind::DATE: {
         start = d_start.toSecsSinceEpoch();
         auto d_end = d_start.addDays(1);
         d_end.setTime(QTime(0,0));
-        end = d_end.toSecsSinceEpoch();
+        end = d_end.toSecsSinceEpoch() - 1;
     }
     break;
     case pb::ActionDueKindGadget::ActionDueKind::WEEK: {
@@ -579,7 +576,7 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
         start = w_start.toSecsSinceEpoch();
         auto d_end = w_start.addDays(7);
         d_end.setTime(QTime(0,0));
-        end = d_end.toSecsSinceEpoch();
+        end = d_end.toSecsSinceEpoch() - 1;
     }
     break;
     case pb::ActionDueKindGadget::ActionDueKind::MONTH: {
@@ -588,7 +585,7 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
         start = d_start.toSecsSinceEpoch();
         auto d_end = d_start.addMonths(1);
         d_end.setTime(QTime(0,0));
-        end = d_end.toSecsSinceEpoch();
+        end = d_end.toSecsSinceEpoch() - 1;
     }
     break;
     case pb::ActionDueKindGadget::ActionDueKind::QUARTER: {
@@ -598,7 +595,7 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
         start = d_start.toSecsSinceEpoch();
         auto d_end = d_start.addMonths(3);
         d_end.setTime(QTime(0,0));
-        end = d_end.toSecsSinceEpoch();
+        end = d_end.toSecsSinceEpoch() -1;
     }
     case pb::ActionDueKindGadget::ActionDueKind::YEAR: {
         auto y_start = d_start;
@@ -606,7 +603,7 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
         start = d_start.toSecsSinceEpoch();
         auto d_end = d_start.addYears(1);
         d_end.setTime(QTime(0,0));
-        end = d_end.toSecsSinceEpoch();
+        end = d_end.toSecsSinceEpoch() -1;
     }
     break;
     case pb::ActionDueKindGadget::ActionDueKind::UNSET:
@@ -651,12 +648,12 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
     switch(shortcut) {
     case TODAY:
         start = today.startOfDay().toSecsSinceEpoch();
-        end = today.addDays(1).startOfDay().toSecsSinceEpoch();
+        end = today.addDays(1).startOfDay().toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
         break;
     case TOMORROW:
         start = today.addDays(1).startOfDay().toSecsSinceEpoch();
-        end = today.addDays(2).startOfDay().toSecsSinceEpoch();
+        end = today.addDays(2).startOfDay().toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
         break;
     case THIS_WEEKEND: {
@@ -664,7 +661,7 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         auto offset = Qt::DayOfWeek::Saturday - day_in_week;
         auto w_start = today.addDays(offset);
         start = w_start.startOfDay().toSecsSinceEpoch();
-        end = w_start.addDays(2).startOfDay().toSecsSinceEpoch();
+        end = w_start.addDays(2).startOfDay().toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
         }
         break;
@@ -673,7 +670,7 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         auto offset = (Qt::DayOfWeek::Sunday - day_in_week) + 1;
         auto w_start = today.addDays(offset);
         start = w_start.startOfDay().toSecsSinceEpoch();
-        end = w_start.addDays(1).startOfDay().toSecsSinceEpoch();
+        end = w_start.addDays(1).startOfDay().toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
         }
         break;
@@ -681,7 +678,7 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         auto day_in_week = today.dayOfWeek();
         auto w_start = today.addDays((day_in_week  -1) * -1);
         start = w_start.startOfDay().toSecsSinceEpoch();
-        end = w_start.addDays(7).startOfDay().toSecsSinceEpoch();
+        end = w_start.addDays(7).startOfDay().toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::WEEK;
         }
         break;
@@ -696,7 +693,7 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         } else {
             kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
             start = s_date.startOfDay().toSecsSinceEpoch();
-            end = e_date.startOfDay().toSecsSinceEpoch();
+            end = e_date.startOfDay().toSecsSinceEpoch() -1;
         }
         }
         break;
@@ -704,21 +701,21 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         auto day_in_week = today.dayOfWeek();
         auto w_start = today.addDays((day_in_week  -1) * -1);
         start = w_start.addDays(7).startOfDay().toSecsSinceEpoch();
-        end = w_start.addDays(14).startOfDay().toSecsSinceEpoch();
+        end = w_start.addDays(14).startOfDay().toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::WEEK;
         }
         break;
     case THIS_MONTH: {
         auto m_start = QDateTime{QDate{today.year(), today.month(), 1}, QTime{0, 0}};
         start = m_start.toSecsSinceEpoch();
-        end = m_start.addMonths(1).toSecsSinceEpoch();
+        end = m_start.addMonths(1).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::MONTH;
         }
         break;
     case NEXT_MONTH: {
         auto m_start = QDateTime{QDate{today.year(), today.month(), 1}, QTime{0, 0}};
         start = m_start.addMonths(1).toSecsSinceEpoch();
-        end = m_start.addMonths(2).toSecsSinceEpoch();
+        end = m_start.addMonths(2).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::MONTH;
         }
         break;
@@ -726,7 +723,7 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         auto qmonth = quarters.at(today.month() - 1);
         auto m_start = QDateTime{QDate{today.year(), qmonth, 1}, QTime{0, 0}};
         start = m_start.toSecsSinceEpoch();
-        end = m_start.addMonths(3).toSecsSinceEpoch();
+        end = m_start.addMonths(3).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::QUARTER;
         }
         break;
@@ -734,21 +731,21 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         auto qmonth = quarters.at(today.month() - 1);
         auto m_start = QDateTime{QDate{today.year(), qmonth, 1}, QTime{0, 0}};
         start = m_start.addMonths(3).toSecsSinceEpoch();
-        end = m_start.addMonths(6).toSecsSinceEpoch();
+        end = m_start.addMonths(6).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::QUARTER;
         }
         break;
     case THIS_YEAR: {
         auto y_start = QDateTime{QDate{today.year(), 1, 1}, QTime{0, 0}};
         start = y_start.toSecsSinceEpoch();
-        end = y_start.addYears(1).toSecsSinceEpoch();
+        end = y_start.addYears(1).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::YEAR;
         }
         break;
     case NEXT_YEAR: {
         auto y_start = QDateTime{QDate{today.year(), 1, 1}, QTime{0, 0}};
         start = y_start.addYears(1).toSecsSinceEpoch();
-        end = y_start.addYears(2).toSecsSinceEpoch();
+        end = y_start.addYears(2).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::YEAR;
         }
         break;
@@ -937,7 +934,7 @@ bool ActionsModel::canFetchMore(const QModelIndex &parent) const
 QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 {
     static constexpr auto sorting = to_array<string_view>({
-        "a.priority, a.due_by_time, a.name",
+        "a.due_by_time, a.priority, a.name",
         "a.priority, a.start_time, a.name",
         "a.priority, a.due_by_time, a.name",
         "a.start_time, a.name",
@@ -950,6 +947,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     });
 
     static constexpr string_view sort_completed_prefix = "is_completed DESC, a.completed_time DESC,";
+    static constexpr string_view sort_has_due_prefix = "has_due, ";
 
     const auto sort_completed = sort_ < SORT_COMPLETED_DATE ? sort_completed_prefix : "";
 
@@ -989,6 +987,10 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     DbStore::param_t params;
     std::string sql;
 
+    // // TODO: Remove this when we consistently end a time-span at the end of a day in stad of the start of the next day.
+    // const QDateTime end_of_today = QDateTime{date.addDays(1), QTime{0, 0}}.addSecs(-1);
+    // const QDateTime start_of_today = QDateTime{date, QTime{0, 0}};
+
     switch(mode_) {
     case FetchWhat::FW_ACTIVE:
         // Fetch all active actions with start-time before tomorrow.
@@ -1005,23 +1007,23 @@ LIMIT {} OFFSET {})",
         // Only show todays actions and actions completed today.
         sql = NA_FORMAT(R"(SELECT a.id,
 CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a
-WHERE (a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?)
-OR a.completed_time >= ? AND a.completed_time <= ?
+WHERE (a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?)
+OR a.completed_time >= ? AND a.completed_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
                      format("{}{}", sort_completed, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         params << date.startOfDay();
-        params << date.addDays(1).startOfDay();
+        params << date.startOfDay().addDays(1);
         params << date.startOfDay();
-        params << date.addDays(1).startOfDay();
+        params << date.startOfDay().addDays(1);
         break;
 
     case FetchWhat::FW_TODAY_AND_OVERDUE:
         sql = NA_FORMAT(R"(SELECT a.id,
 CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a
-WHERE (a.status={} AND a.due_by_time <= ?)
+WHERE (a.status={} AND a.due_by_time < ?)
 OR a.completed_time >= ? AND a.completed_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
@@ -1030,23 +1032,23 @@ LIMIT {} OFFSET {})",
                      pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(date.addDays(1).startOfDay());
         params << date.startOfDay();
-        params << date.addDays(1).startOfDay();
+        params << date.startOfDay().addDays(1);
         break;
 
     case FetchWhat::FW_TOMORROW:
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
-        params.push_back(date.addDays(1).startOfDay());
-        params.push_back(date.addDays(2).startOfDay());
+        params << date.startOfDay().addDays(1);
+        params << date.startOfDay().addDays(2);
         break;
 
     case FetchWhat::FW_CURRENT_WEEK: {
         // Fetch all active actions with start-time before tomorrow.
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1059,7 +1061,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_NEXT_WEEK: {
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1071,7 +1073,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_CURRENT_MONTH: {
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
@@ -1095,13 +1097,15 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_SELECTED_NODE:
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a
+        sql = NA_FORMAT(R"(SELECT a.id,
+CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
+FROM action a
 JOIN node n ON a.node = n.uuid
 WHERE a.status={} AND n.uuid = ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     static_cast<uint>(a_status_t::ACTIVE),
-                    sorting.at(sort_),
+                    NA_FORMAT("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(MainTreeModel::instance()->selected());
         break;
@@ -1120,22 +1124,25 @@ LIMIT {} OFFSET {})",
     FROM node n
     JOIN node_hierarchy nh ON n.parent = nh.uuid
 )
-SELECT a.id
+SELECT a.id,
+CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
 FROM action a
 JOIN node_hierarchy nh ON a.node = nh.uuid
 WHERE a.status={}
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
-                     sorting.at(sort_),
+                     NA_FORMAT("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(MainTreeModel::instance()->selected());
         break;
 
     case FetchWhat::FW_FAVORITES:
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a WHERE a.favorite = 1 AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = NA_FORMAT(R"(SELECT a.id,
+CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
+FROM action a WHERE a.favorite = 1 AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
-                     sorting.at(sort_),
+                     NA_FORMAT("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         break;
 
@@ -1144,14 +1151,16 @@ LIMIT {} OFFSET {})",
         if (auto prop = NextAppCore::instance()->getProperty("primaryForActionList"); prop.isValid()) {
             auto cal_date = prop.toDate();
             if (cal_date.isValid()) {
-                sql = NA_FORMAT(R"(SELECT DISTINCT a.id FROM action a
-                    JOIN time_block_actions tba on a.id=tba.action
-                    JOIN time_block tb on tba.time_block=tb.id
-                    WHERE a.status != {}
-                    AND tb.start_time >= ? AND tb.end_time <= ?
-                    ORDER BY {} LIMIT {} OFFSET {})",
+                sql = NA_FORMAT(R"(SELECT DISTINCT a.id,
+CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
+FROM action a
+JOIN time_block_actions tba on a.id=tba.action
+JOIN time_block tb on tba.time_block=tb.id
+WHERE a.status != {}
+AND tb.start_time >= ? AND tb.end_time <= ?
+ORDER BY {} LIMIT {} OFFSET {})",
                              static_cast<uint>(a_status_t::DELETED),
-                             sorting.at(sort_),
+                             NA_FORMAT("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                              pagination_.pageSize(), pagination_.nextOffset());
 
                 params << cal_date;
@@ -1195,9 +1204,19 @@ LIMIT {} OFFSET {})",
         // Send the list to the cache to fill in the data-pointers
         co_await ActionInfoCache::instance()->fill(new_actions);
 
+        // for(const auto& a: new_actions) {
+        //     const auto secs = a.action->hasDue() ? a.action->due().due() : 0;
+        //     LOG_DEBUG << format("Action {} {:<40} due: {:<11} {}  completed: {}",
+        //         static_cast<int>(toKind(*a.action)),
+        //         a.action->name().toStdString(),
+        //         secs,
+        //         QDateTime::fromSecsSinceEpoch(secs).toString().toStdString(),
+        //         a.action->completedTime());
+        // }
+
         // Insert or replace the new list depending on it's page.
         start_reset();
-        if (pagination_.isFirstPage()) {
+        if (restart) {
             actions_ = std::move(new_actions);
         } else {
             std::copy(new_actions.begin(), new_actions.end(), std::back_inserter(actions_));
