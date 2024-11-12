@@ -36,6 +36,8 @@ public:
     Q_INVOKABLE int getIndexByUuid(const QString& id);
     Q_INVOKABLE QString getColorFromUuid(const QString& id);
 
+    const nextapp::pb::ActionCategory& getFromUuid(const QString& uuid);
+
     void onOnlineChanged(bool online) {
         setOnline(online);
     }

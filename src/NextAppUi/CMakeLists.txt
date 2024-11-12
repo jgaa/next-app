@@ -50,7 +50,7 @@ if(USE_STATIC_QT)
 endif()
 
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Svg Test Grpc Concurrent Test Multimedia Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Charts Svg Test Grpc Concurrent Test Multimedia Sql)
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")
@@ -225,8 +225,6 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/CommonElements.qml
         qml/CurrentWorkSessionsView.qml
         qml/DatePicker.qml
-        qml/greendays/DayDialog.qml
-        qml/greendays/DaysInYear.qml
         qml/DisabledDimmer.qml
         qml/DlgInputField.qml
         qml/DueSelectionDialog.qml
@@ -258,6 +256,8 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/android/WorkSessionsStacked.qml
         qml/android/main.qml
         qml/calendar/CalendarView.qml
+        qml/calendar/CategoriesUsed.qml
+        qml/calendar/CategoryUsedPopup.qml
         qml/calendar/DayPlan.qml
         qml/calendar/EditTimeBlockDlg.qml
         qml/calendar/ExpandArea.qml
@@ -268,6 +268,10 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/categories/ColorPicker.qml
         qml/categories/EditCategoryDlg.qml
         qml/common.js
+        qml/greendays/DayDialog.qml
+        qml/greendays/DaysInYear.qml
+        qml/greendays/GdMonth.qml
+        qml/greendays/GdQuarter.qml
         qml/onboard/AddDevicePage.qml
         qml/onboard/GetNewOtpForDevice.qml
         qml/onboard/OnBoardingWizard.qml
@@ -291,6 +295,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/folder_open.svg
         icons/fontawsome/angle-down.svg
         icons/fontawsome/angle-right.svg
+        icons/fontawsome/arrows-up-down-left-right.svg
         icons/fontawsome/bars.svg
         icons/fontawsome/calendar-day.svg
         icons/fontawsome/calendar-days.svg
@@ -298,21 +303,19 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/chart-line.svg
         icons/fontawsome/circle.svg
         icons/fontawsome/clock.svg
-        icons/fontawsome/folder.svg
-        icons/fontawsome/pen-to-square.svg
-        icons/fontawsome/square-check.svg
-        icons/fontawsome/square.svg
-        icons/fontawsome/gear.svg
-        icons/fontawsome/list-check.svg
-        icons/fontawsome/folder-tree.svg
-        icons/fontawsome/trash-can.svg
         icons/fontawsome/cloud-bolt.svg
+        icons/fontawsome/folder-tree.svg
+        icons/fontawsome/folder.svg
+        icons/fontawsome/gear.svg
+        icons/fontawsome/hourglass-half.svg
         icons/fontawsome/laptop.svg
         icons/fontawsome/layer-group.svg
-        icons/fontawsome/hourglass-half.svg
-        icons/fontawsome/arrows-up-down-left-right.svg
+        icons/fontawsome/list-check.svg
+        icons/fontawsome/pen-to-square.svg
         icons/fontawsome/rotate.svg
-        icons/refresh.svg
+        icons/fontawsome/square-check.svg
+        icons/fontawsome/square.svg
+        icons/fontawsome/trash-can.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg
@@ -322,6 +325,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/person.svg
         icons/project.svg
         icons/read.svg
+        icons/refresh.svg
         icons/resize.svg
         icons/square-checked.svg
         icons/square-unchecked.svg
@@ -342,6 +346,8 @@ qt_add_qml_module(${PROJECT_NAME}
         CalendarDayModel.h
         CalendarModel.cpp
         CalendarModel.h
+        CategoryUseModel.cpp
+        CategoryUseModel.h
         DayColorModel.cpp
         DayColorModel.h
         DbStore.cpp
@@ -377,12 +383,10 @@ qt_add_qml_module(${PROJECT_NAME}
         WorkModelBase.h
         WorkSessionsModel.cpp
         WorkSessionsModel.h
+        format_wrapper.h
         nextapp.h
         util.cpp
         util.h
-        format_wrapper.h
-        QML_FILES qml/greendays/GdQuarter.qml
-        QML_FILES qml/greendays/GdMonth.qml
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
@@ -456,6 +460,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Gui
         Qt6::Quick
         Qt6::QuickControls2
+        Qt6::Charts
         Qt6::Svg
         Qt6::Protobuf
         Qt6::Grpc

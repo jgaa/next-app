@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import NextAppUi
 import nextapp.pb as NextappPB
 import Nextapp.Models
+import "../common.js" as Common
 
 Rectangle {
     id: root
@@ -195,6 +196,13 @@ Rectangle {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
         preventStealing: true
+
+        onPressAndHold: {
+            Common.openDialog("calendar/CategoryUsedPopup.qml", root, {
+                model: root.model.getCategoryUseModel()
+            });
+        }
+
         onPressed: {
             dragRectangle.x = 0
             dragRectangle.y = mouseY

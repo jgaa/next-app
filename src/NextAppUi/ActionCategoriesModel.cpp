@@ -124,6 +124,17 @@ QString ActionCategoriesModel::getColorFromUuid(const QString &id)
     return it->color();
 }
 
+const nextapp::pb::ActionCategory &ActionCategoriesModel::getFromUuid(const QString &uuid)
+{
+    auto it = ranges::find_if(action_categories_, [&uuid](const nextapp::pb::ActionCategory& c) {
+        return c.id_proto() == uuid;
+    });
+
+    if (it != action_categories_.end()) [[unlikely]] {
+        return *it;
+    }
+}
+
 int ActionCategoriesModel::rowCount(const QModelIndex &parent) const
 {
     return action_categories_.size();
