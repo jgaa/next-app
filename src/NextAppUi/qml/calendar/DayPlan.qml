@@ -196,20 +196,25 @@ Rectangle {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
         preventStealing: true
+        property bool dragging: false
 
         onPressAndHold: {
-            Common.openDialog("calendar/CategoryUsedPopup.qml", root, {
-                model: root.model.getCategoryUseModel()
-            });
+            if (! mouseArea.dragging) {
+                Common.openDialog("calendar/CategoryUsedPopup.qml", root, {
+                    model: root.model.getCategoryUseModel()
+                });
+            }
         }
 
         onPressed: {
+            dragging = false;
             dragRectangle.x = 0
             dragRectangle.y = mouseY
             dragRectangle.height = 0
             dragRectangle.visible = true
         }
         onPositionChanged: {
+            dragging = true;
             dragRectangle.height = mouseY - dragRectangle.y
             // console.log("dragRectangle: x=",
             //             dragRectangle.x, " y=",
