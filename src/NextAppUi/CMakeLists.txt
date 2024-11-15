@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.22 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.23 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -368,6 +368,8 @@ qt_add_qml_module(${PROJECT_NAME}
         NextAppCore.h
         OtpModel.cpp
         OtpModel.h
+        ReviewModel.cpp
+        ReviewModel.h
         ServerComm.cpp
         ServerComm.h
         ServerSynchedCahce.h
@@ -468,7 +470,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Test
         Qt6::Multimedia
         Qt6::Sql
-        Qt6::QJpegPlugin
+        #Qt6::QJpegPlugin
         # QT insists on linking FFMPEG_MEDIAPLUGIN_LIB after the ffmpeg libraries it depends on,
         # which don't work with static linking. So we have to add it manually before it's dependencies.
         $<$<BOOL:${USE_STATIC_QT}>:${FFMPEG_MEDIAPLUGIN_LIB}>

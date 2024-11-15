@@ -1012,7 +1012,7 @@ OR a.completed_time >= ? AND a.completed_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
-                     format("{}{}", sort_completed, sorting.at(sort_)),
+                     NA_FORMAT("{}{}", sort_completed, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         params << date.startOfDay();
         params << date.startOfDay().addDays(1);
@@ -1028,7 +1028,7 @@ OR a.completed_time >= ? AND a.completed_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      static_cast<uint>(a_status_t::ACTIVE),
-                     format("{}{}", sort_completed, sorting.at(sort_)),
+                     NA_FORMAT("{}{}", sort_completed, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(date.addDays(1).startOfDay());
         params << date.startOfDay();

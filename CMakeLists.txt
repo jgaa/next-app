@@ -13,11 +13,17 @@ project(next-app
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(IS_LINUX ON)
+else ()
+    set(IS_LINUX OFF)
+endif()
+
 option(NEXTAPP_WITH_TESTS "Enable Tests" OFF)
 option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" OFF)
 option(NEXTAPP_WITH_UI "Include the UI project in the build" ON)
-option(NEXTAPP_WITH_BACKEND "Include the backend server project in the build" ON)
-option(NEXTAPP_WITH_SIGNUP "Include the signup server project in the build" ON)
+option(NEXTAPP_WITH_BACKEND "Include the backend server project in the build" ${IS_LINUX})
+option(NEXTAPP_WITH_SIGNUP "Include the signup server project in the build" ${IS_LINUX})
 
 if (NEXTAPP_BOOST_USE_STATIC_LIBS)
     message("Using static boost libraries")

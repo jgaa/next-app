@@ -439,6 +439,7 @@ CategoryUseModel::list_t CalendarDayModel::getCategoryUsage()
     std::map<QString, CategoryUseModel::Data> use;
     CategoryUseModel::list_t list;
     uint total = 0;
+    uint without_cat = 0;
     if (valid_) {
         for(const auto& event : events_) {
             if (event->hasTimeBlock()) {
@@ -446,7 +447,9 @@ CategoryUseModel::list_t CalendarDayModel::getCategoryUsage()
                 const uint duration_minutes = (tb.timeSpan().end() - tb.timeSpan().start()) / 60;
                 total += duration_minutes;
 
-                if (auto it = use.find(tb.category()); it != use.end()) {
+                if (tb.category().isEmpty()) {
+                    without_cat += duration_minutes;
+                } else if (auto it = use.find(tb.category()); it != use.end()) {
                     it->second.minutes += duration_minutes;
                 } else {
                     const auto& cat = ActionCategoriesModel::instance().getFromUuid(tb.category());
@@ -460,6 +463,9 @@ CategoryUseModel::list_t CalendarDayModel::getCategoryUsage()
     ranges::transform(use, std::back_inserter(values),
                       [](const auto& pair) { return pair.second; });
 
+    if (without_cat) {
+        values.push_back({tr("No category"), "transparent", without_cat});
+    }
 
     ranges::sort(values, ranges::greater{}, &CategoryUseModel::Data::minutes);
     values.push_back({tr("Total"), "transparent", total});

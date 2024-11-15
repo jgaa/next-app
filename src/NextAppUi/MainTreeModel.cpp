@@ -597,16 +597,18 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
 
     QProtobufSerializer serializer;
 
-    params.append(node.uuid());
-    params.append(node.parent());
-    params.append(node.active());
-    params.append(qlonglong{node.updated()});
-    params.append(node.serialize(&serializer));
+    params << node.uuid();
+    params << node.parent();
+    params << node.name();
+    params << node.active();
+    params << qlonglong{node.updated()};
+    params << node.serialize(&serializer);
 
     QString sql = R"(INSERT INTO node
-        (uuid, parent, active, updated, data) VALUES (?, ?, ?, ?, ?)
+        (uuid, parent, name, active, updated, data) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(uuid) DO UPDATE SET
         parent=excluded.parent,
+        name=excluded.name,
         active=excluded.active,
         updated=excluded.updated,
         data=excluded.data)";

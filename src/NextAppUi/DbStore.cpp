@@ -228,6 +228,7 @@ bool DbStore::updateSchema(uint version)
             "parent" VARCHAR(32),
             "active" BOOLEAN NOT NULL,
             "updated" INTEGER NOT NULL,
+            "name VARCHAR(256) NOT NULL,
             "data" BLOB NOT NULL,
             PRIMARY KEY("uuid")
         ))",

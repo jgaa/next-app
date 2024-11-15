@@ -9,6 +9,7 @@ import Nextapp.Models
 
 Dialog {
     id: root
+    modal: true
     property string node: NaMainTreeModel.selected
     property ActionPrx aprx
     property NextappPb.action action: aprx.action
@@ -17,6 +18,7 @@ Dialog {
     property int controlsPreferredWidth: (width - 40 - leftMarginForControls) / (NaCore.isMobile ? 1 : 4)
     property int labelWidth: 80
     property int leftMarginForControls: NaCore.isMobile ? 20 : 0
+    property bool dragWasEnabled: false
 
     x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
     y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
@@ -27,6 +29,16 @@ Dialog {
 
     onOpened: {
         assign()
+        if (NaCore.dragEnabled) {
+            NaCore.dragEnabled = false
+            dragWasEnabled = true
+        }
+    }
+
+    onClosed: {
+        if (dragWasEnabled) {
+            NaCore.dragEnabled = true
+        }
     }
 
     onValidChanged: {
@@ -36,19 +48,6 @@ Dialog {
             // TODO: Popup
             // console.log("Failed to fetch existing Action")
         }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        onClicked: {
-            // Handle the click event or simply ignore it
-            console.log("MouseArea clicked")
-        }
-    }
-
-    // Disable drag events
-    DragHandler {
-        acceptedButtons: []
     }
 
     function assign() {
@@ -133,7 +132,7 @@ Dialog {
                 GridLayout {
                     id: dlgfields
                     Layout.alignment: Qt.AlignLeft
-                    Layout.fillHeight: true
+                    //Layout.fillHeight: true
                     Layout.fillWidth: true
                     uniformCellWidths: false
                     rowSpacing: 4
@@ -154,6 +153,49 @@ Dialog {
                         Layout.fillWidth: true
                     }
                 }
+
+                // GridLayout {
+                //     Layout.fillWidth: true
+                //     Layout.fillHeight: true
+                //     Layout.minimumHeight: root.height * 0.20
+                //     columnSpacing: 6
+                //     columns: NaCore.isMobile ? 1 : 2
+
+                //     ColumnLayout {
+                //         Layout.column: 0 // This is the first column
+                //         Label {
+                //             Layout.preferredWidth: root.labelWidth
+                //             color: Colors.disabledText
+                //             text: qsTr("Description")
+                //         }
+                //     }
+
+                    ScrollView {
+                        Layout.fillHeight: true
+                        Layout.fillWidth: true
+
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
+                        ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+
+                        // ScrollBar.vertical: ScrollBar {
+                        //     policy: ScrollBar.AlwaysOn
+                        // }
+
+                        TextArea {
+                            id: descr
+                            topInset: 6
+                            Layout.leftMargin: root.leftMarginForControls
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            clip: true
+                            placeholderText: qsTr("Description")
+                            //text: root.action.descr
+                            // background: Rectangle {
+                            //     color: descr.focus ? "lightblue" : "lightgray"
+                            // }
+                        }
+                    }
+                //}
 
                 //RowLayout {
                 GridLayout {
@@ -262,32 +304,6 @@ Dialog {
                     }
                 }
 
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: NaCore.isMobile ? 1 : 2
-
-                    ColumnLayout {
-                        Layout.column: 0 // This is the first column
-                        Label {
-                            Layout.preferredWidth: root.labelWidth
-                            color: Colors.disabledText
-                            text: qsTr("Description")
-                        }
-                    }
-
-                    TextArea {
-                        id: descr
-                        Layout.leftMargin: root.leftMarginForControls
-                        Layout.fillHeight: true
-                        Layout.fillWidth: true
-                        //placeholderText: qsTr("Some words to describe the purpose of this item?")
-                        //text: root.action.descr
-
-                        background: Rectangle {
-                            color: descr.focus ? "lightblue" : "lightgray"
-                        }
-                    }
-                }
             } // Main tab
 
             // Details tab

@@ -46,19 +46,22 @@ Rectangle {
         anchors.fill: parent
 
         ToolBar {
+            id: headerCtl
             Layout.fillWidth: true
+            property int comboWidth: (width - (2 * 4) - refreschButton.width) / 2
 
             background: Rectangle {
                 color: MaterialDesignStyling.surfaceContainer
             }
 
             RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
+                anchors.fill: parent
+                spacing: 4
                 StyledComboBox {
                     id: selectionCtl
                     currentIndex: NaActionsModel.mode
-                    Layout.preferredWidth: 200
+                    Layout.preferredWidth: headerCtl.comboWidth
+
                     model: ListModel {
                         ListElement { text: qsTr("Active") }
                         ListElement { text: qsTr("Today") }
@@ -83,18 +86,11 @@ Rectangle {
                     }
                 }
 
-                // StyledButton {
-                //     width: 180
-                //     text: qsTr("Filter")
-                //     onClicked: {
-                //         filter.open()
-                //     }
-                // }
-
                 StyledComboBox {
                     id: sortingCtl
                     currentIndex: NaActionsModel.sort
-                    Layout.preferredWidth: 200
+                    Layout.preferredWidth: headerCtl.comboWidth
+                    implicitContentWidthPolicy: ComboBox.widestTextWhenCompleted
                     model: ListModel {
                         ListElement { text: qsTr("Default") }
                         ListElement { text: qsTr("Priority, Start Date, Name") }
@@ -115,7 +111,9 @@ Rectangle {
                 }
 
                 StyledButton {
+                    id: refreschButton
                     Layout.preferredWidth: parent.height
+                    Layout.minimumWidth: 20
                     //text: qsTr("Refresh")
                     text: "";
                     onClicked: {
@@ -130,17 +128,17 @@ Rectangle {
                         anchors.centerIn: parent
                     }
                 }
+
+                Item {
+                    Layout.fillWidth: true
+                }
             }
         }
 
-        RowLayout {
+        ActionsList {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            ActionsList {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                id: actions
-            }
+            id: actions
         }
     }
 
