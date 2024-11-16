@@ -32,7 +32,7 @@ QDateTime before(QDateTime when) {
 static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
 
 template <ProtoMessage T>
-pb::ActionKindGadget::ActionKind toKind(const T& action) {
+pb::ActionKindGadget::ActionKind toKindT(const T& action) {
     switch(action.status()) {
         case a_status_t::ACTIVE:
             if (action.hasDue() && action.due().hasDue() && action.due().due()) {
@@ -375,7 +375,12 @@ void ActionsModel::setSort(Sorting sort)
     }
 }
 
-QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind) const
+nextapp::pb::ActionKindGadget::ActionKind ActionsModel::toKind(const nextapp::pb::ActionInfo &action)
+{
+    return toKindT(action);
+}
+
+QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind)
 {
     using namespace nextapp::pb::ActionKindGadget;
     switch(kind) {

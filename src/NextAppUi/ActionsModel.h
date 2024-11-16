@@ -209,9 +209,9 @@ public:
     Q_INVOKABLE ActionPrx *getAction(QString uuid);
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
     Q_INVOKABLE void markActionAsFavorite(const QString& actionUuid, bool favorite);
-    Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind) const;
-    Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt) const;
-    Q_INVOKABLE QString formatDue(const nextapp::pb::Due& due) const;
+    static Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind);
+    static Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
+    static Q_INVOKABLE QString formatDue(const nextapp::pb::Due& due);
     Q_INVOKABLE QString whenListElement(uint64_t when,
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind dt,
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind btn);
@@ -233,6 +233,8 @@ public:
     nextapp::pb::GetActionsFlags flags() const noexcept { return flags_; }
     void setFlags(nextapp::pb::GetActionsFlags flags);
     void setSort(Sorting sort);
+
+    static nextapp::pb::ActionKindGadget::ActionKind toKind(const nextapp::pb::ActionInfo& action);
 
     // QAbstractItemModel interface
 public:

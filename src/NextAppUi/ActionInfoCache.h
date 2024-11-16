@@ -32,6 +32,9 @@ public:
     QCoro::Task<std::shared_ptr<nextapp::pb::ActionInfo>> get(const QString &action_uuid, bool fetch = false);
     QCoro::Task<std::shared_ptr<nextapp::pb::ActionInfo>> get(const QUuid &uuid, bool fetch = false);
     QCoro::Task<std::shared_ptr<nextapp::pb::Action>> getAction(const QUuid &action_uuid);
+    std::shared_ptr<nextapp::pb::ActionInfo> getIfCached(const QUuid &action_uuid) {
+        return get_(action_uuid);
+    }
 
     bool online() const noexcept {
         return state() == State::VALID;
@@ -66,8 +69,11 @@ public:
     void clear() override;
 
     template <typename T>
-    QCoro::Task<bool> fill(T& items) {
+    QCoro::Task<bool> fill(T& items, bool keepExisting = false) {
         for (auto& item : items) {
+            if (keepExisting && item.action) {
+                continue;
+            }
             if (item.action = co_await get(item.uuid, true); !item.action) {
                 LOG_WARN << "Cannot find action with id: " << item.uuid.toString();
             }

@@ -3,29 +3,60 @@
 #include <stack>
 #include <vector>
 
-#include <QObject>
+#include <QAbstractListModel>
 #include <QUuid>
 
 #include "nextapp.qpb.h"
 #include "qcorotask.h"
 
-class ReviewModel : public QObject
+/*! This cache provices a lazy model for the review of actions.
+ *
+ *  It will show a window over the actions for the current review tree item, and
+ *  it has a concept of "current review" action.
+ *
+ *  The cache is filled with the uuids of the actions to review. The
+ *  actions themselves are fetched lazily from the cache.
+ */
+
+class ReviewModel : public QAbstractListModel
 {
     Q_OBJECT
+    QML_ELEMENT
 
-    Q_PROPERTY(bool active MEMBER active_ WRITE setActive NOTIFY activeChanged);
-    Q_PROPERTY(QUuid currentUuid MEMBER current_uuid_ NOTIFY currentUuidChanged);
-
-public:
     enum class State {
         PENDING,
         FETCHING,
+        FILLING,
         READY,
         ERROR
     };
 
-    Q_ENUM(State);
-    Q_PROPERTY(state MEMBER state_ NOTIFY stateChanged);
+    // Same as ActionsModels as we feed the same QML view
+    enum Roles {
+        NameRole = Qt::UserRole + 1,
+        UuidRole,
+        PriorityRole,
+        StatusRole,
+        NodeRole,
+        CreatedDateRole,
+        DueTypeRole,
+        DueByTimeRole,
+        CompletedRole,
+        CompletedTimeRole,
+        SectionRole,
+        SectionNameRole,
+        DueRole,
+        FavoriteRole,
+        HasWorkSessionRole,
+        ListNameRole,
+        CategoryRole,
+    };
+
+    Q_ENUM(State)
+
+    Q_PROPERTY(bool active MEMBER active_ WRITE setActive NOTIFY activeChanged)
+    Q_PROPERTY(QUuid currentUuid MEMBER current_uuid_ NOTIFY currentUuidChanged)
+    Q_PROPERTY(State MEMBER state_ NOTIFY stateChanged)
 
     class Item {
         public:
@@ -35,12 +66,12 @@ public:
         };
 
         Item(const QUuid& actionId, const QUuid& nodeId)
-            : id_{id}, node_id_{nodeId} {}
+            : id_{actionId}, node_id_{nodeId} {}
 
         State state() const noexcept { return state_; }
         bool done() const noexcept { return state_ == State::DONE; }
 
-        //std::shared_ptr<nextapp::pb::ActionInfo> action;
+        std::shared_ptr<nextapp::pb::ActionInfo> action;
         const QUuid id_;
         QUuid node_id_;
         State state_{State::PENDING};
@@ -65,13 +96,27 @@ public:
         }
 
         void reserve(uint size) { items_.reserve(size); }
-        void add(const QUuid& id);
+        void add(const QUuid& actionId, const QUuid& nodeId);
         bool setCurrent(uint ix);
+
+        std::span<Item *>& currentWindow() noexcept {
+            return current_window_;
+        }
+
+        const std::span<Item *>& currentWindow() const noexcept {
+            return current_window_;
+        }
+
+        bool nodeChanged() const noexcept {
+            return node_changed_;
+        }
 
     private:
         std::map<QUuid, Item> by_quuid_;
         std::vector<Item *> items_; // Ordered list
+        std::span<Item *> current_window_{};
         uint current_ix_{0};
+        bool node_changed_{};
     };
 
     explicit ReviewModel(QObject *parent = nullptr);
@@ -84,6 +129,11 @@ public:
     Q_INVOKABLE bool first();
     Q_INVOKABLE bool back();
 
+    // QAbstractItemModel interface
+    int rowCount(const QModelIndex &parent) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
 signals:
     void activeChanged();
     void currentUuidChanged();
@@ -91,9 +141,10 @@ signals:
     void modelReset();
 
 private:
+    bool moveToIx(uint ix);
     void setCurrentUuid(const QUuid& uuid);
     void setState(State state);
-
+    QCoro::Task<void> changeNode();
     QCoro::Task<void> fetchIf();
 
     QUuid current_uuid_;
