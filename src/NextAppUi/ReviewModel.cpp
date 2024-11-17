@@ -1,3 +1,7 @@
+
+#include <algorithm>
+#include <ranges>
+
 #include "ReviewModel.h"
 #include "format_wrapper.h"
 #include "DbStore.h"
@@ -12,7 +16,7 @@
 using namespace std;
 
 ReviewModel::ReviewModel(QObject *parent)
-    : QObject{parent}
+    : QAbstractListModel{parent}
 {}
 
 ReviewModel &ReviewModel::instance()
@@ -258,6 +262,8 @@ ORDER BY
 
     const auto& rows = rval.value();
     LOG_DEBUG_N << "Fetched " << rows.size() << " rows";
+    cache_.clear();
+    cache_.reserve(rows.size());
 
     for(auto& row : rows) {
         auto action_id = QUuid(row[0].toString());
@@ -269,9 +275,8 @@ ORDER BY
 }
 
 void ReviewModel::Cache::add(const QUuid& actionId, const QUuid& nodeId) {
-    auto [it, added] = by_quuid_.emplace(actionId, nodeId);
-    assert(added);
-    items_.push_back(&it->second);
+    by_quuid_.emplace(actionId, items_.size());
+    auto &item = items_.emplace_back(actionId, nodeId);
 }
 
 bool ReviewModel::Cache::setCurrent(uint ix)
@@ -285,13 +290,14 @@ bool ReviewModel::Cache::setCurrent(uint ix)
     QUuid prev_node;
     if (!current_window_.empty()) {
         assert(current_ix_ < items_.size());
-        prev_node = items_[current_ix_]->node_id_;
+        prev_node = items_[current_ix_].node_id_;
     }
 
     current_ix_ = ix;
-    if (items_[ix]->node_id_ != prev_node) {
-        auto range = ranges::equal_range(items_, items_[ix]->node_id_, {}, &Item::node_id_);
-        current_window_ = {range.begin(), range.end()};
+    if (items_[ix].node_id_ != prev_node) {
+        auto window = ranges::equal_range(items_, items_[ix].node_id_, {}, &Item::node_id_)
+                      | ranges::views::transform([] (Item &value){ return &value; });
+        current_window_.assign(window.begin(), window.end());
         node_changed_ = true;
     };
     return true;

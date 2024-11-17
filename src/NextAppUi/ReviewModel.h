@@ -23,6 +23,7 @@ class ReviewModel : public QAbstractListModel
     Q_OBJECT
     QML_ELEMENT
 
+public:
     enum class State {
         PENDING,
         FETCHING,
@@ -56,7 +57,7 @@ class ReviewModel : public QAbstractListModel
 
     Q_PROPERTY(bool active MEMBER active_ WRITE setActive NOTIFY activeChanged)
     Q_PROPERTY(QUuid currentUuid MEMBER current_uuid_ NOTIFY currentUuidChanged)
-    Q_PROPERTY(State MEMBER state_ NOTIFY stateChanged)
+    Q_PROPERTY(State state MEMBER state_ NOTIFY stateChanged)
 
     class Item {
         public:
@@ -70,6 +71,7 @@ class ReviewModel : public QAbstractListModel
 
         State state() const noexcept { return state_; }
         bool done() const noexcept { return state_ == State::DONE; }
+        const QUuid& uuid() const noexcept { return id_; }
 
         std::shared_ptr<nextapp::pb::ActionInfo> action;
         const QUuid id_;
@@ -92,18 +94,25 @@ class ReviewModel : public QAbstractListModel
         const QUuid& currentId() noexcept {
             assert(!items_.empty());
             assert(current_ix_ < items_.size());
-            return items_[current_ix_]->id_;
+            return items_[current_ix_].id_;
         }
 
         void reserve(uint size) { items_.reserve(size); }
+        void clear() {
+            by_quuid_.clear();
+            items_.clear();
+            current_ix_ = 0;
+            current_window_ = {};
+            node_changed_ = false;
+        }
         void add(const QUuid& actionId, const QUuid& nodeId);
         bool setCurrent(uint ix);
 
-        std::span<Item *>& currentWindow() noexcept {
+        auto& currentWindow() noexcept {
             return current_window_;
         }
 
-        const std::span<Item *>& currentWindow() const noexcept {
+        const auto& currentWindow() const noexcept {
             return current_window_;
         }
 
@@ -112,9 +121,9 @@ class ReviewModel : public QAbstractListModel
         }
 
     private:
-        std::map<QUuid, Item> by_quuid_;
-        std::vector<Item *> items_; // Ordered list
-        std::span<Item *> current_window_{};
+        std::map<QUuid, uint /* index */> by_quuid_;
+        std::vector<Item> items_; // Ordered list
+        std::vector<Item *> current_window_{};
         uint current_ix_{0};
         bool node_changed_{};
     };

@@ -404,7 +404,7 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind)
     assert(false);
 }
 
-QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt) const
+QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
 {
 #if defined(ANDROID) || defined(__APPLE__)
     return "no-tz";
@@ -463,7 +463,7 @@ QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget
 #endif
 }
 
-QString ActionsModel::formatDue(const nextapp::pb::Due &due) const
+QString ActionsModel::formatDue(const nextapp::pb::Due &due)
 {
     auto when = due.hasStart() ? due.start() : 0;
     return formatWhen(when, due.kind());

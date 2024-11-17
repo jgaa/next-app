@@ -12,6 +12,22 @@
 
 #include "ServerSynchedCahce.h"
 
+template <typename T>
+T& getRef(T& v) {
+    return v;
+}
+
+template <typename T>
+T& getRef(T* v) {
+    return *v;
+}
+
+template <typename T>
+concept hasMemberFnUuid = requires(T t) {
+    t.uuid();
+};
+
+
 class ActionInfoCache : public QObject
     , public ServerSynchedCahce<nextapp::pb::Action, ActionInfoCache>
 {
@@ -71,11 +87,21 @@ public:
     template <typename T>
     QCoro::Task<bool> fill(T& items, bool keepExisting = false) {
         for (auto& item : items) {
-            if (keepExisting && item.action) {
+            // remove pointer type from item so we can access members in a uniform way
+            auto &v = getRef(item); //std::is_pointer_v<decltype(item)> ? *item : item;
+            if (keepExisting && v.action) {
                 continue;
             }
-            if (item.action = co_await get(item.uuid, true); !item.action) {
-                LOG_WARN << "Cannot find action with id: " << item.uuid.toString();
+
+            QUuid uuid;
+            if constexpr (hasMemberFnUuid<decltype(v)>) {
+                uuid = v.uuid();
+            } else {
+                uuid = v.uuid;
+            }
+
+            if (v.action = co_await get(uuid, true); !v.action) {
+                LOG_WARN << "Cannot find action with id: " << uuid.toString();
             }
         }
         co_return true;
