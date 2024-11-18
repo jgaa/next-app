@@ -605,7 +605,7 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
     params << node.serialize(&serializer);
 
     QString sql = R"(INSERT INTO node
-        (uuid, parent, name, active, updated, data) VALUES (?, ?, ?, ?, ?)
+        (uuid, parent, name, active, updated, data) VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(uuid) DO UPDATE SET
         parent=excluded.parent,
         name=excluded.name,
