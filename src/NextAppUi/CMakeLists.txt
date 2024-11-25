@@ -229,6 +229,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/DlgInputField.qml
         qml/DueSelectionDialog.qml
         qml/EditActionDlg.qml
+        qml/EditActionView.qml
         qml/EditNodeDlg.qml
         qml/EditWorkSession.qml
         qml/MainTree.qml
@@ -246,6 +247,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/StyledTabButton.qml
         qml/SynchPopup.qml
         qml/WeeklyHoursView.qml
+        qml/WeeklyReportView.qml
         qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml
@@ -286,6 +288,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/settings/PrefSettings.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
+        qml/styling/SplitterStyle.qml
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
@@ -330,6 +333,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/square-checked.svg
         icons/square-unchecked.svg
         icons/task.svg
+        icons/weekly_review.svg
         sounds/387351__cosmicembers__simple-ding.wav
         sounds/515643__mashedtatoes2__ding2_edit.wav
         sounds/611112__5ro4__bell-ding-2.wav

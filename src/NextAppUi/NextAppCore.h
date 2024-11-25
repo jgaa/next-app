@@ -10,8 +10,8 @@
 #include "DbStore.h"
 #include "WorkModel.h"
 #include "WeeklyWorkReportModel.h"
+#include "ReviewModel.h"
 
-class WeeklyWorkReportModel;
 class CalendarModel;
 
 class NextAppCore : public QObject
@@ -41,6 +41,7 @@ public:
     static Q_INVOKABLE WeeklyWorkReportModel *createWeeklyWorkReportModel();
     static Q_INVOKABLE QString toHourMin(int duration);
     static Q_INVOKABLE CalendarModel *createCalendarModel();
+    static Q_INVOKABLE ReviewModel *getReviewModel();
     Q_INVOKABLE void openFile(const QString& path);
     Q_INVOKABLE void emitSettingsChanged();
     Q_INVOKABLE void setProperty(const QString& name, const QVariant& value);

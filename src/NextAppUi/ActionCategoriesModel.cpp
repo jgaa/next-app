@@ -3,6 +3,7 @@
 #include <QProtobufSerializer>
 
 #include "ActionCategoriesModel.h"
+#include <ReviewModel.h>
 #include "ServerComm.h"
 #include "util.h"
 
@@ -126,6 +127,7 @@ QString ActionCategoriesModel::getColorFromUuid(const QString &id)
 
 const nextapp::pb::ActionCategory &ActionCategoriesModel::getFromUuid(const QString &uuid)
 {
+    static const nextapp::pb::ActionCategory empty;
     auto it = ranges::find_if(action_categories_, [&uuid](const nextapp::pb::ActionCategory& c) {
         return c.id_proto() == uuid;
     });
@@ -133,6 +135,8 @@ const nextapp::pb::ActionCategory &ActionCategoriesModel::getFromUuid(const QStr
     if (it != action_categories_.end()) [[unlikely]] {
         return *it;
     }
+
+    return empty;
 }
 
 int ActionCategoriesModel::rowCount(const QModelIndex &parent) const

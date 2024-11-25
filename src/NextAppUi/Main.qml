@@ -29,7 +29,7 @@ ApplicationWindow {
     menuBar: MyMenuBar {
         dragWindow: root
         //infoText: root.getInfoText()
-        MyMenu {
+        Menu {
             title: qsTr("App")
 
             Action {
@@ -141,7 +141,8 @@ ApplicationWindow {
                         orientation: Qt.Horizontal
 
                         // Customized handle to drag between the Navigation and the Editor.
-                        handle: Rectangle {
+                        handle: SplitterStyle {}
+                            /*Rectangle {
                             implicitWidth: 10
                             color: SplitHandle.pressed ? MaterialDesignStyling.primary : MaterialDesignStyling.surfaceContainerHigh
                             border.color: SplitHandle.hovered ? MaterialDesignStyling.outline : MaterialDesignStyling.surfaceContainer
@@ -152,7 +153,7 @@ ApplicationWindow {
                                     duration: 1400
                                 }
                             }
-                        }
+                        }*/
 
                         Rectangle {
                             id: navigationView
@@ -180,11 +181,19 @@ ApplicationWindow {
                                 currentIndex: sidebar.currentTabIndex
                                 anchors.fill: parent
 
-                                ActionsListView {}
+                                ActionsListView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                }
 
                                 WorkSessionsView {}
 
                                 ReportsView {}
+
+                                WeeklyReportView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                }
                             }
                         }
                     }

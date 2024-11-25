@@ -34,7 +34,7 @@ using namespace std;
 ostream& operator << (ostream&o, const ServerComm::Status& v) {
     static constexpr auto names = to_array<string_view>({
         "OFFLINE",
-        "READY_TO_CONNECT"
+        "READY_TO_CONNECT",
         "CONNECTING",
         "INITIAL_SYNC",
         "ONLINE",

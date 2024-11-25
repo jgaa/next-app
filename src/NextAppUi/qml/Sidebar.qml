@@ -162,6 +162,20 @@ Rectangle {
                     }
                 }
             }
+
+            SidebarEntry {
+                id: weeklyReview
+
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/weekly_review.svg"
+                checkable: true
+
+                onCheckedChanged: {
+                    if (checked) {
+                        root.currentMainItem = 1
+                        root.currentTabIndex = 3
+                    }
+                }
+            }
         }
 
         // This item acts as a spacer to expand between the checkable and non-checkable buttons.

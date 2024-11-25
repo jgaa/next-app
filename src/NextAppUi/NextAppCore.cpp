@@ -10,6 +10,7 @@
 #include <QQuickWindow>
 
 #include "WeeklyWorkReportModel.h"
+#include "ActionCategoriesModel.h"
 #include "util.h"
 
 using namespace std;
@@ -109,6 +110,14 @@ CalendarModel *NextAppCore::createCalendarModel()
     auto model = new CalendarModel();
     QQmlEngine::setObjectOwnership(model, QQmlEngine::JavaScriptOwnership);
     return model;
+}
+
+ReviewModel *NextAppCore::getReviewModel()
+{
+    auto *rm = &ReviewModel::instance();
+    // Set CPP as ownership, because we manage the lifetime of the model.
+    QQmlEngine::setObjectOwnership(rm, QQmlEngine::CppOwnership);
+    return rm;
 }
 
 void NextAppCore::openFile(const QString &path)

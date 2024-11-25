@@ -15,6 +15,7 @@
 
 using namespace std;
 
+
 ReviewModel::ReviewModel(QObject *parent)
     : QAbstractListModel{parent}
 {}
