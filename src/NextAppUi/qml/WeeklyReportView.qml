@@ -28,6 +28,13 @@ Rectangle {
             SplitView.fillWidth: true
             SplitView.fillHeight: true
             model: NaCore.getReviewModel()
+            enabled: root.enabled && model.state == ReviewModel.State.READY
+
+            onVisibleChanged: {
+                if (visible) {
+                    actions.model.active = visible
+                }
+            }
         }
 
         ColumnLayout {
@@ -49,7 +56,7 @@ Rectangle {
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Back")
                         onClicked: {
-                            actions.pop()
+                            //actions.pop()
                         }
                     }
 
@@ -76,7 +83,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 color: "white"
-                enabled: false
+                enabled: actions.enabled
 
                 // TODO: Synchronize data with the left view
 

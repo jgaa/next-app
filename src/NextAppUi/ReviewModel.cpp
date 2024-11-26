@@ -31,12 +31,26 @@ void ReviewModel::setActive(bool active)
     if (active_ != active) {
         active_ = active;
         emit activeChanged();
+
+        if (active) {
+            if (state_ == State::PENDING || state_ == State::ERROR) {
+                fetchIf();
+            };
+        }
     }
 }
 
 bool ReviewModel::next()
 {
+    if (state_ == State::PENDING) {
+        return false;
+    }
 
+    if (state_ == State::READY) {
+        return moveToIx(cache_.currentIx() + 1);
+    };
+
+    return false;
 }
 
 bool ReviewModel::previous()
@@ -153,6 +167,9 @@ QHash<int, QByteArray> ReviewModel::roleNames() const
 
 bool ReviewModel::moveToIx(uint ix)
 {
+    beginResetModel();
+    ScopedExit guard([this] { endResetModel(); });
+
     if (cache_.setCurrent(ix)) {
         setCurrentUuid(cache_.currentId());
         if (cache_.nodeChanged()) {
@@ -202,54 +219,46 @@ QCoro::Task<void> ReviewModel::changeNode()
 
 QCoro::Task<void> ReviewModel::fetchIf()
 {
+    if (!active_) {
+        LOG_DEBUG_N << "Not active";
+        co_return;
+    }
     if (state_ == State::FETCHING) {
         LOG_DEBUG_N << "Already fetching";
         co_return;
     }
 
+    // Query suggested by ChatGPT 4o
     const auto sql = NA_FORMAT(R"(WITH RECURSIVE
--- Recursive CTE to build the node hierarchy sorted by name
-sorted_nodes AS (
-    SELECT
-        uuid,
-        parent,
-        name,
-        0 AS depth
-    FROM
-        node
-    WHERE
-        parent IS NULL -- Root nodes
-    UNION ALL
-    SELECT
-        n.uuid,
-        n.parent,
-        n.name,
-        sn.depth + 1 AS depth
-    FROM
-        node n
-    INNER JOIN
-        sorted_nodes sn
-    ON
-        n.parent = sn.uuid
-    ORDER BY
-        sn.depth,
-        n.name -- Sort nodes by name at each hierarchy level
-)
--- Final query to combine actions with sorted nodes
+    sorted_nodes(uuid, parent, name, path) AS (
+        -- Base case: Start from root nodes (nodes without parents)
+        SELECT
+            uuid,
+            parent,
+            name,
+            name AS path
+        FROM node
+        WHERE parent IS NULL
+        UNION ALL
+        -- Recursive case: Traverse child nodes
+        SELECT
+            n.uuid,
+            n.parent,
+            n.name,
+            sn.path || ' > ' || n.name
+        FROM node n
+        INNER JOIN sorted_nodes sn ON n.parent = sn.uuid
+    )
 SELECT
     action.id AS action_id,
-    action.node AS action_node
-FROM
-    action
-INNER JOIN
-    sorted_nodes
-ON
-    action.node = sorted_nodes.uuid
+    node.uuid AS node_uuid
+FROM action
+INNER JOIN sorted_nodes node ON action.node = node.uuid
+WHERE action.status != 1
 ORDER BY
-    sorted_nodes.depth, -- Maintain hierarchy order
-    sorted_nodes.name, -- Ensure node name sorting within each level
-    action.priority,
-    action.name;
+    node.path,          -- Sort by node hierarchy (path determines order)
+    action.priority,    -- Then by action priority
+    action.name         -- Finally, alphabetically by action name
 )");
 
     setState(State::FETCHING);
@@ -273,6 +282,7 @@ ORDER BY
     };
 
     setState(State::READY);
+    first();
 }
 
 void ReviewModel::Cache::add(const QUuid& actionId, const QUuid& nodeId) {
@@ -296,10 +306,26 @@ bool ReviewModel::Cache::setCurrent(uint ix)
 
     current_ix_ = ix;
     if (items_[ix].node_id_ != prev_node) {
-        auto window = ranges::equal_range(items_, items_[ix].node_id_, {}, &Item::node_id_)
-                      | ranges::views::transform([] (Item &value){ return &value; });
-        current_window_.assign(window.begin(), window.end());
+        const auto& node_id = items_[ix].node_id_;
+
+        auto first = ix;
+        while(first > 0 && items_[first - 1].node_id_ == node_id) {
+            --first;
+        };
+
+        auto end = ix;
+        while(end < items_.size() && items_[end].node_id_ == node_id) {
+            ++end;
+        };
+
+        current_window_.clear();
+        current_window_.reserve(end - first);
+        for(auto i = first; i < end; ++i) {
+            current_window_.push_back(&items_[i]);
+        };
+
         node_changed_ = true;
     };
+
     return true;
 }
