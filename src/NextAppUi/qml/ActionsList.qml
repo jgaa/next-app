@@ -15,6 +15,8 @@ Rectangle {
     property var priorityColors: ["magenta", "red", "orangered", "orange", "green", "blue", "lightblue", "gray"]
     property var statusIcons: ["\uf058", "\uf111", "\uf0c8"]
     property alias model: listView.model
+    property alias listCtl: listView
+    property bool selectFirstOnModelReset: true
     color: MaterialDesignStyling.surface
 
     ColumnLayout {
@@ -64,6 +66,23 @@ Rectangle {
                 property: "section"
                 delegate: sectionHeading
             }
+
+            Connections {
+                target: listView.model
+
+                function onModelReset() {
+                    if (root.selectFirstOnModelReset) {
+                        if (listView.model.rowCount() > 0) {
+                            console.log("ActionsList: Setting currentIndex to 0 because model was reset")
+                            listView.currentIndex = 0
+                        } else {
+                            console.log("ActionsList: Setting currentIndex to -1 because model was reset and empty")
+                            listView.currentIndex = -1
+                        }
+                    }
+                }
+            }
+
 
             model: NaActionsModel
 

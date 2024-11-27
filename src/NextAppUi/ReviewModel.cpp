@@ -47,7 +47,9 @@ bool ReviewModel::next()
     }
 
     if (state_ == State::READY) {
-        return moveToIx(cache_.currentIx() + 1);
+        if (auto start = findNext(true); start != -1) {
+            return moveToIx(start);
+        };
     };
 
     return false;
@@ -55,17 +57,32 @@ bool ReviewModel::next()
 
 bool ReviewModel::previous()
 {
+    if (state_ == State::PENDING) {
+        return false;
+    }
 
+    if (state_ == State::READY) {
+        if (auto start = findNext(false); start != -1) {
+            return moveToIx(start);
+        };
+    };
+
+    return false;
 }
 
 bool ReviewModel::first()
 {
-   return moveToIx(0);
+    if (auto start = findNext(true, 0); start != -1) {
+        return moveToIx(start);
+    };
+
+    return false;
 }
 
 bool ReviewModel::back()
 {
-
+    // TODO: Implement back navigation
+    return false;
 }
 
 int ReviewModel::rowCount(const QModelIndex &parent) const
@@ -165,28 +182,77 @@ QHash<int, QByteArray> ReviewModel::roleNames() const
     return roles;
 }
 
+void ReviewModel::setSelected(int ix)
+{
+    if (selected_ != ix) {
+        selected_ = ix;
+        emit selectedChanged();
+    }
+}
+
+void ReviewModel::setNodeUuid(const QString &uuid)
+{
+    if (node_uuid_ != uuid) {
+        node_uuid_ = uuid;
+        emit nodeUuidChanged();
+    }
+}
+
+int ReviewModel::findNext(bool forward, int from)
+{
+    const int step = forward ? 1 : -1;
+    const int start = from == -1  ? cache_.currentIx() + step : from;
+    int tries = 0;
+
+    for(int i = start; !tries || i != start; i += step, ++tries) {
+        if (i == -1) {
+            i = cache_.size() - 1;
+        } else if (i == cache_.size()) {
+            i = 0;
+        };
+
+        if (!cache_.at(i).done()) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 bool ReviewModel::moveToIx(uint ix)
 {
-    beginResetModel();
-    ScopedExit guard([this] { endResetModel(); });
+    // beginResetModel();
+    // ScopedExit guard([this] { endResetModel(); });
+
+    LOG_TRACE_N << "Moving to ix " << ix;
 
     if (cache_.setCurrent(ix)) {
-        setCurrentUuid(cache_.currentId());
         if (cache_.nodeChanged()) {
             changeNode();
         }
+        setActionUuid(cache_.currentId());
         return true;
     }
-    setCurrentUuid({});
+    setActionUuid({});
     return false;
 }
 
-void ReviewModel::setCurrentUuid(const QUuid &uuid)
+void ReviewModel::setActionUuid(const QUuid &uuid)
 {
-    if (current_uuid_ != uuid) {
-        current_uuid_ = uuid;
-        emit currentUuidChanged();
+    const auto uuid_str = uuid.isNull() ? QString{} : uuid.toString(QUuid::WithoutBraces);
+    if (action_uuid_ != uuid_str) {
+        action_uuid_ = uuid_str;
+        emit actionUuidChanged();
     }
+
+    const auto& window = cache_.currentWindow();
+    auto pos = std::ranges::find_if(window, [uuid](const auto& item) {
+        return item->id_ == uuid;
+    });
+
+    if (pos != window.end()) {
+        setSelected(pos - window.begin());
+    };
 }
 
 void ReviewModel::setState(State state)
@@ -207,14 +273,19 @@ QCoro::Task<void> ReviewModel::changeNode()
     auto *aic = ActionInfoCache::instance();
     assert(aic);
     setState(State::FILLING);
-    beginResetModel();
-    endResetModel();
+    // beginResetModel();
+    // endResetModel();
     co_await aic->fill(cache_.currentWindow());
     if (state_ == State::FILLING) {
         setState(State::READY);
     }
     beginResetModel();
     endResetModel();
+    QString cn;
+    if (!cache_.currentWindow().empty()) {
+        cn = cache_.currentWindow().front()->node_id_.toString(QUuid::WithoutBraces);
+    }
+    setNodeUuid(cn);
 }
 
 QCoro::Task<void> ReviewModel::fetchIf()
@@ -257,6 +328,7 @@ INNER JOIN sorted_nodes node ON action.node = node.uuid
 WHERE action.status != 1
 ORDER BY
     node.path,          -- Sort by node hierarchy (path determines order)
+    action.due_by_time, -- Then by due time
     action.priority,    -- Then by action priority
     action.name         -- Finally, alphabetically by action name
 )");

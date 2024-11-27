@@ -193,6 +193,7 @@ ApplicationWindow {
                                 WeeklyReportView {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
+                                    navigation: mainTree
                                 }
                             }
                         }

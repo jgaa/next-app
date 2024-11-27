@@ -11,8 +11,28 @@ Rectangle {
     id: root
     //color: "green" // MaterialDesignStyling.surface
     enabled: NaComm.connected
+    property var navigation: null
 
     DisabledDimmer {}
+
+    Connections {
+        target: actions.model
+
+        function onSelectedChanged() {
+            if (actions.listCtl.currentIndex !=- actions.model.selected) {
+                console.log("WeeklyReportView: Selected changed to ", actions.model.selected)
+                actions.listCtl.currentIndex = actions.model.selected
+            }
+        }
+
+        // function onModelReset() {
+        //     navigation.setUuidAsCurrent(actions.model.currentUuid)
+        // }
+
+        function onNodeUuidChanged() {
+            root.navigation.setUuidAsCurrent(actions.model.nodeUuid)
+        }
+    }
 
     SplitView {
         id: splitCtl
@@ -33,6 +53,9 @@ Rectangle {
             onVisibleChanged: {
                 if (visible) {
                     actions.model.active = visible
+                    if (navigation) {
+                        navigation.setUuidAsCurrent(actions.model.currentUuid)
+                    }
                 }
             }
         }
@@ -54,9 +77,17 @@ Rectangle {
                     Layout.fillWidth: true
                     StyledButton {
                         Layout.alignment: Qt.AlignLeft
+                        text: qsTr("First")
+                        onClicked: {
+                            actions.model.first()
+                        }
+                    }
+
+                    StyledButton {
+                        Layout.alignment: Qt.AlignLeft
                         text: qsTr("Back")
                         onClicked: {
-                            //actions.pop()
+                            actions.model.back()
                         }
                     }
 
@@ -64,7 +95,7 @@ Rectangle {
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Previous")
                         onClicked: {
-                            //actions.pop()
+                            actions.model.previous()
                         }
                     }
 
@@ -72,7 +103,15 @@ Rectangle {
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Next")
                         onClicked: {
-                            //actions.pop()
+                            actions.model.next()
+                        }
+                    }
+
+                    StyledButton {
+                        Layout.alignment: Qt.AlignLeft
+                        text: qsTr("Next List")
+                        onClicked: {
+                            actions.model.next()
                         }
                     }
                 }

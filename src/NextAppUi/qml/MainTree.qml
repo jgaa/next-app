@@ -21,6 +21,14 @@ Rectangle {
 
     color: MaterialDesignStyling.surface
 
+    function setUuidAsCurrent(uuid) {
+        NaMainTreeModel.selected = uuid
+        const ix = NaMainTreeModel.indexFromUuid(uuid)
+        treeView.expandToIndex(ix)
+        //treeView.positionViewAtIndex(ix, TableView.Visible)
+        treeView.positionViewAtRow(treeView.rowAtIndex(ix), TableView.Visible)
+    }
+
     ColumnLayout {
         anchors.fill: parent
 

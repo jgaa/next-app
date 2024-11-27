@@ -56,7 +56,9 @@ public:
     Q_ENUM(State)
 
     Q_PROPERTY(bool active MEMBER active_ WRITE setActive NOTIFY activeChanged)
-    Q_PROPERTY(QUuid currentUuid MEMBER current_uuid_ NOTIFY currentUuidChanged)
+    Q_PROPERTY(QString actionUuid MEMBER action_uuid_ NOTIFY actionUuidChanged)
+    Q_PROPERTY(QString nodeUuid MEMBER node_uuid_ NOTIFY nodeUuidChanged)
+    Q_PROPERTY(int selected MEMBER selected_ WRITE setSelected NOTIFY selectedChanged)
     Q_PROPERTY(State state MEMBER state_ NOTIFY stateChanged)
 
     class Item {
@@ -72,6 +74,7 @@ public:
         State state() const noexcept { return state_; }
         bool done() const noexcept { return state_ == State::DONE; }
         const QUuid& uuid() const noexcept { return id_; }
+        void markDone() noexcept { state_ = State::DONE; }
 
         std::shared_ptr<nextapp::pb::ActionInfo> action;
         const QUuid id_;
@@ -120,6 +123,10 @@ public:
             return node_changed_;
         }
 
+        auto& at(int ix) {
+            return items_.at(ix);
+        }
+
     private:
         std::map<QUuid, uint /* index */> by_quuid_;
         std::vector<Item> items_; // Ordered list
@@ -142,21 +149,28 @@ public:
     int rowCount(const QModelIndex &parent) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
+    void setSelected(int ix);
+    void setNodeUuid(const QString& uuid);
 
 signals:
     void activeChanged();
-    void currentUuidChanged();
+    void nodeUuidChanged();
+    void actionUuidChanged();
     void stateChanged();
     void modelReset();
+    void selectedChanged();
 
 private:
+    int findNext(bool forward, int from = -1);
     bool moveToIx(uint ix);
-    void setCurrentUuid(const QUuid& uuid);
+    void setActionUuid(const QUuid& uuid);
     void setState(State state);
     QCoro::Task<void> changeNode();
     QCoro::Task<void> fetchIf();
 
-    QUuid current_uuid_;
+    QString node_uuid_;
+    QString action_uuid_;
+    int selected_{-1};
     std::stack<QUuid> history_; // For back navigation
     bool active_{false}; // True if the review is active in the UI.
     State state_{State::PENDING};
