@@ -198,6 +198,15 @@ void ReviewModel::setNodeUuid(const QString &uuid)
     }
 }
 
+nextapp::pb::Action ReviewModel::action()
+{
+    if (action_) {
+        return *action_;
+    }
+
+    return {};
+}
+
 int ReviewModel::findNext(bool forward, int from)
 {
     const int step = forward ? 1 : -1;
@@ -243,6 +252,7 @@ void ReviewModel::setActionUuid(const QUuid &uuid)
     if (action_uuid_ != uuid_str) {
         action_uuid_ = uuid_str;
         emit actionUuidChanged();
+        fetchAction();
     }
 
     const auto& window = cache_.currentWindow();
@@ -355,6 +365,25 @@ ORDER BY
 
     setState(State::READY);
     first();
+}
+
+QCoro::Task<void> ReviewModel::fetchAction()
+{
+    const auto uuid = QUuid(action_uuid_);
+    if (uuid.isNull()) {
+        LOG_DEBUG_N << "No action uuid";
+        co_return;
+    }
+
+    auto *aic = ActionInfoCache::instance();
+    assert(aic);
+    auto action = co_await aic->getAction(uuid);
+
+    // Check that we still have the same active action
+    if (uuid == QUuid(action_uuid_)) {
+        action_ = action;
+        emit actionChanged();
+    };
 }
 
 void ReviewModel::Cache::add(const QUuid& actionId, const QUuid& nodeId) {

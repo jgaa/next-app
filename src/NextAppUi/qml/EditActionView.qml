@@ -13,6 +13,7 @@ ColumnLayout {
     property int labelWidth: 80
     property int leftMarginForControls: NaCore.isMobile ? 20 : 0
     property NextappPb.action action: null
+    property bool existingOnly: false
 
     function assign(newAction) {
         root.action = newAction

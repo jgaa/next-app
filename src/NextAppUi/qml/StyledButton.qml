@@ -5,6 +5,8 @@ import NextAppUi
 Button {
     id: control
     text: qsTr("Button")
+    property int useWidth: 100
+    property int useHeight: 40
 
     contentItem: Text {
         text: control.text
@@ -17,8 +19,8 @@ Button {
     }
 
     background: Rectangle {
-        implicitWidth: 100
-        implicitHeight: 40
+        implicitWidth: control.useWidth
+        implicitHeight: control.useHeight
         opacity: enabled ? 1 : 0.3
         border.color: control.down ? MaterialDesignStyling.outline : MaterialDesignStyling.outlineVariant
         border.width: 1

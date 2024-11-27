@@ -60,6 +60,7 @@ public:
     Q_PROPERTY(QString nodeUuid MEMBER node_uuid_ NOTIFY nodeUuidChanged)
     Q_PROPERTY(int selected MEMBER selected_ WRITE setSelected NOTIFY selectedChanged)
     Q_PROPERTY(State state MEMBER state_ NOTIFY stateChanged)
+    Q_PROPERTY(nextapp::pb::Action action READ action NOTIFY actionChanged)
 
     class Item {
         public:
@@ -151,6 +152,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
     void setSelected(int ix);
     void setNodeUuid(const QString& uuid);
+    nextapp::pb::Action action();
 
 signals:
     void activeChanged();
@@ -159,6 +161,7 @@ signals:
     void stateChanged();
     void modelReset();
     void selectedChanged();
+    void actionChanged();
 
 private:
     int findNext(bool forward, int from = -1);
@@ -167,9 +170,11 @@ private:
     void setState(State state);
     QCoro::Task<void> changeNode();
     QCoro::Task<void> fetchIf();
+    QCoro::Task<void> fetchAction();
 
     QString node_uuid_;
     QString action_uuid_;
+    std::shared_ptr<nextapp::pb::Action> action_;
     int selected_{-1};
     std::stack<QUuid> history_; // For back navigation
     bool active_{false}; // True if the review is active in the UI.

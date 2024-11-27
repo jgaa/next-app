@@ -22,6 +22,7 @@ Rectangle {
             if (actions.listCtl.currentIndex !=- actions.model.selected) {
                 console.log("WeeklyReportView: Selected changed to ", actions.model.selected)
                 actions.listCtl.currentIndex = actions.model.selected
+                editActionCtl.enabled = false
             }
         }
 
@@ -31,6 +32,12 @@ Rectangle {
 
         function onNodeUuidChanged() {
             root.navigation.setUuidAsCurrent(actions.model.nodeUuid)
+        }
+
+        function onActionChanged() {
+            console.log("WeeklyReportView: Action changed to: ", actions.model.action.name)
+            editActionView.assign(actions.model.action)
+            editActionCtl.enabled = actions.model.actionUuid !== "";
         }
     }
 
@@ -61,6 +68,8 @@ Rectangle {
         }
 
         ColumnLayout {
+            id: actionCtl
+            property int buttonWidth: width / 6
             SplitView.preferredWidth: parent.width / 2
             SplitView.minimumWidth: 100
             SplitView.fillWidth: true
@@ -78,6 +87,7 @@ Rectangle {
                     StyledButton {
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("First")
+                        useWidth: actionCtl.buttonWidth
                         onClicked: {
                             actions.model.first()
                         }
@@ -86,6 +96,7 @@ Rectangle {
                     StyledButton {
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Back")
+                        useWidth: actionCtl.buttonWidth
                         onClicked: {
                             actions.model.back()
                         }
@@ -94,6 +105,7 @@ Rectangle {
                     StyledButton {
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Previous")
+                        useWidth: actionCtl.buttonWidth
                         onClicked: {
                             actions.model.previous()
                         }
@@ -102,6 +114,7 @@ Rectangle {
                     StyledButton {
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Next")
+                        useWidth: actionCtl.buttonWidth
                         onClicked: {
                             actions.model.next()
                         }
@@ -110,6 +123,7 @@ Rectangle {
                     StyledButton {
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Next List")
+                        useWidth: actionCtl.buttonWidth
                         onClicked: {
                             actions.model.next()
                         }
@@ -118,11 +132,11 @@ Rectangle {
             }
 
             Rectangle {
-                id: actionCtl
+                id: editActionCtl
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 color: "white"
-                enabled: actions.enabled
+                enabled: false
 
                 // TODO: Synchronize data with the left view
 
