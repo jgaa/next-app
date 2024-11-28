@@ -854,6 +854,8 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return MainTreeModel::instance()->nodeNameFromUuid(action.node(), true);
     case CategoryRole:
         return action.category();
+    case ReviewedRole:
+        return false;
     }
     return {};
 }
@@ -916,6 +918,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[HasWorkSessionRole] = "hasWorkSession";
     roles[ListNameRole] = "listName";
     roles[CategoryRole] = "category";
+    roles[ReviewedRole] = "reviewed";
     return roles;
 }
 

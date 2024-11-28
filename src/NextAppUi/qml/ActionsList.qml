@@ -17,7 +17,10 @@ Rectangle {
     property alias model: listView.model
     property alias listCtl: listView
     property bool selectFirstOnModelReset: true
+    property var onSelectionEvent: null
+    property bool callOnSelectionEvent: typeof onSelectionEvent === "function"
     color: MaterialDesignStyling.surface
+    property bool hasReview: false
 
     ColumnLayout {
         anchors.fill: parent
@@ -101,6 +104,7 @@ Rectangle {
                 required property string due
                 required property int priority
                 required property string status
+                required property bool reviewed
 
                 implicitHeight: row.implicitHeight + 4
                 width: listView.width - MaterialDesignStyling.scrollBarWidth
@@ -122,6 +126,9 @@ Rectangle {
                             case 0: // touch
                             case Qt.LeftButton:
                                 listView.currentIndex = index
+                                if (root.callOnSelectionEvent) {
+                                    root.onSelectionEvent(uuid)
+                                }
                                 break;
                             case Qt.RightButton:
                                 contextMenu.uuid = uuid
@@ -185,6 +192,24 @@ Rectangle {
 
                     RowLayout {
                         spacing: 6
+
+                        CheckBoxWithFontIcon {
+                            id: revewedIcon
+                            visible: root.hasReview
+                            isChecked: reviewed
+                            checkedCode: "\uf06e"
+                            uncheckedCode: "\uf06e"
+                            checkedColor: "green"
+                            uncheckedColor: "blue"
+                            useSolidForChecked: true
+                            iconSize: 16
+                            autoToggle: false
+                            text: ""
+
+                            onClicked: {
+                                NaActionsModel.markActionAsFavorite(uuid, !favorite)
+                            }
+                        }
 
                         CheckBoxWithFontIcon {
                             Layout.topMargin: 2

@@ -51,6 +51,7 @@ public:
         HasWorkSessionRole,
         ListNameRole,
         CategoryRole,
+        ReviewedRole,
     };
 
     Q_ENUM(State)
@@ -58,7 +59,7 @@ public:
     Q_PROPERTY(bool active MEMBER active_ WRITE setActive NOTIFY activeChanged)
     Q_PROPERTY(QString actionUuid MEMBER action_uuid_ NOTIFY actionUuidChanged)
     Q_PROPERTY(QString nodeUuid MEMBER node_uuid_ NOTIFY nodeUuidChanged)
-    Q_PROPERTY(int selected MEMBER selected_ WRITE setSelected NOTIFY selectedChanged)
+    Q_PROPERTY(int selected MEMBER selected_ NOTIFY selectedChanged)
     Q_PROPERTY(State state MEMBER state_ NOTIFY stateChanged)
     Q_PROPERTY(nextapp::pb::Action action READ action NOTIFY actionChanged)
 
@@ -128,11 +129,34 @@ public:
             return items_.at(ix);
         }
 
+        auto& current() {
+            assert(!items_.empty());
+            return at(currentIx());
+        }
+
+        bool empty() const noexcept {
+            return items_.empty();
+        }
+
+        int pos(const QUuid& uuid) const;
+
+        /*! Get the row (in the current window) for the given index.
+         *
+         *  @param ix Index in the cache.
+         *  @return Row index in the current window or -1 if the index is outside the window.
+         */
+        int rowAtIx(int ix) const;
+
+        int startOfWindowIx() const noexcept {
+            return start_of_window_ix_;
+        }
+
     private:
         std::map<QUuid, uint /* index */> by_quuid_;
         std::vector<Item> items_; // Ordered list
         std::vector<Item *> current_window_{};
         uint current_ix_{0};
+        uint start_of_window_ix_{0};
         bool node_changed_{};
     };
 
@@ -142,9 +166,11 @@ public:
     void setActive(bool active);
 
     Q_INVOKABLE bool next();
+    Q_INVOKABLE bool nextList();
     Q_INVOKABLE bool previous();
     Q_INVOKABLE bool first();
     Q_INVOKABLE bool back();
+    Q_INVOKABLE void selectByUuid(const QString& uuid);
 
     // QAbstractItemModel interface
     int rowCount(const QModelIndex &parent) const override;
@@ -164,13 +190,15 @@ signals:
     void actionChanged();
 
 private:
-    int findNext(bool forward, int from = -1);
+    int findNext(bool forward, int from = -1, bool nextList = false);
     bool moveToIx(uint ix);
     void setActionUuid(const QUuid& uuid);
     void setState(State state);
     QCoro::Task<void> changeNode();
     QCoro::Task<void> fetchIf();
     QCoro::Task<void> fetchAction();
+    void signalChanged(int row);
+    //void markAsReviewed()
 
     QString node_uuid_;
     QString action_uuid_;

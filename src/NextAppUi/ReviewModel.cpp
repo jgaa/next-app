@@ -47,7 +47,33 @@ bool ReviewModel::next()
     }
 
     if (state_ == State::READY) {
+        cache_.current().markDone();
+        signalChanged(cache_.rowAtIx(cache_.currentIx()));
+
         if (auto start = findNext(true); start != -1) {
+            return moveToIx(start);
+        };
+    };
+
+    return false;
+}
+
+bool ReviewModel::nextList()
+{
+    if (state_ == State::PENDING) {
+        return false;
+    }
+
+    for(auto *item : cache_.currentWindow()) {
+        item->markDone();
+    };
+
+    // const auto start = cache_.startOfWindowIx();
+    // const auto end = start + cache_.currentWindow().size() -1;
+    // dataChanged(index(start), index(end));
+
+    if (state_ == State::READY) {
+        if (auto start = findNext(true, -1, true); start != -1) {
             return moveToIx(start);
         };
     };
@@ -62,6 +88,8 @@ bool ReviewModel::previous()
     }
 
     if (state_ == State::READY) {
+        cache_.current().markDone();
+        signalChanged(cache_.rowAtIx(cache_.currentIx()));
         if (auto start = findNext(false); start != -1) {
             return moveToIx(start);
         };
@@ -72,6 +100,10 @@ bool ReviewModel::previous()
 
 bool ReviewModel::first()
 {
+    if (cache_.currentIx() > 0) {
+        cache_.current().markDone();
+        signalChanged(cache_.rowAtIx(cache_.currentIx()));
+    };
     if (auto start = findNext(true, 0); start != -1) {
         return moveToIx(start);
     };
@@ -83,6 +115,19 @@ bool ReviewModel::back()
 {
     // TODO: Implement back navigation
     return false;
+}
+
+void ReviewModel::selectByUuid(const QString &uuidStr)
+{
+    const QUuid uuid{uuidStr};
+
+    if (uuid.isNull()) {
+        return;
+    };
+
+    if (auto ix = cache_.pos(uuid); ix != -1) {
+        moveToIx(ix);
+    }
 }
 
 int ReviewModel::rowCount(const QModelIndex &parent) const
@@ -155,6 +200,8 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
         return MainTreeModel::instance()->nodeNameFromUuid(action.node(), true);
     case CategoryRole:
         return action.category();
+    case ReviewedRole:
+        return item.done();
     }
     return {};
 }
@@ -179,6 +226,7 @@ QHash<int, QByteArray> ReviewModel::roleNames() const
     roles[HasWorkSessionRole] = "hasWorkSession";
     roles[ListNameRole] = "listName";
     roles[CategoryRole] = "category";
+    roles[ReviewedRole] = "reviewed";
     return roles;
 }
 
@@ -207,8 +255,14 @@ nextapp::pb::Action ReviewModel::action()
     return {};
 }
 
-int ReviewModel::findNext(bool forward, int from)
+int ReviewModel::findNext(bool forward, int from, bool nextList)
 {
+    assert(!cache_.empty());
+
+    optional<QUuid> node;
+    if (nextList) {
+        node = cache_.current().node_id_;
+    };
     const int step = forward ? 1 : -1;
     const int start = from == -1  ? cache_.currentIx() + step : from;
     int tries = 0;
@@ -221,6 +275,9 @@ int ReviewModel::findNext(bool forward, int from)
         };
 
         if (!cache_.at(i).done()) {
+            if (node && cache_.at(i).node_id_ == *node) {
+                continue;
+            };
             return i;
         }
     }
@@ -386,6 +443,15 @@ QCoro::Task<void> ReviewModel::fetchAction()
     };
 }
 
+void ReviewModel::signalChanged(int row)
+{
+    LOG_TRACE_N << "Signaling changed for row " << row;
+    if (row < 0) {
+        return;
+    };
+    emit dataChanged(index(row), index(row));
+}
+
 void ReviewModel::Cache::add(const QUuid& actionId, const QUuid& nodeId) {
     by_quuid_.emplace(actionId, items_.size());
     auto &item = items_.emplace_back(actionId, nodeId);
@@ -421,6 +487,7 @@ bool ReviewModel::Cache::setCurrent(uint ix)
 
         current_window_.clear();
         current_window_.reserve(end - first);
+        start_of_window_ix_ = first;
         for(auto i = first; i < end; ++i) {
             current_window_.push_back(&items_[i]);
         };
@@ -429,4 +496,23 @@ bool ReviewModel::Cache::setCurrent(uint ix)
     };
 
     return true;
+}
+
+int ReviewModel::Cache::pos(const QUuid &uuid) const
+{
+    if (auto it = std::find_if(items_.begin(), items_.end(), [uuid](const auto& item) {
+        return item.id_ == uuid;
+    }); it != items_.end()) {
+        return it - items_.begin();
+    }
+    return -1;
+}
+
+int ReviewModel::Cache::rowAtIx(int ix) const
+{
+    const auto relative = ix - start_of_window_ix_;
+    if (relative < 0 || relative >= static_cast<int>(current_window_.size())) {
+        return -1;
+    };
+    return relative;
 }

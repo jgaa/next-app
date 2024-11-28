@@ -56,6 +56,10 @@ Rectangle {
             SplitView.fillHeight: true
             model: NaCore.getReviewModel()
             enabled: root.enabled && model.state == ReviewModel.State.READY
+            hasReview: true
+            onSelectionEvent: function (uuid) {
+                actions.model.selectByUuid(uuid)
+            }
 
             onVisibleChanged: {
                 if (visible) {
@@ -125,7 +129,7 @@ Rectangle {
                         text: qsTr("Next List")
                         useWidth: actionCtl.buttonWidth
                         onClicked: {
-                            actions.model.next()
+                            actions.model.nextList()
                         }
                     }
                 }
@@ -142,6 +146,8 @@ Rectangle {
 
                 EditActionView {
                     id: editActionView
+                    existingOnly: true
+                    autoCommit: true
                     anchors.fill: parent
                 }
             }

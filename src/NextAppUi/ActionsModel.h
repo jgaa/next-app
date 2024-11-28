@@ -141,6 +141,7 @@ class ActionsModel : public QAbstractListModel
         HasWorkSessionRole,
         ListNameRole,
         CategoryRole,
+        ReviewedRole, // dummy
     };
 
     enum Shortcuts {

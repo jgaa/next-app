@@ -14,8 +14,10 @@ ColumnLayout {
     property int leftMarginForControls: NaCore.isMobile ? 20 : 0
     property NextappPb.action action: null
     property bool existingOnly: false
+    property bool autoCommit: false
 
     function assign(newAction) {
+        commitIf()
         root.action = newAction
         if (root.action === null) {
             // Empty all the contrrols
@@ -76,7 +78,7 @@ ColumnLayout {
         }
     }
 
-    function commit() {
+    function update() {
         root.action.status = status.currentIndex
         root.action.name = name.text;
         root.action.descr = descr.text
@@ -100,11 +102,30 @@ ColumnLayout {
             root.action.repeatAfter = 0
             root.action.repeatUnits = 0
         }
+    }
 
+    function commit() {
+        update()
+        doCommit()
+    }
+
+    function doCommit() {
         if (root.action.id_proto !== "") { // edit
             NaActionsModel.updateAction(root.action)
-        } else {
+        } else if (!existingOnly) {
             NaActionsModel.addAction(root.action)
+        }
+    }
+
+    function hasChanged() {
+        const before = JSON.stringify(root.action);
+        update()
+        return before !== JSON.stringify(root.action)
+    }
+
+    function commitIf() {
+        if (root.action.id_proto !== "" && autoCommit && hasChanged()) {
+            doCommit()
         }
     }
 
