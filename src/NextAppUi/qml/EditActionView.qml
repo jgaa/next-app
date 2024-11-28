@@ -609,4 +609,22 @@ ColumnLayout {
             }
         } // Repeat tab
     } // StackLayout
+
+    function createIntFromList(listModel) {
+        let value = 0;
+        for (let i = 0; i < listModel.count; i++) {
+            var checked = listModel.get(i).checked
+            // console.log("Checked", i, checked)
+            if (checked) {
+                value |= 1 << i;
+            }
+        }
+        return value;
+    }
+
+    function updateListFromInt(listModel, value) {
+        for (let i = 0; i < listModel.count; i++) {
+            listModel.get(i).checked = ((value >> i) & 1) === 1;
+        }
+    }
 }

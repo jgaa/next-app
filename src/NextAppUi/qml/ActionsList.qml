@@ -207,7 +207,7 @@ Rectangle {
                             text: ""
 
                             onClicked: {
-                                NaActionsModel.markActionAsFavorite(uuid, !favorite)
+                                listView.model.toggleReviewed(uuid)
                             }
                         }
 

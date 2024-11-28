@@ -77,6 +77,7 @@ public:
         bool done() const noexcept { return state_ == State::DONE; }
         const QUuid& uuid() const noexcept { return id_; }
         void markDone() noexcept { state_ = State::DONE; }
+        void toggleDone() noexcept { state_ = state_ == State::DONE ? State::PENDING : State::DONE; }
 
         std::shared_ptr<nextapp::pb::ActionInfo> action;
         const QUuid id_;
@@ -151,6 +152,8 @@ public:
             return start_of_window_ix_;
         }
 
+        int firstActionIxAtNode(const QUuid& node_id) const;
+
     private:
         std::map<QUuid, uint /* index */> by_quuid_;
         std::vector<Item> items_; // Ordered list
@@ -171,6 +174,7 @@ public:
     Q_INVOKABLE bool first();
     Q_INVOKABLE bool back();
     Q_INVOKABLE void selectByUuid(const QString& uuid);
+    Q_INVOKABLE void toggleReviewed(const QString& uuid);
 
     // QAbstractItemModel interface
     int rowCount(const QModelIndex &parent) const override;
@@ -191,20 +195,21 @@ signals:
 
 private:
     int findNext(bool forward, int from = -1, bool nextList = false);
-    bool moveToIx(uint ix);
+    bool moveToIx(uint ix, bool addHistory = true);
     void setActionUuid(const QUuid& uuid);
     void setState(State state);
     QCoro::Task<void> changeNode();
     QCoro::Task<void> fetchIf();
     QCoro::Task<void> fetchAction();
     void signalChanged(int row);
-    //void markAsReviewed()
+    void actionWasChanged(const QUuid &uuid);
+    void nodeWasChanged();
 
     QString node_uuid_;
     QString action_uuid_;
     std::shared_ptr<nextapp::pb::Action> action_;
     int selected_{-1};
-    std::stack<QUuid> history_; // For back navigation
+    std::stack<int> history_; // For back navigation
     bool active_{false}; // True if the review is active in the UI.
     State state_{State::PENDING};
     Cache cache_;

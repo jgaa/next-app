@@ -42,9 +42,6 @@ Dialog {
     onValidChanged: {
         if (valid) {
             assign()
-        } else {
-            // TODO: Popup
-            // console.log("Failed to fetch existing Action")
         }
     }
 
@@ -52,45 +49,6 @@ Dialog {
         if (aprx.valid && !root.assigned) {
 
             actionsCtl.assign(aprx.action)
-
-            // //root.action = aprx.action
-
-            // // Set the values in the controld. We can't bind them directly for some reason.
-            // status.currentIndex = root.action.status
-            // name.text = root.action.name = action.name
-            // descr.text = root.action.descr
-            // priority.currentIndex = root.action.priority
-            // createdDateCtl.text = Common.formatPbDate(root.action.createdDate)
-            // timeEstimateCtl.text = Common.minutesToText(root.action.timeEstimate)
-            // difficultyCtl.currentIndex = root.action.difficulty
-            // repeatWhenCtl.currentIndex = root.action.repeatWhen
-            // repeatUnitCtl.currentIndex = root.action.repeatUnits
-            // repeatKindCtl.currentIndex = root.action.repeatKind
-            // favorite.isChecked = root.action.favorite
-            // category.uuid = root.action.category
-
-            // // console.log("EditActionDlg/assign category=", root.action.category)
-
-            // if (root.action.repeatWhen === 0 /* AT_DATE */) {
-            //     repeatAfterCtl.value = root.action.repeatAfter
-            // } else {
-            //     updateListFromInt(repeatSpecCtl.model, root.action.repeatAfter)
-            // }
-
-            // if (root.action.completedTime !== 0) {
-            //     completedTimeCtl.text = Common.formatPbTimeFromTimet(root.action.completedTime)
-            // } else {
-            //     completedTimeCtl.text = qsTr("Not completed yet")
-            // }
-
-            // if (action.node === "") {
-            //     action.node = node;
-            // }
-
-            // if (action.node === "") {
-            //     throw "No node"
-            // }
-
             // Don't do it again for this instance
             root.assigned = true
         }
@@ -101,62 +59,13 @@ Dialog {
         anchors.fill: parent
     }
 
-    onAccepted: {
-        // root.action.status = status.currentIndex
-        // root.action.name = name.text;
-        // root.action.descr = descr.text
-        // root.action.priority = priority.currentIndex
-        // root.action.due = whenControl.due
-        // root.action.timeEstimate = Common.textToMinutes(timeEstimateCtl.text)
-        // root.action.difficulty = difficultyCtl.currentIndex
-        // root.action.repeatKind = repeatKindCtl.currentIndex
-        // root.action.repeatWhen = repeatWhenCtl.currentIndex
-        // root.action.favorite = favorite.isChecked
-        // root.action.category = category.uuid
-
-        // if (grid.showRepeatSpecCtl) {
-        //     root.action.repeatAfter = createIntFromList(repeatSpecCtl.model)
-        //     // console.log("RepeatAfter bits: ", root.action.repeatAfter)
-        //     root.action.repeatUnits = 0
-        // } else if (grid.showRepeatAfterCtl) {
-        //     root.action.repeatAfter = repeatAfterCtl.value
-        //     root.action.repeatUnits = repeatUnitCtl.currentIndex
-        // } else {
-        //     root.action.repeatAfter = 0
-        //     root.action.repeatUnits = 0
-        // }
-
-        // if (root.action.id_proto !== "") { // edit
-        //     NaActionsModel.updateAction(root.action)
-        // } else {
-        //     NaActionsModel.addAction(root.action)
-        // }
-
+    onAccepted: { 
         actionsCtl.commit()
-
         close()
     }
 
     onRejected: {
         close()
-    }
-
-    function createIntFromList(listModel) {
-        let value = 0;
-        for (let i = 0; i < listModel.count; i++) {
-            var checked = listModel.get(i).checked
-            // console.log("Checked", i, checked)
-            if (checked) {
-                value |= 1 << i;
-            }
-        }
-        return value;
-    }
-
-    function updateListFromInt(listModel, value) {
-        for (let i = 0; i < listModel.count; i++) {
-            listModel.get(i).checked = ((value >> i) & 1) === 1;
-        }
     }
 }
 

@@ -18,7 +18,10 @@ using namespace std;
 
 ReviewModel::ReviewModel(QObject *parent)
     : QAbstractListModel{parent}
-{}
+{
+    connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ReviewModel::actionWasChanged);
+    connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &ReviewModel::nodeWasChanged);
+}
 
 ReviewModel &ReviewModel::instance()
 {
@@ -113,7 +116,12 @@ bool ReviewModel::first()
 
 bool ReviewModel::back()
 {
-    // TODO: Implement back navigation
+    if (!history_.empty()) {
+        auto ix = history_.top();
+        history_.pop();
+        return moveToIx(ix, false);
+    };
+
     return false;
 }
 
@@ -127,6 +135,15 @@ void ReviewModel::selectByUuid(const QString &uuidStr)
 
     if (auto ix = cache_.pos(uuid); ix != -1) {
         moveToIx(ix);
+    }
+}
+
+void ReviewModel::toggleReviewed(const QString &uuid)
+{
+    if (auto ix = cache_.pos(QUuid{uuid}); ix != -1) {
+        auto& item = cache_.at(ix);
+        item.toggleDone();
+        signalChanged(cache_.rowAtIx(ix));
     }
 }
 
@@ -194,9 +211,6 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
         //return worked_on_.contains(toQuid(action.id_proto()));
         return false;
     case ListNameRole:
-        if (MainTreeModel::instance()->selected() == action.node()) {
-            return {};
-        }
         return MainTreeModel::instance()->nodeNameFromUuid(action.node(), true);
     case CategoryRole:
         return action.category();
@@ -285,10 +299,14 @@ int ReviewModel::findNext(bool forward, int from, bool nextList)
     return -1;
 }
 
-bool ReviewModel::moveToIx(uint ix)
+bool ReviewModel::moveToIx(uint ix, bool addHistory)
 {
     // beginResetModel();
     // ScopedExit guard([this] { endResetModel(); });
+
+    if (addHistory) {
+        history_.push(cache_.currentIx());
+    }
 
     LOG_TRACE_N << "Moving to ix " << ix;
 
@@ -452,6 +470,15 @@ void ReviewModel::signalChanged(int row)
     emit dataChanged(index(row), index(row));
 }
 
+void ReviewModel::actionWasChanged(const QUuid &uuid)
+{
+    if (auto ix = cache_.pos(uuid); ix != -1) {
+        if (auto row = cache_.rowAtIx(ix); row != -1) {
+            signalChanged(row);
+        };
+    };
+}
+
 void ReviewModel::Cache::add(const QUuid& actionId, const QUuid& nodeId) {
     by_quuid_.emplace(actionId, items_.size());
     auto &item = items_.emplace_back(actionId, nodeId);
@@ -515,4 +542,31 @@ int ReviewModel::Cache::rowAtIx(int ix) const
         return -1;
     };
     return relative;
+}
+
+int ReviewModel::Cache::firstActionIxAtNode(const QUuid &node_id) const
+{
+    if (const auto pos = find_if(items_.begin(), items_.end(), [node_id](const auto& item) {
+        return item.node_id_ == node_id;
+    }); pos != items_.end()) {
+        return pos - items_.begin();
+    }
+
+    return -1;
+}
+
+void ReviewModel::nodeWasChanged()
+{
+    if (state_ == State::READY) {
+        const QUuid node_uuid{MainTreeModel::instance()->selected()};
+        if (!node_uuid.isNull()) {
+            const auto our = QUuid{node_uuid_};
+            if (our.isNull() || our != node_uuid) {
+                // See if we have any actions for this node
+                if (auto ix = cache_.firstActionIxAtNode(node_uuid); ix != -1) {
+                    moveToIx(ix);
+                }
+            }
+        }
+    }
 }
