@@ -8,6 +8,7 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QSslKey>
 #include <QSslCertificate>
+#include <QNetworkInformation>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #   include <QSslConfiguration>
@@ -117,10 +118,16 @@ ServerComm::ServerComm()
 
     connect(NextAppCore::instance(), &NextAppCore::wokeFromSleep, [this] {
         if (status_ == Status::ONLINE) {
-            LOG_DEBUG << "ServerComm: Woke up from sleep. Reconnecting to server.";
-            QTimer::singleShot(0, this, &ServerComm::start);
+            LOG_DEBUG << "ServerComm: Woke up from sleep.";
+            //QTimer::singleShot(0, this, &ServerComm::start);
         }
     });
+
+    auto *networkInfo = QNetworkInformation::instance();
+
+    connect(networkInfo, &QNetworkInformation::reachabilityChanged,
+            this, &ServerComm::onReachabilityChanged);
+
 
     LOG_DEBUG << "Ping interval is " << ping_timer_interval_sec_ << " seconds";
     ping_timer_.start(ping_timer_interval_sec_ * 1000);
@@ -1454,4 +1461,27 @@ QCoro::Task<bool> ServerComm::getGlobalSetings()
     }
 
     co_return false;
+}
+
+void ServerComm::onReachabilityChanged(QNetworkInformation::Reachability reachability) {
+    switch (reachability) {
+    case QNetworkInformation::Reachability::Unknown:
+        LOG_WARN_N << "Network reachability is unknown";
+        break;
+    case QNetworkInformation::Reachability::Site:
+        LOG_INFO_N << "Network is available at site.";
+        break;
+    case QNetworkInformation::Reachability::Online:
+        LOG_INFO_N << "Network is available.";
+        QTimer::singleShot(0, this, &ServerComm::start);
+        break;
+    case QNetworkInformation::Reachability::Local:
+        LOG_INFO_N << "Local network is available.";
+        // Handle local network available case
+        break;
+    case QNetworkInformation::Reachability::Disconnected:
+        LOG_INFO_N << "Network is unavailable.";
+        QTimer::singleShot(0, this, &ServerComm::stop);
+        break;
+    }
 }

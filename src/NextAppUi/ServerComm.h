@@ -13,6 +13,7 @@
 #include <QUuid>
 #include <QTimer>
 #include <QFuture>
+#include <QNetworkInformation>
 
 #include "qcorotask.h"
 #include "qcorofuture.h"
@@ -258,6 +259,7 @@ signals:
     void messagesChanged();
 
 private:
+    void onReachabilityChanged(QNetworkInformation::Reachability reachability);
     void errorOccurred(const QGrpcStatus &status);
     void onServerInfo(nextapp::pb::ServerInfo info);
     void initGlobalSettings();
