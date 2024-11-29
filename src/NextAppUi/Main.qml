@@ -101,9 +101,9 @@ ApplicationWindow {
 
     SplitView {
         // Green
-
         anchors.fill: parent
         orientation: Qt.Horizontal
+        handle: SplitterStyle {}
 
         RowLayout {
             // Purple
@@ -134,26 +134,15 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     orientation: Qt.Vertical
+                    handle: SplitterStyle {
+                        vertical: true
+                    }
 
                     SplitView {
                         SplitView.fillWidth: true
                         SplitView.fillHeight: true
                         orientation: Qt.Horizontal
-
-                        // Customized handle to drag between the Navigation and the Editor.
                         handle: SplitterStyle {}
-                            /*Rectangle {
-                            implicitWidth: 10
-                            color: SplitHandle.pressed ? MaterialDesignStyling.primary : MaterialDesignStyling.surfaceContainerHigh
-                            border.color: SplitHandle.hovered ? MaterialDesignStyling.outline : MaterialDesignStyling.surfaceContainer
-                            opacity: SplitHandle.hovered || navigationView.width < 15 ? 1.0 : 0.3
-
-                            Behavior on opacity {
-                                OpacityAnimator {
-                                    duration: 1400
-                                }
-                            }
-                        }*/
 
                         Rectangle {
                             id: navigationView
