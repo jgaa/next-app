@@ -119,7 +119,15 @@ ServerComm::ServerComm()
     connect(NextAppCore::instance(), &NextAppCore::wokeFromSleep, [this] {
         if (status_ == Status::ONLINE) {
             LOG_DEBUG << "ServerComm: Woke up from sleep.";
-            //QTimer::singleShot(0, this, &ServerComm::start);
+            QTimer::singleShot(0, this, &ServerComm::stop);
+            QTimer::singleShot(3s, this, [this] {
+                if (QNetworkInformation::instance()->reachability() == QNetworkInformation::Reachability::Disconnected) {
+                    LOG_DEBUG << "ServerComm: Not online. Will not start.";
+                    return;
+                }
+                LOG_DEBUG << "ServerComm: Starting after sleep.";
+                start();
+            });
         }
     });
 
