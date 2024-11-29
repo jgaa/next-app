@@ -92,6 +92,7 @@ Rectangle {
             delegate: Item {
                 id: actionItem
                 property bool selected: listView.currentIndex === index
+                property bool deleted: status === 3 //NextappPB.ActionState.DELETED
                 required property int index
                 required property string name
                 required property string uuid
@@ -103,8 +104,9 @@ Rectangle {
                 required property string category
                 required property string due
                 required property int priority
-                required property string status
+                required property int status
                 required property bool reviewed
+                enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
                 width: listView.width - MaterialDesignStyling.scrollBarWidth
@@ -112,7 +114,8 @@ Rectangle {
 
                 Rectangle {
                     id: background
-                    color: selected
+                    color: actionItem.deleted ? "red" :
+                           selected
                            ? MaterialDesignStyling.surfaceContainerHighest
                            : done ? MaterialDesignStyling.surfaceContainer
                            : index % 2 ? MaterialDesignStyling.surface : MaterialDesignStyling.surfaceContainer

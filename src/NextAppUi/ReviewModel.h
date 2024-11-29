@@ -29,6 +29,7 @@ public:
         FETCHING,
         FILLING,
         READY,
+        DONE,
         ERROR
     };
 
@@ -62,22 +63,32 @@ public:
     Q_PROPERTY(int selected MEMBER selected_ NOTIFY selectedChanged)
     Q_PROPERTY(State state MEMBER state_ NOTIFY stateChanged)
     Q_PROPERTY(nextapp::pb::Action action READ action NOTIFY actionChanged)
+    Q_PROPERTY(double progress MEMBER progress_ NOTIFY progressChanged)
 
     class Item {
         public:
         enum class State {
             PENDING,
-            DONE
+            DONE,
+            DELETED
         };
 
         Item(const QUuid& actionId, const QUuid& nodeId)
             : id_{actionId}, node_id_{nodeId} {}
 
-        State state() const noexcept { return state_; }
+        State state() const noexcept { return state_; } const
         bool done() const noexcept { return state_ == State::DONE; }
         const QUuid& uuid() const noexcept { return id_; }
-        void markDone() noexcept { state_ = State::DONE; }
-        void toggleDone() noexcept { state_ = state_ == State::DONE ? State::PENDING : State::DONE; }
+        void markDone() noexcept {
+            assert(state_ != State::DELETED);
+            state_ = State::DONE;
+        }
+        void toggleDone() noexcept {
+            assert(state_ != State::DELETED);
+            state_ = state_ == State::DONE ? State::PENDING : State::DONE;
+        }
+        void setDeleted() noexcept { state_ = State::DELETED; }
+        bool deleted() const noexcept { return state_ == State::DELETED; }
 
         std::shared_ptr<nextapp::pb::ActionInfo> action;
         const QUuid id_;
@@ -154,6 +165,17 @@ public:
 
         int firstActionIxAtNode(const QUuid& node_id) const;
 
+        void reset() {
+            current_ix_ = 0;
+            start_of_window_ix_ = 0;
+            current_window_.clear();
+            by_quuid_.clear();
+            items_.clear();
+            node_changed_ = false;
+        }
+
+        uint countRemaining() const noexcept;
+
     private:
         std::map<QUuid, uint /* index */> by_quuid_;
         std::vector<Item> items_; // Ordered list
@@ -168,6 +190,7 @@ public:
 
     void setActive(bool active);
 
+    Q_INVOKABLE void restart();
     Q_INVOKABLE bool next();
     Q_INVOKABLE bool nextList();
     Q_INVOKABLE bool previous();
@@ -184,6 +207,10 @@ public:
     void setNodeUuid(const QString& uuid);
     nextapp::pb::Action action();
 
+    bool isOk() const noexcept {
+        return state_ == State::READY || state_ == State::DONE;
+    }
+
 signals:
     void activeChanged();
     void nodeUuidChanged();
@@ -192,6 +219,7 @@ signals:
     void modelReset();
     void selectedChanged();
     void actionChanged();
+    void progressChanged();
 
 private:
     int findNext(bool forward, int from = -1, bool nextList = false);
@@ -203,7 +231,12 @@ private:
     QCoro::Task<void> fetchAction();
     void signalChanged(int row);
     void actionWasChanged(const QUuid &uuid);
+    void actionWasDeleted(const QUuid &uuid);
     void nodeWasChanged();
+    void markAsDone(int ix);
+    void markCurrentAsDone();
+    void toggleDone(int ix);
+    void updateProgress();
 
     QString node_uuid_;
     QString action_uuid_;
@@ -213,4 +246,6 @@ private:
     bool active_{false}; // True if the review is active in the UI.
     State state_{State::PENDING};
     Cache cache_;
+    double progress_; // 0.0 --> 100.0
+    uint remaining_{}; // Number of actions left to review
 };

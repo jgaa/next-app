@@ -190,7 +190,7 @@ ApplicationWindow {
 
                                 ReportsView {}
 
-                                WeeklyReportView {
+                                WeeklyReview {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     navigation: mainTree

@@ -247,7 +247,8 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/StyledTabButton.qml
         qml/SynchPopup.qml
         qml/WeeklyHoursView.qml
-        qml/WeeklyReportView.qml
+        qml/WeeklyReview.qml
+        qml/WeeklyReviewView.qml
         qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml

@@ -20,6 +20,7 @@ ReviewModel::ReviewModel(QObject *parent)
     : QAbstractListModel{parent}
 {
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ReviewModel::actionWasChanged);
+    connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ReviewModel::actionWasDeleted);
     connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &ReviewModel::nodeWasChanged);
 }
 
@@ -43,15 +44,18 @@ void ReviewModel::setActive(bool active)
     }
 }
 
+void ReviewModel::restart()
+{
+    setState(State::PENDING);
+    cache_.reset();
+    history_ = {};
+    fetchIf();
+}
+
 bool ReviewModel::next()
 {
-    if (state_ == State::PENDING) {
-        return false;
-    }
-
-    if (state_ == State::READY) {
-        cache_.current().markDone();
-        signalChanged(cache_.rowAtIx(cache_.currentIx()));
+    if (isOk()) {
+        markCurrentAsDone();
 
         if (auto start = findNext(true); start != -1) {
             return moveToIx(start);
@@ -63,36 +67,25 @@ bool ReviewModel::next()
 
 bool ReviewModel::nextList()
 {
-    if (state_ == State::PENDING) {
-        return false;
-    }
+    if (isOk()) {
+        const auto end = cache_.currentIx() + cache_.currentWindow().size();
+        for(auto ix= cache_.startOfWindowIx(); ix < end; ++ix) {
+            markAsDone(ix);
+        }
+        updateProgress();
 
-    for(auto *item : cache_.currentWindow()) {
-        item->markDone();
-    };
-
-    // const auto start = cache_.startOfWindowIx();
-    // const auto end = start + cache_.currentWindow().size() -1;
-    // dataChanged(index(start), index(end));
-
-    if (state_ == State::READY) {
         if (auto start = findNext(true, -1, true); start != -1) {
             return moveToIx(start);
         };
-    };
+    }
 
     return false;
 }
 
 bool ReviewModel::previous()
 {
-    if (state_ == State::PENDING) {
-        return false;
-    }
-
-    if (state_ == State::READY) {
-        cache_.current().markDone();
-        signalChanged(cache_.rowAtIx(cache_.currentIx()));
+    if (isOk()) {
+        markCurrentAsDone();
         if (auto start = findNext(false); start != -1) {
             return moveToIx(start);
         };
@@ -104,8 +97,7 @@ bool ReviewModel::previous()
 bool ReviewModel::first()
 {
     if (cache_.currentIx() > 0) {
-        cache_.current().markDone();
-        signalChanged(cache_.rowAtIx(cache_.currentIx()));
+        markCurrentAsDone();
     };
     if (auto start = findNext(true, 0); start != -1) {
         return moveToIx(start);
@@ -141,15 +133,14 @@ void ReviewModel::selectByUuid(const QString &uuidStr)
 void ReviewModel::toggleReviewed(const QString &uuid)
 {
     if (auto ix = cache_.pos(QUuid{uuid}); ix != -1) {
-        auto& item = cache_.at(ix);
-        item.toggleDone();
+        toggleDone(ix);
         signalChanged(cache_.rowAtIx(ix));
     }
 }
 
 int ReviewModel::rowCount(const QModelIndex &parent) const
 {
-    if (state_ == State::READY) {
+    if (isOk()) {
         return cache_.currentWindow().size();
     }
     return 0;
@@ -157,7 +148,7 @@ int ReviewModel::rowCount(const QModelIndex &parent) const
 
 QVariant ReviewModel::data(const QModelIndex &index, int role) const
 {
-    if (state_ != State::READY || !index.isValid()) {
+    if (!isOk() || !index.isValid()) {
         return {};
     }
 
@@ -182,6 +173,9 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
     case PriorityRole:
         return static_cast<int>(action.priority());
     case StatusRole:
+        if (item.deleted()) {
+            return static_cast<uint>(nextapp::pb::ActionStatusGadget::ActionStatus::DELETED);
+        }
         return static_cast<uint>(action.status());
     case NodeRole:
         return action.node();
@@ -281,29 +275,34 @@ int ReviewModel::findNext(bool forward, int from, bool nextList)
     const int start = from == -1  ? cache_.currentIx() + step : from;
     int tries = 0;
 
-    for(int i = start; !tries || i != start; i += step, ++tries) {
+    for(int i = start;; i += step, ++tries) {
         if (i == -1) {
             i = cache_.size() - 1;
         } else if (i == cache_.size()) {
             i = 0;
         };
 
-        if (!cache_.at(i).done()) {
+        if (tries && i == start) {
+            break;
+        }
+
+        if (cache_.at(i).state() == Item::State::PENDING) {
             if (node && cache_.at(i).node_id_ == *node) {
                 continue;
             };
             return i;
         }
+
+        assert(tries < cache_.size());
     }
 
+    remaining_ = cache_.countRemaining();
+    updateProgress();
     return -1;
 }
 
 bool ReviewModel::moveToIx(uint ix, bool addHistory)
 {
-    // beginResetModel();
-    // ScopedExit guard([this] { endResetModel(); });
-
     if (addHistory) {
         history_.push(cache_.currentIx());
     }
@@ -350,19 +349,18 @@ void ReviewModel::setState(State state)
 
 QCoro::Task<void> ReviewModel::changeNode()
 {
-    if (state_ != State::READY) {
+    if (!isOk()) {
         LOG_WARN_N << "Not ready";
         co_return;
     }
 
     auto *aic = ActionInfoCache::instance();
     assert(aic);
+    auto old_state = state_;
     setState(State::FILLING);
-    // beginResetModel();
-    // endResetModel();
-    co_await aic->fill(cache_.currentWindow());
+    co_await aic->fill(cache_.currentWindow(), true);
     if (state_ == State::FILLING) {
-        setState(State::READY);
+        setState(old_state);
     }
     beginResetModel();
     endResetModel();
@@ -438,8 +436,10 @@ ORDER BY
         cache_.add(action_id, node_id);
     };
 
+    remaining_ = cache_.size();
     setState(State::READY);
     first();
+    updateProgress();
 }
 
 QCoro::Task<void> ReviewModel::fetchAction()
@@ -477,6 +477,19 @@ void ReviewModel::actionWasChanged(const QUuid &uuid)
             signalChanged(row);
         };
     };
+}
+
+void ReviewModel::actionWasDeleted(const QUuid &uuid)
+{
+    if (auto ix = cache_.pos(uuid); ix != -1) {
+        cache_.at(ix).setDeleted();
+        if (auto row = cache_.rowAtIx(ix); row != -1) {
+            signalChanged(row);
+        };
+    };
+
+    remaining_ = cache_.countRemaining();
+    updateProgress();
 }
 
 void ReviewModel::Cache::add(const QUuid& actionId, const QUuid& nodeId) {
@@ -555,9 +568,16 @@ int ReviewModel::Cache::firstActionIxAtNode(const QUuid &node_id) const
     return -1;
 }
 
+uint ReviewModel::Cache::countRemaining() const noexcept
+{
+    return std::ranges::count_if(items_, [](const auto& item) {
+        return item.state() == Item::State::PENDING;
+    });
+}
+
 void ReviewModel::nodeWasChanged()
 {
-    if (state_ == State::READY) {
+    if (isOk()) {
         const QUuid node_uuid{MainTreeModel::instance()->selected()};
         if (!node_uuid.isNull()) {
             const auto our = QUuid{node_uuid_};
@@ -568,5 +588,55 @@ void ReviewModel::nodeWasChanged()
                 }
             }
         }
+    }
+}
+
+void ReviewModel::markAsDone(int ix)
+{
+    auto& item = cache_.at(ix);
+    if (!item.deleted() && !item.done()) {
+        item.markDone();
+        assert(remaining_ > 0);
+        --remaining_;
+    }
+}
+
+void ReviewModel::markCurrentAsDone()
+{
+    markAsDone(cache_.currentIx());
+    signalChanged(cache_.rowAtIx(cache_.currentIx()));
+    updateProgress();
+}
+
+void ReviewModel::toggleDone(int ix)
+{
+    auto& item = cache_.at(ix);
+    if (!item.deleted()) {
+        item.toggleDone();
+        if (item.done()) {
+            assert(remaining_ > 0);
+            --remaining_;
+        } else {
+            ++remaining_;
+        }
+        updateProgress();
+    }
+}
+
+void ReviewModel::updateProgress()
+{
+    auto percentage = cache_.size() ? 100.0 * (cache_.size() - remaining_) / cache_.size() : 0.0;
+    if (progress_ != percentage) {
+        progress_ = percentage;
+        emit progressChanged();
+    }
+
+    if (state_ == State::READY && remaining_ == 0) {
+        setState(State::DONE);
+        // Make sure the state is shown correctly in the UI
+        beginResetModel();
+        endResetModel();
+    } else if (state_ == State::DONE && remaining_ > 0) {
+        setState(State::READY);
     }
 }

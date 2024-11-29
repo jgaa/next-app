@@ -55,7 +55,7 @@ Rectangle {
             SplitView.fillWidth: true
             SplitView.fillHeight: true
             model: NaCore.getReviewModel()
-            enabled: root.enabled && model.state == ReviewModel.State.READY
+            //enabled: root.enabled && (model.state == ReviewModel.State.READY || model.state == ReviewModel.State.DONE)
             hasReview: true
             onSelectionEvent: function (uuid) {
                 actions.model.selectByUuid(uuid)
@@ -89,6 +89,17 @@ Rectangle {
                     //spacing: 10
                     Layout.fillWidth: true
                     StyledButton {
+                        visible: actions.model.state === ReviewModel.State.DONE || actions.model.state === ReviewModel.State.ERROR
+                        Layout.alignment: Qt.AlignLeft
+                        text: qsTr("Start Over")
+                        useWidth: actionCtl.buttonWidth
+                        onClicked: {
+                            actions.model.restart()
+                        }
+                    }
+
+                    StyledButton {
+                        visible: actions.model.state === ReviewModel.State.READY
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("First")
                         useWidth: actionCtl.buttonWidth
@@ -107,6 +118,7 @@ Rectangle {
                     }
 
                     StyledButton {
+                        visible: actions.model.state === ReviewModel.State.READY
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Previous")
                         useWidth: actionCtl.buttonWidth
@@ -116,6 +128,7 @@ Rectangle {
                     }
 
                     StyledButton {
+                        visible: actions.model.state === ReviewModel.State.READY
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Next")
                         useWidth: actionCtl.buttonWidth
@@ -125,6 +138,7 @@ Rectangle {
                     }
 
                     StyledButton {
+                        visible: actions.model.state === ReviewModel.State.READY
                         Layout.alignment: Qt.AlignLeft
                         text: qsTr("Next List")
                         useWidth: actionCtl.buttonWidth
@@ -135,12 +149,21 @@ Rectangle {
                 }
             }
 
+            ProgressBar {
+                id: progressCtl
+                Layout.fillWidth: true
+                value: actions.model.progress
+                to: 100.0
+
+                palette.dark: actions.model.state === ReviewModel.State.DONE ? "green" : "blue"
+            }
+
             Rectangle {
                 id: editActionCtl
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 color: "white"
-                enabled: false
+                enabled: root.enabled && (actions.model.state == ReviewModel.State.READY || actions.model.state == ReviewModel.State.DONE)
 
                 // TODO: Synchronize data with the left view
 
