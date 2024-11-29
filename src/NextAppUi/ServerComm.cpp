@@ -115,6 +115,13 @@ ServerComm::ServerComm()
         }
     });
 
+    connect(NextAppCore::instance(), &NextAppCore::wokeFromSleep, [this] {
+        if (status_ == Status::ONLINE) {
+            LOG_DEBUG << "ServerComm: Woke up from sleep. Reconnecting to server.";
+            QTimer::singleShot(0, this, &ServerComm::start);
+        }
+    });
+
     LOG_DEBUG << "Ping interval is " << ping_timer_interval_sec_ << " seconds";
     ping_timer_.start(ping_timer_interval_sec_ * 1000);
 }

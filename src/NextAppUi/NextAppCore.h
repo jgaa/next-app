@@ -112,6 +112,11 @@ public:
 
     void showSyncPopup(bool visible);
 
+#ifdef LINUX_BUILD
+public slots:
+    void handlePrepareForSleep(bool sleep);
+#endif
+
 signals:
     void allBaseModelsCreated();
     void onlineChanged(bool online);
@@ -120,6 +125,7 @@ signals:
     void dragEnabledChanged();
     void settingsChanged();
     void propertyChanged(const QString& name);
+    void wokeFromSleep();
 
 private:
     static NextAppCore *instance_;

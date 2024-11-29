@@ -161,6 +161,11 @@ qt_add_executable(${PROJECT_NAME}
     logging.h
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE LINUX_BUILD)
+    set (LINUX_BUILD ON)
+endif()
+
 if(ANDROID)
     set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android")
     set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_PACKAGE_SOURCE_DIR}")
@@ -475,6 +480,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Test
         Qt6::Multimedia
         Qt6::Sql
+        $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
         #Qt6::QJpegPlugin
         # QT insists on linking FFMPEG_MEDIAPLUGIN_LIB after the ffmpeg libraries it depends on,
         # which don't work with static linking. So we have to add it manually before it's dependencies.

@@ -9,6 +9,11 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 
+#ifdef LINUX_BUILD
+#include <QDBusConnection>
+#include <QDBusInterface>
+#endif
+
 #include "WeeklyWorkReportModel.h"
 #include "ActionCategoriesModel.h"
 #include "util.h"
@@ -57,6 +62,26 @@ NextAppCore::NextAppCore() {
         // TODO: Connect to server
 
     });
+
+#ifdef LINUX_BUILD
+    QDBusConnection systemBus = QDBusConnection::systemBus();
+    if (systemBus.isConnected()) {
+        LOG_DEBUG << "Connected to the D-Bus system bus";
+        if (!systemBus.connect(
+                "org.freedesktop.login1",                   // Service name
+                "/org/freedesktop/login1",                  // Object path
+                "org.freedesktop.login1.Manager",           // Interface name
+                "PrepareForSleep",                          // Signal name
+                this,
+                SLOT(handlePrepareForSleep(bool))
+                )) {
+            LOG_WARN << "Failed to connect to PrepareForSleep signal";
+        }
+    } else {
+        LOG_WARN << "Cannot connect to the D-Bus system bus";
+    }
+
+    #endif
 }
 
 
@@ -289,6 +314,16 @@ void NextAppCore::showSyncPopup(bool visible)
             item->setParentItem(window->contentItem());
             sync_popup_->setProperty("visible", visible);
         }
+    }
+}
+
+void NextAppCore::handlePrepareForSleep(bool sleep)
+{
+    LOG_DEBUG_N << "Prepare for sleep: " << sleep;
+
+    if (!sleep) {
+        LOG_INFO << "The system just wake up from sleep!";
+        emit wokeFromSleep();
     }
 }
 
