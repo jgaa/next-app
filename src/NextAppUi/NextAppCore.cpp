@@ -88,7 +88,7 @@ NextAppCore::NextAppCore() {
         if (state == Qt::ApplicationActive) {
             setState(State::ACTIVE);
             LOG_INFO << "NextAppCore: The applicationis active.";
-            if (old_state== State::SUSPENDED) {
+            if (old_state != State::STARTING_UP) {
                 emit wokeFromSleep();
             }
         } else if (state == Qt::ApplicationSuspended) {
