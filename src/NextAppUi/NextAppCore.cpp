@@ -82,6 +82,21 @@ NextAppCore::NextAppCore() {
     }
 
     #endif
+
+    connect(qApp, &QGuiApplication::applicationStateChanged, [this](Qt::ApplicationState state) {
+        const auto old_state = state_;
+        if (state == Qt::ApplicationActive) {
+            setState(State::ACTIVE);
+            LOG_INFO << "NextAppCore: The applicationis active.";
+            if (old_state== State::SUSPENDED) {
+                emit wokeFromSleep();
+            }
+        } else if (state == Qt::ApplicationSuspended) {
+            LOG_INFO << "NextAppCore: The applicationis is suspended.";
+            setState(State::SUSPENDED);
+            emit suspending();
+        }
+    });
 }
 
 
@@ -324,6 +339,15 @@ void NextAppCore::handlePrepareForSleep(bool sleep)
     if (!sleep) {
         LOG_INFO << "The system just wake up from sleep!";
         emit wokeFromSleep();
+    }
+}
+
+void NextAppCore::setState(State state)
+{
+    if (state_ != state) {
+        LOG_DEBUG_N << "State changed to " << static_cast<int>(state) << " from " << static_cast<int>(state_);
+        state_ = state;
+        emit stateChanged();
     }
 }
 

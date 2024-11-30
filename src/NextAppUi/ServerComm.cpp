@@ -120,12 +120,20 @@ ServerComm::ServerComm()
         if (status_ == Status::ONLINE) {
             LOG_DEBUG << "ServerComm: Woke up from sleep.";
             QTimer::singleShot(0, this, &ServerComm::stop);
-            QTimer::singleShot(6s, this, [this] {
+
+            bool connected = false;
+            if (auto *instance = QNetworkInformation::instance()) {
+                connected = instance->reachability() == QNetworkInformation::Reachability::Online;
+            }
+            auto delay = connected ? 100ms : 3s;
+            QTimer::singleShot(delay, this, [this] {
                 if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
                     LOG_DEBUG << "ServerComm: Not online. Considering to start...";
-                    if (QNetworkInformation::instance()->reachability() == QNetworkInformation::Reachability::Disconnected) {
-                        LOG_DEBUG << "ServerComm: No connectivity.";
-                        return;
+                    if (auto *instance = QNetworkInformation::instance()) {
+                        if (instance->reachability() == QNetworkInformation::Reachability::Disconnected) {
+                            LOG_DEBUG << "ServerComm: No connectivity.";
+                            return;
+                        }
                     }
                     LOG_DEBUG << "ServerComm: Starting after sleep.";
                     start();

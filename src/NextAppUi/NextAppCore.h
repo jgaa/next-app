@@ -29,6 +29,15 @@ class NextAppCore : public QObject
     // True if the app was build with the CMAKE option DEVEL_SETTINGS enabled
     Q_PROPERTY(bool develBuild READ isDevelBuild CONSTANT)
 public:
+    enum class State {
+        STARTING_UP,
+        ACTIVE,
+        SUSPENDED,
+        SHUTTING_DOWN
+    };
+
+    Q_ENUM(State)
+
     NextAppCore();
 
     static QString qtVersion() {
@@ -112,10 +121,11 @@ public:
 
     void showSyncPopup(bool visible);
 
-#ifdef LINUX_BUILD
-public slots:
     void handlePrepareForSleep(bool sleep);
-#endif
+
+    State state() const noexcept {
+        return state_;
+    }
 
 signals:
     void allBaseModelsCreated();
@@ -125,11 +135,15 @@ signals:
     void dragEnabledChanged();
     void settingsChanged();
     void propertyChanged(const QString& name);
+    void stateChanged();
     void wokeFromSleep();
+    void suspending();
 
 private:
+    void setState(State state);
     static NextAppCore *instance_;
     QGuiApplication *app_{qApp};
+    State state_{State::STARTING_UP};
     std::unique_ptr<DbStore> db_;
     std::unique_ptr<QQmlComponent> sync_popup_component_;
     QObject* sync_popup_{} ;
