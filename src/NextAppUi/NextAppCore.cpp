@@ -87,12 +87,12 @@ NextAppCore::NextAppCore() {
         const auto old_state = state_;
         if (state == Qt::ApplicationActive) {
             setState(State::ACTIVE);
-            LOG_INFO << "NextAppCore: The applicationis active.";
+            LOG_INFO << "NextAppCore: The application is active.";
             if (old_state != State::STARTING_UP) {
                 emit wokeFromSleep();
             }
         } else if (state == Qt::ApplicationSuspended) {
-            LOG_INFO << "NextAppCore: The applicationis is suspended.";
+            LOG_INFO << "NextAppCore: The application is is suspended.";
             setState(State::SUSPENDED);
             emit suspending();
         }
