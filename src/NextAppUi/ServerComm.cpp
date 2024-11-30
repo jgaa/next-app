@@ -130,8 +130,8 @@ ServerComm::ServerComm()
                 if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
                     LOG_DEBUG << "ServerComm: Not online. Considering to start...";
                     if (auto *instance = QNetworkInformation::instance()) {
-                        if (instance->reachability() == QNetworkInformation::Reachability::Disconnected) {
-                            LOG_DEBUG << "ServerComm: No connectivity.";
+                        if (instance->reachability() != QNetworkInformation::Reachability::Online) {
+                            LOG_DEBUG << "ServerComm: Not online.";
                             return;
                         }
                     }

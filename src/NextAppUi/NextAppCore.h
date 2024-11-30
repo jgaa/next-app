@@ -32,6 +32,8 @@ public:
     enum class State {
         STARTING_UP,
         ACTIVE,
+        HIDDEN,
+        INACTIVE,
         SUSPENDED,
         SHUTTING_DOWN
     };
@@ -121,11 +123,12 @@ public:
 
     void showSyncPopup(bool visible);
 
-    void handlePrepareForSleep(bool sleep);
-
     State state() const noexcept {
         return state_;
     }
+
+public slots:
+    void handlePrepareForSleep(bool sleep);
 
 signals:
     void allBaseModelsCreated();

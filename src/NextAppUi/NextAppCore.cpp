@@ -85,16 +85,36 @@ NextAppCore::NextAppCore() {
 
     connect(qApp, &QGuiApplication::applicationStateChanged, [this](Qt::ApplicationState state) {
         const auto old_state = state_;
-        if (state == Qt::ApplicationActive) {
+        switch(state) {
+        case Qt::ApplicationActive:
             setState(State::ACTIVE);
             LOG_INFO << "NextAppCore: The application is active.";
-            if (old_state != State::STARTING_UP) {
+            if (old_state == State::SUSPENDED || old_state == State::ACTIVE) {
                 emit wokeFromSleep();
             }
-        } else if (state == Qt::ApplicationSuspended) {
+            break;
+
+        case Qt::ApplicationSuspended:
             LOG_INFO << "NextAppCore: The application is is suspended.";
             setState(State::SUSPENDED);
             emit suspending();
+            break;
+
+        case Qt::ApplicationHidden:
+            LOG_INFO << "NextAppCore: The application is is hidden.";
+            setState(State::HIDDEN);
+            if (old_state == State::SUSPENDED || old_state == State::ACTIVE) {
+                emit wokeFromSleep();
+            }
+            break;
+
+        case Qt::ApplicationInactive:
+            LOG_INFO << "NextAppCore: The application is is inactive.";
+            setState(State::INACTIVE);
+            if (old_state == State::SUSPENDED || old_state == State::ACTIVE) {
+                emit wokeFromSleep();
+            }
+            break;
         }
     });
 }
@@ -346,9 +366,12 @@ void NextAppCore::handlePrepareForSleep(bool sleep)
 {
     LOG_DEBUG_N << "Prepare for sleep: " << sleep;
 
+    if (sleep) {
+        setState(State::SUSPENDED);
+    }
     if (!sleep) {
         LOG_INFO << "The system just wake up from sleep!";
-        emit wokeFromSleep();
+        //emit wokeFromSleep();
     }
 }
 
