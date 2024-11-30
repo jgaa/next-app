@@ -120,7 +120,7 @@ ServerComm::ServerComm()
         if (status_ == Status::ONLINE) {
             LOG_DEBUG << "ServerComm: Woke up from sleep.";
             QTimer::singleShot(0, this, &ServerComm::stop);
-            QTimer::singleShot(3s, this, [this] {
+            QTimer::singleShot(6s, this, [this] {
                 if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
                     LOG_DEBUG << "ServerComm: Not online. Considering to start...";
                     if (QNetworkInformation::instance()->reachability() == QNetworkInformation::Reachability::Disconnected) {
@@ -1483,6 +1483,23 @@ QCoro::Task<bool> ServerComm::getGlobalSetings()
 }
 
 void ServerComm::onReachabilityChanged(QNetworkInformation::Reachability reachability) {
+
+    auto start_if = [this]() {
+        QTimer::singleShot(100ms, [this]() {
+            if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
+                if (auto *instance = QNetworkInformation::instance();
+                    instance->reachability() == QNetworkInformation::Reachability::Disconnected
+                    || instance->reachability() == QNetworkInformation::Reachability::Unknown) {
+                    LOG_WARN_N << "ServerComm: Network is not reliable available. Will t reconnect now.";
+                    return;
+                }
+
+                LOG_INFO << "ServerComm: Networtk became available. Connecting to server.";
+                start();
+            }
+        });
+    };
+
     switch (reachability) {
     case QNetworkInformation::Reachability::Unknown:
         LOG_WARN_N << "Network reachability is unknown";
@@ -1492,7 +1509,7 @@ void ServerComm::onReachabilityChanged(QNetworkInformation::Reachability reachab
         break;
     case QNetworkInformation::Reachability::Online:
         LOG_INFO_N << "Network is available.";
-        QTimer::singleShot(0, this, &ServerComm::start);
+        start_if();
         break;
     case QNetworkInformation::Reachability::Local:
         LOG_INFO_N << "Local network is available.";
