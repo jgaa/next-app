@@ -183,6 +183,9 @@ void ServerComm::start()
 
     const QUrl url(current_server_address_, QUrl::StrictMode);
 
+    clearMessages();
+    addMessage(tr("Connecting to server %1").arg(current_server_address_));
+
     optional<QSslConfiguration> sslConfig;
 
     if (url.scheme() == "https") {
@@ -1214,12 +1217,18 @@ void ServerComm::setMessage(const QString &msg)
 QCoro::Task<void> ServerComm::startNextappSession()
 {
     LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
+    NextAppCore::instance()->showSyncPopup(true);
+    ScopedExit hide_popup_on_exit{[] {
+        NextAppCore::instance()->showSyncPopup(false);
+    }};
+
 
     QSettings settings;
     session_id_.clear();
 
     if (settings.value("sync/resync", "false") == "true") {
         LOG_WARN << "Resyncing from the server. Will delete the local cache.";
+        addMessage(tr("Doing a full synch with the server. This may take a few moments..."));
 
         // Clear the local cache.
         co_await NextAppCore::instance()->db().clear();
@@ -1235,6 +1244,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
             session_id_ = res.sessionId().toLatin1();
         }
         LOG_INFO << "Session started. Session-id: " << session_id_;
+        addMessage(tr("Connected and authenticated with the server."));
     } else {
 failed:
         setStatus(Status::ERROR);
@@ -1244,11 +1254,6 @@ failed:
     }
 
     setStatus(Status::INITIAL_SYNC);
-
-    NextAppCore::instance()->showSyncPopup(true);
-    ScopedExit hide_popup_on_exit{[] {
-        NextAppCore::instance()->showSyncPopup(false);
-    }};
 
     res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetServerInfo);
 
@@ -1286,12 +1291,14 @@ failed:
         goto failed;
     }
 
+    addMessage(tr("Fetching green days"));
     LOG_DEBUG_N << "Fetching green days...";
     if (!co_await GreenDaysModel::instance()->synchFromServer()) {
         LOG_WARN_N << "Failed to get green days.";
         goto failed;
     }
 
+    addMessage(tr("Fetching lists"));
     LOG_DEBUG_N << "Fetching nodes...";
     if (!co_await MainTreeModel::instance()->doSynch()) {
         LOG_WARN_N << "Failed to get nodes.";
@@ -1304,18 +1311,21 @@ failed:
         goto failed;
     }
 
+    addMessage(tr("Fetching actions"));
     LOG_DEBUG_N << "Fetching  actions...";
     if (!co_await ActionInfoCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get action info.";
         goto failed;
     }
 
+    addMessage(tr("Fetching work sessions"));
     LOG_DEBUG_N << "Fetching work sessions...";
     if (!co_await WorkCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get work sessions.";
         goto failed;
     }
 
+    addMessage(tr("Fetching time blocks for the calendar"));
     LOG_DEBUG_N << "Fetching time blocks...";
     if (!co_await CalendarCache::instance()->synch()) {
         LOG_WARN_N << "Failed to get time-blocks for the calendar.";
@@ -1323,6 +1333,7 @@ failed:
     }
 
     onGrpcReady();
+    clearMessages();
 
     co_return;
 }

@@ -314,14 +314,24 @@ void NextAppCore::showSyncPopup(bool visible)
 {
     if (visible && !sync_popup_component_) {
         sync_popup_component_ = make_unique<QQmlComponent>(&engine(), QUrl(QStringLiteral("qrc:/qt/qml/NextAppUi/qml/SynchPopup.qml")));
-        auto* sync_popup_ = sync_popup_component_->create();
+
+        if (sync_popup_component_->isError()) {
+            LOG_WARN_N << "Failed to create popup:";
+            for(const auto& err : sync_popup_component_->errors()) {
+                LOG_WARN_N << "  " << err.toString();
+            }
+            return;
+        }
+
+        sync_popup_ = sync_popup_component_->create();
+
+        if (sync_popup_ == nullptr) {
+            LOG_WARN_N << "Failed to create popup: " << sync_popup_component_->errorString();
+            return;
+        };
     }
 
-    //assert(sync_popup_ != nullptr);
-    if (!sync_popup_) {
-        LOG_WARN_N << "Sync popup not created";
-        return;
-    }
+    assert(sync_popup_ != nullptr);
     auto * rootObject = engine().rootObjects().first();
 
     if (QQuickWindow *window = qobject_cast<QQuickWindow*>(rootObject)) {
