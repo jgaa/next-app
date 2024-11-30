@@ -121,20 +121,31 @@ ServerComm::ServerComm()
             LOG_DEBUG << "ServerComm: Woke up from sleep.";
             QTimer::singleShot(0, this, &ServerComm::stop);
             QTimer::singleShot(3s, this, [this] {
-                if (QNetworkInformation::instance()->reachability() == QNetworkInformation::Reachability::Disconnected) {
-                    LOG_DEBUG << "ServerComm: Not online. Will not start.";
-                    return;
+                if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
+                    LOG_DEBUG << "ServerComm: Not online. Considering to start...";
+                    if (QNetworkInformation::instance()->reachability() == QNetworkInformation::Reachability::Disconnected) {
+                        LOG_DEBUG << "ServerComm: No connectivity.";
+                        return;
+                    }
+                    LOG_DEBUG << "ServerComm: Starting after sleep.";
+                    start();
                 }
-                LOG_DEBUG << "ServerComm: Starting after sleep.";
-                start();
             });
         }
     });
 
-    auto *networkInfo = QNetworkInformation::instance();
+    if (QNetworkInformation::loadDefaultBackend()) {
+        LOG_INFO << "Network information backend loaded.";
+        if (auto *networkInfo = QNetworkInformation::instance()) {
 
-    connect(networkInfo, &QNetworkInformation::reachabilityChanged,
-            this, &ServerComm::onReachabilityChanged);
+        connect(networkInfo, &QNetworkInformation::reachabilityChanged,
+                this, &ServerComm::onReachabilityChanged);
+        } else {
+            LOG_ERROR << "Failed to get network information instance.";
+        }
+    } else {
+        LOG_ERROR << "Failed to load network information backend.";
+    }
 
 
     LOG_DEBUG << "Ping interval is " << ping_timer_interval_sec_ << " seconds";
