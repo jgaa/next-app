@@ -21,6 +21,7 @@ Item {
         settings.setValue("logging/level", uiStyle.currentIndex.toString())
         settings.setValue("logging/prune", prune.checked ? "true" : "false")
         settings.setValue("sync/resync", resync.checked ? "true" : "false")
+        settings.setValue("server/reconnect_level", reconnectLevel.currentIndex.toString())
         settings.sync()
     }
 
@@ -68,6 +69,22 @@ Item {
             id: prune
             text: qsTr("Prune log when starting")
             checked: settings.value("logging/prune") == "true"
+        }
+
+        Label {
+            text: qsTr("Reconnect to the server")
+            // Line wrap
+            wrapMode: Text.WordWrap
+            }
+        ComboBox {
+            id: reconnectLevel
+            currentIndex: parseInt(settings.value("server/reconnect_level"))
+            Layout.fillWidth: true
+            model: [
+                qsTr("When Online"),
+                qsTr("When on Site"),
+                qsTr("When Local network comes up"),
+                qsTr("Never")]
         }
 
         Label {

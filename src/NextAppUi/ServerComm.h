@@ -78,6 +78,13 @@ public:
         SIGNUP_ERROR
     };
 
+    enum class ReconnectLevel {
+        ONLINE,
+        SITE,
+        LAN,
+        NEVER
+    };
+
 private:
     Q_OBJECT
     Q_ENUM(Status)
@@ -466,6 +473,8 @@ private:
         auto svr_stream = (client_.get()->*call)(request, options.qopts);
         return std::make_shared<GrpcIncomingStream>(std::move(svr_stream));
     }
+
+    bool shouldReconnect() const noexcept;
 
     QCoro::Task<void> startNextappSession();
     QCoro::Task<bool> getDataVersions();

@@ -121,23 +121,18 @@ ServerComm::ServerComm()
             LOG_DEBUG << "ServerComm: Woke up from sleep.";
             QTimer::singleShot(0, this, &ServerComm::stop);
 
-            bool connected = false;
-            if (auto *instance = QNetworkInformation::instance()) {
-                connected = instance->reachability() == QNetworkInformation::Reachability::Online;
-            }
-            auto delay = connected ? 100ms : 3s;
-            QTimer::singleShot(delay, this, [this] {
+            const bool reconnect = shouldReconnect();
+            auto delay = reconnect ? 100ms : 3s;
+            QTimer::singleShot(delay, this, [this] () {
                 if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
                     LOG_DEBUG << "ServerComm: Not online. Considering to start...";
-                    if (auto *instance = QNetworkInformation::instance()) {
-                        if (instance->reachability() != QNetworkInformation::Reachability::Online) {
-                            LOG_DEBUG << "ServerComm: Not online.";
-                            return;
-                        }
+                    if (!shouldReconnect()) {
+                        LOG_DEBUG << "ServerComm: Network not in a desired state.";
+                        return;
                     }
-                    LOG_DEBUG << "ServerComm: Starting after sleep.";
-                    start();
                 }
+                LOG_DEBUG << "ServerComm: Starting after sleep.";
+                start();
             });
         }
     });
@@ -1503,22 +1498,6 @@ QCoro::Task<bool> ServerComm::getGlobalSetings()
 
 void ServerComm::onReachabilityChanged(QNetworkInformation::Reachability reachability) {
 
-    auto start_if = [this]() {
-        QTimer::singleShot(100ms, [this]() {
-            if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
-                if (auto *instance = QNetworkInformation::instance();
-                    instance->reachability() == QNetworkInformation::Reachability::Disconnected
-                    || instance->reachability() == QNetworkInformation::Reachability::Unknown) {
-                    LOG_WARN_N << "ServerComm: Network is not reliable available. Will t reconnect now.";
-                    return;
-                }
-
-                LOG_INFO << "ServerComm: Networtk became available. Connecting to server.";
-                start();
-            }
-        });
-    };
-
     switch (reachability) {
     case QNetworkInformation::Reachability::Unknown:
         LOG_WARN_N << "Network reachability is unknown";
@@ -1528,7 +1507,6 @@ void ServerComm::onReachabilityChanged(QNetworkInformation::Reachability reachab
         break;
     case QNetworkInformation::Reachability::Online:
         LOG_INFO_N << "Network is available.";
-        start_if();
         break;
     case QNetworkInformation::Reachability::Local:
         LOG_INFO_N << "Local network is available.";
@@ -1539,4 +1517,51 @@ void ServerComm::onReachabilityChanged(QNetworkInformation::Reachability reachab
         QTimer::singleShot(0, this, &ServerComm::stop);
         break;
     }
+
+    if (shouldReconnect()) {
+        LOG_INFO_N << "Network is available. Will consider to reconnect in 100ms.";
+        QTimer::singleShot(100ms, [this]() {
+            if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
+                if (!shouldReconnect()) {
+                    LOG_WARN_N << "ServerComm: Network is not reliable available. Will not reconnect now.";
+                    return;
+                }
+
+                LOG_INFO << "ServerComm: Network became available. Connecting to server.";
+                start();
+            }
+        });
+    };
+}
+
+bool ServerComm::shouldReconnect() const noexcept
+{
+    const auto level = QSettings{}.value("server/reconnect_level", 0).toInt();
+    const auto reqire = static_cast<ReconnectLevel>(level);
+
+    if (reqire == ReconnectLevel::NEVER) {
+        LOG_DEBUG_N << "Reconnect level is: NEVER";
+        return false;
+    };
+
+    if (auto *instance = QNetworkInformation::instance()) {
+        const auto current = instance->reachability();
+        LOG_DEBUG_N << "Reconnect level is: " << level << " and current reachability is: "
+                    << static_cast<int>(current) << ".";
+        switch(current)   {
+            case QNetworkInformation::Reachability::Online:
+                return reqire == ReconnectLevel::SITE
+                       || reqire == ReconnectLevel::LAN
+                       || reqire == ReconnectLevel::ONLINE;
+            case QNetworkInformation::Reachability::Site:
+                return reqire == ReconnectLevel::SITE
+                       || reqire == ReconnectLevel::LAN;
+            case QNetworkInformation::Reachability::Local:
+                return reqire == ReconnectLevel::LAN;
+            case QNetworkInformation::Reachability::Disconnected:
+            case QNetworkInformation::Reachability::Unknown:
+                break;
+        }
+    }
+    return false;
 }
