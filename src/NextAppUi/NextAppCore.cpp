@@ -85,11 +85,20 @@ NextAppCore::NextAppCore() {
 
     connect(qApp, &QGuiApplication::applicationStateChanged, [this](Qt::ApplicationState state) {
         const auto old_state = state_;
+
+#ifdef LINUX_BUILD
+        if (old_state == State::SUSPENDED) {
+            LOG_TRACE_N << "Ignoring state change from SUSPENDED on Linux because it is not reliable.";
+            // Wait for the DBus signal to confirm that we are waking up.
+            return;
+        }
+#endif
+
         switch(state) {
         case Qt::ApplicationActive:
             setState(State::ACTIVE);
             LOG_INFO << "NextAppCore: The application is active.";
-            if (old_state == State::SUSPENDED || old_state == State::ACTIVE) {
+            if (old_state == State::SUSPENDED) {
                 emit wokeFromSleep();
             }
             break;
@@ -103,7 +112,7 @@ NextAppCore::NextAppCore() {
         case Qt::ApplicationHidden:
             LOG_INFO << "NextAppCore: The application is is hidden.";
             setState(State::HIDDEN);
-            if (old_state == State::SUSPENDED || old_state == State::ACTIVE) {
+            if (old_state == State::SUSPENDED) {
                 emit wokeFromSleep();
             }
             break;
@@ -111,7 +120,7 @@ NextAppCore::NextAppCore() {
         case Qt::ApplicationInactive:
             LOG_INFO << "NextAppCore: The application is is inactive.";
             setState(State::INACTIVE);
-            if (old_state == State::SUSPENDED || old_state == State::ACTIVE) {
+            if (old_state == State::SUSPENDED) {
                 emit wokeFromSleep();
             }
             break;
@@ -367,11 +376,15 @@ void NextAppCore::handlePrepareForSleep(bool sleep)
     LOG_DEBUG_N << "Prepare for sleep: " << sleep;
 
     if (sleep) {
+        LOG_INFO_N << "The system is going to sleep/suspended state! Disconnecting from server...";
         setState(State::SUSPENDED);
+        emit suspending();
+        //ServerComm::instance().stop();
     }
     if (!sleep) {
         LOG_INFO << "The system just wake up from sleep!";
-        //emit wokeFromSleep();
+        setState(State::ACTIVE);
+        emit wokeFromSleep();
     }
 }
 
