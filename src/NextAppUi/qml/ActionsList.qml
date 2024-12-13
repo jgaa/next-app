@@ -287,7 +287,7 @@ Rectangle {
                             autoToggle: false
 
                             onClicked: {
-                                NaWorkSessionsModel.startWork(uuid)
+                                NaWorkSessionsModel.startWorkSetActive(uuid)
                             }
                         }
                     }

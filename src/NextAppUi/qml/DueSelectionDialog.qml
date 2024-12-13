@@ -53,7 +53,7 @@ Popup {
     }
 
     ColumnLayout {
-        spacing: 10
+        spacing: 0
         anchors.fill: parent
 
         Button {
@@ -69,10 +69,33 @@ Popup {
         }
 
         Button {
+            id: btnWinHours
+            text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.SPAN_HOURS)
+            Layout.fillWidth: true
+            onClicked: {
+                maybeDueType = NextappPB.ActionDueKind.SPAN_HOURS
+                datePicker.mode = maybeDueType
+                datePicker.date = new Date(when * 1000)
+                datePicker.open()
+            }
+        }
+
+        Button {
             text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.DATE)
             Layout.fillWidth: true
             onClicked: {
                 maybeDueType = NextappPB.ActionDueKind.DATE
+                datePicker.mode = maybeDueType
+                datePicker.date = new Date(when * 1000)
+                datePicker.open()
+            }
+        }
+
+        Button {
+            text: NaActionsModel.whenListElement(when, dusroot.due.kind, NextappPB.ActionDueKind.SPAN_DAYS)
+            Layout.fillWidth: true
+            onClicked: {
+                maybeDueType = NextappPB.ActionDueKind.SPAN_DAYS
                 datePicker.mode = maybeDueType
                 datePicker.date = new Date(when * 1000)
                 datePicker.open()

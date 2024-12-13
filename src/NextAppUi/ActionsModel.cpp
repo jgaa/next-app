@@ -491,6 +491,10 @@ QString ActionsModel::whenListElement(uint64_t when,
         return tr("Year");
     case ActionDueKind::UNSET:
         return tr("No due time set");
+    case ActionDueKind::SPAN_HOURS:
+        return tr("Spans hours");
+    case ActionDueKind::SPAN_DAYS:
+        return tr("Spans days");
     default:
         ;
     }
@@ -509,7 +513,9 @@ QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::Act
 
     QStringList list;
     list << whenListElement(when, dt, ActionDueKind::DATETIME);
+    list << whenListElement(when, dt, ActionDueKind::SPAN_HOURS);
     list << whenListElement(when, dt, ActionDueKind::DATE);
+    list << whenListElement(when, dt, ActionDueKind::SPAN_DAYS);
     list << whenListElement(when, dt, ActionDueKind::WEEK);
     list << whenListElement(when, dt, ActionDueKind::MONTH);
     list << whenListElement(when, dt, ActionDueKind::QUARTER);

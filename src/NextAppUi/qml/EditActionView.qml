@@ -27,6 +27,7 @@ ColumnLayout {
             priority.currentIndex = 0
             createdDateCtl.text = ""
             timeEstimateCtl.text = ""
+            whenCtl.currentIndex =  NextappPb.Due.Kind.UNSET
             difficultyCtl.currentIndex = 0
             repeatWhenCtl.currentIndex = 0
             repeatUnitCtl.currentIndex = 0
@@ -36,6 +37,7 @@ ColumnLayout {
             repeatAfterCtl.value = 1
             completedTimeCtl.text = ""
             whenControl.due = NaActionsModel.createDue(0, 0)
+            setWhenCurrentIndex(whenControl.due.kind)
             shortcuts.currentIndex = -1
             repeatSpecCtl.model.forEach(function(item) {
                 item.checked = false
@@ -52,6 +54,10 @@ ColumnLayout {
         repeatWhenCtl.currentIndex = root.action.repeatWhen
         repeatUnitCtl.currentIndex = root.action.repeatUnits
         repeatKindCtl.currentIndex = root.action.repeatKind
+        //whenCtl.currentIndex = root.action.due.kind
+        whenCtl.due = root.action.due
+        setWhenCurrentIndex(whenCtl.due.kind)
+        //whenCtl.displayText = NaActionsModel.formatDue(root.action.due)
         favorite.isChecked = root.action.favorite
         category.uuid = root.action.category
 
@@ -83,7 +89,7 @@ ColumnLayout {
         root.action.name = name.text;
         root.action.descr = descr.text
         root.action.priority = priority.currentIndex
-        root.action.due = whenControl.due
+        root.action.due = whenCtl.due
         root.action.timeEstimate = Common.textToMinutes(timeEstimateCtl.text)
         root.action.difficulty = difficultyCtl.currentIndex
         root.action.repeatKind = repeatKindCtl.currentIndex
@@ -276,17 +282,138 @@ ColumnLayout {
                 //     text: qsTr("Start")
                 // }
 
-                WhenControl {
-                    id: whenControl
-                    due: root.action.due
-                    Layout.leftMargin: root.leftMarginForControls
-                    Layout.preferredWidth: root.controlsPreferredWidth
+                // WhenControl {
+                //     id: whenControl
+                //     due: root.action.due
+                //     Layout.leftMargin: root.leftMarginForControls
+                //     Layout.preferredWidth: root.controlsPreferredWidth
 
-                    onSelectionChanged: {
-                        // console.log("DueType changed to", whenControl.due.kind)
-                        //root.action.due = whenControl.due
-                        shortcuts.currentIndex = -1
+                //     onSelectionChanged: {
+                //         // console.log("DueType changed to", whenControl.due.kind)
+                //         //root.action.due = whenControl.due
+                //         shortcuts.currentIndex = -1
+                //     }
+                // }
+
+                ComboBox {
+                    id: whenCtl
+                    property var due: root.action.due
+                    property var maybeKind: due.kind
+                    Layout.fillWidth: true
+                    Layout.leftMargin: root.leftMarginForControls
+                    // Layout.preferredWidth: root.controlsPreferredWidth
+                    //currentIndex: due.kind
+                    displayText: NaActionsModel.formatDue(due)
+
+                    model: ListModel {
+                        ListElement{ text: qsTr("DateTime")}
+                        ListElement{ text: qsTr("Date")}
+                        ListElement{ text: qsTr("Week")}
+                        ListElement{ text: qsTr("Month")}
+                        ListElement{ text: qsTr("Quarter")}
+                        ListElement{ text: qsTr("Year")}
+                        ListElement{ text: qsTr("Unset")}
+                        ListElement{ text: qsTr("Span Hours")}
+                        ListElement{ text: qsTr("Span Days")}
                     }
+
+                    contentItem: RowLayout {
+                        spacing: 5
+                        anchors.fill: parent
+                        anchors.margins: 4
+
+                        Image {
+                            source: "../icons/fontawsome/calendar.svg"
+                            sourceSize.width: 20
+                            sourceSize.height: 20
+                            fillMode: Image.PreserveAspectFit
+                        }
+
+                        Text {
+                            //Layout.fillWidth: true
+                            text: whenCtl.displayText
+                            //font.pointSize: Qt.application.font.pointSize -1 // Adjust font size as needed
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    // popup: Popup {
+                    //             onVisibleChanged: {
+                    //                 if (!visible) {
+                    //                     console.log("Gakk Gakk Gakk!")
+                    //                 }
+                    //             }
+                    //         }
+
+                    Component.onCompleted: {
+                        // Connect to the popup's onVisibleChanged signal
+                        whenCtl.popup.visibleChanged.connect(function() {
+                            if (!whenCtl.popup.visible) {
+                                whenCtl.maybeKind = currentIndex
+                                const  when = due.start > 3600 ? due.start : Date.now() / 1000
+
+                                switch(currentIndex) {
+                                    case NextappPb.ActionDueKind.DATETIME:
+                                    case NextappPb.ActionDueKind.DATE:
+                                    case NextappPb.ActionDueKind.WEEK:
+                                    case NextappPb.ActionDueKind.MONTH:
+                                    case NextappPb.ActionDueKind.QUARTER:
+                                    case NextappPb.ActionDueKind.YEAR:
+                                        datePicker.mode = whenCtl.maybeKind
+                                        datePicker.date = new Date(when * 1000)
+                                        datePicker.open()
+                                        break;
+                                    case NextappPb.ActionDueKind.UNSET:
+                                        due.due = 0
+                                        due.start = 0;
+                                        break;
+                                    case NextappPb.ActionDueKind.SPAN_HOURS:
+                                    case NextappPb.ActionDueKind.SPAN_DAYS:
+                                        break;
+                                }
+
+                                displayText = NaActionsModel.formatDue(due)
+                            }
+                        });
+                    }
+
+                    // onCurrentIndexChanged: {
+                    //     if (!userTriggered) {
+                    //         return
+                    //     }
+
+                    //     if (currentIndex >= 0 && activeFocus) {
+
+                    //         whenCtl.maybeKind = currentIndex
+                    //         const  when = due.start > 3600 ? due.start : Date.now() / 1000
+
+                    //         switch(currentIndex) {
+                    //             case NextappPb.ActionDueKind.DATETIME:
+                    //             case NextappPb.ActionDueKind.DATE:
+                    //             case NextappPb.ActionDueKind.WEEK:
+                    //             case NextappPb.ActionDueKind.MONTH:
+                    //             case NextappPb.ActionDueKind.QUARTER:
+                    //             case NextappPb.ActionDueKind.YEAR:
+                    //                 datePicker.mode = whenCtl.maybeKind
+                    //                 datePicker.date = new Date(when * 1000)
+                    //                 datePicker.open()
+                    //                 break;
+                    //             case NextappPb.ActionDueKind.UNSET:
+                    //                 due.due = 0
+                    //                 due.start = 0;
+                    //                 break;
+                    //             case NextappPb.ActionDueKind.SPAN_HOURS:
+                    //             case NextappPb.ActionDueKind.SPAN_DAYS:
+                    //                 break;
+                    //         }
+
+                    //         displayText = NaActionsModel.formatDue(due)
+                    //         // console.log("Due changed to", currentIndex)
+                    //     }
+                    // }
                 }
 
                 ComboBox {
@@ -294,7 +421,7 @@ ColumnLayout {
                     //Layout.preferredWidth: root.controlsPreferredWidth * (NaCore.isMobile ? 1 : 2)
                     Layout.fillWidth: true
                     Layout.leftMargin: root.leftMarginForControls
-                    Layout.rowSpan: NaCore.isMobile ? 1 : 2
+                    //Layout.rowSpan: NaCore.isMobile ? 1 : 2
 
                     displayText: qsTr("Move the due time")
                     currentIndex: -1
@@ -316,7 +443,7 @@ ColumnLayout {
 
                     onCurrentIndexChanged: {
                         if (currentIndex >= 0) {
-                            whenControl.due = NaActionsModel.changeDue(currentIndex, whenControl.due)
+                            whenCtl.due = NaActionsModel.changeDue(currentIndex, whenCtl.due)
                         }
                     }
                 }
@@ -632,5 +759,27 @@ ColumnLayout {
         for (let i = 0; i < listModel.count; i++) {
             listModel.get(i).checked = ((value >> i) & 1) === 1;
         }
+    }
+
+    DatePicker {
+        id: datePicker
+        modal: true
+        visible: false
+
+        onSelectedDateClosed: (date, accepted) => {
+            if (accepted) {
+                whenCtl.due = NaActionsModel.adjustDue(date.getTime() / 1000, whenCtl.maybeKind);
+                setWhenCurrentIndex(whenCtl.due.kind)
+            } else {
+                // Set the index back to the original value
+                setWhenCurrentIndex(whenCtl.due.kind)
+            }
+        }
+    }
+
+    // Set the current index and the text
+    function setWhenCurrentIndex(index) {
+        whenCtl.currentIndex = index
+        whenCtl.displayText = NaActionsModel.formatDue(whenCtl.due)
     }
 }
