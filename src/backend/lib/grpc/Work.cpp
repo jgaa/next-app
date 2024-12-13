@@ -144,12 +144,14 @@ struct ToWorkSession {
                 init.set_action(actionId);
 
                 optional<pb::WorkSession> active_session;
-                if (opt_autostart_session) {
-                    // Don't start a new session if we alreadyt have an active session
+                if (opt_autostart_session || req->activate()) {
                     active_session = co_await owner_.fetchActiveWorkSession(rctx);
                 }
-                const bool do_start_event = !active_session && opt_autostart_session && (++count == 1);
+                const bool do_start_event = (req->activate() || (!active_session && opt_autostart_session)) && (++count == 1);
 
+                if (active_session) {
+                    co_await owner_.pauseWorkSession(*active_session, rctx);
+                }
                 auto res = co_await owner_.insertWork(init, rctx, do_start_event);
 
                 assert(res.has_value() && !res.rows().empty());

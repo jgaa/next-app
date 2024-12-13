@@ -270,6 +270,12 @@ ColumnLayout {
                     }
                 }
 
+                // Button {
+                //     id: startCtl
+                //     Layout.leftMargin: root.leftMarginForControls
+                //     text: qsTr("Start")
+                // }
+
                 WhenControl {
                     id: whenControl
                     due: root.action.due

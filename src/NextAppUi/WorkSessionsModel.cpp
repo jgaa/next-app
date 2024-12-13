@@ -37,6 +37,11 @@ void WorkSessionsModel::startWork(const QString &actionId)
     ServerComm::instance().startWork(actionId);
 }
 
+void WorkSessionsModel::startWorkSetActive(const QString &actionId)
+{
+    ServerComm::instance().startWork(actionId, true);
+}
+
 void WorkSessionsModel::deleteWork(const QString &actionId)
 {
     ServerComm::instance().deleteWork(actionId);

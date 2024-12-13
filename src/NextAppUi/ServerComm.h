@@ -188,7 +188,7 @@ public:
     void markActionAsDone(const QString& actionUuid, bool done);
     void markActionAsFavorite(const QString& actionUuid, bool favorite);
     void getActiveWorkSessions();
-    void startWork(const QString& actionId);
+    void startWork(const QString& actionId, bool activate = false);
     void addWorkFromTimeBlock(const QString& timeBlockUuid);
     void pauseWork(const QString& sessionId);
     void resumeWork(const QString& sessionId);

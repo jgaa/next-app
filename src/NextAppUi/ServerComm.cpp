@@ -503,10 +503,11 @@ void ServerComm::getActiveWorkSessions()
     });
 }
 
-void ServerComm::startWork(const QString &actionId)
+void ServerComm::startWork(const QString &actionId, bool activate)
 {
     nextapp::pb::CreateWorkReq req;
     req.setActionId(actionId);
+    req.setActivate(activate);
 
     callRpc<nextapp::pb::Status>([this, &req]() {
         return client_->CreateWorkSession(req);
