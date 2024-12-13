@@ -232,7 +232,6 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/DatePicker.qml
         qml/DisabledDimmer.qml
         qml/DlgInputField.qml
-        qml/DueSelectionDialog.qml
         qml/EditActionDlg.qml
         qml/EditActionView.qml
         qml/EditNodeDlg.qml
@@ -254,7 +253,6 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/WeeklyHoursView.qml
         qml/WeeklyReview.qml
         qml/WeeklyReviewView.qml
-        qml/WhenControl.qml
         qml/WindowDragHandler.qml # x
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
