@@ -311,7 +311,8 @@ boost::asio::awaitable<void> GrpcServer::loadCert()
             for(const auto& row : res.rows()) {
                 const auto& kind = row[KIND].as_string();
                 if (kind == "action_category") {
-                    versions->set_actioncategoryversion(row[VERSION].as_uint64());
+                    assert(row[VERSION].is_int64());
+                    versions->set_actioncategoryversion(row[VERSION].as_int64());
                 }
             }
         }
