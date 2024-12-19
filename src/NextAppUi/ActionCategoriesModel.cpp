@@ -184,12 +184,12 @@ ActionCategoriesModel &ActionCategoriesModel::instance()
     return *instance_;
 }
 
-QCoro::Task<bool> ActionCategoriesModel::synch()
+QCoro::Task<bool> ActionCategoriesModel::synch(bool fullSync)
 {
     // See if we need to fetch from server
     const auto server_ver = ServerComm::instance().getServerDataVersions().actionCategoryVersion();
     const auto local_ver = ServerComm::instance().getLocalDataVersions().actionCategoryVersion();
-    if (server_ver == 0 || server_ver > local_ver) {
+    if (fullSync || server_ver == 0 || server_ver > local_ver) {
         if (!co_await synchFromServer()) {
             co_return false;
         }

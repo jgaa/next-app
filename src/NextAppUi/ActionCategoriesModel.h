@@ -58,7 +58,7 @@ public:
 
     static ActionCategoriesModel& instance();
 
-    QCoro::Task<bool> synch();
+    QCoro::Task<bool> synch(bool fullSync);
 
 signals:
     void validChanged();

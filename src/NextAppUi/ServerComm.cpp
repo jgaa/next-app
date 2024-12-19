@@ -1222,7 +1222,9 @@ QCoro::Task<void> ServerComm::startNextappSession()
     QSettings settings;
     session_id_.clear();
 
-    if (settings.value("sync/resync", "false") == "true") {
+    const bool full_sync = settings.value("sync/resync", "false") == "true";
+
+    if (full_sync) {
         LOG_WARN << "Resyncing from the server. Will delete the local cache.";
         addMessage(tr("Doing a full synch with the server. This may take a few moments..."));
 
@@ -1302,7 +1304,7 @@ failed:
     }
 
     LOG_DEBUG_N << "Fetching  action categories...";
-    if (!co_await ActionCategoriesModel::instance().synch()) {
+    if (!co_await ActionCategoriesModel::instance().synch(full_sync)) {
         LOG_WARN_N << "Failed to get action categories.";
         goto failed;
     }
