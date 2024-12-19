@@ -230,6 +230,16 @@ time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)
     return -1;
 }
 
+time_t NextAppCore::parseTime(const QString &str)
+{
+    try {
+        return ::parseDuration(str);
+    } catch (const std::exception &e) {
+        LOG_DEBUG << "Could not parse time: " << str;
+    }
+    return -1;
+}
+
 QString NextAppCore::toDateAndTime(time_t when, time_t defaultDate)
 {
     const auto dd = getDefaultDate(defaultDate);

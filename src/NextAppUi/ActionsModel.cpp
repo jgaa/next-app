@@ -526,6 +526,34 @@ QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::Act
     return model;
 }
 
+pb::Due ActionsModel::setDue(time_t start, time_t until, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const
+{
+    assert(start <= until);
+    if (start > until) {
+        start = until;
+    }
+    pb::Due due;
+    due.setKind(kind);
+    const auto gs = ServerComm::instance().getGlobalSettings();
+
+    switch(kind) {
+    case pb::ActionDueKindGadget::ActionDueKind::SPAN_DAYS:
+        due.setStart(start);
+        due.setDue(until);
+        break;
+    default:
+        assert(false && "Invalid due kind");
+        return {}; // don't crash
+    }
+
+    LOG_TRACE << "Setting due: from="
+              << QDateTime::fromMSecsSinceEpoch(start * 1000).toLocalTime().toString()
+              << ", to="
+              << QDateTime::fromMSecsSinceEpoch(until * 1000).toLocalTime().toString();
+
+    return due;
+}
+
 #if !defined(ANDROID) && !defined(__APPLE__)
 auto timeZoneOffset(const std::chrono::time_zone *tz, const auto& tp) {
 

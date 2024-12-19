@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.24 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.26 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -229,7 +229,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/Colors.qml # x
         qml/CommonElements.qml
         qml/CurrentWorkSessionsView.qml
-        qml/DatePicker.qml
+        qml/components/DatePicker.qml
         qml/DisabledDimmer.qml
         qml/DlgInputField.qml
         qml/EditActionDlg.qml
@@ -293,6 +293,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
         qml/styling/SplitterStyle.qml
+        qml/components/TimeInput.qml
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"

@@ -276,33 +276,12 @@ ColumnLayout {
                     }
                 }
 
-                // Button {
-                //     id: startCtl
-                //     Layout.leftMargin: root.leftMarginForControls
-                //     text: qsTr("Start")
-                // }
-
-                // WhenControl {
-                //     id: whenControl
-                //     due: root.action.due
-                //     Layout.leftMargin: root.leftMarginForControls
-                //     Layout.preferredWidth: root.controlsPreferredWidth
-
-                //     onSelectionChanged: {
-                //         // console.log("DueType changed to", whenControl.due.kind)
-                //         //root.action.due = whenControl.due
-                //         shortcuts.currentIndex = -1
-                //     }
-                // }
-
                 ComboBox {
                     id: whenCtl
                     property var due: root.action.due
                     property var maybeKind: due.kind
                     Layout.fillWidth: true
                     Layout.leftMargin: root.leftMarginForControls
-                    // Layout.preferredWidth: root.controlsPreferredWidth
-                    //currentIndex: due.kind
                     displayText: NaActionsModel.formatDue(due)
 
                     model: ListModel {
@@ -340,20 +319,13 @@ ColumnLayout {
                         }
                     }
 
-                    // popup: Popup {
-                    //             onVisibleChanged: {
-                    //                 if (!visible) {
-                    //                     console.log("Gakk Gakk Gakk!")
-                    //                 }
-                    //             }
-                    //         }
-
                     Component.onCompleted: {
                         // Connect to the popup's onVisibleChanged signal
                         whenCtl.popup.visibleChanged.connect(function() {
                             if (!whenCtl.popup.visible) {
                                 whenCtl.maybeKind = currentIndex
                                 const  when = due.start > 3600 ? due.start : Date.now() / 1000
+                                const until = due.due > 3600 ? due.due : Date.now() / 1000
 
                                 switch(currentIndex) {
                                     case NextappPb.ActionDueKind.DATETIME:
@@ -362,16 +334,16 @@ ColumnLayout {
                                     case NextappPb.ActionDueKind.MONTH:
                                     case NextappPb.ActionDueKind.QUARTER:
                                     case NextappPb.ActionDueKind.YEAR:
+                                    case NextappPb.ActionDueKind.SPAN_HOURS:
+                                    case NextappPb.ActionDueKind.SPAN_DAYS:
                                         datePicker.mode = whenCtl.maybeKind
                                         datePicker.date = new Date(when * 1000)
+                                        datePicker.endDate = new Date(until * 1000)
                                         datePicker.open()
                                         break;
                                     case NextappPb.ActionDueKind.UNSET:
                                         due.due = 0
                                         due.start = 0;
-                                        break;
-                                    case NextappPb.ActionDueKind.SPAN_HOURS:
-                                    case NextappPb.ActionDueKind.SPAN_DAYS:
                                         break;
                                 }
 
@@ -379,41 +351,6 @@ ColumnLayout {
                             }
                         });
                     }
-
-                    // onCurrentIndexChanged: {
-                    //     if (!userTriggered) {
-                    //         return
-                    //     }
-
-                    //     if (currentIndex >= 0 && activeFocus) {
-
-                    //         whenCtl.maybeKind = currentIndex
-                    //         const  when = due.start > 3600 ? due.start : Date.now() / 1000
-
-                    //         switch(currentIndex) {
-                    //             case NextappPb.ActionDueKind.DATETIME:
-                    //             case NextappPb.ActionDueKind.DATE:
-                    //             case NextappPb.ActionDueKind.WEEK:
-                    //             case NextappPb.ActionDueKind.MONTH:
-                    //             case NextappPb.ActionDueKind.QUARTER:
-                    //             case NextappPb.ActionDueKind.YEAR:
-                    //                 datePicker.mode = whenCtl.maybeKind
-                    //                 datePicker.date = new Date(when * 1000)
-                    //                 datePicker.open()
-                    //                 break;
-                    //             case NextappPb.ActionDueKind.UNSET:
-                    //                 due.due = 0
-                    //                 due.start = 0;
-                    //                 break;
-                    //             case NextappPb.ActionDueKind.SPAN_HOURS:
-                    //             case NextappPb.ActionDueKind.SPAN_DAYS:
-                    //                 break;
-                    //         }
-
-                    //         displayText = NaActionsModel.formatDue(due)
-                    //         // console.log("Due changed to", currentIndex)
-                    //     }
-                    // }
                 }
 
                 ComboBox {
@@ -769,6 +706,16 @@ ColumnLayout {
         onSelectedDateClosed: (date, accepted) => {
             if (accepted) {
                 whenCtl.due = NaActionsModel.adjustDue(date.getTime() / 1000, whenCtl.maybeKind);
+                setWhenCurrentIndex(whenCtl.due.kind)
+            } else {
+                // Set the index back to the original value
+                setWhenCurrentIndex(whenCtl.due.kind)
+            }
+        }
+
+        onSelectedDurationClosed: (from, until, accepted) => {
+            if (accepted) {
+                whenCtl.due = NaActionsModel.setDue(from.getTime() / 1000, until.getTime() / 1000, whenCtl.maybeKind);
                 setWhenCurrentIndex(whenCtl.due.kind)
             } else {
                 // Set the index back to the original value

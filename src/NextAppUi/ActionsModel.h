@@ -218,6 +218,7 @@ public:
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind btn);
     Q_INVOKABLE QStringListModel *getDueSelections(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
     Q_INVOKABLE nextapp::pb::Due adjustDue(time_t start, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const;
+    Q_INVOKABLE nextapp::pb::Due setDue(time_t start, time_t until, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const;
     Q_INVOKABLE nextapp::pb::Due changeDue(int shortcut, const nextapp::pb::Due& fromDue) const;
     Q_INVOKABLE bool moveToNode(const QString& actionUuid, const QString& nodeUuid);
     Q_INVOKABLE void refresh();

@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import NextAppUi
 import nextapp.pb as NextappPB
-import "common.js" as Common
+import "../common.js" as Common
 import Nextapp.Models
 
 /* Selects a time.
@@ -31,13 +31,17 @@ Popup {
     property alias currentMonth: grid.month
     property int currentDay
     property int currentWeek: 0
+    property var endDate: null
 
     property bool closeOnSelect: mode === NextappPB.ActionDueKind.DATE
                                  || mode === NextappPB.ActionDueKind.WEEK
     property bool canSelectMonth: mode === NextappPB.ActionDueKind.DATE
                                   || mode === NextappPB.ActionDueKind.DATETIME
+                                  || mode === NextappPB.ActionDueKind.SPAN_HOURS
+                                  || mode === NextappPB.ActionDueKind.SPAN_DAYS
 
     signal selectedDateClosed(var date, var accepted)
+    signal selectedDurationClosed(var start, var until, var accepted)
     signal selectedWeekClosed(var date, var accepted, var week)
 
     onDateChanged: {
@@ -88,16 +92,32 @@ Popup {
                         return qsTr("Select a month")
                     case NextappPB.ActionDueKind.YEAR:
                         return qsTr("Select a year")
+                    case NextappPB.ActionDueKind.SPAN_HOURS:
+                        return qsTr("Select a date and time-span")
+                    case NextappPB.ActionDueKind.SPAN_DAYS:
+                        return qsTr("Select a date-span")
                     default:
                         return qsTr("Select a date")
                 }
             }
         }
 
-        // Year Selector
-        RowLayout {
-            Layout.alignment: Qt.AlignHCenter
-            Label {text: qsTr("Year")}
+        GridLayout {
+            //id: grid
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            rowSpacing: 4
+            property int controls : popup.mode === NextappPB.ActionDueKind.DATETIME
+                                    || popup.mode === NextappPB.ActionDueKind.DATE
+                                    || popup.mode === NextappPB.ActionDueKind.MONTH
+                                    || popup.mode === NextappPB.ActionDueKind.WEEK
+                                    || popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
+                                    || popup.mode === NextappPB.ActionDueKind.SPAN_DAYS
+                                    || popup.mode == NextappPB.ActionDueKind.QUARTER ? 2 : 1
+
+            columns: NaCore.isMobile ? 1 : controls
+
+            // Year Selector
             SpinBox {
                 editable: true
                 id: yearSpinner
@@ -105,25 +125,21 @@ Popup {
                 to: new Date().getFullYear() + 15
                 value: popup.currentYear
                 onValueChanged: {
-                    //popup.currentYear = value
-                   // popup.date.setYear(value)
                     grid.year = value
                 }
             }
-        }
 
-        // Month Selector
-        RowLayout {
-            visible: popup.mode === NextappPB.ActionDueKind.DATETIME
-                    || popup.mode === NextappPB.ActionDueKind.DATE
-                    || popup.mode === NextappPB.ActionDueKind.MONTH
-                    || popup.mode === NextappPB.ActionDueKind.WEEK
-
-            Layout.alignment: Qt.AlignHCenter
-            Label {text: qsTr("Month")}
-
+            // Month Selector
             ComboBox {
                 id: monthCombo
+
+                visible: popup.mode === NextappPB.ActionDueKind.DATETIME
+                        || popup.mode === NextappPB.ActionDueKind.DATE
+                        || popup.mode === NextappPB.ActionDueKind.MONTH
+                        || popup.mode === NextappPB.ActionDueKind.WEEK
+                        || popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
+                        || popup.mode === NextappPB.ActionDueKind.SPAN_DAYS
+
                 model: ListModel {
                     ListElement{ text: qsTr("January") }
                     ListElement{ text: qsTr("February") }
@@ -144,16 +160,10 @@ Popup {
                     grid.month = currentIndex
                 }
             }
-        }
-
-        // Quarter Selector
-        RowLayout {
-            visible: mode === NextappPB.ActionDueKind.QUARTER
-            Layout.alignment: Qt.AlignHCenter
-            Label {text: qsTr("Quarter")}
 
             ComboBox {
                 id: quarterCombo
+                visible: mode === NextappPB.ActionDueKind.QUARTER
                 model: ListModel {
                     ListElement{ text: qsTr("Q1")}
                     ListElement{ text: qsTr("Q2") }
@@ -172,6 +182,8 @@ Popup {
             visible: popup.mode === NextappPB.ActionDueKind.DATETIME
                     || popup.mode === NextappPB.ActionDueKind.DATE
                     || popup.mode === NextappPB.ActionDueKind.WEEK
+                    || popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
+                    || popup.mode === NextappPB.ActionDueKind.SPAN_DAYS
 
             DayOfWeekRow {
                 id: week
@@ -324,31 +336,101 @@ Popup {
             }
         } // date picker
 
-        RowLayout {
+        GridLayout {
             id: timeSelector
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            rowSpacing: 4
+            columns: 2
             visible: popup.mode === NextappPB.ActionDueKind.DATETIME
-            Layout.alignment: Qt.AlignHCenter
+                     || popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
+            property int hours: 0
+            property int minutes: 0
+            property bool visibleTimeDuration: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
 
-            SpinBox {
-                id: hourSpinner
-                from: 0
-                to: 23
-                value: popup.date.getHours()
-                onValueChanged: {
-                    popup.date.setHours(value)
+            // RowLayout {
+            //     id: timeSelector
+            //     visible: popup.mode === NextappPB.ActionDueKind.DATETIME
+            //              || popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
+            //     Layout.alignment: Qt.AlignHCenter
+
+            Label {
+                text: popup.mode === NextappPB.ActionDueKind.DATETIME ? qsTr("Time") : qsTr("From")
+            }
+
+            TimeInput {
+                id: timeInput
+                Layout.preferredWidth: 80
+
+                valueInSeconds: (popup.date.getHours() * 3600 + popup.date.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
+                onTimeChanged: function (hours, minutes) {
+                    console.log("timeInput.onTimeChanged: hours=", hours, "minutes=", minutes)
+                    popup.date.setHours(hours)
+                    popup.date.setMinutes(minutes)
                 }
             }
 
-            SpinBox {
-                id: minuteSpinner
-                from: 0
-                to: 55
-                stepSize: 5
-                value: (popup.date.getMinutes() / 5) * 5
-                onValueChanged: {
-                    popup.date.setMinutes(value)
+
+            // RowLayout {
+            //     id: durationSelector
+            //     visible: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
+            //     Layout.alignment: Qt.AlignHCenter
+            //     property int hours: 0
+            //     property int minutes: 0
+
+                // Dropdown with "Duration" or "Until"
+            ComboBox {
+                id: durationCombo
+                //Layout.preferredWidth: parent.width / 2
+                model: ListModel {
+                    ListElement{ text: qsTr("Duration") }
+                    ListElement{ text: qsTr("Until") }
+                }
+
+                Component.onCompleted: {
+                    timeSelector.setDuration(timeSelector.hours, timeSelector.minutes)
+                    durationInput.valueInSeconds = timeSelector.getValueInSeconds()
                 }
             }
+
+            TimeInput {
+                id: durationInput
+                Layout.preferredWidth: 80
+
+                valueInSeconds: timeSelector.getValueInSeconds() //(popup.endDate.getHours() * 3600 + popup.endDate.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
+                onTimeChanged: function (hours, minutes) {
+                    console.log("durationInput.onTimeChanged: hours=", hours, "minutes=", minutes)
+
+                    // Set the endDate based on the value in durationInput and durationCombo
+                    timeSelector.hours = hours
+                    timeSelector.minutes = minutes
+                    timeSelector.setDuration(hours, minutes)
+                }
+            }
+
+            function getValueInSeconds() {
+                if (durationCombo.currentIndex === 0) {
+                    return (popup.endDate.getHours() * 3600 + popup.endDate.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
+                } else {
+                    return (popup.date.getHours() * 3600 + popup.date.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
+                }
+            }
+
+            function setDuration(hours, minutes) {
+                popup.endDate = new Date(popup.date)
+                if (durationCombo.currentIndex === 0) {
+                    const seconds = hours * 3600 + minutes * 60
+                    popup.endDate.setSeconds(popup.date.getSeconds() + seconds)
+                } else {
+                    // Set the endDate to the end of the day
+                    popup.endDate.setHours(hours)
+                    popup.endDate.setMinutes(minutes)
+                    popup.endDate.setSeconds(0)
+                }
+
+                console.log("popup.endDate: ", popup.endDate)
+            }
+
         }
 
         Button {
@@ -357,6 +439,7 @@ Popup {
             text: qsTr("Now")
             onClicked: {
                 popup.date = new Date()
+                popup.date.setSeconds(0)
                 popup.accepted = true
                 popup.close()
             }
@@ -396,7 +479,11 @@ Popup {
             date = new Date(grid.year, 0, 1)
         }
 
-        selectedDateClosed(date, accepted)
+        if (mode === NextappPB.ActionDueKind.SPAN_HOURS) {
+            selectedDurationClosed(date, endDate, accepted)
+        } else {
+            selectedDateClosed(date, accepted)
+        }
 
         if (mode === NextappPB.ActionDueKind.WEEK) {
             selectedWeekClosed(date, accepted, currentWeek)
