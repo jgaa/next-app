@@ -1286,19 +1286,6 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
         "select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?",
         orig.id(), rctx.uctx->userUuid());
 
-    // // Do the actual delete. There is a potential race-condition here, but it is not a big deal, as it only affect notifications
-    // const auto res = co_await rctx.dbh->exec(
-    //     "DELETE FROM action WHERE id IN (select b.id from action as a left join action as b on b.origin = a.id where a.id =? and b.version = 1 and a.user = ?)",
-    //     orig.id(), rctx.uctx->userUuid());
-
-    // if (res.affected_rows() && dres.has_value()) {
-    //     for(const auto drow : dres.rows()) {
-    //         auto id = drow.at(0).as_string();
-    //         auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
-    //         update.mutable_action()->set_id(pb_adapt(id));
-    //     }
-    // }
-
     // There should only be at maximum one item in the result set.
     assert(dres.rows().size() <= 1);
     for(const auto drow : dres.rows()) {

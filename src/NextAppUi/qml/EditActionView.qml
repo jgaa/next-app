@@ -714,6 +714,10 @@ ColumnLayout {
         }
 
         onSelectedDurationClosed: (from, until, accepted) => {
+            console.log("from is ", typeof from)
+            console.log("from is", Object.prototype.toString.call(from))
+            console.log("until is ", typeof until)
+            console.log("until is", Object.prototype.toString.call(until))
             if (accepted) {
                 whenCtl.due = NaActionsModel.setDue(from.getTime() / 1000, until.getTime() / 1000, whenCtl.maybeKind);
                 setWhenCurrentIndex(whenCtl.due.kind)

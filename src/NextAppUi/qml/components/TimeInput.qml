@@ -10,7 +10,7 @@ TextField {
     inputMask: "00:00"
     cursorVisible: true
     inputMethodHints: Qt.ImhTime
-    text: NaCore.toTime(valueInSeconds)
+    text: NaCore.toHourMin(valueInSeconds)
 
     onTextChanged: {
         // when is seconds
@@ -33,4 +33,10 @@ TextField {
     }
 
     validator: RegularExpressionValidator { regularExpression: /^[0-9]*$/ }
+
+    onActiveFocusChanged: {
+        if (activeFocus) {
+            selectAll(); // Select all text when the TextField gains focus
+        }
+    }
 }

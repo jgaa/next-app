@@ -211,7 +211,7 @@ public:
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
     Q_INVOKABLE void markActionAsFavorite(const QString& actionUuid, bool favorite);
     static Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind);
-    static Q_INVOKABLE QString formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
+    static Q_INVOKABLE QString formatWhen(time_t from, time_t to, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
     static Q_INVOKABLE QString formatDue(const nextapp::pb::Due& due);
     Q_INVOKABLE QString whenListElement(uint64_t when,
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind dt,

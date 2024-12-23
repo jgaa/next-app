@@ -254,6 +254,7 @@ QString NextAppCore::toDateAndTime(time_t when, time_t defaultDate)
 
 QString NextAppCore::toTime(time_t when)
 {
+    LOG_TRACE_N << "Converting time " << when;
     const auto actualTime = QDateTime::fromSecsSinceEpoch(when);
     return actualTime.time().toString("hh:mm");
 }

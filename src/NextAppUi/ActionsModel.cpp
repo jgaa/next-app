@@ -404,69 +404,86 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind)
     assert(false);
 }
 
-QString ActionsModel::formatWhen(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
+QString ActionsModel::formatWhen(time_t from, time_t to, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
 {
 #if defined(ANDROID) || defined(__APPLE__)
     return "no-tz";
 #else
     using namespace nextapp::pb::ActionDueKindGadget;
 
-    if (!when) {
+    if (!from) {
         return tr("No due time set");
     }
 
     const std::chrono::time_zone *ts = std::chrono::current_zone();
-    const auto tp = round<std::chrono::seconds>(std::chrono::system_clock::from_time_t(when));
-    const auto zoned = std::chrono::zoned_time{ts, tp};
-    const auto ymd = std::chrono::year_month_day(floor<std::chrono::days>(zoned.get_local_time()));
+    const auto from_tp = round<std::chrono::seconds>(std::chrono::system_clock::from_time_t(from));
+    const auto from_zoned = std::chrono::zoned_time{ts, from_tp};
+    const auto from_ymd = std::chrono::year_month_day(floor<std::chrono::days>(from_zoned.get_local_time()));
+
+    const auto to_tp = round<std::chrono::seconds>(std::chrono::system_clock::from_time_t(to));
+    const auto to_zoned = std::chrono::zoned_time{ts, to_tp};
+    const auto to_ymd = std::chrono::year_month_day(floor<std::chrono::days>(to_zoned.get_local_time()));
 
     const auto current = std::chrono::zoned_time{ts, round<std::chrono::seconds>(std::chrono::system_clock::now())};
     const auto current_ymd = std::chrono::year_month_day(floor<std::chrono::days>(current.get_local_time()));
 
     auto select = [&](const std::string& formatted, const QString& phrase, const QString& shortp, const QString& prefix = {}) -> QString {
-        if (ymd == current_ymd) {
+        if (from_ymd == current_ymd) {
             return phrase;
         }
         return shortp + " " + prefix + QString::fromUtf8(formatted);
     };
 
-    switch(dt) {
-    case ActionDueKind::DATETIME:
-        return tr("Time") + " " + QString::fromUtf8(NA_FORMAT("{:%F %R}", zoned));
-    case ActionDueKind::DATE: {
-            // Check if it is tomorrow
-            if (ymd == current_ymd) {
-                return tr("Today");
-            }
-            const auto tomorrow_ymd = std::chrono::year_month_day(floor<std::chrono::days>(current.get_local_time() + std::chrono::days{1}));
-            if (ymd == tomorrow_ymd) {
-                return tr("Tomorrow");
-            }
+    auto datename = [&](auto& when, bool verbose = true) {
+        // Check if it is tomorrow
+        if (when == current_ymd) {
+            return tr("Today");
+        }
+        const auto tomorrow_ymd = std::chrono::year_month_day(floor<std::chrono::days>(current.get_local_time() + std::chrono::days{1}));
+        if (when == tomorrow_ymd) {
+            return tr("Tomorrow");
         }
 
-        return select(NA_FORMAT("{:%F}", zoned), tr("Today"), tr("Day"));
+        if (verbose) {
+            return QString{"%1 %2"}.arg(tr("Day")).arg(QString::fromUtf8(NA_FORMAT("{:%F}", when)));
+        }
+
+        return QString::fromUtf8(NA_FORMAT("{:%F}", when));
+    };
+
+    switch(dt) {
+    case ActionDueKind::DATETIME:
+        return tr("Time") + " " + QString::fromUtf8(NA_FORMAT("{:%F %R}", from_zoned));
+    case ActionDueKind::DATE: {
+        return datename(from_ymd);
     case ActionDueKind::WEEK:
-        return select(NA_FORMAT("{:%W %Y}", zoned), tr("This week"), tr("Week"), tr("W"));
+        return select(NA_FORMAT("{:%W %Y}", from_zoned), tr("This week"), tr("Week"), tr("W"));
     case ActionDueKind::MONTH:
-        return select(NA_FORMAT("{:%b %Y}", zoned), tr("This month"), tr("Month"));
+        return select(NA_FORMAT("{:%b %Y}", from_zoned), tr("This month"), tr("Month"));
     case ActionDueKind::QUARTER: {
-        const auto month = static_cast<unsigned>(ymd.month());
+        const auto month = static_cast<unsigned>(from_ymd.month());
         const auto quarter = (month - 1) / 3 + 1;
-        return select(NA_FORMAT("{} {:%Y}", quarter, zoned), tr("This Quarter"), tr("Quarter"), tr("Q"));
+        return select(NA_FORMAT("{} {:%Y}", quarter, from_zoned), tr("This Quarter"), tr("Quarter"), tr("Q"));
         }
     case ActionDueKind::YEAR:
-            return select(NA_FORMAT("{:%Y}", zoned), tr("This year"), tr("Year"));
+        return select(NA_FORMAT("{:%Y}", from_zoned), tr("This year"), tr("Year"));
     case ActionDueKind::UNSET:
         return tr("No due time set");
     }
+    case ActionDueKind::SPAN_HOURS:
+        return datename(from_ymd, false) + " " + QString::fromUtf8(NA_FORMAT("{:%R} - {:%R}", from_zoned, to_zoned));
+    case ActionDueKind::SPAN_DAYS:
+        return QString{"%1 - %2"}.arg(datename(from_ymd, false)).arg(datename(to_ymd, false));
     return {};
+    }
 #endif
 }
 
 QString ActionsModel::formatDue(const nextapp::pb::Due &due)
 {
-    auto when = due.hasStart() ? due.start() : 0;
-    return formatWhen(when, due.kind());
+    auto from = due.hasStart() ? due.start() : 0;
+    auto to = due.hasDue() ? due.due() : 0;
+    return formatWhen(from, to, due.kind());
 }
 
 QString ActionsModel::whenListElement(uint64_t when,
@@ -537,9 +554,18 @@ pb::Due ActionsModel::setDue(time_t start, time_t until, nextapp::pb::ActionDueK
     const auto gs = ServerComm::instance().getGlobalSettings();
 
     switch(kind) {
-    case pb::ActionDueKindGadget::ActionDueKind::SPAN_DAYS:
+    case pb::ActionDueKindGadget::ActionDueKind::SPAN_HOURS:
         due.setStart(start);
         due.setDue(until);
+        break;
+    case pb::ActionDueKindGadget::ActionDueKind::SPAN_DAYS: {
+        auto date = QDateTime::fromSecsSinceEpoch(start).date();
+        start = QDateTime{date, QTime{0, 0}}.toSecsSinceEpoch();
+        due.setStart(start);
+        date = QDateTime::fromSecsSinceEpoch(until).date();
+        until = QDateTime{date, QTime{23, 59}}.toSecsSinceEpoch();
+        due.setDue(until);
+        }
         break;
     default:
         assert(false && "Invalid due kind");
@@ -547,9 +573,9 @@ pb::Due ActionsModel::setDue(time_t start, time_t until, nextapp::pb::ActionDueK
     }
 
     LOG_TRACE << "Setting due: from="
-              << QDateTime::fromMSecsSinceEpoch(start * 1000).toLocalTime().toString()
+              << QDateTime::fromSecsSinceEpoch(start).toLocalTime().toString()
               << ", to="
-              << QDateTime::fromMSecsSinceEpoch(until * 1000).toLocalTime().toString();
+              << QDateTime::fromSecsSinceEpoch(until).toLocalTime().toString();
 
     return due;
 }
@@ -645,8 +671,9 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
         end = d_end.toSecsSinceEpoch() -1;
     }
     break;
-    case pb::ActionDueKindGadget::ActionDueKind::UNSET:
-        break;
+
+    default:
+    break;
     }
 
     due.setStart(start);
@@ -875,7 +902,6 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case SectionNameRole:
         return toName(toKind(action));
     case DueRole:
-        // Only return if it's
         return formatDue(action.due());
     case FavoriteRole:
         return action.favorite();

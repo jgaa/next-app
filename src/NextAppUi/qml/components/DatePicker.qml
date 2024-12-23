@@ -50,6 +50,14 @@ Popup {
         grid.month = date.getMonth()
         currentDay = date.getDate()
         quarterCombo.currentIndex = Math.floor(grid.month / 3)
+        //daysInput.text = popup.endDate === null ? "" : Math.floor(Math.max(0, (popup.endDate - popup.date) / (1000 * 60 * 60 * 24))).toString()
+        timeInput.syncTime()
+    }
+
+    onEndDateChanged: {
+        console.log("DatePicker.onEndDateChanged: endDate=", endDate.toISOString())
+        daysInput.setValue(popup.endDate === null ? "" : Math.floor(Math.max(0, (popup.endDate - popup.date) / (1000 * 60 * 60 * 24))).toString())
+        durationInput.syncTime()
     }
 
     background: Rectangle {
@@ -336,9 +344,49 @@ Popup {
             }
         } // date picker
 
+        RowLayout {
+            id: daysSelector
+            //Layout.fillHeight: true
+            Layout.fillWidth: true
+            visible: popup.mode === NextappPB.ActionDueKind.SPAN_DAYS
+
+            Label {
+                text: qsTr("Days")
+            }
+
+            // Input that only accept positive digits and emits a signal when the value changes
+            TextField {
+                id: daysInput
+                Layout.preferredWidth: 80
+                validator: IntValidator { bottom: 1; top: 9999 }
+
+                property bool programmaticChange: false
+
+                onTextChanged: {
+                    if (!programmaticChange && daysSelector.visible && text !== "") {
+                        const seconds_to_add = parseInt(text) * 24 * 60 * 60;
+                        var when = new Date(popup.date);
+                        when.setSeconds(when.getSeconds() + seconds_to_add);
+                        popup.endDate = when
+                        console.log("daysSelector: Setting endDate to ", when.toISOString());
+                    }
+                }
+
+                function setValue(value) {
+                    programmaticChange = true; // Set flag to prevent onTextChanged
+                    text = value;              // Change the value
+                    programmaticChange = false; // Reset flag
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+        }
+
         GridLayout {
             id: timeSelector
-            Layout.fillHeight: true
+            //Layout.fillHeight: true
             Layout.fillWidth: true
             rowSpacing: 4
             columns: 2
@@ -361,76 +409,143 @@ Popup {
             TimeInput {
                 id: timeInput
                 Layout.preferredWidth: 80
+                property bool changingValue: false
 
-                valueInSeconds: (popup.date.getHours() * 3600 + popup.date.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
+                //valueInSeconds: (popup.date.getHours() * 3600 + popup.date.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
                 onTimeChanged: function (hours, minutes) {
                     console.log("timeInput.onTimeChanged: hours=", hours, "minutes=", minutes)
-                    popup.date.setHours(hours)
-                    popup.date.setMinutes(minutes)
+                    var when = new Date(popup.date)
+                    when.setHours(hours)
+                    when.setMinutes(minutes)
+                    popup.date = when
+                    if (durationInput.visible) {
+                        durationInput.syncTime()
+                    }
+                }
+
+                function setValue(value) {
+                    changingValue = true
+                    valueInSeconds = value
+                    changingValue = false
+                }
+
+                function syncTime() {
+                    const value = (popup.date.getHours() * 3600 + popup.date.getMinutes() * 60)
+                    setValue(value)
+                }
+
+                Component.onCompleted: {
+                    syncTime()
                 }
             }
-
-
-            // RowLayout {
-            //     id: durationSelector
-            //     visible: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
-            //     Layout.alignment: Qt.AlignHCenter
-            //     property int hours: 0
-            //     property int minutes: 0
 
                 // Dropdown with "Duration" or "Until"
             ComboBox {
                 id: durationCombo
-                //Layout.preferredWidth: parent.width / 2
+                visible: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
                 model: ListModel {
                     ListElement{ text: qsTr("Duration") }
                     ListElement{ text: qsTr("Until") }
                 }
 
-                Component.onCompleted: {
-                    timeSelector.setDuration(timeSelector.hours, timeSelector.minutes)
-                    durationInput.valueInSeconds = timeSelector.getValueInSeconds()
+                // Component.onCompleted: {
+                //     //timeSelector.setDuration(timeSelector.hours, timeSelector.minutes)
+                //     //durationInput.valueInSeconds = timeSelector.getValueInSeconds()
+                //     durationInput.setValue(timeSelector.getDurationInSeconds())
+                //     ready = true
+                // }
+
+                onCurrentIndexChanged: {
+                    durationInput.setValue(timeSelector.getDurationInSeconds())
                 }
             }
 
             TimeInput {
                 id: durationInput
+                visible: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
                 Layout.preferredWidth: 80
+                property bool changingValue: false
 
-                valueInSeconds: timeSelector.getValueInSeconds() //(popup.endDate.getHours() * 3600 + popup.endDate.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
+                //valueInSeconds: timeSelector.getDurationInSeconds() //(popup.endDate.getHours() * 3600 + popup.endDate.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
                 onTimeChanged: function (hours, minutes) {
-                    console.log("durationInput.onTimeChanged: hours=", hours, "minutes=", minutes)
+                    // The signal is triggered weather the control is visible or not
+                    if (visible && !changingValue) {
+                        console.log("durationInput.onTimeChanged: hours=", hours, "minutes=", minutes)
 
-                    // Set the endDate based on the value in durationInput and durationCombo
-                    timeSelector.hours = hours
-                    timeSelector.minutes = minutes
-                    timeSelector.setDuration(hours, minutes)
+                        // Set the endDate based on the value in durationInput and durationCombo
+                        timeSelector.hours = hours
+                        timeSelector.minutes = minutes
+                        timeSelector.setDuration(hours, minutes)
+                    }
+                }
+
+                function setValue(value) {
+                    changingValue = true
+                    valueInSeconds = value
+                    changingValue = false
+                }
+
+                function syncTime() {
+                    const value = timeSelector.getDurationInSeconds()
+                    setValue(value)
                 }
             }
 
-            function getValueInSeconds() {
+            function getDurationInSeconds() {
                 if (durationCombo.currentIndex === 0) {
-                    return (popup.endDate.getHours() * 3600 + popup.endDate.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
-                } else {
-                    return (popup.date.getHours() * 3600 + popup.date.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
+                    if (popup.endDate === null) {
+                        return 0
+                    }
+                    const diff = Math.abs((popup.endDate.getTime() - popup.date.getTime()) / 1000)
+
+                    const startOfNextDay = new Date(popup.date);
+                    startOfNextDay.setHours(24, 0, 0, 0); // Move to midnight of the next day
+
+                    // Calculate the maximum seconds remaining in the current day
+                    const maxSecondsInDay = Math.floor((startOfNextDay.getTime() - popup.date.getTime()) / 1000);
+
+                    // Limit diff to the remaining seconds in the current day
+                    const limitedDiff = Math.min(diff, maxSecondsInDay);
+
+                    console.log("getDurationInSeconds date=", popup.date, ", endDate=", popup.endDate, ", diff=", diff, ", limitedDiff=", limitedDiff);
+
+                    return limitedDiff;
+                } else {                    
+                    return getDurationAsTime()
                 }
+            }
+
+            function getDurationAsTime() {
+                return popup.endDate.getHours() * 3600 + popup.endDate.getMinutes() * 60
+            }
+
+            function getDurationAsDate() {
+                const seconds = getDurationInSeconds()
+                return new Date(popup.date.getTime() + seconds * 1000)
             }
 
             function setDuration(hours, minutes) {
-                popup.endDate = new Date(popup.date)
+                let when = new Date(popup.date)
                 if (durationCombo.currentIndex === 0) {
                     const seconds = hours * 3600 + minutes * 60
-                    popup.endDate.setSeconds(popup.date.getSeconds() + seconds)
+                    when.setSeconds(popup.date.getSeconds() + seconds)
                 } else {
                     // Set the endDate to the end of the day
-                    popup.endDate.setHours(hours)
-                    popup.endDate.setMinutes(minutes)
-                    popup.endDate.setSeconds(0)
+                    when.setHours(hours)
+                    when.setMinutes(minutes)
+                    when.setSeconds(0)
                 }
 
-                console.log("popup.endDate: ", popup.endDate)
+                popup.endDate = when
+                console.log("popup.endDate: ", when.toISOString())
             }
 
+            function syncToEndTime() {
+                const seconds = getDurationAsTime()
+                const when = new Date(popup.date.getTime() + seconds * 1000)
+                console.log("syncToEndTime: seconds=", seconds, "when=", when)
+                popup.endDate = when
+            }
         }
 
         Button {
@@ -479,8 +594,10 @@ Popup {
             date = new Date(grid.year, 0, 1)
         }
 
-        if (mode === NextappPB.ActionDueKind.SPAN_HOURS) {
-            selectedDurationClosed(date, endDate, accepted)
+        if (mode === NextappPB.ActionDueKind.SPAN_HOURS
+                || mode === NextappPB.ActionDueKind.SPAN_DAYS) {
+                timeSelector.syncToEndTime()
+                selectedDurationClosed(date, endDate || date, accepted)
         } else {
             selectedDateClosed(date, accepted)
         }

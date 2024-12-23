@@ -71,7 +71,7 @@ if(USE_STATIC_QT)
     find_package(FFMPEG REQUIRED)
     message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
 
-    # There is some tiemes a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
+    # There is some tiems a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
     if("optimized" IN_LIST FFMPEG_LIBRARIES)
         set(OPTIMIZED_FFMPEG_LIBRARIES "")
         set(NEXT_IS_OPTIMIZED FALSE)
