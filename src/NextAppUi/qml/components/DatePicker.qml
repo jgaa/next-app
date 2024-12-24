@@ -50,14 +50,16 @@ Popup {
         grid.month = date.getMonth()
         currentDay = date.getDate()
         quarterCombo.currentIndex = Math.floor(grid.month / 3)
-        //daysInput.text = popup.endDate === null ? "" : Math.floor(Math.max(0, (popup.endDate - popup.date) / (1000 * 60 * 60 * 24))).toString()
-        timeInput.syncTime()
+        timeSelector.setTimeByDate(date)
     }
 
     onEndDateChanged: {
-        console.log("DatePicker.onEndDateChanged: endDate=", endDate.toISOString())
-        daysInput.setValue(popup.endDate === null ? "" : Math.floor(Math.max(0, (popup.endDate - popup.date) / (1000 * 60 * 60 * 24))).toString())
-        durationInput.syncTime()
+        console.log("DatePicker.onEndDateChanged: endDate=", endDate)
+        if (endDate !== null) {
+            timeSelector.setDurationByDate(endDate)
+        } else {
+            timeSelector.durationSeconds = 0
+        }
     }
 
     background: Rectangle {
@@ -384,168 +386,11 @@ Popup {
             }
         }
 
-        GridLayout {
+        TimeAndDurationInput {
             id: timeSelector
-            //Layout.fillHeight: true
-            Layout.fillWidth: true
-            rowSpacing: 4
-            columns: 2
             visible: popup.mode === NextappPB.ActionDueKind.DATETIME
                      || popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
-            property int hours: 0
-            property int minutes: 0
-            property bool visibleTimeDuration: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
-
-            // RowLayout {
-            //     id: timeSelector
-            //     visible: popup.mode === NextappPB.ActionDueKind.DATETIME
-            //              || popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
-            //     Layout.alignment: Qt.AlignHCenter
-
-            Label {
-                text: popup.mode === NextappPB.ActionDueKind.DATETIME ? qsTr("Time") : qsTr("From")
-            }
-
-            TimeInput {
-                id: timeInput
-                Layout.preferredWidth: 80
-                property bool changingValue: false
-
-                //valueInSeconds: (popup.date.getHours() * 3600 + popup.date.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
-                onTimeChanged: function (hours, minutes) {
-                    console.log("timeInput.onTimeChanged: hours=", hours, "minutes=", minutes)
-                    var when = new Date(popup.date)
-                    when.setHours(hours)
-                    when.setMinutes(minutes)
-                    popup.date = when
-                    if (durationInput.visible) {
-                        durationInput.syncTime()
-                    }
-                }
-
-                function setValue(value) {
-                    changingValue = true
-                    valueInSeconds = value
-                    changingValue = false
-                }
-
-                function syncTime() {
-                    const value = (popup.date.getHours() * 3600 + popup.date.getMinutes() * 60)
-                    setValue(value)
-                }
-
-                Component.onCompleted: {
-                    syncTime()
-                }
-            }
-
-                // Dropdown with "Duration" or "Until"
-            ComboBox {
-                id: durationCombo
-                visible: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
-                model: ListModel {
-                    ListElement{ text: qsTr("Duration") }
-                    ListElement{ text: qsTr("Until") }
-                }
-
-                // Component.onCompleted: {
-                //     //timeSelector.setDuration(timeSelector.hours, timeSelector.minutes)
-                //     //durationInput.valueInSeconds = timeSelector.getValueInSeconds()
-                //     durationInput.setValue(timeSelector.getDurationInSeconds())
-                //     ready = true
-                // }
-
-                onCurrentIndexChanged: {
-                    durationInput.setValue(timeSelector.getDurationInSeconds())
-                }
-            }
-
-            TimeInput {
-                id: durationInput
-                visible: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
-                Layout.preferredWidth: 80
-                property bool changingValue: false
-
-                //valueInSeconds: timeSelector.getDurationInSeconds() //(popup.endDate.getHours() * 3600 + popup.endDate.getMinutes() * 60) + (popup.date.getTimezoneOffset() * 60)
-                onTimeChanged: function (hours, minutes) {
-                    // The signal is triggered weather the control is visible or not
-                    if (visible && !changingValue) {
-                        console.log("durationInput.onTimeChanged: hours=", hours, "minutes=", minutes)
-
-                        // Set the endDate based on the value in durationInput and durationCombo
-                        timeSelector.hours = hours
-                        timeSelector.minutes = minutes
-                        timeSelector.setDuration(hours, minutes)
-                    }
-                }
-
-                function setValue(value) {
-                    changingValue = true
-                    valueInSeconds = value
-                    changingValue = false
-                }
-
-                function syncTime() {
-                    const value = timeSelector.getDurationInSeconds()
-                    setValue(value)
-                }
-            }
-
-            function getDurationInSeconds() {
-                if (durationCombo.currentIndex === 0) {
-                    if (popup.endDate === null) {
-                        return 0
-                    }
-                    const diff = Math.abs((popup.endDate.getTime() - popup.date.getTime()) / 1000)
-
-                    const startOfNextDay = new Date(popup.date);
-                    startOfNextDay.setHours(24, 0, 0, 0); // Move to midnight of the next day
-
-                    // Calculate the maximum seconds remaining in the current day
-                    const maxSecondsInDay = Math.floor((startOfNextDay.getTime() - popup.date.getTime()) / 1000);
-
-                    // Limit diff to the remaining seconds in the current day
-                    const limitedDiff = Math.min(diff, maxSecondsInDay);
-
-                    console.log("getDurationInSeconds date=", popup.date, ", endDate=", popup.endDate, ", diff=", diff, ", limitedDiff=", limitedDiff);
-
-                    return limitedDiff;
-                } else {                    
-                    return getDurationAsTime()
-                }
-            }
-
-            function getDurationAsTime() {
-                return popup.endDate.getHours() * 3600 + popup.endDate.getMinutes() * 60
-            }
-
-            function getDurationAsDate() {
-                const seconds = getDurationInSeconds()
-                return new Date(popup.date.getTime() + seconds * 1000)
-            }
-
-            function setDuration(hours, minutes) {
-                let when = new Date(popup.date)
-                if (durationCombo.currentIndex === 0) {
-                    const seconds = hours * 3600 + minutes * 60
-                    when.setSeconds(popup.date.getSeconds() + seconds)
-                } else {
-                    // Set the endDate to the end of the day
-                    when.setHours(hours)
-                    when.setMinutes(minutes)
-                    when.setSeconds(0)
-                }
-
-                popup.endDate = when
-                console.log("popup.endDate: ", when.toISOString())
-            }
-
-            function syncToEndTime() {
-                const seconds = getDurationAsTime()
-                const when = new Date(popup.date.getTime() + seconds * 1000)
-                console.log("syncToEndTime: seconds=", seconds, "when=", when)
-                popup.endDate = when
-            }
+            hasDuration: popup.mode === NextappPB.ActionDueKind.SPAN_HOURS
         }
 
         Button {
@@ -564,6 +409,7 @@ Popup {
             Button {
                 spacing: 6
                 text: qsTr("OK")
+                enabled: timeSelector.valid
                 onClicked: {
                     popup.accepted = true
                     popup.close()
@@ -586,24 +432,42 @@ Popup {
     }
 
     onClosed: {
-        if (mode === NextappPB.ActionDueKind.MONTH) {
-            date = new Date(grid.year, grid.month, 1)
-        } else if (mode === NextappPB.ActionDueKind.QUARTER) {
-            date = new Date(grid.year, grid.month, 1)
-        } else if (mode === NextappPB.ActionDueKind.YEAR) {
-            date = new Date(grid.year, 0, 1)
-        }
-
-        if (mode === NextappPB.ActionDueKind.SPAN_HOURS
-                || mode === NextappPB.ActionDueKind.SPAN_DAYS) {
-                timeSelector.syncToEndTime()
+        switch(mode) {
+            case NextappPB.ActionDueKind.DATE:
+                selectedDateClosed(date, accepted)
+                break
+            case NextappPB.ActionDueKind.WEEK:
+                selectedWeekClosed(date, accepted, currentWeek)
+                break
+            case NextappPB.ActionDueKind.DATETIME: {
+                const when = timeSelector.setTimeInDate(date)
+                selectedDateClosed(when, accepted)
+                }
+                break
+            case NextappPB.ActionDueKind.QUARTER: {
+                const when = new Date(grid.year, grid.month, 1)
+                selectedDateClosed(when, accepted)
+                }
+                break
+            case NextappPB.ActionDueKind.MONTH: {
+                const when = new Date(grid.year, grid.month, 1)
+                selectedDateClosed(when, accepted)
+                }
+                break
+            case NextappPB.ActionDueKind.YEAR: {
+                const when = new Date(grid.year, 0, 1)
+                selectedDateClosed(when, accepted)
+                }
+                break
+            case NextappPB.ActionDueKind.SPAN_HOURS: {
+                const start = timeSelector.setTimeInDate(date)
+                const until = timeSelector.addDurationToDate(start)
+                selectedDurationClosed(start, until, accepted)
+                }
+                break
+            case NextappPB.ActionDueKind.SPAN_DAYS:
                 selectedDurationClosed(date, endDate || date, accepted)
-        } else {
-            selectedDateClosed(date, accepted)
-        }
-
-        if (mode === NextappPB.ActionDueKind.WEEK) {
-            selectedWeekClosed(date, accepted, currentWeek)
+                break
         }
     }
 }

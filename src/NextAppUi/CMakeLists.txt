@@ -229,7 +229,6 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/Colors.qml # x
         qml/CommonElements.qml
         qml/CurrentWorkSessionsView.qml
-        qml/components/DatePicker.qml
         qml/DisabledDimmer.qml
         qml/DlgInputField.qml
         qml/EditActionDlg.qml
@@ -274,6 +273,9 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/categories/ColorPicker.qml
         qml/categories/EditCategoryDlg.qml
         qml/common.js
+        qml/components/DatePicker.qml
+        qml/components/TimeAndDurationInput.qml
+        qml/components/TimeInput.qml
         qml/greendays/DayDialog.qml
         qml/greendays/DaysInYear.qml
         qml/greendays/GdMonth.qml
@@ -293,7 +295,6 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
         qml/styling/SplitterStyle.qml
-        qml/components/TimeInput.qml
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
