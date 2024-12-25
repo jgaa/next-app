@@ -17,6 +17,7 @@ Rectangle
     property string textColor: MaterialDesignStyling.onSurfaceVariant
     property string selectedBackgroundColor: MaterialDesignStyling.surfaceContainerHighest
     property bool useSolidForChecked: false
+    property bool useSolidForAll: false
     property bool autoToggle: true
     property string bgColor: "transparent"
     width: childrenRect.width
@@ -31,8 +32,8 @@ Rectangle
         // Checkbox icons
         Text {
             id: icon
-            font.family: (checkBox.isChecked && checkBox.useSolidForChecked) ? ce.faSolidName : ce.faNormalName
-            font.styleName: (checkBox.isChecked && checkBox.useSolidForChecked) ? ce.faSolidStyle : ce.faNormalStyle
+            font.family: (checkBox.useSolidForAll || (checkBox.isChecked && checkBox.useSolidForChecked)) ? ce.faSolidName : ce.faNormalName
+            font.styleName: (checkBox.useSolidForAll ||(checkBox.isChecked && checkBox.useSolidForChecked)) ? ce.faSolidStyle : ce.faNormalStyle
             font.pixelSize: checkBox.iconSize
             text: checkBox.isChecked ? checkBox.checkedCode : checkBox.uncheckedCode
             color: checkBox.isChecked ? checkBox.checkedColor : checkBox.uncheckedColor

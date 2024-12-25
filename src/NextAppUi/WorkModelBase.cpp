@@ -134,6 +134,21 @@ void WorkModelBase::setActive(bool active)
     }
 }
 
+std::vector<QUuid> WorkModelBase::getAllActionIds(bool withDuration) const
+{
+    std::vector<QUuid> all;
+    all.reserve(sessions_.size());
+    for (const auto& session : sessions_) {
+        if (!withDuration || session.session->duration() > 0) {
+            QUuid uuid{session.action};
+            if (!uuid.isNull()) {
+                all.push_back(session.action);
+            }
+        }
+    }
+    return all;
+}
+
 QHash<int, QByteArray> WorkModelBase::roleNames() const
 {
     QHash<int, QByteArray> roles;

@@ -14,6 +14,7 @@
 //#include "WorkSessionsModel.h"
 #include "ActionInfoCache.h"
 #include "ActionsOnCurrentCalendar.h"
+#include "ActionsWorkedOnTodayCache.h"
 
 #include "logging.h"
 #include "util.h"
@@ -277,6 +278,13 @@ ActionsModel::ActionsModel(QObject *parent)
             QMetaObject::invokeMethod(this, [this] {
                 fetchIf();
             }, Qt::QueuedConnection);
+        }
+    });
+
+    connect(ActionsWorkedOnTodayCache::instance(), &ActionsWorkedOnTodayCache::modelReset, this, [this] {
+        if (valid_) {
+            beginResetModel();
+            endResetModel();
         }
     });
 
@@ -944,6 +952,8 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return false;
     case OnCalendarRole:
         return ActionsOnCurrentCalendar::instance()->contains(data.uuid);
+    case WorkedOnTodayRole:
+        return ActionsWorkedOnTodayCache::instance()->contains(data.uuid);
     }
     return {};
 }
@@ -1008,6 +1018,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[CategoryRole] = "category";
     roles[ReviewedRole] = "reviewed";
     roles[OnCalendarRole] = "onCalendar";
+    roles[WorkedOnTodayRole] = "workedOnToday";
     return roles;
 }
 

@@ -107,6 +107,7 @@ Rectangle {
                 required property int status
                 required property bool reviewed
                 required property bool onCalendar
+                required property bool workedOnToday
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -281,13 +282,14 @@ Rectangle {
                             id: canWorkIcon
                             enabled: !done
                             isChecked: hasWorkSession
-                            checkedCode: "\uf252"
-                            uncheckedCode: "\uf254"
+                            checkedCode: "\uf017"
+                            uncheckedCode: "\uf017"
                             checkedColor: "green"
                             uncheckedColor: "lightblue"
                             useSolidForChecked: true
                             iconSize: 16
                             autoToggle: false
+                            useSolidForAll: workedOnToday
 
                             onClicked: {
                                 NaWorkSessionsModel.startWorkSetActive(uuid)

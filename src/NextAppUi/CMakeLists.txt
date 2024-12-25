@@ -352,6 +352,8 @@ qt_add_qml_module(${PROJECT_NAME}
         ActionsModel.h
         ActionsOnCurrentCalendar.cpp
         ActionsOnCurrentCalendar.h
+        ActionsWorkedOnTodayCache.cpp
+        ActionsWorkedOnTodayCache.h
         CalendarCache.cpp
         CalendarCache.h
         CalendarDayModel.cpp

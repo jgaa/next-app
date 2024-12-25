@@ -132,6 +132,8 @@ public:
 
     const QUuid& uuid() const noexcept { return uuid_; }
 
+    std::vector<QUuid> getAllActionIds(bool withDuration = false) const;
+
 signals:
     void visibleChanged();
     void activeChanged();

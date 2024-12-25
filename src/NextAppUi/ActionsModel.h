@@ -143,6 +143,7 @@ class ActionsModel : public QAbstractListModel
         CategoryRole,
         ReviewedRole, // dummy
         OnCalendarRole,
+        WorkedOnTodayRole,
     };
 
     enum Shortcuts {
