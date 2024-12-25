@@ -96,7 +96,7 @@ private:
     //QCoro::Task<void> onCalendarEventUpdated(const QUuid& id);
     QCoro::Task<void> fetchIf();
     void setOnline(bool online);
-    void onReceivedCalendarData(nextapp::pb::CalendarEvents& data);
+    //void onReceivedCalendarData(nextapp::pb::CalendarEvents& data);
     void updateDayModels();
     void sort();
     void updateDayModelsDates();
@@ -106,6 +106,7 @@ private:
     void setAudioTimers();
     void onAudioEvent();
     void updateIfPrimary();
+    void updateActionsOnCalendarCache();
 
     bool valid_ = false;
     bool online_ = false;

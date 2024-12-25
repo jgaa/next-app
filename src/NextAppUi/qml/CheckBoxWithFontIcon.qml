@@ -18,9 +18,10 @@ Rectangle
     property string selectedBackgroundColor: MaterialDesignStyling.surfaceContainerHighest
     property bool useSolidForChecked: false
     property bool autoToggle: true
+    property string bgColor: "transparent"
     width: childrenRect.width
     height: childrenRect.height
-    color: "transparent"
+    color: bgColor
     signal clicked
 
     RowLayout

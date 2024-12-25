@@ -106,6 +106,7 @@ Rectangle {
                 required property int priority
                 required property int status
                 required property bool reviewed
+                required property bool onCalendar
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -236,6 +237,8 @@ Rectangle {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
+
+                            //bgColor: onCalendar ? MaterialDesignStyling.primaryContainer : "transparent"
                         }
 
 
@@ -294,6 +297,18 @@ Rectangle {
 
                     RowLayout {
                         Item {
+                            visible: !onCalendarLabel.visible
+                            Layout.preferredWidth: 20
+                        }
+
+                        Label {
+                            id: onCalendarLabel
+                            visible: onCalendar
+                            font.family: ce.faSolidName
+                            font.styleName: ce.faSolidStyle
+                            text: "\uf783"
+                            color: MaterialDesignStyling.onPrimaryContainer
+                            font.pixelSize: listLabel.font.pixelSize
                             Layout.preferredWidth: 20
                         }
 

@@ -13,6 +13,7 @@
 #include "MainTreeModel.h"
 //#include "WorkSessionsModel.h"
 #include "ActionInfoCache.h"
+#include "ActionsOnCurrentCalendar.h"
 
 #include "logging.h"
 #include "util.h"
@@ -28,6 +29,24 @@ namespace {
 QDateTime before(QDateTime when) {
     return when.addSecs(-1);
 }
+
+template <typename T, typename U>
+int findCurrentRow(const T& list, const U& key) {
+    const QUuid id{key};
+
+    auto it = std::ranges::find_if(list, [&id](const auto& a) {
+        return a.uuid == id;
+    });
+
+    if (it != list.end()) {
+        auto row = ranges::distance(list.begin(), it);
+        return row;
+    }
+
+    return -1;
+}
+
+
 
 static constexpr auto quarters = to_array<int8_t>({1, 1, 1, 4, 4, 4, 7, 7, 7, 10, 10, 10});
 
@@ -227,9 +246,32 @@ ActionsModel::ActionsModel(QObject *parent)
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ActionsModel::actionChanged);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ActionsModel::actionDeleted);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionAdded, this, &ActionsModel::actionAdded);
-    // connect(&ServerComm::instance(), &ServerComm::connectedChanged, this, [this] {
-    //     fetchIf();
-    // });
+
+    connect(ActionsOnCurrentCalendar::instance(), &ActionsOnCurrentCalendar::modelReset, this, [this] {
+        if (valid_) {
+            beginResetModel();
+            endResetModel();
+        }
+    });
+
+    connect(ActionsOnCurrentCalendar::instance(), &ActionsOnCurrentCalendar::actionAdded, this, [this](const QUuid& action) {
+        if (valid_) {
+            if (const auto row = findCurrentRow(actions_, action) ; row < 0) {
+                const auto cix = index(row);
+                emit dataChanged(cix, cix);
+            }
+        }
+    });
+
+    connect(ActionsOnCurrentCalendar::instance(), &ActionsOnCurrentCalendar::actionRemoved, this, [this](const QUuid& action) {
+        if (valid_) {
+            if (const auto row = findCurrentRow(actions_, action) ; row >= 0) {
+                const auto cix = index(row);
+                emit dataChanged(cix, cix);
+            }
+        }
+    });
+
     connect(NextAppCore::instance(), &NextAppCore::propertyChanged, this, [this](const QString& name) {
         if (mode_ == FetchWhat::FW_ON_CALENDAR && name == "primaryForActionList") {
             QMetaObject::invokeMethod(this, [this] {
@@ -281,22 +323,6 @@ void ActionsModel::markActionAsDone(const QString &actionUuid, bool done)
 void ActionsModel::markActionAsFavorite(const QString &actionUuid, bool favorite)
 {
     ServerComm::instance().markActionAsFavorite(actionUuid, favorite);
-}
-
-template <typename T, typename U>
-int findCurrentRow(const T& list, const U& key) {
-    const QUuid id{key};
-
-    auto it = std::ranges::find_if(list, [&id](const auto& a) {
-        return a.uuid == id;
-    });
-
-    if (it != list.end()) {
-        auto row = ranges::distance(list.begin(), it);
-        return row;
-    }
-
-    return -1;
 }
 
 void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
@@ -916,6 +942,8 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return action.category();
     case ReviewedRole:
         return false;
+    case OnCalendarRole:
+        return ActionsOnCurrentCalendar::instance()->contains(data.uuid);
     }
     return {};
 }
@@ -979,6 +1007,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[ListNameRole] = "listName";
     roles[CategoryRole] = "category";
     roles[ReviewedRole] = "reviewed";
+    roles[OnCalendarRole] = "onCalendar";
     return roles;
 }
 
