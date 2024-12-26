@@ -188,6 +188,7 @@ Rectangle {
                 required property string uuid
                 required property bool done
                 required property string category
+                required property bool workedOnToday
 
                 RowLayout {
                     id: actionItemLayout
@@ -199,11 +200,12 @@ Rectangle {
                         //radius: 5
                     }
 
+                    // Icon for done
                     Text {
                         font.family: ce.faNormalName
                         font.pointSize: nameCtl.font.pointSize
                         text: done ? "\uf058" : "\uf111"
-                        color: done ? "green" : "orange"
+                        color: done ? "green" : workedOnToday ? "dodgerblue" : "orange"
 
                         Rectangle {
                             color: "white"

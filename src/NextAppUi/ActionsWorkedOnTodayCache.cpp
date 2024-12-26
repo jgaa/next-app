@@ -29,6 +29,10 @@ ActionsWorkedOnTodayCache::ActionsWorkedOnTodayCache() {
         init();
     });
 
+    connect(NextAppCore::instance(), &NextAppCore::currentDateChanged, this, [this]() {
+        init();
+    });
+
     if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
         init();
     };

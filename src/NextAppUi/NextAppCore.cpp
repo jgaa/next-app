@@ -125,7 +125,11 @@ NextAppCore::NextAppCore() {
             }
             break;
         }
+
+        resetTomorrowTimer();
     });
+
+    resetTomorrowTimer();
 }
 
 
@@ -396,6 +400,7 @@ void NextAppCore::handlePrepareForSleep(bool sleep)
         LOG_INFO << "The system just wake up from sleep!";
         setState(State::ACTIVE);
         emit wokeFromSleep();
+        resetTomorrowTimer();
     }
 }
 
@@ -408,4 +413,38 @@ void NextAppCore::setState(State state)
     }
 }
 
+void NextAppCore::resetTomorrowTimer() {
 
+    tomorrow_timer_.setTimerType(Qt::VeryCoarseTimer);
+
+    const auto today = QDateTime::currentDateTime().date();
+    const auto tomorrow = today.addDays(1);
+
+    if (today_) {
+        if (*today_ != today) {
+            LOG_INFO << "The current date changed before the timer went off.";
+            emit currentDateChanged();
+            today_.reset();
+        }
+    }
+
+    // Find the chrono time-point of the next day at 00:00:10
+    const auto tomorrow_time = QDateTime(tomorrow, QTime(0, 0, 10));
+    LOG_TRACE_N << "Setting tomorrow timer at " << tomorrow_time.toString();
+
+    // How many seconds from now until tomorrow_time?
+    const auto seconds = QDateTime::currentDateTime().secsTo(tomorrow_time);
+
+    tomorrow_timer_.singleShot(chrono::seconds(seconds), [this]() {
+        LOG_DEBUG << "Tomorrow timer fired!";
+        const auto today = QDateTime::currentDateTime().date();
+        if (today_ && *today_ != today) {
+            LOG_INFO << "The current date has changed.";
+            emit currentDateChanged();
+            today_.reset();
+        };
+        if (state_ != State::SHUTTING_DOWN) {
+            resetTomorrowTimer();
+        }
+    });
+}

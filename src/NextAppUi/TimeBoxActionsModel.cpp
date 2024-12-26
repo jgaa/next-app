@@ -3,6 +3,7 @@
 #include "ActionInfoCache.h"
 #include "CalendarDayModel.h"
 #include "ServerComm.h"
+#include "ActionsWorkedOnTodayCache.h"
 #include "logging.h"
 #include "util.h"
 
@@ -58,6 +59,13 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
     if (!state_->isSynching()) {
         reSync();
     }
+
+    connect(ActionsWorkedOnTodayCache::instance(), &ActionsWorkedOnTodayCache::modelReset, this, [this] {
+        if (state_ && state_->valid()) {
+            beginResetModel();
+            endResetModel();
+        }
+    });
 }
 
 void TimeBoxActionsModel::removeAction(const QString &eventId, const QString &action)
@@ -172,6 +180,8 @@ QVariant TimeBoxActionsModel::data(const QModelIndex &index, int role) const
         return ai.at(index.row())->category();
     case DoneRole:
         return ai.at(index.row())->status() == ::nextapp::pb::ActionStatusGadget::ActionStatus::DONE;
+    case WorkedOnTodayRole:
+        return ActionsWorkedOnTodayCache::instance()->contains(QUuid{action});
     default:
         return {};
     }
@@ -185,6 +195,7 @@ QHash<int, QByteArray> TimeBoxActionsModel::roleNames() const
         {ActionRole, "action"},
         {CategoryRole, "category"},
         {DoneRole, "done"},
+        {WorkedOnTodayRole, "workedOnToday"}
     };
 }
 

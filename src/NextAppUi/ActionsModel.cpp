@@ -15,6 +15,7 @@
 #include "ActionInfoCache.h"
 #include "ActionsOnCurrentCalendar.h"
 #include "ActionsWorkedOnTodayCache.h"
+#include "NextAppCore.h"
 
 #include "logging.h"
 #include "util.h"
@@ -286,6 +287,10 @@ ActionsModel::ActionsModel(QObject *parent)
             beginResetModel();
             endResetModel();
         }
+    });
+
+    connect(NextAppCore::instance(), &NextAppCore::currentDateChanged, this, [this]() {
+        fetchIf();
     });
 
     //fetchIf();

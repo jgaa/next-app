@@ -142,9 +142,12 @@ signals:
     void stateChanged();
     void wokeFromSleep();
     void suspending();
+    void currentDateChanged(); // Should happen just after midnight
 
 private:
     void setState(State state);
+    void resetTomorrowTimer();
+
     static NextAppCore *instance_;
     QGuiApplication *app_{qApp};
     State state_{State::STARTING_UP};
@@ -158,7 +161,9 @@ private:
     std::optional<QAudioOutput> audio_output_;
     std::optional<QMediaPlayer> audio_player_;
     QTimer audio_play_delay_;
+    QTimer tomorrow_timer_;
     QString sound_file_;
     double volume_{};
     std::map<QString, QVariant> properties_;
+    std::optional<QDate> today_;
 };

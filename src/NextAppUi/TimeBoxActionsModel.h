@@ -21,7 +21,8 @@ class TimeBoxActionsModel : public QAbstractListModel
         UuidRole,
         ActionRole,
         CategoryRole,
-        DoneRole
+        DoneRole,
+        WorkedOnTodayRole
     };
 
     Q_PROPERTY(nextapp::pb::StringList actions READ actions() NOTIFY actionsChanged)
