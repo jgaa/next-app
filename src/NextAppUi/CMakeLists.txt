@@ -437,6 +437,9 @@ endif()
 
 if (ANDROID)
     message(STATUS "Compiling for Android")
+    # QT_ANDROID_BUILD_ALL_ABI=ON
+    # set(CMAKE_ANDROID_ABI arm64-v8a;armeabi-v7a;x86;x86_64)
+
 
     add_android_openssl_libraries(${PROJECT_NAME})
     get_target_property(QT_ANDROID_EXTRA_LIBS_VALUE ${PROJECT_NAME} QT_ANDROID_EXTRA_LIBS)

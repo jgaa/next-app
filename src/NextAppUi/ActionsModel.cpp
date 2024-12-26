@@ -496,7 +496,7 @@ QString ActionsModel::formatWhen(time_t from, time_t to, nextapp::pb::ActionDueK
     case ActionDueKind::DATE: {
         return datename(from_ymd);
     case ActionDueKind::WEEK:
-        return select(NA_FORMAT("{:%W %Y}", from_zoned), tr("This week"), tr("Week"), tr("W"));
+        return select(NA_FORMAT("{:%W %Y}", from_zoned), tr("This week"), tr("Week"), QString::fromLatin1("#"));
     case ActionDueKind::MONTH:
         return select(NA_FORMAT("{:%b %Y}", from_zoned), tr("This month"), tr("Month"));
     case ActionDueKind::QUARTER: {
