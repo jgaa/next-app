@@ -47,10 +47,11 @@ Dialog {
             text: qsTr("One Time Password")
         }
 
-        TextField{
+        TextInput{
             id: otp
             readOnly: true
             text: model.otp
+            inputMask: "9999 9999"
         }
 
         Label {

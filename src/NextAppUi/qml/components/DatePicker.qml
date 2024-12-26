@@ -437,7 +437,9 @@ Popup {
                 selectedDateClosed(date, accepted)
                 break
             case NextappPB.ActionDueKind.WEEK:
+                selectedDateClosed(date, accepted)
                 selectedWeekClosed(date, accepted, currentWeek)
+                //console.log("selectedWeekClosed: ", date, accepted, currentWeek)
                 break
             case NextappPB.ActionDueKind.DATETIME: {
                 const when = timeSelector.setTimeInDate(date)
@@ -468,6 +470,8 @@ Popup {
             case NextappPB.ActionDueKind.SPAN_DAYS:
                 selectedDurationClosed(date, endDate || date, accepted)
                 break
+            default:
+                console.log("DatePicker: **** Unhandled mode ****: ", mode)
         }
     }
 }

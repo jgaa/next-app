@@ -706,25 +706,15 @@ ColumnLayout {
         onSelectedDateClosed: (date, accepted) => {
             if (accepted) {
                 whenCtl.due = NaActionsModel.adjustDue(date.getTime() / 1000, whenCtl.maybeKind);
-                setWhenCurrentIndex(whenCtl.due.kind)
-            } else {
-                // Set the index back to the original value
-                setWhenCurrentIndex(whenCtl.due.kind)
             }
+            setWhenCurrentIndex(whenCtl.due.kind)
         }
 
         onSelectedDurationClosed: (from, until, accepted) => {
-            console.log("from is ", typeof from)
-            console.log("from is", Object.prototype.toString.call(from))
-            console.log("until is ", typeof until)
-            console.log("until is", Object.prototype.toString.call(until))
             if (accepted) {
                 whenCtl.due = NaActionsModel.setDue(from.getTime() / 1000, until.getTime() / 1000, whenCtl.maybeKind);
-                setWhenCurrentIndex(whenCtl.due.kind)
-            } else {
-                // Set the index back to the original value
-                setWhenCurrentIndex(whenCtl.due.kind)
             }
+            setWhenCurrentIndex(whenCtl.due.kind)
         }
     }
 

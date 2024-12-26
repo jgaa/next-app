@@ -445,77 +445,150 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind)
 
 QString ActionsModel::formatWhen(time_t from, time_t to, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
 {
-#if defined(ANDROID) || defined(__APPLE__)
-    return "no-tz";
-#else
     using namespace nextapp::pb::ActionDueKindGadget;
 
     if (!from) {
         return tr("No due time set");
     }
 
-    const std::chrono::time_zone *ts = std::chrono::current_zone();
-    const auto from_tp = round<std::chrono::seconds>(std::chrono::system_clock::from_time_t(from));
-    const auto from_zoned = std::chrono::zoned_time{ts, from_tp};
-    const auto from_ymd = std::chrono::year_month_day(floor<std::chrono::days>(from_zoned.get_local_time()));
+    // Helper QDateTime objects in local/system time
+    QDateTime fromDT = QDateTime::fromSecsSinceEpoch(from, QTimeZone::systemTimeZone());
+    QDate fromDate = fromDT.date();
 
-    const auto to_tp = round<std::chrono::seconds>(std::chrono::system_clock::from_time_t(to));
-    const auto to_zoned = std::chrono::zoned_time{ts, to_tp};
-    const auto to_ymd = std::chrono::year_month_day(floor<std::chrono::days>(to_zoned.get_local_time()));
+    QDateTime toDT   = QDateTime::fromSecsSinceEpoch(to, QTimeZone::systemTimeZone());
+    QDate toDate     = toDT.date();
 
-    const auto current = std::chrono::zoned_time{ts, round<std::chrono::seconds>(std::chrono::system_clock::now())};
-    const auto current_ymd = std::chrono::year_month_day(floor<std::chrono::days>(current.get_local_time()));
+    QDateTime currentDT = QDateTime::currentDateTime();
+    QDate currentDate   = currentDT.date();
 
-    auto select = [&](const std::string& formatted, const QString& phrase, const QString& shortp, const QString& prefix = {}) -> QString {
-        if (from_ymd == current_ymd) {
-            return phrase;
-        }
-        return shortp + " " + prefix + QString::fromUtf8(formatted);
-    };
+    // -- Helper lambdas for reusability --
 
-    auto datename = [&](auto& when, bool verbose = true) {
-        // Check if it is tomorrow
-        if (when == current_ymd) {
+    // A helper to differentiate between 'today', 'tomorrow', or show a date label
+    auto datename = [&](const QDate &candidate, bool verbose = true) {
+        if (candidate == currentDate) {
             return tr("Today");
         }
-        const auto tomorrow_ymd = std::chrono::year_month_day(floor<std::chrono::days>(current.get_local_time() + std::chrono::days{1}));
-        if (when == tomorrow_ymd) {
+        else if (candidate == currentDate.addDays(1)) {
             return tr("Tomorrow");
         }
-
-        if (verbose) {
-            return QString{"%1 %2"}.arg(tr("Day")).arg(QString::fromUtf8(NA_FORMAT("{:%F}", when)));
+        else if (verbose) {
+            // E.g. "Day 2024-01-31"
+            return QString("%1 %2")
+                .arg(tr("Day"))
+                .arg(candidate.toString(QStringLiteral("yyyy-MM-dd")));
         }
-
-        return QString::fromUtf8(NA_FORMAT("{:%F}", when));
+        // Non-verbose: just "2024-01-31"
+        return candidate.toString(QStringLiteral("yyyy-MM-dd"));
     };
 
-    switch(dt) {
-    case ActionDueKind::DATETIME:
-        return tr("Time") + " " + QString::fromUtf8(NA_FORMAT("{:%F %R}", from_zoned));
-    case ActionDueKind::DATE: {
-        return datename(from_ymd);
-    case ActionDueKind::WEEK:
-        return select(NA_FORMAT("{:%W %Y}", from_zoned), tr("This week"), tr("Week"), QString::fromLatin1("#"));
-    case ActionDueKind::MONTH:
-        return select(NA_FORMAT("{:%b %Y}", from_zoned), tr("This month"), tr("Month"));
-    case ActionDueKind::QUARTER: {
-        const auto month = static_cast<unsigned>(from_ymd.month());
-        const auto quarter = (month - 1) / 3 + 1;
-        return select(NA_FORMAT("{} {:%Y}", quarter, from_zoned), tr("This Quarter"), tr("Quarter"), tr("Q"));
+    // A helper that returns a "short vs. phrase" form depending on whether
+    // the fromDate is today or not
+    auto select = [&](const QString &formatted,
+                      const QString &phrase,
+                      const QString &shortp,
+                      const QString &prefix = {}) -> QString
+    {
+        if (fromDate == currentDate) {
+            return phrase;
         }
+        // e.g. "Week #43 2023"
+        if (!prefix.isEmpty()) {
+            return shortp + QStringLiteral(" ") + prefix + formatted;
+        }
+        else {
+            return shortp + QStringLiteral(" ") + formatted;
+        }
+    };
+
+    // -- Switch on the enum to pick the correct output --
+
+    switch(dt)
+    {
+    case ActionDueKind::DATETIME:
+        // e.g. "Time 2024-01-31 13:45"
+        return tr("Time") + QStringLiteral(" ")
+               + fromDT.toString(QStringLiteral("yyyy-MM-dd HH:mm"));
+
+    case ActionDueKind::DATE:
+        // e.g. "Today" or "Day 2024-01-31"
+        return datename(fromDate);
+
+    case ActionDueKind::WEEK:
+    {
+        // QString formatted = fromDT.toString(QStringLiteral("ww yyyy"));
+        // return select(formatted, tr("This week"), tr("Week"), QStringLiteral("#"));
+        int isoYear = 0;
+        int isoWeek = fromDate.weekNumber(&isoYear);
+        // isoWeek is typically 1..53
+
+        // Build e.g. "43 2024" or "This week"
+        QString formatted = QStringLiteral("%1 %2")
+                                .arg(QString::number(isoWeek))
+                                .arg(QString::number(isoYear));
+
+        // Then use the same select(...) logic to decide whether to use "This week" or "Week #43 2024"
+        return select(formatted,
+                      tr("This week"),
+                      tr("Week"),
+                      QStringLiteral("#"));
+    }
+
+    case ActionDueKind::MONTH:
+    {
+        // e.g. "Month Jan 2024" or "This month"
+        // We'll approximate {:%b %Y} => "MMM yyyy"
+        QString formatted = fromDT.toString(QStringLiteral("MMM yyyy"));
+        return select(formatted, tr("This month"), tr("Month"));
+    }
+
+    case ActionDueKind::QUARTER:
+    {
+        // We must determine the quarter ourselves
+        // E.g.: if month = 1..3 => Q1, 4..6 => Q2, etc.
+        int month = fromDate.month();
+        int quarter = (month - 1) / 3 + 1;   // 1..4
+        // e.g. "Quarter Q1 2024" or "This Quarter"
+        QString formatted = QString("Q%1 %2")
+                                .arg(QString::number(quarter))
+                                .arg(fromDT.toString(QStringLiteral("yyyy")));
+        return select(formatted, tr("This Quarter"), tr("Quarter"), QString());
+    }
+
     case ActionDueKind::YEAR:
-        return select(NA_FORMAT("{:%Y}", from_zoned), tr("This year"), tr("Year"));
+    {
+        // e.g. "Year 2024" or "This year"
+        QString formatted = fromDT.toString(QStringLiteral("yyyy"));
+        return select(formatted, tr("This year"), tr("Year"));
+    }
+
     case ActionDueKind::UNSET:
+        // If the enum signals an unset time, just return
         return tr("No due time set");
-    }
+
     case ActionDueKind::SPAN_HOURS:
-        return datename(from_ymd, false) + " " + QString::fromUtf8(NA_FORMAT("{:%R} - {:%R}", from_zoned, to_zoned));
-    case ActionDueKind::SPAN_DAYS:
-        return QString{"%1 - %2"}.arg(datename(from_ymd, false)).arg(datename(to_ymd, false));
-    return {};
+    {
+        // e.g. "2024-01-31 13:45 - 16:10"
+        // Or "Today 13:45 - 16:10" if fromDate is today (via datename)
+        QString dateLabel = datename(fromDate, /*verbose=*/false);
+        return dateLabel + QStringLiteral(" ")
+               + fromDT.toString(QStringLiteral("HH:mm"))
+               + QStringLiteral(" - ")
+               + toDT.toString(QStringLiteral("HH:mm"));
     }
-#endif
+
+    case ActionDueKind::SPAN_DAYS:
+    {
+        // e.g. "2024-01-31 - 2024-02-02"
+        // Or "Today - Tomorrow"
+        QString fromLabel = datename(fromDate, /*verbose=*/false);
+        QString toLabel   = datename(toDate, /*verbose=*/false);
+        return QString("%1 - %2").arg(fromLabel, toLabel);
+    }
+
+    default:
+        // Fallback if new enum values appear
+        return {};
+    }
 }
 
 QString ActionsModel::formatDue(const nextapp::pb::Due &due)
@@ -559,8 +632,6 @@ QString ActionsModel::whenListElement(uint64_t when,
 
     //return formatWhen(when, btn);
 }
-
-
 
 QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
 {
@@ -672,15 +743,24 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
     }
     break;
     case pb::ActionDueKindGadget::ActionDueKind::WEEK: {
-        auto day_in_week = qt_start.date().dayOfWeek();
+        const auto day_in_week = qt_start.date().dayOfWeek();
         assert(day_in_week != 0);
-        // Jump back in time to the start of the week
-        auto offset = days_offset.at(day_in_week - 1) * -1;
-        auto w_start = d_start.addDays(offset);
-        start = w_start.toSecsSinceEpoch();
-        auto d_end = w_start.addDays(7);
-        d_end.setTime(QTime(0,0));
+        const auto first_day_of_that_week = getFirstDayOfWeek(qt_start.date());
+        //const auto start = first_day_of_that_week.startOfDay().toSecsSinceEpoch();
+        const auto d_start = first_day_of_that_week.startOfDay();
+        const auto d_end = d_start.addDays(7);
+        start = d_start.toSecsSinceEpoch();
         end = d_end.toSecsSinceEpoch() - 1;
+
+        // auto day_in_week = qt_start.date().dayOfWeek();
+        // assert(day_in_week != 0);
+        // // Jump back in time to the start of the week
+        // auto offset = days_offset.at(day_in_week - 1) * -1;
+        // auto w_start = d_start.addDays(offset);
+        // start = w_start.toSecsSinceEpoch();
+        // auto d_end = w_start.addDays(7);
+        // d_end.setTime(QTime(0,0));
+        // end = d_end.toSecsSinceEpoch() - 1;
     }
     break;
     case pb::ActionDueKindGadget::ActionDueKind::MONTH: {
