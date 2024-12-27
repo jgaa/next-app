@@ -177,6 +177,10 @@ public:
         ::grpc::ServerUnaryReactor *GetDataVersions(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewWork(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewTimeBlocks(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
+        ::grpc::ServerUnaryReactor *GetDevices(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *UpdateDevice(::grpc::CallbackServerContext *, const pb::DeviceUpdateReq *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *DeleteDevice(::grpc::CallbackServerContext *, const pb::Uuid *, pb::Status *) override;
+
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback

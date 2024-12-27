@@ -479,6 +479,10 @@ message Timestamp {
     uint64 seconds = 1; // C++ time_t UNIX timestamp.
 }
 
+message Uuid {
+    string uuid = 1;
+}
+
 message StringList {
     repeated string list = 1;
 }
@@ -560,6 +564,33 @@ message CreateDeviceResp {
     string caCert = 3;
 }
 
+message Device {
+    string id = 1;
+    string user = 2;
+    string name = 3;
+    Timestamp created = 4;
+    string hostName = 5;
+    string os = 6;
+    string osVersion = 7;
+    string appVersion = 8;
+    string productType = 9;
+    string productVersion = 10;
+    string arch = 11;
+    string prettyName = 12;
+    Timestamp lastSeen = 13;
+    bool enabled = 14;
+}
+
+message Devices {
+    repeated Device devices = 1;
+}
+
+message DeviceUpdateReq {
+    string id = 1;
+    optional string name = 2;
+    optional bool enabled = 3;
+}
+
 // Versions of various smaller data sets the user must check on startup.
 message DataVersionsInfo {
     uint64 actionCategoryVersion = 1;
@@ -588,6 +619,7 @@ message Update {
         UserGlobalSettings userGlobalSettings = 18;
         CalendarEvents calendarEvents = 19;
         ActionCategory actionCategory = 20;
+        Device device = 21;
     }
 }
 
@@ -770,6 +802,8 @@ message Status {
         CompleteActions completeActions = 33;
         DataVersionsInfo dataVersions = 34;
         TimeBlocks timeBlocks = 35;
+        Devices devices = 36;
+        Device device = 37;
     }
 }
 
@@ -792,6 +826,9 @@ service Nextapp {
 
     rpc CreateDevice(CreateDeviceReq) returns (Status) {}
     rpc GetOtpForNewDevice(OtpRequest) returns (Status) {}
+    rpc GetDevices(Empty) returns (Status) {}
+    rpc UpdateDevice(DeviceUpdateReq) returns (Status) {}
+    rpc DeleteDevice(Uuid) returns (Status) {}
 
     rpc CreateNode(CreateNodeReq) returns (Status) {}
     rpc UpdateNode(Node) returns (Status) {}

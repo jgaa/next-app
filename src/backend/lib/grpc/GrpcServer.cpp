@@ -56,7 +56,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         };
 
         add("version", NEXTAPP_VERSION);
-                            co_return;
+        co_return;
     }, __func__);
 }
 
@@ -216,6 +216,134 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
     return {};
 }
 
+struct ToDevice {
+    enum Cols { ID, USER, NAME, CREATED, HOSTNAME, OS, OSVERSION, APPVERSION, PRODUCTTYPE, PRODUCTVERSION,
+                ARCH, PRETTYNAME, LASTSEEN, ENABLED };
+
+    static constexpr auto columns = "id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled";
+
+    static void assign(const boost::mysql::row_view& row, pb::Device &device, const chrono::time_zone& tz) {
+        device.set_id(row[ID].as_string());
+        device.set_user(row[USER].as_string());
+        device.set_name(row[NAME].as_string());
+        device.mutable_created()->set_seconds(toTimeT(row[CREATED].as_datetime(), tz));
+        if (!row[HOSTNAME].is_null()) device.set_hostname(row[HOSTNAME].as_string());
+        if (!row[OS].is_null()) device.set_os(row[OS].as_string());
+        if (!row[OSVERSION].is_null()) device.set_osversion(row[OSVERSION].as_string());
+        if (!row[APPVERSION].is_null()) device.set_appversion(row[APPVERSION].as_string());
+        if (!row[PRODUCTTYPE].is_null()) device.set_producttype(row[PRODUCTTYPE].as_string());
+        if (!row[PRODUCTVERSION].is_null()) device.set_productversion(row[PRODUCTVERSION].as_string());
+        if (!row[ARCH].is_null()) device.set_arch(row[ARCH].as_string());
+        if (!row[PRETTYNAME].is_null()) device.set_prettyname(row[PRETTYNAME].as_string());
+        if (!row[LASTSEEN].is_null()) device.mutable_lastseen()->set_seconds(toTimeT(row[LASTSEEN].as_datetime(), tz));
+        device.set_enabled(row[ENABLED].as_int64() == 1);
+    }
+};
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetDevices(::grpc::CallbackServerContext *ctx,
+                                                                const pb::Empty *req,
+                                                                pb::Status *reply) {
+    assert(ctx);
+    assert(reply);
+
+    return unaryHandler(ctx, req, reply,
+    [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+    auto res = co_await rctx.dbh->exec(
+        format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled "
+          FROM device WHERE user=?
+          ORDER BY lastSeen DESC, name)", ToDevice::columns),
+        rctx.uctx->dbOptions(), rctx.uctx->userUuid());
+
+    if (res.has_value()) {
+        auto *devices = reply->mutable_devices();
+        assert(devices);
+
+        for(const auto& row : res.rows()) {
+            auto *device = devices->add_devices();
+            ToDevice::assign(row, *device, rctx.uctx->tz());
+        }
+    }
+        co_return;
+    }, __func__);
+}
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateDevice(::grpc::CallbackServerContext *ctx,
+                                                                  const pb::DeviceUpdateReq *req,
+                                                                  pb::Status *reply) {
+    return unaryHandler(ctx, req, reply,
+    [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+        // Check if the device exists. Get id, name and enabled.
+        auto res = co_await rctx.dbh->exec(
+            "SELECT id, name, enabled FROM device WHERE user=? AND id=?",
+            rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->id());
+        if (res.has_value() && res.rows().size() == 1) {
+
+            if (req->has_name()) {
+                co_await rctx.dbh->exec("UPDATE device SET name=? WHERE id=? AND user=?",
+                    rctx.uctx->dbOptions(), req->name(), req->id(), rctx.uctx->userUuid());
+            };
+
+            if (req->has_enabled()) {
+                co_await rctx.dbh->exec("UPDATE device SET enabled=? WHERE id=? AND user=?",
+                    rctx.uctx->dbOptions(), req->enabled(), req->id(), rctx.uctx->userUuid());
+            }
+
+            // Get the device from the db
+            auto res = co_await rctx.dbh->exec(
+                format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled "
+                  FROM device WHERE user=? AND id=?)", ToDevice::columns),
+                rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->id());
+
+            if (res.has_value() && res.rows().size() == 1) {
+                const auto& row = res.rows().front();
+                auto pub = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+                ToDevice::assign(row, *pub.mutable_device(), rctx.uctx->tz());
+            }
+
+
+        } else {
+            throw server_err{pb::Error::NOT_FOUND, "Device not found"};
+        }
+    });
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteDevice(::grpc::CallbackServerContext *ctx,
+                                                                  const pb::Uuid *req,
+                                                                  pb::Status *reply) {
+
+    return unaryHandler(ctx, req, reply,
+    [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+        const auto &uuid = toUuid(req->uuid());
+        if (uuid == rctx.session().deviceId()) {
+            throw server_err{pb::Error::INVALID_ACTION, "Cannot delete the user-sessions current device"};
+        };
+
+        // Get the device from the db
+        auto res = co_await rctx.dbh->exec(
+            format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled "
+              FROM device WHERE user=? AND id=?)", ToDevice::columns),
+            rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->uuid());
+
+        if (res.has_value() && res.rows().size() == 1) {
+            LOG_INFO << "Deleting device " << req->uuid() << " for user " << rctx.uctx->userUuid();
+            res = co_await rctx.dbh->exec("DELETE FROM device WHERE user=? AND id=?",
+                rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->uuid());
+            if (res.has_value() && res.affected_rows() == 1) {
+                auto pub = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+                ToDevice::assign(res.rows().front(), *pub.mutable_device(), rctx.uctx->tz());
+            } else {
+                LOG_WARN << "Failed to delete device " << req->uuid() << " for user " << rctx.uctx->userUuid();
+                throw server_err{pb::Error::GENERIC_ERROR, format("Failed to delete the device {}", req->uuid())};
+            }
+        } else {
+            throw server_err{pb::Error::NOT_FOUND, "Device not found"};
+        }
+    });
+}
+
+
 GrpcServer::GrpcServer(Server &server)
     : server_{server}, sessionManager_{server}
 {
@@ -319,6 +447,5 @@ boost::asio::awaitable<void> GrpcServer::loadCert()
 
     }, __func__);
 }
-
 
 } // ns

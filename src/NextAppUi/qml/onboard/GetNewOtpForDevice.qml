@@ -44,10 +44,10 @@ Dialog {
 
         Label {
             Layout.alignment: Qt.AlignLeft
-            text: qsTr("One Time Password")
+            text: qsTr("One Time Password\nType it in as one 8 digit number")
         }
 
-        TextInput{
+        TextField{
             id: otp
             readOnly: true
             text: model.otp

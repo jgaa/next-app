@@ -936,6 +936,17 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v13_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        // add column lastConnected to table device
+        "ALTER TABLE device ADD COLUMN IF NOT EXISTS lastSeen TIMESTAMP",
+        "ALTER TABLE device ADD COLUMN enabled TINYINT(1) NOT NULL DEFAULT TRUE",
+        "UPDATE device SET enabled = TRUE",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -948,7 +959,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v9_upgrade,
         v10_upgrade,
         v11_upgrade,
-        v12_upgrade
+        v12_upgrade,
+        v13_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
