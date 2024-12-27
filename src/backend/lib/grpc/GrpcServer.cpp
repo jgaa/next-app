@@ -12,6 +12,32 @@ namespace asio = boost::asio;
 
 namespace nextapp::grpc {
 
+namespace {
+struct ToDevice {
+    enum Cols { ID, USER, NAME, CREATED, HOSTNAME, OS, OSVERSION, APPVERSION, PRODUCTTYPE, PRODUCTVERSION,
+                ARCH, PRETTYNAME, LASTSEEN, ENABLED };
+
+    static constexpr auto columns = "id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled";
+
+    static void assign(const boost::mysql::row_view& row, pb::Device &device, const chrono::time_zone& tz) {
+        device.set_id(row[ID].as_string());
+        device.set_user(row[USER].as_string());
+        device.set_name(row[NAME].as_string());
+        device.mutable_created()->set_seconds(toTimeT(row[CREATED].as_datetime(), tz));
+        if (!row[HOSTNAME].is_null()) device.set_hostname(row[HOSTNAME].as_string());
+        if (!row[OS].is_null()) device.set_os(row[OS].as_string());
+        if (!row[OSVERSION].is_null()) device.set_osversion(row[OSVERSION].as_string());
+        if (!row[APPVERSION].is_null()) device.set_appversion(row[APPVERSION].as_string());
+        if (!row[PRODUCTTYPE].is_null()) device.set_producttype(row[PRODUCTTYPE].as_string());
+        if (!row[PRODUCTVERSION].is_null()) device.set_productversion(row[PRODUCTVERSION].as_string());
+        if (!row[ARCH].is_null()) device.set_arch(row[ARCH].as_string());
+        if (!row[PRETTYNAME].is_null()) device.set_prettyname(row[PRETTYNAME].as_string());
+        if (!row[LASTSEEN].is_null()) device.mutable_lastseen()->set_seconds(toTimeT(row[LASTSEEN].as_datetime(), tz));
+        device.set_enabled(row[ENABLED].as_int64() == 1);
+    }
+};
+} // anon ns
+
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::Hello(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
@@ -215,30 +241,6 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
     return {};
 }
-
-struct ToDevice {
-    enum Cols { ID, USER, NAME, CREATED, HOSTNAME, OS, OSVERSION, APPVERSION, PRODUCTTYPE, PRODUCTVERSION,
-                ARCH, PRETTYNAME, LASTSEEN, ENABLED };
-
-    static constexpr auto columns = "id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled";
-
-    static void assign(const boost::mysql::row_view& row, pb::Device &device, const chrono::time_zone& tz) {
-        device.set_id(row[ID].as_string());
-        device.set_user(row[USER].as_string());
-        device.set_name(row[NAME].as_string());
-        device.mutable_created()->set_seconds(toTimeT(row[CREATED].as_datetime(), tz));
-        if (!row[HOSTNAME].is_null()) device.set_hostname(row[HOSTNAME].as_string());
-        if (!row[OS].is_null()) device.set_os(row[OS].as_string());
-        if (!row[OSVERSION].is_null()) device.set_osversion(row[OSVERSION].as_string());
-        if (!row[APPVERSION].is_null()) device.set_appversion(row[APPVERSION].as_string());
-        if (!row[PRODUCTTYPE].is_null()) device.set_producttype(row[PRODUCTTYPE].as_string());
-        if (!row[PRODUCTVERSION].is_null()) device.set_productversion(row[PRODUCTVERSION].as_string());
-        if (!row[ARCH].is_null()) device.set_arch(row[ARCH].as_string());
-        if (!row[PRETTYNAME].is_null()) device.set_prettyname(row[PRETTYNAME].as_string());
-        if (!row[LASTSEEN].is_null()) device.mutable_lastseen()->set_seconds(toTimeT(row[LASTSEEN].as_datetime(), tz));
-        device.set_enabled(row[ENABLED].as_int64() == 1);
-    }
-};
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetDevices(::grpc::CallbackServerContext *ctx,
                                                                 const pb::Empty *req,
