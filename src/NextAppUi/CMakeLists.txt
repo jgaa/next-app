@@ -229,6 +229,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/Colors.qml # x
         qml/CommonElements.qml
         qml/CurrentWorkSessionsView.qml
+        qml/DevicesDlg.qml
         qml/DisabledDimmer.qml
         qml/DlgInputField.qml
         qml/EditActionDlg.qml
@@ -366,6 +367,8 @@ qt_add_qml_module(${PROJECT_NAME}
         DayColorModel.h
         DbStore.cpp
         DbStore.h
+        DevicesModel.cpp
+        DevicesModel.h
         DualView.h DualView.cpp
         GreenDayModel.cpp
         GreenDayModel.h

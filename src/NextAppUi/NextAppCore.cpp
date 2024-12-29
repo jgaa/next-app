@@ -193,6 +193,14 @@ ReviewModel *NextAppCore::getReviewModel()
     return rm;
 }
 
+DevicesModel *NextAppCore::getDevicesModel()
+{
+    auto *dm = DevicesModel::instance();
+    // Set CPP as ownership, because we manage the lifetime of the model.
+    QQmlEngine::setObjectOwnership(dm, QQmlEngine::CppOwnership);
+    return dm;
+}
+
 void NextAppCore::openFile(const QString &path)
 {
     // Does not work in release mode under Ubuntu 23.10

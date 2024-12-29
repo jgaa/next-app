@@ -219,6 +219,8 @@ public:
     std::shared_ptr<GrpcIncomingStream> synchWorkSessions(const nextapp::pb::GetNewReq& req);
     std::shared_ptr<GrpcIncomingStream> synchTimeBlocks(const nextapp::pb::GetNewReq& req);
 
+    QCoro::Task<nextapp::pb::Status> fetchDevices();
+
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
     }

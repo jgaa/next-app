@@ -252,7 +252,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
     [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
     auto res = co_await rctx.dbh->exec(
-        format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled "
+        format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled
           FROM device WHERE user=?
           ORDER BY lastSeen DESC, name)", ToDevice::columns),
         rctx.uctx->dbOptions(), rctx.uctx->userUuid());
@@ -293,7 +293,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
             // Get the device from the db
             auto res = co_await rctx.dbh->exec(
-                format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled "
+                format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled
                   FROM device WHERE user=? AND id=?)", ToDevice::columns),
                 rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->id());
 
@@ -324,7 +324,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
         // Get the device from the db
         auto res = co_await rctx.dbh->exec(
-            format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled "
+            format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled
               FROM device WHERE user=? AND id=?)", ToDevice::columns),
             rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->uuid());
 

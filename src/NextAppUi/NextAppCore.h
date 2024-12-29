@@ -11,6 +11,7 @@
 #include "WorkModel.h"
 #include "WeeklyWorkReportModel.h"
 #include "ReviewModel.h"
+#include "DevicesModel.h"
 
 class CalendarModel;
 
@@ -53,6 +54,7 @@ public:
     static Q_INVOKABLE QString toHourMin(int duration);
     static Q_INVOKABLE CalendarModel *createCalendarModel();
     static Q_INVOKABLE ReviewModel *getReviewModel();
+    static Q_INVOKABLE DevicesModel *getDevicesModel();
     Q_INVOKABLE void openFile(const QString& path);
     Q_INVOKABLE void emitSettingsChanged();
     Q_INVOKABLE void setProperty(const QString& name, const QVariant& value);

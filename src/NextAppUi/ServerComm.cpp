@@ -789,6 +789,11 @@ std::shared_ptr<GrpcIncomingStream> ServerComm::synchTimeBlocks(const nextapp::p
     return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewTimeBlocks);
 }
 
+QCoro::Task<nextapp::pb::Status> ServerComm::fetchDevices()
+{
+    co_return co_await rpc({}, &nextapp::pb::Nextapp::Client::GetDevices);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;
