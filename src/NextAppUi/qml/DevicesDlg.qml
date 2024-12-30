@@ -16,8 +16,10 @@ Dialog {
     padding: 10
     margins: 20
     modal: true
-    width: 300
-    height: 600
+    x: NaCore.isMobile ? 0 : (parent.width - width) / 2
+    y: NaCore.isMobile ? 0 : (parent.height - height) / 2
+    width: Math.min(NaCore.width, 400)
+    height: Math.min(NaCore.height, 600)
     standardButtons: Dialog.Close
 
     Rectangle {
@@ -27,13 +29,17 @@ Dialog {
         color: MaterialDesignStyling.surface
     }
 
+    Component.onCompleted: {
+        devicesListCtl.model.refresh();
+    }
+
     ColumnLayout {
         anchors.fill: parent
 
         StyledButton {
             text: qsTr("Get OTP code for new device")
             onClicked: {
-                //
+                Common.openDialog("onboard/GetNewOtpForDevice.qml", root.parent, {});
             }
             // center vertically
             Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter

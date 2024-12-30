@@ -10,8 +10,9 @@ Dialog {
     property var model: OtpModel {}
     x: NaCore.isMobile ? 0 : (parent.width - width) / 2
     y: NaCore.isMobile ? 0 : (parent.height - height) / 2
-    width: Math.min(NaCore.width, 400)
-    height: Math.min(NaCore.height, 500)
+    width: Math.min(NaCore.width, 300)
+    height: Math.min(NaCore.height, 400)
+    modal: true
 
     standardButtons: Dialog.Close
     title: qsTr("One Time Password")
