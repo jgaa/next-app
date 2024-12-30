@@ -224,6 +224,7 @@ public:
 
     QCoro::Task<nextapp::pb::Status> fetchDevices();
     QCoro::Task<nextapp::pb::Status> enableDevice(const QString &deviceId, bool enabled);
+    QCoro::Task<nextapp::pb::Status> deleteDevice(const QString &deviceId);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

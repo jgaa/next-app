@@ -37,7 +37,7 @@ Dialog {
         anchors.fill: parent
 
         StyledButton {
-            text: qsTr("Get OTP code for new device")
+            text: qsTr("Get an OTP code for a new device")
             onClicked: {
                 Common.openDialog("onboard/GetNewOtpForDevice.qml", root.parent, {});
             }
@@ -157,18 +157,45 @@ Dialog {
                             color: MaterialDesignStyling.onSecondaryContainer
                         }
 
-                        CheckBox {
-                            id: myCheckBox
-                            checked: deviceEnabled
-                            enabled: NaComm.deviceId() != id // Dont allow us to disable the current device
-                            onClicked: {
-                                // Update the model or perform any necessary logic
-                                devicesListCtl.model.enableDevice(id, checked)
+                        RowLayout {
+                            CheckBox {
+                                id: myCheckBox
+                                checked: deviceEnabled
+                                enabled: NaComm.deviceId() != id // Dont allow us to disable the current device
+                                onClicked: {
+                                    devicesListCtl.model.enableDevice(id, checked)
+                                }
+                            }
+
+                            CheckBoxWithFontIcon {
+                                uncheckedCode: "\uf2ed"
+                                uncheckedColor: "red"
+                                autoToggle: false
+                                visible: NaComm.deviceId() != id // Dont allow us to delete the current device
+
+                                onClicked: {
+                                    // Popup a dialog to confirm the deletion
+                                    confirmDialog.deviceId = id
+                                    confirmDialog.open()
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    MessageDialog {
+        id: confirmDialog
+        property string deviceId;
+        title: qsTr("Confirm Deletion")
+        informativeText: qsTr("Are you sure you want to delete this device?")
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+
+        onAccepted: {
+            console.log("User confirmed deletion!")
+            devicesListCtl.model.deleteDevice(deviceId)
         }
     }
 }

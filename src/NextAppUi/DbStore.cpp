@@ -131,13 +131,17 @@ QCoro::Task<bool> DbStore::init() {
 QCoro::Task<bool> DbStore::clear()
 {
     LOG_INFO_N << "Clearing the database. All data will be deleted.";
-    db_->close();
-    db_.reset();
+    if (db_->isOpen()) {
+        db_->close();
+        db_.reset();
+    }
 
     // delete the file pointed to by db_path
     QFile file(db_path_);
-    if (!file.remove()) {
-        LOG_WARN << "Failed to remove database file: " << db_path_;
+    if (file.exists()) {
+        if (!file.remove()) {
+            LOG_WARN << "Failed to remove database file: " << db_path_;
+        }
     }
 
     createDbObject();

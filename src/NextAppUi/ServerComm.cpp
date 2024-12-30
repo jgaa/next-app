@@ -803,6 +803,14 @@ QCoro::Task<nextapp::pb::Status> ServerComm::enableDevice(const QString &deviceI
     co_return co_await rpc(req, &nextapp::pb::Nextapp::Client::UpdateDevice);
 }
 
+QCoro::Task<nextapp::pb::Status> ServerComm::deleteDevice(const QString &deviceId)
+{
+    nextapp::pb::Uuid req;
+    req.setUuid(deviceId);
+
+    co_return co_await rpc(req, &nextapp::pb::Nextapp::Client::DeleteDevice);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;
@@ -1089,6 +1097,7 @@ void ServerComm::onUpdateMessage()
                     if (msg->op() == nextapp::pb::Update::Operation::DELETED) {
                         LOG_WARN << "This device has been deleted! Logging out.";
                         stop();
+                        QSettings{}.setValue("server/deleted", true);
                         return;
                     }
                 };

@@ -142,17 +142,22 @@ int main(int argc, char *argv[])
         }
     }
 
+    QSettings settings;
+    bool delete_db_if_exists = false;
     {
-        QSettings settings;
-
-        if (parser.isSet("signup")) {
+        if (parser.isSet("signup") || settings.value("server/deleted", false).toBool()) {
             LOG_INFO << "Running the signup work-flow";
             settings.setValue("onboarding", false);
-            settings.remove("device/uuid");
+            settings.remove("device");
+            settings.remove("server");
         }
 
         if (!settings.contains("UI/style")) {
             settings.setValue("UI/style", 0);
+        }
+
+        if (!settings.contains("UI/theme")) {
+            settings.setValue("UI/theme", "dark");
         }
 
         auto style = styles.at(settings.value("UI/style").toInt());
@@ -206,6 +211,11 @@ int main(int argc, char *argv[])
 
     LOG_TRACE_N << "Constructing QMLApplicatioonEngine...";
     auto& engine = NextAppCore::engine();
+
+    if (delete_db_if_exists) {
+        LOG_WARN << "Deleting the current database if it exists!";
+        core.db().clear();
+    }
 
     LOG_TRACE_N << "Registering types...";
     qRegisterMetaType<ActionCategoriesModel*>("ActionCategoriesModel*");

@@ -130,6 +130,11 @@ void DevicesModel::enableDevice(QString deviceId, bool active)
     doEnableDevice(deviceId, active);
 }
 
+void DevicesModel::deleteDevice(QString deviceId)
+{
+    doDeleteDevice(deviceId);
+}
+
 void DevicesModel::refresh()
 {
     fetchIf();
@@ -151,5 +156,13 @@ QCoro::Task<void> DevicesModel::doEnableDevice(QString deviceId, bool active) {
                 ++row;
             }
         };
+    }
+}
+
+QCoro::Task<void> DevicesModel::doDeleteDevice(QString deviceId)
+{
+    const auto status = co_await ServerComm::instance().deleteDevice(deviceId);
+    if (status.error() == nextapp::pb::ErrorGadget::Error::OK) {
+        fetchIf();
     }
 }

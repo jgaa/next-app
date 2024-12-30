@@ -324,18 +324,18 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         };
 
         // Get the device from the db
-        auto res = co_await rctx.dbh->exec(
+        const auto fetch_res = co_await rctx.dbh->exec(
             format(R"(SELECT {}
               FROM device WHERE user=? AND id=?)", ToDevice::columns),
             rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->uuid());
 
-        if (res.has_value() && res.rows().size() == 1) {
+        if (fetch_res.has_value() && fetch_res.rows().size() == 1) {
             LOG_INFO << "Deleting device " << req->uuid() << " for user " << rctx.uctx->userUuid();
-            res = co_await rctx.dbh->exec("DELETE FROM device WHERE user=? AND id=?",
+            const auto delete_res = co_await rctx.dbh->exec("DELETE FROM device WHERE user=? AND id=?",
                 rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->uuid());
-            if (res.has_value() && res.affected_rows() == 1) {
+            if (delete_res.has_value() && delete_res.affected_rows() == 1) {
                 auto& pub = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
-                ToDevice::assign(res.rows().front(), *pub.mutable_device(), rctx.uctx->tz());
+                ToDevice::assign(fetch_res.rows().front(), *pub.mutable_device(), rctx.uctx->tz());
             } else {
                 LOG_WARN << "Failed to delete device " << req->uuid() << " for user " << rctx.uctx->userUuid();
                 throw server_err{pb::Error::GENERIC_ERROR, format("Failed to delete the device {}", req->uuid())};

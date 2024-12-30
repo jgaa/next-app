@@ -34,6 +34,7 @@ public:
     DevicesModel();
 
     Q_INVOKABLE void enableDevice(QString deviceId, bool active);
+    Q_INVOKABLE void deleteDevice(QString deviceId);
     Q_INVOKABLE void refresh();
 
     // QAbstractItemModel interface
@@ -50,6 +51,7 @@ private:
     void setValid(bool valid);
     QCoro::Task<void> fetchIf();
     QCoro::Task<void> doEnableDevice(QString deviceId, bool active);
+    QCoro::Task<void> doDeleteDevice(QString deviceId);
 
     bool valid_{false};
     std::vector<nextapp::pb::Device> devices_;
