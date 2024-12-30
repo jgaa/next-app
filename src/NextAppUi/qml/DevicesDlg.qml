@@ -11,7 +11,7 @@ import "common.js" as Common
 
 Dialog {
     id: root
-    title: qsTr("Existing devices")
+    title: qsTr("Your existing devices")
 
     padding: 10
     margins: 20
@@ -70,7 +70,7 @@ Dialog {
             }
 
             delegate: Rectangle {
-                width: parent.width
+                width: devicesListCtl.width
                 color: index % 2 ? MaterialDesignStyling.onPrimary : MaterialDesignStyling.primaryContainer
                 height: content.implicitHeight
                 radius: 5
@@ -89,7 +89,8 @@ Dialog {
                 required property string arch
                 required property string prettyName
                 required property string lastSeen
-                required property bool enabled
+                required property bool deviceEnabled
+                required property string numSessions
 
                 ColumnLayout {
                     id: content
@@ -128,6 +129,15 @@ Dialog {
                         }
 
                         Label {
+                            text: qsTr("Sessions#")
+                            color: MaterialDesignStyling.onSecondaryContainer
+                        }
+                        Text {
+                            text: numSessions
+                            color: MaterialDesignStyling.onPrimaryContainer
+                        }
+
+                        Label {
                             text: qsTr("Created")
                             color: MaterialDesignStyling.onSecondaryContainer
                         }
@@ -142,8 +152,12 @@ Dialog {
                         }
 
                         CheckBox {
-                            //text: qsTr("Enabled")
-                            checked: enabled
+                            id: myCheckBox
+                            checked: deviceEnabled
+                            onClicked: {
+                                // Update the model or perform any necessary logic
+                                devicesListCtl.model.enableDevice(id, checked)
+                            }
                         }
                     }
                 }

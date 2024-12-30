@@ -220,6 +220,7 @@ public:
     std::shared_ptr<GrpcIncomingStream> synchTimeBlocks(const nextapp::pb::GetNewReq& req);
 
     QCoro::Task<nextapp::pb::Status> fetchDevices();
+    QCoro::Task<nextapp::pb::Status> enableDevice(const QString &deviceId, bool enabled);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

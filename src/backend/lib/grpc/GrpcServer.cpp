@@ -15,9 +15,9 @@ namespace nextapp::grpc {
 namespace {
 struct ToDevice {
     enum Cols { ID, USER, NAME, CREATED, HOSTNAME, OS, OSVERSION, APPVERSION, PRODUCTTYPE, PRODUCTVERSION,
-                ARCH, PRETTYNAME, LASTSEEN, ENABLED };
+                ARCH, PRETTYNAME, LASTSEEN, ENABLED, NUM_SESSIONS };
 
-    static constexpr auto columns = "id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled";
+    static constexpr auto columns = "id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled, numSessions";
 
     static void assign(const boost::mysql::row_view& row, pb::Device &device, const chrono::time_zone& tz) {
         device.set_id(row[ID].as_string());
@@ -34,6 +34,7 @@ struct ToDevice {
         if (!row[PRETTYNAME].is_null()) device.set_prettyname(row[PRETTYNAME].as_string());
         if (!row[LASTSEEN].is_null()) device.mutable_lastseen()->set_seconds(toTimeT(row[LASTSEEN].as_datetime(), tz));
         device.set_enabled(row[ENABLED].as_int64() == 1);
+        device.set_numsessions(row[NUM_SESSIONS].as_int64());
     }
 };
 } // anon ns
@@ -252,7 +253,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
     [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
     auto res = co_await rctx.dbh->exec(
-        format(R"(SELECT id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled
+        format(R"(SELECT {}
           FROM device WHERE user=?
           ORDER BY lastSeen DESC, name)", ToDevice::columns),
         rctx.uctx->dbOptions(), rctx.uctx->userUuid());
@@ -299,7 +300,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
             if (res.has_value() && res.rows().size() == 1) {
                 const auto& row = res.rows().front();
-                auto pub = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+                auto& pub = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
                 ToDevice::assign(row, *pub.mutable_device(), rctx.uctx->tz());
             }
 
@@ -333,7 +334,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             res = co_await rctx.dbh->exec("DELETE FROM device WHERE user=? AND id=?",
                 rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->uuid());
             if (res.has_value() && res.affected_rows() == 1) {
-                auto pub = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+                auto& pub = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
                 ToDevice::assign(res.rows().front(), *pub.mutable_device(), rctx.uctx->tz());
             } else {
                 LOG_WARN << "Failed to delete device " << req->uuid() << " for user " << rctx.uctx->userUuid();

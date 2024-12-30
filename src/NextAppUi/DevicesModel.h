@@ -27,10 +27,14 @@ public:
         ArchRole,
         PrettyNameRole,
         LastSeenRole,
-        EnabledRole
+        EnabledRole,
+        NumSessionsRole
     };
 
     DevicesModel();
+
+    Q_INVOKABLE void enableDevice(QString deviceId, bool active);
+    Q_INVOKABLE void refresh();
 
     // QAbstractItemModel interface
     int rowCount(const QModelIndex &parent) const override;
@@ -45,6 +49,7 @@ signals:
 private:
     void setValid(bool valid);
     QCoro::Task<void> fetchIf();
+    QCoro::Task<void> doEnableDevice(QString deviceId, bool active);
 
     bool valid_{false};
     std::vector<nextapp::pb::Device> devices_;

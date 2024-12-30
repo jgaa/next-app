@@ -54,6 +54,8 @@ QVariant DevicesModel::data(const QModelIndex &index, int role) const
             .toString("yyyy-MM-dd hh:mm");
     case EnabledRole:
         return device.enabled();
+    case NumSessionsRole:
+        return static_cast<qlonglong>(device.numSessions());
     default:
         assert(false && "Unhandled role");
     }
@@ -77,7 +79,8 @@ QHash<int, QByteArray> DevicesModel::roleNames() const
         {ArchRole, "arch"},
         {PrettyNameRole, "prettyName"},
         {LastSeenRole, "lastSeen"},
-        {EnabledRole, "enabled"}
+        {EnabledRole, "deviceEnabled"},
+        {NumSessionsRole, "numSessions"},
     };
 }
 
@@ -119,5 +122,34 @@ QCoro::Task<void> DevicesModel::fetchIf()
         setValid(true);
     } else {
         setValid(false);
+    }
+}
+
+void DevicesModel::enableDevice(QString deviceId, bool active)
+{
+    doEnableDevice(deviceId, active);
+}
+
+void DevicesModel::refresh()
+{
+    fetchIf();
+}
+
+QCoro::Task<void> DevicesModel::doEnableDevice(QString deviceId, bool active) {
+    const auto status = co_await ServerComm::instance().enableDevice(deviceId, active);
+    if (status.error() == nextapp::pb::ErrorGadget::Error::OK) {
+        if (status.hasDevice()) {
+            const auto& device = status.device();
+            auto row = 0;
+            for (auto& d : devices_) {
+                if (d.id_proto() == device.id_proto()) {
+                    d = device;
+                    const auto ix = createIndex(row, 0);
+                    emit dataChanged(ix, ix);
+                    break;
+                }
+                ++row;
+            }
+        };
     }
 }

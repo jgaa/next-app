@@ -32,6 +32,7 @@ enum Error {
     AUTH_FAILED = 24;
     CONFLICT = 25;
     MISSING_AUTH = 26;
+    DEVICE_DISABLED = 27;
 }
 
 message Page {
@@ -579,6 +580,7 @@ message Device {
     string prettyName = 12;
     Timestamp lastSeen = 13;
     bool enabled = 14;
+    uint64 numSessions = 15;
 }
 
 message Devices {

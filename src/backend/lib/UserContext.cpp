@@ -200,6 +200,12 @@ initial_auth_ok:
              << " for device " << session->deviceId() << " for user " << ucx->userUuid()
              << " from IP " << context->peer();
 
+    // User logged on with a device
+    auto db = co_await server_.db().getConnection();
+    co_await db.exec("UPDATE device SET lastSeen=NOW(), numSessions=numSessions+1 WHERE id=? AND user=?",
+                     device_id,
+                     session->user().userUuid());
+
     // TODO: Add entry in session-table
     // TODO: Check sessions limit for user
     // TODO: Check concurrent devices limit for user
@@ -257,9 +263,17 @@ void SessionManager::removeSession_(const boost::uuids::uuid &sessionId)
 {
     LOG_TRACE_N << "Removing session " << sessionId;
     if (auto it = sessions_.find(sessionId); it != sessions_.end()) {
-        auto session = it->second;
-        sessions_.erase(it);
-        session->user().removeSession(sessionId);
+        auto *session = it->second;
+        assert(session);
+        if (session) {
+            boost::asio::co_spawn(ioContext(), [uid=session->user().userUuid(), devid=session->deviceId(), sessionId] () -> boost::asio::awaitable<void>  {
+                LOG_DEBUG_N << "Session " << sessionId << " from device " << devid << " from user " << uid << " is done.";
+                co_await Server::instance().db().exec("UPDATE device SET lastSeen=NOW() WHERE id=?", devid);
+            }, boost::asio::detached);
+
+            sessions_.erase(it);
+            session->user().removeSession(sessionId);
+        }
     } else {
         LOG_WARN_N << "Session " << sessionId << " not found.";
     }
@@ -378,15 +392,19 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
 
     {
         auto res = co_await db.exec(
-            "SELECT user, certHash FROM device where id=? ", devid);
+            "SELECT user, certHash, enabled FROM device where id=? ", devid);
         if (res.rows().empty()) {
             LOG_WARN << "Failed to lookup device " << devid << " in the database, although the user appears to have a signed cert with that ID.";
             throw server_err{pb::Error::NOT_FOUND, "Device not found"};
         }
-        enum Cols { USER, CERT_HASH };
+        enum Cols { USER, CERT_HASH, ENABLED };
 
         const auto& row = res.rows().front();
         uid = row.at(USER).as_string();
+
+        if (row.at(ENABLED).as_int64() == 0) {
+            throw server_err{pb::Error::DEVICE_DISABLED, "Device is disabled"};
+        }
 
         {
             // Happy path
@@ -453,6 +471,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
             unique_lock lock{mutex_};
             users_[toUuid(uid)] = ucx;
         }
+
         co_return ucx;
     }
 
