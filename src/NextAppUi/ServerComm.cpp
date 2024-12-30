@@ -1228,8 +1228,11 @@ QCoro::Task<void> ServerComm::startNextappSession()
 {
     LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
     NextAppCore::instance()->showSyncPopup(true);
-    ScopedExit hide_popup_on_exit{[] {
-        NextAppCore::instance()->showSyncPopup(false);
+    bool close_popup = true;
+    ScopedExit hide_popup_on_exit{[&close_popup] {
+        if (close_popup) {
+            NextAppCore::instance()->showSyncPopup(false);
+        }
     }};
 
 
@@ -1260,8 +1263,16 @@ QCoro::Task<void> ServerComm::startNextappSession()
     } else {
 failed:
         setStatus(Status::ERROR);
+
         LOG_ERROR_N << "Failed to start new session: " << res.message();
+        if (res.error() == nextapp::pb::ErrorGadget::Error::DEVICE_DISABLED) {
+            addMessage(tr("*** This device has been disabled ***\nYou must enable it again from another device before it can be used."));
+        } else {
+            addMessage(tr("Failed to establish a new session with the server:\n") + res.message());
+        }
+
         stop();
+        close_popup = false;
         co_return;
     }
 

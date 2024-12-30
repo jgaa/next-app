@@ -48,6 +48,7 @@ std::ostream& operator<<(std::ostream& os, const nextapp::pb::ErrorGadget::Error
         "AUTH_FAILED",
         "CONFLICT",
         "MISSING_AUTH",
+        "DEVICE_DISABLED",
     });
 
     const auto err = static_cast<size_t>(error);
