@@ -1074,6 +1074,26 @@ void ServerComm::onUpdateMessage()
             //     emit dayColorChanged(date.year(), date.month(), date.mday(), color);
             // }
 
+            if (msg->hasDevice()) {
+                const auto& dev = msg->device();
+                const auto& uuid = QUuid{dev.id_proto()};
+                if (uuid == deviceUuid()) {
+                    if (msg->op() == nextapp::pb::Update::Operation::UPDATED) {
+                        LOG_DEBUG << "Received updated device info";
+                        if (!dev.enabled()) {
+                            LOG_WARN << "This device has been disabled! Logging out.";
+                            stop();
+                            return;
+                        }
+                    }
+                    if (msg->op() == nextapp::pb::Update::Operation::DELETED) {
+                        LOG_WARN << "This device has been deleted! Logging out.";
+                        stop();
+                        return;
+                    }
+                };
+            }
+
             emit onUpdate(std::move(msg));
         }
     } catch (const exception& ex) {

@@ -146,6 +146,9 @@ public:
                             const QString &company, const QString& deviceName);
     Q_INVOKABLE void addDeviceWithOtp(const QString &otp, const QString &email, const QString &deviceName);
     Q_INVOKABLE void signupDone();
+    Q_INVOKABLE QString deviceId() const {
+        return device_uuid_.toString(QUuid::WithoutBraces);
+    }
 
     static ServerComm& instance() noexcept {
         assert(instance_);

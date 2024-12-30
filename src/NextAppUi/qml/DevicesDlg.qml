@@ -160,6 +160,7 @@ Dialog {
                         CheckBox {
                             id: myCheckBox
                             checked: deviceEnabled
+                            enabled: NaComm.deviceId() != id // Dont allow us to disable the current device
                             onClicked: {
                                 // Update the model or perform any necessary logic
                                 devicesListCtl.model.enableDevice(id, checked)
