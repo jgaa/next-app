@@ -79,6 +79,17 @@ void DbStore::createDbObject()
 
     db_path_ = data_dir_ + "/db.sqlite";
 
+    if (clear_pending_) {
+        QFile file(db_path_);
+        if (file.exists()) {
+            LOG_WARN_N << "Deleting the existing database. Clear db was pending.";
+            if (!file.remove()) {
+                LOG_WARN << "Failed to remove database file: " << db_path_;
+            }
+        }
+        clear_pending_ = false;
+    }
+
     db_->setDatabaseName(db_path_);
     if (!db_->open()) {
         LOG_ERROR << "Failed to open database: \"" << db_path_ << "\", error=" << db_->lastError().text();
@@ -131,6 +142,11 @@ QCoro::Task<bool> DbStore::init() {
 QCoro::Task<bool> DbStore::clear()
 {
     LOG_INFO_N << "Clearing the database. All data will be deleted.";
+    if (!db_) {
+        clear_pending_ = true;
+        co_return false;
+    }
+
     if (db_->isOpen()) {
         db_->close();
         db_.reset();

@@ -150,6 +150,8 @@ int main(int argc, char *argv[])
             settings.setValue("onboarding", false);
             settings.remove("device");
             settings.remove("server");
+            delete_db_if_exists = true;
+            settings.sync();
         }
 
         if (!settings.contains("UI/style")) {

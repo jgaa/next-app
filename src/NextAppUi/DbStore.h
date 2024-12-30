@@ -77,6 +77,7 @@ private:
     bool ready_{false};
     QString data_dir_;
     QString db_path_;
+    bool clear_pending_{false};
     std::mutex mutex_;
 };
 
