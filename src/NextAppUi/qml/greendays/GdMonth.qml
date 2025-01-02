@@ -8,7 +8,7 @@ import Nextapp.Models
 Rectangle {
     id: root
     property int month: 0
-    property int year: 2024
+    property int year: 0
     property int fontSize: 12
     property var mmodel: NaGreenDaysModel.getMonth(year, month + 1)
     property bool validColors: mmodel.validColors

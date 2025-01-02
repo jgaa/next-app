@@ -37,8 +37,10 @@ GreenDaysModel::GreenDaysModel()
 
 void GreenDaysModel::addYear(int year)
 {
-    years_to_cache_.insert(year);
-    loadFromCache();
+    const auto [_, added] = years_to_cache_.insert(year);
+    if (added) {
+        loadFromCache();
+    }
 }
 
 GreenDayModel *GreenDaysModel::getDay(int year, int month, int day)
@@ -60,7 +62,7 @@ GreenMonthModel *GreenDaysModel::getMonth(int year, int month)
     const auto key = getKey(year, month);
     if (!hasMonth(year, month)) {
         months_[key] = {};
-        fetchMonth(year, month);
+        addYear(year);
     }
 
     auto *mm  = new GreenMonthModel(year, month, *this);
@@ -81,11 +83,11 @@ std::optional<GreenDaysModel::ColorDef> GreenDaysModel::getDayColor(const QUuid 
 
 void GreenDaysModel::fetchMonth(int year, int month)
 {
-    if (!ServerComm::instance().connected()) {
-        return;
-    }
+    // if (!ServerComm::instance().connected()) {
+    //     return;
+    // }
 
-    ServerComm::instance().getColorsInMonth(year, month);
+    // ServerComm::instance().getColorsInMonth(year, month);
 }
 
 void GreenDaysModel::fetchDay(int year, int month, int day)

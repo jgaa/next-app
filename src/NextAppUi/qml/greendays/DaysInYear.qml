@@ -5,6 +5,7 @@ import QtQuick.Effects
 import NextAppUi
 import Nextapp.Models
 
+
 Rectangle {
     id: root
     enabled: NaComm.connected
@@ -13,6 +14,7 @@ Rectangle {
     implicitHeight: grid.implicitHeight
 
     property int fontSize: 16
+    property int year: new Date().getFullYear()
 
     color: MaterialDesignStyling.surface
 
@@ -36,8 +38,39 @@ Rectangle {
             //model: [Calendar.January, Calendar.April, Calendar.July, Calendar.October]
             delegate: GdMonth {
                 month: modelData
-                year: 2024
+                year: root.year
                 fontSize: root.fontSize
+            }
+        }
+    }
+
+    RowLayout {
+        x: grid.x + 10
+        y: grid.y + 15
+        height: 20
+        width: grid.width - 20
+
+        CheckBoxWithFontIcon {
+            uncheckedCode: "\uf0d9"
+            autoToggle: false
+            useSolidForAll: true
+
+            onClicked: {
+                root.year -= 1
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+        }
+
+        CheckBoxWithFontIcon {
+            uncheckedCode: "\uf0da"
+            autoToggle: false
+            useSolidForAll: true
+
+            onClicked: {
+                root.year += 1
             }
         }
     }

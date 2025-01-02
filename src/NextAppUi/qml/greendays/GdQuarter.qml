@@ -7,7 +7,7 @@ Item {
 
     Layout.topMargin: 10
     Layout.fillWidth: true
-    Layout.preferredHeight: 40
+    Layout.preferredHeight: 30
 
     Rectangle {
         anchors.fill: parent
