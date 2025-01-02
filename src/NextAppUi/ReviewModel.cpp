@@ -9,6 +9,9 @@
 #include "ActionInfoCache.h"
 #include "MainTreeModel.h"
 #include "ActionsModel.h"
+#include "ActionsOnCurrentCalendar.h"
+#include "ActionsWorkedOnTodayCache.h"
+
 
 #include "util.h"
 #include "logging.h"
@@ -192,7 +195,7 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
             return QDateTime::fromSecsSinceEpoch(action.completedTime());
         }
         return {};
-    case SectionRole:
+    case SectionKindRole:
         return static_cast<uint>(ActionsModel::toKind(action));
     case SectionNameRole:
         return ActionsModel::toName(ActionsModel::toKind(action));
@@ -210,6 +213,10 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
         return action.category();
     case ReviewedRole:
         return item.done();
+    case OnCalendarRole:
+        return ActionsOnCurrentCalendar::instance()->contains(item.uuid());
+    case WorkedOnTodayRole:
+        return ActionsWorkedOnTodayCache::instance()->contains(item.uuid());
     }
     return {};
 }
@@ -227,14 +234,16 @@ QHash<int, QByteArray> ReviewModel::roleNames() const
     roles[DueByTimeRole] = "dueBy";
     roles[CompletedRole] = "done";
     roles[CompletedTimeRole] = "completedTime";
-    roles[SectionRole] = "section";
-    roles[SectionNameRole] = "sname";
+    roles[SectionKindRole] = "sectionKind";
+    roles[SectionNameRole] = "section";
     roles[DueRole] = "due";
     roles[FavoriteRole] = "favorite";
     roles[HasWorkSessionRole] = "hasWorkSession";
     roles[ListNameRole] = "listName";
     roles[CategoryRole] = "category";
     roles[ReviewedRole] = "reviewed";
+    roles[OnCalendarRole] = "onCalendar";
+    roles[WorkedOnTodayRole] = "workedOnToday";
     return roles;
 }
 

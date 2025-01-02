@@ -45,7 +45,7 @@ public:
         DueByTimeRole,
         CompletedRole,
         CompletedTimeRole,
-        SectionRole,
+        SectionKindRole,
         SectionNameRole,
         DueRole,
         FavoriteRole,
@@ -53,6 +53,8 @@ public:
         ListNameRole,
         CategoryRole,
         ReviewedRole,
+        OnCalendarRole,
+        WorkedOnTodayRole,
     };
 
     Q_ENUM(State)
