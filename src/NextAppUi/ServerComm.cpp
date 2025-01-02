@@ -1268,6 +1268,14 @@ QCoro::Task<void> ServerComm::startNextappSession()
     QSettings settings;
     session_id_.clear();
 
+    auto prev_version = settings.value("client/version", "").toString();
+    if (prev_version != NEXTAPP_VERSION) {
+        LOG_INFO << "Client version changed from " << prev_version << " to " << NEXTAPP_VERSION;
+        settings.setValue("client/version", NEXTAPP_VERSION);
+        settings.setValue("sync/resync", "true");
+        settings.sync();
+    }
+
     const bool full_sync = settings.value("sync/resync", "false") == "true";
 
     if (full_sync) {
