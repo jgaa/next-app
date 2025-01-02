@@ -258,6 +258,7 @@ bool DbStore::updateSchema(uint version)
         R"(CREATE TABLE IF NOT EXISTS "action_category" (
             "id" VARCHAR(32) NOT NULL,
             "version" INTEGER NOT NULL,
+            "name" VARCHAR(255) NOT NULL,
             "data" BLOB NOT NULL,
             PRIMARY KEY("id")
         ))",

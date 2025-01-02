@@ -309,11 +309,17 @@ QCoro::Task<bool> ActionCategoriesModel::save(const nextapp::pb::ActionCategory 
     QProtobufSerializer serializer;
     QList<QVariant> params;
 
-    params.append(category.id_proto());
-    params.append(static_cast<uint>(category.version()));
-    params.append(category.serialize(&serializer));
+    params << category.id_proto();
+    params << static_cast<uint>(category.version());
+    params << category.name();
+    params << category.serialize(&serializer);
 
-    const auto res = co_await db.query("INSERT INTO action_category (id, version, data) VALUES (?, ?, ?)", &params);
+    const auto res = co_await db.query(R"(INSERT INTO action_category (id, version, name, data)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            version = excluded.version,
+            name = excluded.name,
+            data = excluded.data)", &params);
 
     if (res.has_value()) {
         co_return true;

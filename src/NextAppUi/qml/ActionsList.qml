@@ -37,7 +37,7 @@ Rectangle {
                 Text {
                     leftPadding: 10
                     id: label
-                    text: NaActionsModel.toName(parent.section)
+                    text: parent.section //NaActionsModel.toName(parent.section)
                     font.bold: true
                     color: MaterialDesignStyling.onPrimaryContainer
                     anchors.verticalCenter: parent.verticalCenter
