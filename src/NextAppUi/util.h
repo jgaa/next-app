@@ -28,6 +28,7 @@ std::string toString(const nextapp::pb::WorkEvent_QtProtobufNested::Kind& kind);
 [[nodiscard]] QString toJson(const QObject& o);
 [[nodiscard]] QDate toQDate(const nextapp::pb::Date& date);
 [[nodiscard]] nextapp::pb::Date toDate(const QDate& date);
+[[nodiscard]] QString getSystemTimeZone();
 
 
 QDate getFirstDayOfWeek(const QDate& when = QDate::currentDate());

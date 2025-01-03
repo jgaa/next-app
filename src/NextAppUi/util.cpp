@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QMetaProperty>
+#include <QTimeZone>
 
 #include <regex>
 
@@ -242,4 +243,14 @@ string toString(const nextapp::pb::WorkEvent_QtProtobufNested::Kind &kind)
 
     assert(kinds.size() < static_cast<size_t>(kind));
     return string{kinds.at(static_cast<size_t>(kind))};
+}
+
+QString getSystemTimeZone() {
+    // Obtain the system time zone ID as a QByteArray
+    QByteArray timeZoneId = QTimeZone::systemTimeZoneId();
+
+    // Convert the QByteArray to QString
+    QString timeZoneString = QString::fromUtf8(timeZoneId);
+
+    return timeZoneString;
 }

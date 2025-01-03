@@ -178,6 +178,32 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     PRIVATE src
 )
 
+# Check if std::format is available
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+    #include <format>
+    #include <string>
+    int main() {
+        std::string s = std::format(\"Hello {}!\", \"World\");
+        return 0;
+    }
+" HAS_STD_FORMAT)
+
+include(FetchContent)
+
+# If std::format is not available, fallback to fmtlib
+if(NOT HAS_STD_FORMAT)
+    message(STATUS "std::format not available, using fmtlib...")
+    FetchContent_Declare(
+      fmt
+      GIT_REPOSITORY https://github.com/fmtlib/fmt
+      GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
+    FetchContent_MakeAvailable(fmt)
+    include_directories(${fmt_SOURCE_DIR}/include)
+    set(FMT_TARGET fmt)
+    set(FMT_DEPS fmt::fmt)
+endif()
+
 if (NOT ANDROID)
     find_package(Boost CONFIG REQUIRED)
     #find_package(OpenSSL CONFIG REQUIRED)
@@ -191,24 +217,14 @@ if (NOT ANDROID)
 else()
     target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_85_0)
 
-    include(FetchContent)
-        FetchContent_Declare(
-            android_openssl
-            DOWNLOAD_EXTRACT_TIMESTAMP true
-            URL https://github.com/KDAB/android_openssl/archive/refs/heads/master.zip
-        )
-        FetchContent_MakeAvailable(android_openssl)
-        set(OPENSSL_INCLUDE "${android_openssl_SOURCE_DIR}/ssl_3/include")
-        include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
-
-        FetchContent_Declare(
-          fmt
-          GIT_REPOSITORY https://github.com/fmtlib/fmt
-          GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
-        FetchContent_MakeAvailable(fmt)
-        include_directories(${fmt_SOURCE_DIR}/include)
-        set(FMT_TARGET fmt)
-        set(FMT_DEPS fmt::fmt)
+    FetchContent_Declare(
+        android_openssl
+        DOWNLOAD_EXTRACT_TIMESTAMP true
+        URL https://github.com/KDAB/android_openssl/archive/refs/heads/master.zip
+    )
+    FetchContent_MakeAvailable(android_openssl)
+    set(OPENSSL_INCLUDE "${android_openssl_SOURCE_DIR}/ssl_3/include")
+    include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
 endif()
 
 set_source_files_properties(qml/Colors.qml

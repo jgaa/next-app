@@ -691,14 +691,14 @@ pb::Due ActionsModel::setDue(time_t start, time_t until, nextapp::pb::ActionDueK
     return due;
 }
 
-#if !defined(ANDROID) && !defined(__APPLE__)
-auto timeZoneOffset(const std::chrono::time_zone *tz, const auto& tp) {
+// #if !defined(ANDROID) && !defined(__APPLE__)
+// auto timeZoneOffset(const std::chrono::time_zone *tz, const auto& tp) {
 
-    const auto ts_offset = tz->get_info(tp).offset;
-    const auto offset = ts_offset.count();
-    return offset;
-}
-#endif
+//     const auto ts_offset = tz->get_info(tp).offset;
+//     const auto offset = ts_offset.count();
+//     return offset;
+// }
+// #endif
 
 pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const
 {

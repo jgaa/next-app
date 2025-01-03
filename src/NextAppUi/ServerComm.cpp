@@ -1117,12 +1117,7 @@ void ServerComm::setDefaulValuesInUserSettings()
     wh.setEnd(NextAppCore::parseHourMin("16:00"));
 
     userGlobalSettings_.setDefaultWorkHours(wh);
-
-#if defined(ANDROID) || defined(__APPLE__)
-    userGlobalSettings_.setTimeZone("Europe/Sofia");
-#else
-    userGlobalSettings_.setTimeZone(QString::fromUtf8(chrono::current_zone()->name()));
-#endif
+    userGlobalSettings_.setTimeZone(getSystemTimeZone());
 
     const auto territory = QTimeZone::systemTimeZone().territory();
     if (territory != QLocale::AnyCountry) {
