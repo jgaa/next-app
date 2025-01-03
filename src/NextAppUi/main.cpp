@@ -7,6 +7,7 @@
 #include <QAbstractItemModelTester>
 #include <QQuickStyle>
 #include <QSslSocket>
+#include <QQuickWindow>
 
 #include "ServerComm.h"
 #include "MainTreeModel.h"
@@ -69,6 +70,52 @@ constexpr auto scales = to_array<string_view>(
         "2.0",
     });
 
+
+class WindowPositionManager { //: public QObject {
+    //Q_OBJECT
+
+    QRect getCombinedScreenGeometry() {
+        QRect combinedGeometry;
+        const auto screens = QGuiApplication::screens();  // Get all screens
+        for (QScreen* screen : screens) {
+            combinedGeometry = combinedGeometry.united(screen->availableGeometry());
+        }
+        LOG_DEBUG_N << "Combined screen geometry: " << combinedGeometry.width() << "x" << combinedGeometry.height();
+        return combinedGeometry;
+    }
+
+public:
+    explicit WindowPositionManager(QQuickWindow* window, QObject* parent = nullptr)
+        : //QObject(parent),
+        m_window(window) {
+        QSettings settings;
+        QRect geometry = settings.value("windowGeometry", QRect(0,0,0,0)).toRect();
+        if (geometry.isEmpty()) {
+            return;
+        };
+
+        QRect availableGeometry = getCombinedScreenGeometry();
+        if (!availableGeometry.contains(geometry)) {
+            LOG_DEBUG_N << "Window geometry is outside of the screen, ignoring.";
+            return;
+        }
+
+        m_window->setX(geometry.x());
+        m_window->setY(geometry.y());
+        m_window->setWidth(geometry.width());
+        m_window->setHeight(geometry.height());
+    }
+
+    ~WindowPositionManager() {
+        QSettings settings;
+        QRect geometry(m_window->x(), m_window->y(), m_window->width(), m_window->height());
+        settings.setValue("windowGeometry", geometry);
+    }
+
+private:
+    QQuickWindow* m_window;
+};
+
 } // anon ns
 
 int main(int argc, char *argv[])
@@ -126,12 +173,6 @@ int main(int argc, char *argv[])
     if (auto level = toLogLevel(log_level_qt)) {
         logfault::LogManager::Instance().AddHandler(
             make_unique<logfault::QtHandler>(*level));
-
-// #ifdef __ANDROID__
-//         logfault::LogManager::Instance().AddHandler(
-//             make_unique<logfault::AndroidHandler>("next-app", *level));
-// #endif
-
     }
 
     if (parser.isSet("log-file")) {
@@ -265,6 +306,11 @@ int main(int argc, char *argv[])
     LOG_INFO << "Device supports OpenSSL: " << QSslSocket::supportsSsl();
 
     NextAppCore::instance()->modelsAreCreated();
+
+#ifndef __ANDROID__
+    QQuickWindow* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+    WindowPositionManager manager(window);
+#endif
 
     LOG_DEBUG_N << "Handing the main thread over to QT";
     auto ret = app.exec();
