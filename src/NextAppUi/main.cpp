@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
     }
 
     QGuiApplication::setApplicationName(app_name);
-    QGuiApplication::setApplicationVersion(NEXTAPP_VERSION);
+    QGuiApplication::setApplicationVersion(NEXTAPP_UI_VERSION);
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/NextAppUi/icons/nextapp.svg"));
 
     QCommandLineParser parser;
@@ -214,7 +214,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        LOG_INFO << app_name << ' ' << NEXTAPP_VERSION << " starting up.";
+        LOG_INFO << app_name << ' ' << NEXTAPP_UI_VERSION << " starting up.";
 
 #ifdef USE_ANDROID_UI
         if (style.empty()) {

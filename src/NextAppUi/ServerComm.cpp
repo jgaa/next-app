@@ -890,7 +890,7 @@ void ServerComm::signupOrAdd(const QString &name,
     dev.setName(deviceName.isEmpty() ? dev.hostName() : deviceName);
     dev.setOs(QSysInfo::kernelType());
     dev.setOsVersion(QSysInfo::kernelVersion());
-    dev.setAppVersion(NEXTAPP_VERSION);
+    dev.setAppVersion(NEXTAPP_UI_VERSION);
     dev.setCsr(csr);
     dev.setProductType(QSysInfo::productType());
     dev.setProductVersion(QSysInfo::productVersion());
@@ -1269,9 +1269,9 @@ QCoro::Task<void> ServerComm::startNextappSession()
     session_id_.clear();
 
     auto prev_version = settings.value("client/version", "").toString();
-    if (prev_version != NEXTAPP_VERSION) {
-        LOG_INFO << "Client version changed from " << prev_version << " to " << NEXTAPP_VERSION;
-        settings.setValue("client/version", NEXTAPP_VERSION);
+    if (prev_version != NEXTAPP_UI_VERSION) {
+        LOG_INFO << "Client version changed from " << prev_version << " to " << NEXTAPP_UI_VERSION;
+        settings.setValue("client/version", NEXTAPP_UI_VERSION);
         settings.setValue("sync/resync", "true");
         settings.sync();
     }
