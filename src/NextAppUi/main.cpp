@@ -23,6 +23,7 @@
 #include "ActionsModel.h"
 #include "GreenDaysModel.h"
 #include "WorkSessionsModel.h"
+#include "AppInstanceMgr.h"
 #include "nextapp.qpb.h"
 
 #include "logging.h"
@@ -131,6 +132,14 @@ int main(int argc, char *argv[])
         "debug";
 #endif
     QGuiApplication app(argc, argv);
+
+#ifndef __ANDROID__
+    // Handle multiple instances of the app with their own data
+    AppInstanceMgr::instance()->init();
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
+        AppInstanceMgr::instance()->close();
+    });
+#endif
 
     // Allow us to use an alternative config-file for testing
     if (const auto* org = getenv("NEXTAPP_ORG")){

@@ -16,7 +16,7 @@
 #include <QSqlRecord>
 #include "qcorosignal.h"
 
-
+#include "AppInstanceMgr.h"
 #include "DbStore.h"
 
 #include "logging.h"
@@ -65,7 +65,7 @@ void DbStore::createDbObject()
     LOG_TRACE_N << "Initializing db store";
 
     db_ = make_unique<QSqlDatabase>(QSqlDatabase::addDatabase("QSQLITE"));
-    data_dir_ = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    data_dir_ = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + AppInstanceMgr::instance()->name() + "/";
     LOG_INFO << "Using data dir: " << data_dir_;
     if (!QFile::exists(data_dir_)) {
         LOG_INFO << "Database directory does not exist, creating it";
