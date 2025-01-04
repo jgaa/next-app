@@ -29,8 +29,8 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
              dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
          }
 
-         boost::asio::deadline_timer timer{owner_.server().ctx()};
-         timer.expires_from_now(boost::posix_time::seconds{2});
+         boost::asio::steady_timer timer{owner_.server().ctx()};
+         timer.expires_after(2s);
          co_return;
      }, __func__);
 

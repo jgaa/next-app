@@ -89,7 +89,7 @@ public:
 
                         // Use a relatively short wait for now in case we have a race-conditions
                         // that leads to nobody cancelling the timer.
-                        timer_.expires_from_now(boost::posix_time::seconds(5));
+                        timer_.expires_after(std::chrono::seconds(5));
                     }
 
                     try {
@@ -134,8 +134,11 @@ public:
         }
 
         // Release all awaiting coroutines
-        boost::system::error_code ec;
-        timer_.cancel(ec);
+        try {
+            timer_.cancel();
+        } catch (const boost::system::system_error& e) {
+            LOG_DEBUG_N << "Caught exception while cancelling timer: " << e.what();
+        }
         self_.reset();
     }
 
@@ -168,8 +171,11 @@ public:
         }
 
         // Release any awaiting coroutine
-        boost::system::error_code ec;
-        timer_.cancel(ec);
+        try {
+            timer_.cancel();
+        } catch (const boost::system::system_error& e) {
+            LOG_DEBUG_N << "Caught exception while cancelling timer: " << e.what();
+        }
     }
 
 private:
@@ -209,7 +215,11 @@ forced:
 
         setState(IoState::DONE_PENDING);
         boost::system::error_code ec;
-        timer_.cancel(ec);
+        try {
+            timer_.cancel();
+        } catch (const boost::system::system_error& e) {
+            LOG_DEBUG_N << "Caught exception while cancelling timer: " << e.what();
+        }
     }
 
     void setState(IoState state) {
@@ -224,7 +234,7 @@ forced:
     A& asio_;
     G& grpc_;
     reqT current_message_;
-    boost::asio::deadline_timer timer_;
+    boost::asio::steady_timer timer_;
     std::optional<::grpc::Status> finish_status_;
     std::shared_ptr<AsyncServerWriteReactor> self_;
     std::recursive_mutex mutex_; // TODO: Clean up locking!

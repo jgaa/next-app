@@ -254,3 +254,4 @@ QString getSystemTimeZone() {
 
     return timeZoneString;
 }
+

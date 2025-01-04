@@ -146,7 +146,7 @@ struct ToNode {
                 }
 
                 boost::asio::steady_timer timer{owner_.server().ctx()};
-                timer.expires_from_now(100ms);
+                timer.expires_after(100ms);
                 co_await timer.async_wait(boost::asio::use_awaitable);
             }
 
@@ -218,7 +218,7 @@ struct ToNode {
                 }
 
                 boost::asio::steady_timer timer{owner_.server().ctx()};
-                timer.expires_from_now(100ms);
+                timer.expires_after(100ms);
                 co_await timer.async_wait(boost::asio::use_awaitable);
             }
 
