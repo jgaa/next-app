@@ -942,7 +942,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "ALTER TABLE device ADD COLUMN IF NOT EXISTS lastSeen TIMESTAMP",
         "ALTER TABLE device ADD COLUMN IF NOT EXISTS enabled TINYINT(1) NOT NULL DEFAULT TRUE",
         "ALTER TABLE device ADD COLUMN IF NOT EXISTS numSessions INT NOT NULL DEFAULT 0",
-        "UPDATE device SET num_sessions = 0",
+        "UPDATE device SET numSessions = 0",
         "UPDATE device SET enabled = TRUE",
 
         "SET FOREIGN_KEY_CHECKS=1"
