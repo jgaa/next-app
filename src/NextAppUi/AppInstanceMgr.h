@@ -30,7 +30,9 @@ private:
 #else
     const QString SHARED_MEMORY_KEY = "NextApp_InstanceTracker";
 #endif
+#ifndef __ANDROID__
     QSharedMemory shared_memory_{SHARED_MEMORY_KEY};
+#endif
     QString name_{"singleton"};
     bool closed_{true};
 };

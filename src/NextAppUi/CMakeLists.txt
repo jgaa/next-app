@@ -167,8 +167,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 if(ANDROID)
+    set(ANDROID_MIN_SDK_VERSION 31)  # Android 12
+    set(ANDROID_TARGET_SDK_VERSION 35)
     set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android")
     set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_PACKAGE_SOURCE_DIR}")
+    add_definitions(-DQT_NO_STATX)
 endif()
 
 
@@ -192,7 +195,7 @@ check_cxx_source_compiles("
 include(FetchContent)
 
 # If std::format is not available, fallback to fmtlib
-if(NOT HAS_STD_FORMAT)
+if(NOT HAS_STD_FORMAT OR ANDROID)
     message(STATUS "std::format not available, using fmtlib...")
     FetchContent_Declare(
       fmt
@@ -215,7 +218,7 @@ if (NOT ANDROID)
 
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
-    target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_85_0)
+    target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_87_0)
 
     FetchContent_Declare(
         android_openssl

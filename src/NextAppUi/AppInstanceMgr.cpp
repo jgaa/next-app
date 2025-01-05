@@ -26,6 +26,7 @@ AppInstanceMgr *AppInstanceMgr::instance()
 
 void AppInstanceMgr::init()
 {
+#ifndef __ANDROID__
     assert(closed_);
     closed_ = false;
 
@@ -68,10 +69,12 @@ void AppInstanceMgr::init()
 
     LOG_ERROR_N << "No available instance slots!";
     qFatal("No available instance slots!");
+#endif // __ANDROID__
 }
 
 void AppInstanceMgr::close()
 {
+#ifndef __ANDROID__
     if (!closed_) {
         LOG_DEBUG_N << "Cleaning up instance " << name();
 
@@ -90,4 +93,5 @@ void AppInstanceMgr::close()
         LOG_DEBUG_N << "Successfully cleaned up instance " << name();
         closed_ = true;
     }
+#endif // __ANDROID__
 }
