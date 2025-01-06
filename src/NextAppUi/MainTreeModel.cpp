@@ -140,6 +140,9 @@ QString MainTreeModel::selected() const
 
 QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent) const
 {
+    if (state() != State::VALID) {
+        return {};
+    }
     if (column) {
         // LOG_TRACE_N << "Queried for row=" << row << ", column=" << column
         //             << ". We don't use culumns in this tree.";
@@ -167,6 +170,9 @@ QModelIndex MainTreeModel::index(int row, int column, const QModelIndex &parent)
 
 QModelIndex MainTreeModel::parent(const QModelIndex &child) const
 {
+    if (state() != State::VALID) {
+        return {};
+    }
     //LOG_TRACE << "parent for : " << child;
 
     if (auto *current = getTreeNode(child)) {
@@ -193,6 +199,9 @@ QModelIndex MainTreeModel::parent(const QModelIndex &child) const
 
 int MainTreeModel::rowCount(const QModelIndex &parent) const
 {
+    if (state() != State::VALID) {
+        return 0;
+    }
     auto count = 1;
     if (parent.isValid()) {
         count = getTreeNode(parent)->children().size();
@@ -575,10 +584,15 @@ std::shared_ptr<GrpcIncomingStream> MainTreeModel::openServerStream(nextapp::pb:
 QCoro::Task<bool> MainTreeModel::doSynch(bool fullSync)
 {
     beginResetModel();
+    endResetModel();
     suspend_model_notifications_ = true;
     ScopedExit guard{[this] {
-        endResetModel();
         suspend_model_notifications_ = false;
+        auto st = state();
+        if (st == State::VALID) {
+            beginResetModel();
+            endResetModel();
+        }
     }};
 
     co_return co_await synch(fullSync);

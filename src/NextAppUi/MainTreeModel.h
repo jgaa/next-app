@@ -116,9 +116,9 @@ public:
     void setSelected(const QString& selected);
     QString selected() const;
 
-    State state() const noexcept {
-        return state_;
-    }
+    // State state() const noexcept {
+    //     return state_;
+    // }
 
     // bool valid() const noexcept {
     //     return state_ == State::VALID;
@@ -234,6 +234,6 @@ private:
     bool has_initial_tree_ = false;
     QString selected_;
     static MainTreeModel *instance_;
-    State state_{State::LOCAL};
+    //State state_{State::LOCAL};
     bool suspend_model_notifications_{false};
 };
