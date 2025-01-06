@@ -1355,7 +1355,7 @@ failed:
 
     addMessage(tr("Fetching lists"));
     LOG_DEBUG_N << "Fetching nodes...";
-    if (!co_await MainTreeModel::instance()->doSynch()) {
+    if (!co_await MainTreeModel::instance()->doSynch(full_sync)) {
         LOG_WARN_N << "Failed to get nodes.";
         goto failed;
     }
@@ -1368,21 +1368,21 @@ failed:
 
     addMessage(tr("Fetching actions"));
     LOG_DEBUG_N << "Fetching  actions...";
-    if (!co_await ActionInfoCache::instance()->synch()) {
+    if (!co_await ActionInfoCache::instance()->synch(full_sync)) {
         LOG_WARN_N << "Failed to get action info.";
         goto failed;
     }
 
     addMessage(tr("Fetching work sessions"));
     LOG_DEBUG_N << "Fetching work sessions...";
-    if (!co_await WorkCache::instance()->synch()) {
+    if (!co_await WorkCache::instance()->synch(full_sync)) {
         LOG_WARN_N << "Failed to get work sessions.";
         goto failed;
     }
 
     addMessage(tr("Fetching time blocks for the calendar"));
     LOG_DEBUG_N << "Fetching time blocks...";
-    if (!co_await CalendarCache::instance()->synch()) {
+    if (!co_await CalendarCache::instance()->synch(full_sync)) {
         LOG_WARN_N << "Failed to get time-blocks for the calendar.";
         goto failed;
     }

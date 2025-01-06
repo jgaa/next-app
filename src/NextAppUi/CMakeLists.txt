@@ -16,6 +16,7 @@ endif()
 
 option(USE_STATIC_QT "Build with static Qt libraries" OFF)
 option(WITH_TESTS "Enable Tests" ON)
+option(USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream" ON)
 
 # if(USE_STATIC_QT)
 #     set(BUILD_SHARED_LIBS OFF)

@@ -193,6 +193,8 @@ public:
     static QString toString(const nextapp::pb::Node::Kind& kind);
 
     // ServerSynchedCahce overrides
+    bool haveBatch() const noexcept override { return true; }
+    QCoro::Task<bool> saveBatch(const QList<nextapp::pb::Node>& items) override;
     QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
     QCoro::Task<bool> save(const QProtobufMessage& item) override;
     QCoro::Task<bool> loadFromCache() override;
@@ -211,7 +213,7 @@ public:
     std::shared_ptr<GrpcIncomingStream> openServerStream(nextapp::pb::GetNewReq req) override;
 
     // Call this in stead of synch() to avoid problems with a populated model
-    QCoro::Task<bool> doSynch();
+    QCoro::Task<bool> doSynch(bool fullSync);
 
 private:
     void addNode(TreeNode *parent, const nextapp::pb::Node& node);

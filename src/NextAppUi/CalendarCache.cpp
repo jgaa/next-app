@@ -1,7 +1,34 @@
 
+#include <deque>
 
 #include <QProtobufSerializer>
 #include "CalendarCache.h"
+
+namespace {
+
+    static const QString insert_query = R"(INSERT INTO time_block (id, start_time, end_time, kind, data, updated)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+        start_time = excluded.start_time,
+        end_time = excluded.end_time,
+        kind = excluded.kind,
+        data = excluded.data,
+        updated = excluded.updated)";
+
+    QList<QVariant> getParams(const nextapp::pb::TimeBlock& tb)
+    {
+        QList<QVariant> params;
+        params << tb.id_proto();
+        params << QDateTime::fromSecsSinceEpoch(tb.timeSpan().start());
+        params << QDateTime::fromSecsSinceEpoch(tb.timeSpan().end());
+        params << static_cast<int>(tb.kind());
+        QProtobufSerializer serializer;
+        params << tb.serialize(&serializer);
+        params << static_cast<qlonglong>(tb.updated());
+        return params;
+    };
+
+} // anon ns
 
 CalendarCache::CalendarCache() {
     connect(&ServerComm::instance(), &ServerComm::onUpdate,
@@ -60,6 +87,60 @@ QCoro::Task<bool> CalendarCache::save(const QProtobufMessage &item)
     return save_(static_cast<const nextapp::pb::TimeBlock&>(item));
 }
 
+
+QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &items)
+{
+    auto& db = NextAppCore::instance()->db();
+
+    bool success = true;
+
+    if (!isFullSync()) {
+        // First we must delete any references in the actions/timeblock table
+        if (!co_await db.queryBatch("DELETE FROM time_block_actions WHERE time_block = ?", "", items,
+            /* getArgs */ [](const nextapp::pb::TimeBlock& tb) {
+                return tb.id_proto();
+            },
+            /* isDeleted */[](const auto&) {return false;},
+            /* getId */ [](auto&){assert(false); return "";}
+        )) {
+            success = false;
+        }
+    }
+
+    // Now, insert the new time blocks
+    if (!co_await db.queryBatch(insert_query, "DELETE FROM time_block WHERE id = ?", items,
+        getParams,
+        /* isDeleted */ [](const nextapp::pb::TimeBlock& tb) {return tb.kind() == nextapp::pb::TimeBlock::Kind::DELETED;
+        },
+        /* getId */ [](const nextapp::pb::TimeBlock& tb){return tb.id_proto();}
+    )) {
+        success = false;
+    }
+
+    // And add the references in the actions/timeblock table
+    std::deque<std::pair<QString /* tb */, QString /* action */>> refs;
+    for(const auto& tb : items) {
+        if (tb.kind() == nextapp::pb::TimeBlock::Kind::DELETED) {
+            continue;
+        }
+        for(const auto& aid : tb.actions().list()) {
+            refs.emplace_back(tb.id_proto(), aid);
+        }
+    };
+
+    if (!co_await db.queryBatch("INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", "", refs,
+        /* getArgs */ [](const auto& ref) {
+            return QList<QString>{ref.first, ref.second};
+        },
+        /* isDeleted */ [](const auto&) {return false;},
+        /* getId */ [](const auto&){assert(false); return "";}
+    )) {
+        success = false;
+    }
+
+    co_return success;
+}
+
 QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
 {
     auto& db = NextAppCore::instance()->db();
@@ -86,25 +167,8 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
             co_return false;
         }
     } else {
-        static const QString sql = R"(INSERT INTO time_block (id, start_time, end_time, kind, data, updated)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-            start_time = excluded.start_time,
-            end_time = excluded.end_time,
-            kind = excluded.kind,
-            data = excluded.data,
-            updated = excluded.updated)";
-
-        QList<QVariant> params;
-        params << tblock.id_proto();
-        params << QDateTime::fromSecsSinceEpoch(tblock.timeSpan().start());
-        params << QDateTime::fromSecsSinceEpoch(tblock.timeSpan().end());
-        params << static_cast<int>(tblock.kind());
-        QProtobufSerializer serializer;
-        params << tblock.serialize(&serializer);
-        params << static_cast<qlonglong>(tblock.updated());
-
-        const auto rval = co_await db.query(sql, &params);
+        const auto params = getParams(tblock);
+        const auto rval = co_await db.query(insert_query, &params);
         if (!rval) {
             LOG_ERROR_N << "Failed to update action: " << tblock.id_proto() << " " << tblock.name()
             << " err=" << rval.error();
@@ -204,3 +268,4 @@ QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent> > > CalendarCache:
 
     co_return events;
 }
+

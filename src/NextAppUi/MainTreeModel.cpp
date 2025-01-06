@@ -43,6 +43,15 @@ ostream& operator << (ostream& o, const QModelIndex& v) {
 
 namespace {
 
+static const QString insert_query = R"(INSERT INTO node
+        (uuid, parent, name, active, updated, data) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(uuid) DO UPDATE SET
+        parent=excluded.parent,
+        name=excluded.name,
+        active=excluded.active,
+        updated=excluded.updated,
+        data=excluded.data)";
+
 void dumpLevel(unsigned level, MainTreeModel::TreeNode::node_list_t list) {
     for(auto &node : list) {
         QString name;
@@ -563,7 +572,7 @@ std::shared_ptr<GrpcIncomingStream> MainTreeModel::openServerStream(nextapp::pb:
     return ServerComm::instance().synchNodes(req);
 }
 
-QCoro::Task<bool> MainTreeModel::doSynch()
+QCoro::Task<bool> MainTreeModel::doSynch(bool fullSync)
 {
     beginResetModel();
     suspend_model_notifications_ = true;
@@ -572,7 +581,7 @@ QCoro::Task<bool> MainTreeModel::doSynch()
         suspend_model_notifications_ = false;
     }};
 
-    co_return co_await synch();
+    co_return co_await synch(fullSync);
 }
 
 QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
@@ -604,16 +613,7 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
     params << qlonglong{node.updated()};
     params << node.serialize(&serializer);
 
-    QString sql = R"(INSERT INTO node
-        (uuid, parent, name, active, updated, data) VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(uuid) DO UPDATE SET
-        parent=excluded.parent,
-        name=excluded.name,
-        active=excluded.active,
-        updated=excluded.updated,
-        data=excluded.data)";
-
-    const auto rval = co_await db.query(sql, &params);
+    const auto rval = co_await db.query(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update node: " << node.uuid() << " " << node.name()
                     << " err=" << rval.error();
@@ -621,6 +621,27 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
     }
 
     co_return true;
+}
+
+QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items)
+{
+    auto& db = NextAppCore::instance()->db();
+    static const QString delete_query = R"(DELETE FROM node WHERE uuid = ?)";
+    auto getParams = [](const nextapp::pb::Node& node) {
+        QList<QVariant> params;
+        QProtobufSerializer serializer;
+        params << node.uuid();
+        params << node.parent();
+        params << node.name();
+        params << node.active();
+        params << qlonglong{node.updated()};
+        params << node.serialize(&serializer);
+        return params;
+    };
+    auto isDeleted = [](const nextapp::pb::Node& node) { return node.deleted(); };
+    auto getId = [](const nextapp::pb::Node& node) { return node.uuid(); };
+
+    co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
 }
 
 MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &child)

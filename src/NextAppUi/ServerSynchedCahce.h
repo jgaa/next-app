@@ -29,6 +29,8 @@ public:
     // Interface
     virtual QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) = 0;
     virtual QCoro::Task<bool> save(const QProtobufMessage& item) = 0;
+    virtual QCoro::Task<bool> saveBatch(const QList<T>& items) {co_return false;}
+    virtual bool haveBatch() const noexcept { return false; }
     virtual QCoro::Task<bool> loadFromCache() = 0;
     virtual bool hasItems(const nextapp::pb::Status& status) const noexcept = 0;
     virtual QList<T> getItems(const nextapp::pb::Status& status) = 0;
@@ -49,7 +51,8 @@ public:
         }
     }
 
-    virtual QCoro::Task<bool> synch() {
+    virtual QCoro::Task<bool> synch(bool isFullSync = false) {
+        full_sync_ = isFullSync;
         if (state() > State::LOCAL && state() < State::VALID) {
             // Already synching
             co_return false;
@@ -110,8 +113,12 @@ public:
                     if (hasItems(u)) {
                         const auto& items = getItems(u);
                         LOG_TRACE_N << "Got " << itemName() << " from server. Count=" << items.size();
-                        for(const auto& item : items) {
-                            co_await save(item);
+                        if (haveBatch()) {
+                            co_await saveBatch(items);
+                        } else {
+                            for(const auto& item : items) {
+                                co_await save(item);
+                            }
                         }
                     }
                 } else {
@@ -151,8 +158,13 @@ public:
         return itemName();
     }
 
+    bool isFullSync() const noexcept {
+        return full_sync_;
+    }
+
 private:
     State state_;
     std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
+    bool full_sync_{};
 
 };

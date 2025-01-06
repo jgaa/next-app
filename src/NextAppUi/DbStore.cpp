@@ -164,9 +164,21 @@ QCoro::Task<bool> DbStore::clear()
     co_return true;
 }
 
-void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QPromise<rval_t> *promise)
+bool DbStore::batchQueryImpl(QSqlQuery &query)
 {
-    assert(promise);
+    if (query.exec()) {
+        return true;
+    }
+
+    LOG_ERROR_N << "Failed to execute: \"" << query.executedQuery()
+                << "\", db=" << query.lastError().databaseText()
+                << ", driver=" << query.lastError().driverText()
+                << ", params=#" << query.boundValues().size();
+    return false;
+}
+
+DbStore::rval_t DbStore::queryImpl_(const QString &sql, const param_t *params)
+{
     const auto args_count = params ? params->size() : 0u;
     LOG_TRACE_N << "Querying db: \"" << sql
                 << "\" with " << args_count << " args";
@@ -208,9 +220,14 @@ void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QProm
                     << ", params=#" << args_count;
         rval = tl::unexpected(QUERY_FAILED);
     }
+    return rval;
+}
 
+void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QPromise<rval_t> *promise)
+{
+    assert(promise);
     promise->start();
-    promise->addResult(std::move(rval));
+    promise->addResult(queryImpl_(sql, params));
     promise->finish();
 }
 

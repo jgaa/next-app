@@ -156,6 +156,7 @@ private:
     QCoro::Task<bool> loadColorDefsFromCache();
     QCoro::Task<bool> loadDaysFromCache();
     QCoro::Task<bool> storeDay(const nextapp::pb::CompleteDay& day);
+    QCoro::Task<bool> storeDays(const QList<nextapp::pb::CompleteDay>& days);
 
     State state_{State::LOCAL};
     // Year as an int, month as 1 - 12

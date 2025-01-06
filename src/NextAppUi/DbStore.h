@@ -10,6 +10,9 @@
 #include <QFuture>
 #include <QPromise>
 #include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 #include "qcorotask.h"
 
 class DbStore : public QObject
@@ -48,6 +51,58 @@ public:
         co_return vals.error();
     }
 
+    /*! Process a batch of data-records in the database-thread.
+     *
+     *  This is an optimization to avoid the overhead of sending
+     *  each record individually to the database-thread.
+     */
+    template <typename T, typename P, typename D, typename I> QCoro::Task<bool> queryBatch(
+        const QString& insertQurey,
+        const QString& deleteQuery,
+        const T& data,
+        const P& getParams,
+        const D& isDeleted,
+        const I& getId) {
+
+        // Wrap the operation in a lambda that will be executed in the DBs thread
+        QFuture<bool> future = QtConcurrent::run([this, insertQurey, deleteQuery, data, getParams, isDeleted, getId]() -> bool {
+            auto success = true;
+            QSqlQuery query{*db_};
+            query.prepare(insertQurey);
+
+            for (const auto &row : data) {
+                if (isDeleted(row)) {
+                    QList<QVariant> params;
+                    params << getId(row);
+                    queryImpl_(deleteQuery, &params);
+                    continue;
+                };
+
+                uint param_ix = 0;
+                const auto params = getParams(row);
+                for(const auto& param : params) {
+                    query.bindValue(param_ix++, param);
+                }
+
+                if (!batchQueryImpl(query)) {
+                    success = false;
+                }
+            }
+            return success;
+        });
+
+        // Move the watcher to the existing thread and suspend until it completes
+        QFutureWatcher<bool> watcher;
+        watcher.setFuture(future);
+
+        // Move the watcher to the correct thread
+        watcher.moveToThread(thread_);
+
+        // Wait for completion in a coroutine-safe way
+        co_await watcher.future();
+        co_return future.result();
+    }
+
     QCoro::Task<bool> init();
 
     // Re-create the database. Deletes all the data.
@@ -71,6 +126,8 @@ private:
     void initImpl(QPromise<rval_t>& promise);
     bool updateSchema(uint version);
     uint getDbVersion();
+    rval_t queryImpl_(const QString& sql, const param_t *params);
+    bool batchQueryImpl(QSqlQuery& query);
 
     QThread* thread_{};
     std::unique_ptr<QSqlDatabase> db_;

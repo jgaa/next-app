@@ -36,6 +36,8 @@ public:
 
     explicit WorkCache(QObject *parent = nullptr);
 
+    bool haveBatch() const noexcept override { return true; }
+    QCoro::Task<bool> saveBatch(const QList<nextapp::pb::WorkSession>& items) override;
     QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
     QCoro::Task<bool> save(const QProtobufMessage& item) override;
     QCoro::Task<bool> loadFromCache() override;

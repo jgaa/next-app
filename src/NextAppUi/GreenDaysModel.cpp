@@ -12,6 +12,29 @@
 using namespace std;
 using namespace nextapp;
 
+namespace {
+    const QString insert_query = R"(INSERT INTO day
+        (date, color, notes, report, updated)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            color=excluded.color,
+            notes=excluded.notes,
+            report=excluded.report,
+            updated=excluded.updated)";
+
+    QList<QVariant> getParams(const nextapp::pb::CompleteDay& fullDay) {
+        QList<QVariant> params;
+        const auto& day = fullDay.day();
+        const qlonglong updated = day.updated();
+        params.append(QDate{day.date().year(), day.date().month() + 1, day.date().mday()});
+        params.append(day.color());
+        params.append(fullDay.hasNotes() ? fullDay.notes() : QVariant{});
+        params.append(fullDay.hasReport() ? fullDay.report(): QVariant{});
+        params.append(updated);
+        return params;
+    }
+} // anon ns
+
 GreenDaysModel *GreenDaysModel::instance_;
 
 GreenDaysModel::GreenDaysModel()
@@ -447,7 +470,8 @@ QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullD
     auto& db = NextAppCore::instance()->db();
     QList<QVariant> params;
 
-    if (fullDay.day().deleted()) {
+    const auto& day = fullDay.day();
+    if (day.deleted()) {
         // Delete the day
         QString sql = R"(DELETE FROM day WHERE date = ?)";
         params.append(QDate{fullDay.day().date().year(), fullDay.day().date().month() + 1, fullDay.day().date().mday()});
@@ -465,26 +489,12 @@ QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullD
         co_return true;
     }
 
-    QString sql = R"(INSERT INTO day
-        (date, color, notes, report, updated)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(date) DO UPDATE SET
-            color=excluded.color,
-            notes=excluded.notes,
-            report=excluded.report,
-            updated=excluded.updated)";
+    params = getParams(fullDay);
 
-    const auto& day = fullDay.day();
-    const qlonglong updated = day.updated();
-    params.append(QDate{day.date().year(), day.date().month() + 1, day.date().mday()});
-    params.append(day.color());
-    params.append(fullDay.hasNotes() ? fullDay.notes() : QVariant{});
-    params.append(fullDay.hasReport() ? fullDay.report(): QVariant{});
-    params.append(updated);
     LOG_TRACE_N << "Updating day " << day.date().year() << '-'
                 << day.date().month() << '-'
                 << day.date().mday();
-    const auto rval = co_await db.query(sql, &params);
+    const auto rval = co_await db.query(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update day "
                     << day.date().year() << '-'
@@ -495,6 +505,18 @@ QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullD
     }
 
     co_return true;
+}
+
+QCoro::Task<bool> GreenDaysModel::storeDays(const QList<nextapp::pb::CompleteDay> &days)
+{
+    co_return co_await NextAppCore::instance()->db().queryBatch(insert_query, "DELETE FROM day WHERE date = ?",
+        days,
+        getParams,
+        /* isDeleted */ [](const auto& fullDay) { return fullDay.day().deleted(); },
+        /* getId() */ [](const auto& fullDay) {
+              // Not really an id, but...
+              return QDate{fullDay.day().date().year(), fullDay.day().date().month() + 1, fullDay.day().date().mday()};}
+        );
 }
 
 uint32_t GreenDaysModel::getKey(int year, int month) noexcept

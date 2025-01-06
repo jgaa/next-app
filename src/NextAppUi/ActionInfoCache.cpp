@@ -11,6 +11,95 @@ using namespace nextapp;
 
 namespace {
 
+static const QString insert_query = R"(INSERT INTO action
+        (id, node, origin, priority, status, favorite, name, descr, created_date,
+        due_kind, start_time, due_by_time, due_timezone, completed_time,
+        time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after,
+        kind, category, version, updated) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+        node = EXCLUDED.node,
+        origin = EXCLUDED.origin,
+        priority = EXCLUDED.priority,
+        status = EXCLUDED.status,
+        favorite = EXCLUDED.favorite,
+        name = EXCLUDED.name,
+        descr = EXCLUDED.descr,
+        created_date = EXCLUDED.created_date,
+        due_kind = EXCLUDED.due_kind,
+        start_time = EXCLUDED.start_time,
+        due_by_time = EXCLUDED.due_by_time,
+        due_timezone = EXCLUDED.due_timezone,
+        completed_time = EXCLUDED.completed_time,
+        time_estimate = EXCLUDED.time_estimate,
+        difficulty = EXCLUDED.difficulty,
+        repeat_kind = EXCLUDED.repeat_kind,
+        repeat_unit = EXCLUDED.repeat_unit,
+        repeat_when = EXCLUDED.repeat_when,
+        repeat_after = EXCLUDED.repeat_after,
+        kind = EXCLUDED.kind,
+        category = EXCLUDED.category,
+        version = EXCLUDED.version,
+        updated = EXCLUDED.updated)";
+
+QList<QVariant> getParams(const pb::Action& action) {
+    QList<QVariant> params;
+
+    params.append(action.id_proto());
+    params.append(action.node());
+    if (action.hasOrigin()) {
+        params.append(action.origin());
+    } else {
+        params.append(QString{});
+    }
+    params.append(static_cast<quint32>(action.priority()));
+    params.append(static_cast<quint32>(action.status()));
+    params.append(action.favorite());
+    params.append(action.name());
+    params.append(action.descr());
+    params.append(toQDate(action.createdDate()));
+    params.append(static_cast<quint32>(action.due().kind()));
+    if (action.hasDue()) {
+        if (action.due().hasStart()) {
+            params.append(QDateTime::fromSecsSinceEpoch(action.due().start()));
+        } else {
+            params.append(QVariant{});
+        }
+        if (action.due().hasDue()) {
+            auto end = QDateTime::fromSecsSinceEpoch(action.due().due());
+            // Handle the case where the due time is 00:00:00 at the next day.
+            // Set it to the last second the day before so queries will work as expected.
+            if (action.due().kind() != nextapp::pb::ActionDueKindGadget::ActionDueKind::DATETIME) {
+                const auto time = end.time();
+                if (time.hour() == 0 && time.minute() == 0 && time.second() == 0) {
+                    end = end.addSecs(-1);
+                };
+            };
+            params.append(end);
+        } else {
+            params.append(QVariant{});
+        }
+        params.append(action.due().timezone());
+        if (auto seconds = action.completedTime()) {
+            params.append(QDateTime::fromSecsSinceEpoch(seconds));
+        } else {
+            params.append(QVariant{});
+        }
+    }
+    params.append(static_cast<qlonglong>(action.timeEstimate()));
+    params.append(static_cast<quint32>(action.difficulty()));
+    params.append(static_cast<quint32>(action.repeatKind()));
+    params.append(static_cast<quint32>(action.repeatUnits()));
+    params.append(static_cast<quint32>(action.repeatWhen()));
+    params.append(static_cast<quint32>(action.repeatAfter()));
+    params.append(static_cast<quint32>(action.kind()));
+    params.append(action.category());
+    params.append(static_cast<quint32>(action.version()));
+    params.append(static_cast<qlonglong>(action.updated()));
+
+    return params;
+}
+
 pb::ActionInfo toActionInfo(const pb::Action& action) {
     pb::ActionInfo ai;
     ai.setId_proto(action.id_proto());
@@ -141,6 +230,7 @@ ActionInfoCache::ActionInfoCache(QObject *parent)
     //     synch();
     // }
 }
+
 
 QCoro::Task<std::shared_ptr<pb::ActionInfo> > ActionInfoCache::get(const QString &action_uuid, bool fetch)
 {
@@ -289,6 +379,20 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
     }
 }
 
+QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &items)
+{
+    auto& db = NextAppCore::instance()->db();
+    static const QString delete_query = "DELETE FROM action WHERE id = ?";
+    auto isDeleted = [](const auto& action) -> bool {
+        return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED;
+    };
+    auto getId = [](const auto& action) -> QString {
+        return action.id_proto();
+    };
+
+    co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
+}
+
 QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
 {
     const auto& action = static_cast<const nextapp::pb::Action&>(item);
@@ -309,91 +413,9 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         co_return true; // TODO: Add proper error handling. Probably a full resynch if the action is in the db.
     }
 
-    // TODO: See if we can use a prepared statement.
-    static const QString sql = R"(INSERT INTO action
-        (id, node, origin, priority, status, favorite, name, descr, created_date,
-        due_kind, start_time, due_by_time, due_timezone, completed_time,
-        time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after,
-        kind, category, version, updated) VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-        node = EXCLUDED.node,
-        origin = EXCLUDED.origin,
-        priority = EXCLUDED.priority,
-        status = EXCLUDED.status,
-        favorite = EXCLUDED.favorite,
-        name = EXCLUDED.name,
-        descr = EXCLUDED.descr,
-        created_date = EXCLUDED.created_date,
-        due_kind = EXCLUDED.due_kind,
-        start_time = EXCLUDED.start_time,
-        due_by_time = EXCLUDED.due_by_time,
-        due_timezone = EXCLUDED.due_timezone,
-        completed_time = EXCLUDED.completed_time,
-        time_estimate = EXCLUDED.time_estimate,
-        difficulty = EXCLUDED.difficulty,
-        repeat_kind = EXCLUDED.repeat_kind,
-        repeat_unit = EXCLUDED.repeat_unit,
-        repeat_when = EXCLUDED.repeat_when,
-        repeat_after = EXCLUDED.repeat_after,
-        kind = EXCLUDED.kind,
-        category = EXCLUDED.category,
-        version = EXCLUDED.version,
-        updated = EXCLUDED.updated)";
+    params = getParams(action);
 
-    params.append(action.id_proto());
-    params.append(action.node());
-    if (action.hasOrigin()) {
-        params.append(action.origin());
-    } else {
-        params.append(QString{});
-    }
-    params.append(static_cast<quint32>(action.priority()));
-    params.append(static_cast<quint32>(action.status()));
-    params.append(action.favorite());
-    params.append(action.name());
-    params.append(action.descr());
-    params.append(toQDate(action.createdDate()));
-    params.append(static_cast<quint32>(action.due().kind()));
-    if (action.hasDue()) {
-        if (action.due().hasStart()) {
-            params.append(QDateTime::fromSecsSinceEpoch(action.due().start()));
-        } else {
-            params.append(QVariant{});
-        }
-        if (action.due().hasDue()) {
-            auto end = QDateTime::fromSecsSinceEpoch(action.due().due());
-            // Handle the case where the due time is 00:00:00 at the next day.
-            // Set it to the last second the day before so queries will work as expected.
-            if (action.due().kind() != nextapp::pb::ActionDueKindGadget::ActionDueKind::DATETIME) {
-                const auto time = end.time();
-                if (time.hour() == 0 && time.minute() == 0 && time.second() == 0) {
-                    end = end.addSecs(-1);
-                };
-            };
-            params.append(end);
-        } else {
-            params.append(QVariant{});
-        }
-        params.append(action.due().timezone());
-        if (auto seconds = action.completedTime()) {
-            params.append(QDateTime::fromSecsSinceEpoch(seconds));
-        } else {
-            params.append(QVariant{});
-        }
-    }
-    params.append(static_cast<qlonglong>(action.timeEstimate()));
-    params.append(static_cast<quint32>(action.difficulty()));
-    params.append(static_cast<quint32>(action.repeatKind()));
-    params.append(static_cast<quint32>(action.repeatUnits()));
-    params.append(static_cast<quint32>(action.repeatWhen()));
-    params.append(static_cast<quint32>(action.repeatAfter()));
-    params.append(static_cast<quint32>(action.kind()));
-    params.append(action.category());
-    params.append(static_cast<quint32>(action.version()));
-    params.append(static_cast<qlonglong>(action.updated()));
-
-    const auto rval = co_await db.query(sql, &params);
+    const auto rval = co_await db.query(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update action: " << action.id_proto() << " " << action.name()
         << " err=" << rval.error();

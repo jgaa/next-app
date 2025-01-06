@@ -11,6 +11,48 @@
 using namespace std;
 
 namespace {
+static const QString insert_query = R"(INSERT INTO work_session (
+        id, action, state, start_time, end_time, duration, paused, data, updated
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+        action = EXCLUDED.action,
+        state = EXCLUDED.state,
+        start_time = EXCLUDED.start_time,
+        end_time = EXCLUDED.end_time,
+        duration = EXCLUDED.duration,
+        paused = EXCLUDED.paused,
+        data = EXCLUDED.data,
+        updated = EXCLUDED.updated
+    )";
+
+    QList<QVariant> getParams(const nextapp::pb::WorkSession& work) {
+        QList<QVariant> params;
+        params << work.id_proto();
+        params << work.action();
+        params << static_cast<uint>(work.state());
+
+        if (work.start() > 0) {
+            params << QDateTime::fromSecsSinceEpoch(work.start());
+        } else {
+            params << QVariant{};
+        }
+
+        if (work.hasEnd() && work.end() > 0) {
+            params << QDateTime::fromSecsSinceEpoch(work.end());
+        } else {
+            params << QVariant{};
+        }
+
+        params << work.duration();
+        params << work.paused();
+
+        QProtobufSerializer serializer;
+        params << work.serialize(&serializer);
+        params << static_cast<qlonglong>(work.updated());
+
+        return params;
+    }
+
     void sortActive(WorkCache::active_t& active)
     {
         std::ranges::sort(active, [](const auto& lhs, const auto& rhs) {
@@ -119,6 +161,19 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
     }
 }
 
+QCoro::Task<bool> WorkCache::saveBatch(const QList<nextapp::pb::WorkSession> &items)
+{
+    auto& db = NextAppCore::instance()->db();
+    static const QString delete_query = "DELETE FROM work_session WHERE id = ?";
+    auto isDeleted = [](const auto& work) {
+        return work.state() == nextapp::pb::WorkSession::State::DELETED;
+    };
+    auto getId = [](const auto& work) {
+        return work.id_proto();
+    };
+
+    co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
+}
 
 QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
 {
@@ -129,46 +184,8 @@ QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
     }
 
     auto& db = NextAppCore::instance()->db();
-    QList<QVariant> params;
-
-    static const QString sql = R"(INSERT INTO work_session (
-        id, action, state, start_time, end_time, duration, paused, data, updated
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-        action = EXCLUDED.action,
-        state = EXCLUDED.state,
-        start_time = EXCLUDED.start_time,
-        end_time = EXCLUDED.end_time,
-        duration = EXCLUDED.duration,
-        paused = EXCLUDED.paused,
-        data = EXCLUDED.data,
-        updated = EXCLUDED.updated
-    )";
-
-    params << work.id_proto();
-    params << work.action();
-    params << static_cast<uint>(work.state());
-
-    if (work.start() > 0) {
-        params << QDateTime::fromSecsSinceEpoch(work.start());
-    } else {
-        params << QVariant{};
-    }
-
-    if (work.hasEnd() && work.end() > 0) {
-        params << QDateTime::fromSecsSinceEpoch(work.end());
-    } else {
-        params << QVariant{};
-    }
-
-    params << work.duration();
-    params << work.paused();
-
-    QProtobufSerializer serializer;
-    params << work.serialize(&serializer);
-    params << static_cast<qlonglong>(work.updated());
-
-    const auto rval = co_await db.query(sql, &params);
+    const auto params = getParams(work);
+    const auto rval = co_await db.query(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update action: " << work.id_proto() << " " << work.name()
         << " err=" << rval.error();
