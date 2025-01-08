@@ -473,9 +473,21 @@ QString ActionsModel::formatWhen(time_t from, time_t to, nextapp::pb::ActionDueK
             return tr("Tomorrow");
         }
         else if (verbose) {
-            // E.g. "Day 2024-01-31"
+            // E.g. "Mon 2024-01-31"
+            static const array<QString, 8> days = {
+                tr("Day"), tr("Mon"), tr("Tue"), tr("Wed"), tr("Thu"), tr("Fri"), tr("Sat"), tr("Sun")
+            };
+
+            const auto dow = candidate.dayOfWeek();
+            QStringView day_name;
+            if (dow >= 0 && dow <= 7) {
+                day_name = days.at(dow);
+            } else {
+                day_name = days.at(0);
+            };
+
             return QString("%1 %2")
-                .arg(tr("Day"))
+                .arg(day_name)
                 .arg(candidate.toString(QStringLiteral("yyyy-MM-dd")));
         }
         // Non-verbose: just "2024-01-31"
