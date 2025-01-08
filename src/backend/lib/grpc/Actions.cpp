@@ -257,32 +257,32 @@ struct ToAction {
     }
 
 private:
-    static constexpr std::array<std::pair<std::string_view, ColType>, 26> cols_ = {
-        std::make_pair(std::string_view{"id"}, ColType::IDS),
-        {"node", ColType::IDS},
-        {"user", ColType::IDS},
-        {"version", ColType::READ_ONLY},
-        {"updated", ColType::READ_ONLY},
-        {"created_date", ColType::READ_ONLY},
-        {"origin", ColType::CORE},
-        {"priority", ColType::CORE},
-        {"status", ColType::CORE},
-        {"favorite", ColType::CORE},
-        {"name", ColType::CORE},
-        {"due_kind", ColType::CORE},
-        {"start_time", ColType::CORE},
-        {"due_by_time", ColType::CORE},
-        {"due_timezone", ColType::CORE},
-        {"completed_time", ColType::CORE},
-        {"category", ColType::CORE},
-        {"descr", ColType::REMAINING},
-        {"time_estimate", ColType::REMAINING},
-        {"difficulty", ColType::REMAINING},
-        {"repeat_kind", ColType::REMAINING},
-        {"repeat_unit", ColType::REMAINING},
-        {"repeat_when", ColType::REMAINING},
-        {"repeat_after", ColType::REMAINING},
-    };
+    static constexpr array<pair<string_view, ColType>, 26> cols_ = {{
+        make_pair("id", ColType::IDS),
+        make_pair("node", ColType::IDS),
+        make_pair("user", ColType::IDS),
+        make_pair("version", ColType::READ_ONLY),
+        make_pair("updated", ColType::READ_ONLY),
+        make_pair("created_date", ColType::READ_ONLY),
+        make_pair("origin", ColType::CORE),
+        make_pair("priority", ColType::CORE),
+        make_pair("status", ColType::CORE),
+        make_pair("favorite", ColType::CORE),
+        make_pair("name", ColType::CORE),
+        make_pair("due_kind", ColType::CORE),
+        make_pair("start_time", ColType::CORE),
+        make_pair("due_by_time", ColType::CORE),
+        make_pair("due_timezone", ColType::CORE),
+        make_pair("completed_time", ColType::CORE),
+        make_pair("category", ColType::CORE),
+        make_pair("descr", ColType::REMAINING),
+        make_pair("time_estimate", ColType::REMAINING),
+        make_pair("difficulty", ColType::REMAINING),
+        make_pair("repeat_kind", ColType::REMAINING),
+        make_pair("repeat_unit", ColType::REMAINING),
+        make_pair("repeat_when", ColType::REMAINING),
+        make_pair("repeat_after", ColType::REMAINING)
+    }};
 
     static std::string filteredCols(std::initializer_list<ColType> ct, bool update = false) {
         std::string filtered;
@@ -292,7 +292,8 @@ private:
             return std::find(ct.begin(), ct.end(), row.second) != ct.end();
         };
 
-        auto relevant = cols_ | std::views::filter(filter) | std::views::transform([](const auto& row) { return row.first; });
+        auto relevant = cols_ | std::views::filter(filter)
+                        | std::views::transform([](const auto& row) { return row.first; });
 
         for (const auto& col : relevant) {
             if (col.empty()) {
