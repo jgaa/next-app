@@ -588,8 +588,7 @@ QCoro::Task<bool> MainTreeModel::doSynch(bool fullSync)
     suspend_model_notifications_ = true;
     ScopedExit guard{[this] {
         suspend_model_notifications_ = false;
-        auto st = state();
-        if (st == State::VALID) {
+        if (state() == State::VALID) {
             beginResetModel();
             endResetModel();
         }
