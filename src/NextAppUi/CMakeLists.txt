@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.29 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.30 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_UI_VERSION=\"${appNextAppUi_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -16,7 +16,7 @@ endif()
 
 option(USE_STATIC_QT "Build with static Qt libraries" OFF)
 option(WITH_TESTS "Enable Tests" ON)
-option(USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream" ON)
+option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
 
 # if(USE_STATIC_QT)
 #     set(BUILD_SHARED_LIBS OFF)
@@ -25,6 +25,9 @@ option(USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, cach
 #     set(BUILD_SHARED_LIBS ON)
 # endif()
 
+if (NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL)
+    add_definitions(-DUSE_GRPC_STREAMING_FLOW_CONTROL)
+endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT ON)

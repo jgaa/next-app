@@ -109,7 +109,6 @@ public:
                 LOG_TRACE_N << "next has value";
                 if (u.error() == nextapp::pb::ErrorGadget::Error::OK) {
                     LOG_TRACE_N << "Got OK from server: " << u.message();
-                    //if (u.hasNodes()) {
                     if (hasItems(u)) {
                         const auto& items = getItems(u);
                         LOG_TRACE_N << "Got " << itemName() << " from server. Count=" << items.size();

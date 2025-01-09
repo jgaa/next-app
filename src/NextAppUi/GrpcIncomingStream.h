@@ -26,7 +26,11 @@ concept ProtoMessage = std::is_base_of_v<QProtobufMessage, T>;
  * queue the incoming messages in memory as soon as they arrive. Unlike
  * the original gRPC streams, QT streams don't wait for us to call `read<>()` before
  * they discard the message. We have to read it as soon as we get a message signal.
+ *
+ * The USE_GRPC_STREAMING_FLOW_CONTROL macro allows us to apply the original gRPC streaming
+ * assumptions, in case QT fix this.
  */
+
 
 class GrpcIncomingStream : public QObject
 {
@@ -67,12 +71,16 @@ public:
     GrpcIncomingStream(std::unique_ptr<QGrpcServerStream>&& stream)
         : stream_{std::move(stream)}
     {
+#ifndef USE_GRPC_STREAMING_FLOW_CONTROL
         connect(stream_.get(), &QGrpcServerStream::messageReceived, this, &GrpcIncomingStream::messageReceived);
+#endif
         connect(stream_.get(), &QGrpcServerStream::finished, this, [this]() {
             LOG_TRACE_N << "Stream finished";
             setState(State::DONE);
             emit haveMessage();
         });
+
+        setState(State::STREAMING);
     }
 
 
@@ -83,6 +91,17 @@ public:
 
         while(true) {
             LOG_TRACE_N << "Next message / top of loop";
+
+#ifdef USE_GRPC_STREAMING_FLOW_CONTROL
+            if (state_ == State::DONE) {
+                LOG_TRACE_N << "Stream is closed";
+                co_return tl::unexpected(Error{Error::Code::CLOSED});
+            }
+            if (auto message = stream_->read<nextapp::pb::Status>()) {
+                LOG_TRACE_N << "Read message.";
+                co_return std::move(message.value());
+            }
+#else
             if (!messages_.empty()) {
                 auto message = std::move(messages_.front());
                 messages_.pop();
@@ -94,7 +113,7 @@ public:
                 LOG_TRACE_N << "Stream is closed";
                 co_return tl::unexpected(Error{Error::Code::CLOSED});
             }
-
+#endif
             assert(state_ != State::DONE);
 
             // We have to wait for the next message
@@ -122,8 +141,10 @@ private:
         LOG_TRACE_N << "Message received";
         if (state_ == State::IDLE) {
             setState(State::STREAMING);
-        }
-
+        }        
+#ifdef USE_GRPC_STREAMING_FLOW_CONTROL
+        emit haveMessage();emit haveMessage();
+#else
         LOG_TRACE_N << "Reading message";
         if (auto message = stream_->read<nextapp::pb::Status>()) {
             LOG_TRACE_N << "Read message. Queuing it.";
@@ -132,6 +153,7 @@ private:
             return;
         }
         LOG_TRACE_N << "Failed to read message";
+#endif
     }
 
     void setState(State state) noexcept {
@@ -144,6 +166,8 @@ private:
     std::unique_ptr<QGrpcServerStream> stream_;
     State state_{State::IDLE};
 
+#ifndef USE_GRPC_STREAMING_FLOW_CONTROL
     // QObject's cant be templates, so we have to use a queue with a known type.
     std::queue<nextapp::pb::Status> messages_;
+#endif
 };

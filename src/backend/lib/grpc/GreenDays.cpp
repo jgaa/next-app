@@ -370,6 +370,8 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
             assert(false);
             throw server_err{pb::Error::GENERIC_ERROR, "Could not allocate daycolordefinitions"};
         }
+
+        reply->set_message(format("Fetched {} day color definitions", res.rows().size()));
         co_return;
     }, __func__);
 }
