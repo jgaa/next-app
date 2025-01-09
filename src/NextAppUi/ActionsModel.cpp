@@ -252,8 +252,7 @@ ActionsModel::ActionsModel(QObject *parent)
 
     connect(ActionsOnCurrentCalendar::instance(), &ActionsOnCurrentCalendar::modelReset, this, [this] {
         if (valid_) {
-            beginResetModel();
-            endResetModel();
+            refreshVisibleItems();
         }
     });
 
@@ -285,8 +284,7 @@ ActionsModel::ActionsModel(QObject *parent)
 
     connect(ActionsWorkedOnTodayCache::instance(), &ActionsWorkedOnTodayCache::modelReset, this, [this] {
         if (valid_) {
-            beginResetModel();
-            endResetModel();
+            refreshVisibleItems();
         }
     });
 
@@ -1600,6 +1598,15 @@ void ActionsModel::actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &a
             endInsertRows();
         }
     }
+}
+
+void ActionsModel::refreshVisibleItems()
+{
+    // TODO: Get the visible items
+
+    auto first = createIndex(0,0);
+    auto last = createIndex(actions_.size(), 0);
+    emit dataChanged(first, last);
 }
 
 QStringList ActionsModel::mimeTypes() const

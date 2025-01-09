@@ -262,6 +262,7 @@ private:
     void actionChanged(const QUuid &uuid);
     void actionDeleted(const QUuid &uuid);
     void actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
+    void refreshVisibleItems();
 
     //QList<nextapp::pb::ActionInfo> actions_;
     std::deque<ActionData> actions_;
