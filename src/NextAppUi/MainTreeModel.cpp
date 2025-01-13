@@ -44,12 +44,13 @@ ostream& operator << (ostream& o, const QModelIndex& v) {
 namespace {
 
 static const QString insert_query = R"(INSERT INTO node
-        (uuid, parent, name, active, updated, data) VALUES (?, ?, ?, ?, ?, ?)
+        (uuid, parent, name, active, updated, exclude_from_wr, data) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(uuid) DO UPDATE SET
         parent=excluded.parent,
         name=excluded.name,
         active=excluded.active,
         updated=excluded.updated,
+        exclude_from_wr=excluded.exclude_from_wr,
         data=excluded.data)";
 
 void dumpLevel(unsigned level, MainTreeModel::TreeNode::node_list_t list) {
@@ -274,6 +275,7 @@ pb::Node MainTreeModel::toNode(const QVariantMap &map)
     n.setKind(toNodeKind(map.value("kind").toString()));
     n.setDescr(map.value("descr").toString());
     n.setVersion(map.value("version").toLongLong());
+    n.setExcludeFromWeeklyReview(map.value("excludeFromWeeklyReview").toBool());
 
     return n;
 }
@@ -289,6 +291,7 @@ QVariantMap MainTreeModel::toMap(const nextapp::pb::Node &node)
     vm["kind"] = toString(node.kind());
     vm["descr"] = node.descr();
     vm["version"] = static_cast<qint64>(node.version());
+    vm["excludeFromWeeklyReview"] = node.excludeFromWeeklyReview();
 
     return vm;
 }
@@ -624,6 +627,7 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
     params << node.name();
     params << node.active();
     params << qlonglong{node.updated()};
+    params << node.excludeFromWeeklyReview();
     params << node.serialize(&serializer);
 
     const auto rval = co_await db.query(insert_query, &params);
@@ -648,6 +652,7 @@ QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items
         params << node.name();
         params << node.active();
         params << qlonglong{node.updated()};
+        params << node.excludeFromWeeklyReview();
         params << node.serialize(&serializer);
         return params;
     };
@@ -689,6 +694,8 @@ QVariant MainTreeModel::TreeNode::data(int role)
         return MainTreeModel::toString(node().kind());
     case DescrRole:
         return node().descr();
+    case ExcludedFromWeeklyReviewRole:
+        return node().excludeFromWeeklyReview();
     }
 
     return {};
@@ -699,6 +706,7 @@ QHash<int, QByteArray> MainTreeModel::TreeNode::roleNames() {
     roles[NameRole] = "name";
     roles[UuidRole] = "uuid";
     roles[KindRole] = "kind";
+    roles[ExcludedFromWeeklyReviewRole] = "excludedFromWeeklyReview";
     return roles;
 }
 

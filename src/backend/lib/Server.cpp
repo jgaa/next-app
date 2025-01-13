@@ -948,6 +948,19 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v14_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        "ALTER TABLE node ADD COLUMN IF NOT EXISTS exclude_from_wr TINYINT(1)",
+        "ALTER TABLE node ADD COLUMN IF NOT EXISTS category UUID",
+        R"(ALTER TABLE node
+             ADD CONSTRAINT `node_category_fk` FOREIGN KEY (`category`) REFERENCES `action_category` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT
+        )",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -961,7 +974,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v10_upgrade,
         v11_upgrade,
         v12_upgrade,
-        v13_upgrade
+        v13_upgrade,
+        v14_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

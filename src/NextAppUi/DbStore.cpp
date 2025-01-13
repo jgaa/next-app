@@ -266,6 +266,7 @@ bool DbStore::updateSchema(uint version)
             "active" BOOLEAN NOT NULL,
             "updated" INTEGER NOT NULL,
             "name" VARCHAR(256) NOT NULL,
+            "exclude_from_wr" BOOLEAN NOT NULL,
             "data" BLOB NOT NULL,
             PRIMARY KEY("uuid")
         ))",

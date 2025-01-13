@@ -132,6 +132,8 @@ message Node {
     int64 version = 8; // Set by the server, handled by version trigger in the db
     bool deleted = 9;
     int64 updated = 10; // time_t as ms
+    bool excludeFromWeeklyReview = 11;
+    string category = 12;
 }
 
 message WorkEvent {

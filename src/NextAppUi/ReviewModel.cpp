@@ -401,7 +401,7 @@ QCoro::Task<void> ReviewModel::fetchIf()
             name,
             name AS path
         FROM node
-        WHERE parent IS NULL
+        WHERE parent IS NULL AND exclude_from_wr = 0
         UNION ALL
         -- Recursive case: Traverse child nodes
         SELECT
@@ -411,6 +411,7 @@ QCoro::Task<void> ReviewModel::fetchIf()
             sn.path || ' > ' || n.name
         FROM node n
         INNER JOIN sorted_nodes sn ON n.parent = sn.uuid
+        where n.exclude_from_wr = 0
     )
 SELECT
     action.id AS action_id,

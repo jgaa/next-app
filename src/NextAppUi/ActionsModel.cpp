@@ -291,8 +291,6 @@ ActionsModel::ActionsModel(QObject *parent)
     connect(NextAppCore::instance(), &NextAppCore::currentDateChanged, this, [this]() {
         fetchIf();
     });
-
-    //fetchIf();
 }
 
 void ActionsModel::addAction(const nextapp::pb::Action &action)

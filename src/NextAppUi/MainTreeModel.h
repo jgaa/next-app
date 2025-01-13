@@ -46,6 +46,7 @@ public:
             UuidRole,
             KindRole,
             DescrRole,
+            ExcludedFromWeeklyReviewRole,
         };
 
         // In QT 6.6, QList<> does not work with std::unique_ptr

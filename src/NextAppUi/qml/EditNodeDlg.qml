@@ -18,6 +18,7 @@ Dialog {
     property string currentUuid: ""
     property var kinds: ["folder", "organization", "person", "project", "task"]
     property string icon: "../icons/folder/.svg"
+    property alias excluded: excluded.checked
 
     x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
     y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
@@ -38,7 +39,7 @@ Dialog {
 
         if (node !== null) {
 
-            // console.log("EditNode - node: ", JSON.stringify(node))
+            console.log("EditNode - node: ", JSON.stringify(node))
 
             root.active = node.active
             root.name = node.name
@@ -46,6 +47,7 @@ Dialog {
             root.isNew = false
             root.parentUuid = node.parent
             root.descr = node.descr
+            root.excluded = node.excludeFromWeeklyReview
         }
     }
 
@@ -131,6 +133,21 @@ Dialog {
                     root.icon = "../icons/" + root.kind + ".svg"
                 }
             }
+
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                text: qsTr("Excluded")
+            }
+
+            CheckBox {
+                id: excluded
+                checked: false
+                text: qsTr("Weekly review")
+
+                onCheckedChanged: {
+                    root.excluded = checked
+                }
+            }
         }
     }
 
@@ -140,7 +157,8 @@ Dialog {
             kind: root.kind,
             active: root.active,
             parent: root.parentUuid,
-            descr: root.descr
+            descr: root.descr,
+            excludeFromWeeklyReview: root.excluded
         }
 
         if (node != null) { // edit

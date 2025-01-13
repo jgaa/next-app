@@ -7,10 +7,10 @@ namespace {
 
 struct ToNode {
     enum Cols {
-        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION, UPDATED, DELETED
+        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION, UPDATED, DELETED, EXCLUDE_FROM_WR, CATEGORY
     };
 
-    static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version, updated, deleted";
+    static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version, updated, deleted, exclude_from_wr, category ";
 
     static void assign(const boost::mysql::row_view& row, pb::Node& node, const RequestCtx& rctx) {
         node.set_uuid(pb_adapt(row.at(ID).as_string()));
@@ -30,6 +30,12 @@ struct ToNode {
         }
         node.set_deleted(row.at(ToNode::DELETED).as_int64() == 1);
         node.set_updated(toMsTimestamp(row.at(ToNode::UPDATED).as_datetime(), rctx.uctx->tz()));
+        if (row.at(EXCLUDE_FROM_WR).is_int64() && row.at(EXCLUDE_FROM_WR).as_int64() != 0) {
+            node.set_excludefromweeklyreview(true);
+        }
+        if (row.at(CATEGORY).is_string()) {
+            node.set_category(pb_adapt(row.at(CATEGORY).as_string()));
+        }
     }
 };
 
@@ -61,13 +67,10 @@ struct ToNode {
                 active = req->node().active();
             }
 
-            enum Cols {
-                ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION
-            };
-
             dbopts.reconnect_and_retry_query = false;
             const auto res = co_await owner_.server().db().exec(format(
-                    "INSERT INTO node (id, user, name, kind, descr, active, parent) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    "INSERT INTO node (id, user, name, kind, descr, active, parent, exclude_from_wr, category) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "RETURNING {}", ToNode::selectCols), dbopts,
                 id,
                 cuser,
@@ -75,7 +78,9 @@ struct ToNode {
                 static_cast<int>(req->node().kind()),
                 req->node().descr(),
                 active,
-                parent);
+                parent,
+                req->node().excludefromweeklyreview(),
+                toStringOrNull(req->node().category()));
 
             if (!res.empty()) {
                 auto node = reply->mutable_node();
@@ -125,12 +130,17 @@ struct ToNode {
 
                 // Update the data, if version is unchanged
                 auto res = co_await owner_.server().db().exec(
-                    "UPDATE node SET name=?, active=?, kind=?, descr=? WHERE id=? AND user=? AND version=?",
+                    "UPDATE node SET name=?, active=?, kind=?, descr=?, exclude_from_wr=?, category=? "
+                    "WHERE id=? AND user=? AND version=?",
                     dbopts,
+                    // Update arguments
                     req->name(),
                     req->active(),
                     static_cast<int>(req->kind()),
                     req->descr(),
+                    req->excludefromweeklyreview(),
+                    toStringOrNull(req->category()),
+                    // query arguments
                     req->uuid(),
                     cuser,
                     existing.version()
