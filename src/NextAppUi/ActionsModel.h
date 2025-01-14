@@ -54,6 +54,10 @@ public:
         return state_ == State::VALID;
     }
 
+    nextapp::pb::Action& getActionRef() {
+        return action_;
+    }
+
 signals:
     void actionChanged();
     void validChanged();

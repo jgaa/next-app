@@ -110,6 +110,10 @@ pb::ActionKindGadget::ActionKind toKindT(const T& action) {
                         break;
                     case pb::ActionDueKindGadget::ActionDueKind::UNSET:
                         return pb::ActionKindGadget::ActionKind::AC_UNSCHEDULED;
+
+                    case pb::ActionDueKindGadget::ActionDueKind::SPAN_HOURS:
+                    case pb::ActionDueKindGadget::ActionDueKind::SPAN_DAYS:
+                        break; // Not handled here...
                 } // action.kind()
 
                 if (action.due().hasStart()) {
@@ -319,6 +323,20 @@ ActionPrx *ActionsModel::getAction(QString uuid)
 {
     if (uuid.isEmpty()) {
         return new ActionPrx{};
+    }
+
+    if (uuid == "today") {
+        auto prx = make_unique<ActionPrx>();
+        auto& action = prx->getActionRef();
+        action.setDue(changeDue(TODAY, {}));
+        return prx.release();
+    }
+
+    if (uuid == "tomorrow") {
+        auto prx = make_unique<ActionPrx>();
+        auto& action = prx->getActionRef();
+        action.setDue(changeDue(TOMORROW, {}));
+        return prx.release();
     }
 
     auto prx = make_unique<ActionPrx>(uuid);

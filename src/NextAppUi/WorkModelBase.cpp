@@ -96,6 +96,9 @@ QVariant WorkModelBase::data(const QModelIndex &index, int role) const
             return QString{QChar{0xf04c}};
         case nextapp::pb::WorkSession::State::DONE:
             return QString{QChar{0xf04d}};
+        case nextapp::pb::WorkSession::State::DELETED:
+            assert(false);
+            break;
         }
         break;
     case ActiveRole:

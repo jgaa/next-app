@@ -42,6 +42,8 @@ QVariant CategoryUseModel::data(const QModelIndex &index, int role) const
         case MinutesRole:
             return item.minutes;
     }
+
+    return {};
 }
 
 QHash<int, QByteArray> CategoryUseModel::roleNames() const

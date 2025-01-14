@@ -369,6 +369,30 @@ Rectangle {
                                 addActionDlg(contextMenu.node)
                             }
                         }
+                        Action {
+                            enabled: uuid !== ""
+                            text: qsTr("Add Action Today")
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                openDialog("EditActionDlg.qml", {
+                                    node: contextMenu.node.uuid,
+                                    title: qsTr("New action today"),
+                                    aprx: NaActionsModel.getAction("today")
+                                });
+                            }
+                        }
+                        Action {
+                            enabled: uuid !== ""
+                            text: qsTr("Add Action Tomorrow")
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                openDialog("EditActionDlg.qml", {
+                                    node: contextMenu.node.uuid,
+                                    title: qsTr("New action tomorrow"),
+                                    aprx: NaActionsModel.getAction("tomorrow")
+                                });
+                            }
+                        }
                         MenuSeparator {}
                         Action {
                             text: qsTr("Add Folder")
