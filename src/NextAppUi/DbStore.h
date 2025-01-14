@@ -18,6 +18,23 @@
 class DbStore : public QObject
 {
     Q_OBJECT
+
+    template<typename T>
+    void bindParams(QSqlQuery& query, const T& params) {
+        uint param_ix = 0;
+
+        // If the type is a QString, bind it directly
+        if constexpr (std::is_same_v<T, QString>) {
+            query.bindValue(param_ix++, params);
+        }
+        // Otherwise, assume it's a container and iterate through it
+        else {
+            for (const auto& param : params) {
+                query.bindValue(param_ix++, param);
+            }
+        }
+    }
+
 public:
     // Useful for debugging weird behaviour and performance testing
     static auto constexpr use_worker_thread = true;
@@ -78,11 +95,13 @@ public:
                     continue;
                 };
 
-                uint param_ix = 0;
-                const auto params = getParams(row);
-                for(const auto& param : params) {
-                    query.bindValue(param_ix++, param);
-                }
+                // uint param_ix = 0;
+                // const auto params = getParams(row);
+                // for(const auto& param : params) {
+                //     query.bindValue(param_ix++, param);
+                // }
+
+                bindParams(query, getParams(row));
 
                 if (!batchQueryImpl(query)) {
                     success = false;
