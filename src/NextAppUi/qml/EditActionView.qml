@@ -77,6 +77,10 @@ ColumnLayout {
 
         if (action.node === "") {
             action.node = node;
+            if (action.id_proto === "" && action.category === "") {
+                action.category = NaMainTreeModel.getCategoryForNode(node, true)
+                category.uuid = action.category
+            }
         }
 
         if (action.node === "") {

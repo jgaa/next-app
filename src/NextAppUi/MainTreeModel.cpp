@@ -276,6 +276,7 @@ pb::Node MainTreeModel::toNode(const QVariantMap &map)
     n.setDescr(map.value("descr").toString());
     n.setVersion(map.value("version").toLongLong());
     n.setExcludeFromWeeklyReview(map.value("excludeFromWeeklyReview").toBool());
+    n.setCategory(map.value("category").toString());
 
     return n;
 }
@@ -292,6 +293,7 @@ QVariantMap MainTreeModel::toMap(const nextapp::pb::Node &node)
     vm["descr"] = node.descr();
     vm["version"] = static_cast<qint64>(node.version());
     vm["excludeFromWeeklyReview"] = node.excludeFromWeeklyReview();
+    vm["category"] = node.category();
 
     return vm;
 }
@@ -850,6 +852,25 @@ bool MainTreeModel::canMove(const QString &uuid, const QString &toParentUuid)
     }
 
     return true;
+}
+
+QString MainTreeModel::getCategoryForNode(const QString &uuid, bool recurse)
+{
+    if (auto *node = lookupTreeNode(QUuid{uuid})) {
+        if (!node->node().category().isEmpty()) {
+            return node->node().category();
+        }
+
+        if (recurse) {
+            for(auto *p = node->parent(); p; p = p->parent()) {
+                if (!p->node().category().isEmpty()) {
+                    return p->node().category();
+                }
+            }
+        }
+    }
+
+    return {};
 }
 
 MainTreeModel::ResetScope::ResetScope(MainTreeModel &model)

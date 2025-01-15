@@ -48,6 +48,7 @@ Dialog {
             root.parentUuid = node.parent
             root.descr = node.descr
             root.excluded = node.excludeFromWeeklyReview
+            category.uuid = node.category
         }
     }
 
@@ -148,6 +149,18 @@ Dialog {
                     root.excluded = checked
                 }
             }
+
+            Label {
+                Layout.alignment: Qt.AlignLeft
+                text: qsTr("Category")
+            }
+
+            CategoryComboBox {
+                id: category
+                Layout.leftMargin: root.leftMarginForControls
+                //Layout.preferredWidth: root.controlsPreferredWidth
+                Layout.fillWidth: true
+            }
         }
     }
 
@@ -158,7 +171,8 @@ Dialog {
             active: root.active,
             parent: root.parentUuid,
             descr: root.descr,
-            excludeFromWeeklyReview: root.excluded
+            excludeFromWeeklyReview: root.excluded,
+            category: category.uuid
         }
 
         if (node != null) { // edit

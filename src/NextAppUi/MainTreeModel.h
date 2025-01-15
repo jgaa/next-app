@@ -161,6 +161,7 @@ public:
     Q_INVOKABLE void deleteNode(const QString& uuid);
     Q_INVOKABLE void moveNode(const QString& uuid, const QString& toParentUuid);
     Q_INVOKABLE bool canMove(const QString& uuid, const QString& toParentUuid);
+    Q_INVOKABLE QString getCategoryForNode(const QString& uuid, bool recurse);
 
     QModelIndex index(int row, int column, const QModelIndex &parent) const override;
     QModelIndex parent(const QModelIndex &child) const override;
