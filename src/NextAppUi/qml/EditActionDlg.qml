@@ -10,6 +10,7 @@ import Nextapp.Models
 Dialog {
     id: root
     modal: true
+    closePolicy: Popup.NoAutoClose
     property string node: NaMainTreeModel.selected
     property ActionPrx aprx
     //property NextappPb.action action: aprx.action

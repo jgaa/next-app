@@ -7,6 +7,8 @@ import Nextapp.Models
 
 Dialog {
     id: root
+    modal: true
+    closePolicy: Popup.NoAutoClose
 
     property alias name: name.text
     property alias active: active.checked

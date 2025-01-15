@@ -9,6 +9,7 @@
 #include <QSslKey>
 #include <QSslCertificate>
 #include <QNetworkInformation>
+#include <QProtobufSerializer>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #   include <QSslConfiguration>
@@ -45,6 +46,16 @@ ostream& operator << (ostream&o, const ServerComm::Status& v) {
 }
 
 namespace {
+
+template <typename T>
+T deserialize(const QByteArray& data) {
+    T t;
+    QProtobufSerializer serializer;
+    if (!t.deserialize(&serializer, data)) {
+        throw runtime_error{"Failed to deserialize data"};
+    }
+    return t;
+}
 
 
 auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind kind) {
@@ -1624,4 +1635,63 @@ bool ServerComm::shouldReconnect() const noexcept
         }
     }
     return false;
+}
+
+
+QCoro::Task<bool> ServerComm::save(const QueuedRequest &qr)
+{
+    auto& db = NextAppCore::instance()->db();
+    QList<QVariant> params;
+
+    params << qr.id.toString(QUuid::StringFormat::WithoutBraces);
+    params << qr.time;
+    params << static_cast<uint>(qr.type);
+    params << qr.data;
+
+    const auto rval = co_await db.query("INSERT INTO requests (id, time, rpcid, data) (?,?,?,?)", &params);
+    if (!rval) {
+        LOG_WARN_N << "Failed to save request to the database. " << rval.error();
+        co_return false;
+    }
+
+    co_return true;
+}
+
+// Execute the request (send it to the server)
+// If it is successful, remove the request from the database.
+QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr)
+{
+    nextapp::pb::Status res;
+    switch(qr.type) {
+        case QueuedRequestType::INVALID:
+            assert(false);
+            LOG_ERROR_N << "Invalid request type.";
+            throw runtime_error{"Invalid request type."};
+        case QueuedRequestType::ADD_ACTION: {
+            QProtobufSerializer serializer;
+            const auto req = deserialize<nextapp::pb::Action>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::CreateAction);
+        }
+    }
+
+    if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
+        LOG_TRACE_N << "Request " << qr.id.toString() << " executed";
+
+        auto& db = NextAppCore::instance()->db();
+        QList<QVariant> params;
+        params << qr.id.toString(QUuid::StringFormat::WithoutBraces);
+        const auto rval = co_await db.query("DELETE FROM requests WHERE id = ?", &params);
+        if (!rval) {
+            LOG_WARN_N << "Failed to delete request from the database. " << rval.error();
+        }
+
+        co_return true;
+    } else if (res.error() == nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR) {
+        LOG_WARN_N << "Failed to send and receive response for request " << qr.id.toString() << ": " << res.message();
+        // TODO: We need to retry. Should we set a timer?
+    } else {
+        // TODO: How do we deal with other errors?
+    }
+
+    co_return false;
 }

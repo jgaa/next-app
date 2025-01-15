@@ -357,6 +357,14 @@ bool DbStore::updateSchema(uint version)
             FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE)
         )",
 
+        R"(CREATE TABLE IF NOT EXISTS "requests" (
+            "id" VARCHAR(32) NOT NULL,
+            "time" INTEGER NOT NULL,
+            "rpcid" INTEGER NOT NULL,
+            "data" BLOB NOT NULL,
+            PRIMARY KEY("id")
+        ))",
+
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({

@@ -33,6 +33,7 @@ enum Error {
     CONFLICT = 25;
     MISSING_AUTH = 26;
     DEVICE_DISABLED = 27;
+    CLIENT_GRPC_ERROR = 28; // Used internally in the client to notify about comm error
 }
 
 message Page {

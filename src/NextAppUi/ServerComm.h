@@ -14,6 +14,8 @@
 #include <QTimer>
 #include <QFuture>
 #include <QNetworkInformation>
+#include <QProtobufSerializer>
+#include <QSettings>
 
 #include "qcorotask.h"
 #include "qcorofuture.h"
@@ -105,6 +107,18 @@ private:
     Q_PROPERTY(signup::pb::GetInfoResponse signupInfo READ getSignupInfo NOTIFY signupInfoChanged)
     Q_PROPERTY(SignupStatus signupStatus MEMBER signup_status_ NOTIFY signupStatusChanged)
     Q_PROPERTY(QString messages MEMBER messages_ NOTIFY messagesChanged)
+
+    enum class QueuedRequestType {
+        INVALID,
+        ADD_ACTION
+    };
+
+    struct QueuedRequest {
+        QUuid id = QUuid::createUuid();
+        QueuedRequestType type{QueuedRequestType::INVALID};
+        QDateTime time;
+        QByteArray data;
+    };
 
 public:
     struct CbError {
@@ -426,24 +440,26 @@ private:
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
         auto ptr = handle.get();
         connect(ptr, &QGrpcCallReply::finished, this, [this, handle=std::move(handle), options, promise=std::move(promise)] (const QGrpcStatus& status) mutable {
-                if (!status.isOk()) [[unlikely]] {
-                    LOG_ERROR <<  "RPC failed: " << toString(status);
-                    setStatus(Status::ERROR);
-                    stop();
-                    replyT rval;
-                    rval.setError(nextapp::pb::ErrorGadget::Error::GENERIC_ERROR);
-                    rval.setMessage(status.message());
-                    promise.start();
-                    promise.addResult(std::move(rval));
-                    promise.finish();
-                    return;
-                }
-                if (auto orval = handle-> template read<replyT>()) [[likely]] {
-                    auto& rval = *orval;
+            if (!status.isOk()) [[unlikely]] {
+                // gRPC level error
+                LOG_ERROR <<  "RPC failed: " << toString(status);
+                setStatus(Status::ERROR);
+                stop();
+                replyT rval;
+                rval.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
+                rval.setMessage(status.message());
+                promise.start();
+                promise.addResult(std::move(rval));
+                promise.finish();
+                return;
+            }
+
+            if (auto orval = handle-> template read<replyT>()) [[likely]] {
+                auto& rval = *orval;
 #else
-        handle->subscribe(this, [this, options, handle, promise=std::move(promise)] () mutable {
-            {
-                auto rval = handle-> template read<replyT>();
+    handle->subscribe(this, [this, options, handle, promise=std::move(promise)] () mutable {
+        {
+            auto rval = handle-> template read<replyT>();
 #endif
                 if constexpr (std::is_same_v<nextapp::pb::Status, replyT>) {
                     if (!options.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
@@ -459,7 +475,7 @@ private:
             }
 
             replyT errval;
-            errval.setError(nextapp::pb::ErrorGadget::Error::GENERIC_ERROR);
+            errval.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
             errval.setMessage("Failed to read RPC response in client");
             promise.start();
             promise.addResult(std::move(errval));
@@ -480,6 +496,27 @@ private:
         auto svr_stream = (client_.get()->*call)(request, options.qopts);
         return std::make_shared<GrpcIncomingStream>(std::move(svr_stream));
     }
+
+    template <ProtoMessage reqT, QueuedRequestType rq>
+    QCoro::Task<bool> rpcQueueAndExecute(reqT request) {
+        QProtobufSerializer serializer;
+
+        QueuedRequest qr;
+        qr.type = rq;
+        qr.time = QDateTime::currentDateTime();
+        qr.data = request.serialize(serializer);
+
+        if (QSettings{}.value("server/resend_requests", true).toBool()) {
+            LOG_INFO << "Queued request: " << request.GetDescriptor()->full_name();
+
+            co_await save(qr);
+        }
+
+        co_return co_await execute(qr);
+    }
+
+    QCoro::Task<bool> save(const QueuedRequest& qr);
+    QCoro::Task<bool> execute(const QueuedRequest& qr);
 
     bool shouldReconnect() const noexcept;
 

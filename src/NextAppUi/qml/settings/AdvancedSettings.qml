@@ -22,6 +22,7 @@ Item {
         settings.setValue("logging/prune", prune.checked ? "true" : "false")
         settings.setValue("sync/resync", resync.checked ? "true" : "false")
         settings.setValue("server/reconnect_level", reconnectLevel.currentIndex.toString())
+        settings.setValue("server/resend_requests", resend.checked ? "true" : "false")
         settings.sync()
     }
 
@@ -96,6 +97,17 @@ Item {
             id: resync
             text: qsTr("Do a full re-synch when connecting to the server")
             checked: settings.value("sync/resync") === "true"
+        }
+
+        Label {
+            text: qsTr("Resend")
+            color: "red"
+        }
+
+        CheckBox {
+            id: resend
+            text: qsTr("Re-send unconfirmed requests to the server.")
+            checked: settings.value("server/resend_requests") === "true"
         }
 
         Item {
