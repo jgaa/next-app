@@ -101,6 +101,8 @@ Dialog {
                 id: descr
                 Layout.fillHeight: true
                 Layout.fillWidth: true
+                wrapMode: TextEdit.Wrap
+
                 //placeholderText: qsTr("Some words to describe the purpose of this item?")
 
                 background: Rectangle {

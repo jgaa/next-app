@@ -2,9 +2,9 @@
 
 #include <queue>
 #include <qqmlregistration.h>
-
 #include <memory>
 
+#include <boost/type_index.hpp>
 
 #include "nextapp_client.grpc.qpb.h"
 #include "signup_client.grpc.qpb.h"
@@ -108,14 +108,14 @@ private:
     Q_PROPERTY(SignupStatus signupStatus MEMBER signup_status_ NOTIFY signupStatusChanged)
     Q_PROPERTY(QString messages MEMBER messages_ NOTIFY messagesChanged)
 
-    enum class QueuedRequestType {
-        INVALID,
-        ADD_ACTION
-    };
-
     struct QueuedRequest {
+        enum class Type {
+            INVALID,
+            ADD_ACTION
+        };
+
         QUuid id = QUuid::createUuid();
-        QueuedRequestType type{QueuedRequestType::INVALID};
+        Type type{Type::INVALID};
         QDateTime time;
         QByteArray data;
     };
@@ -259,6 +259,8 @@ public:
     const auto& getLocalDataVersions() const noexcept {
         return server_data_versions_;
     }
+
+    static bool isTemporaryError(nextapp::pb::ErrorGadget::Error error);
 
 signals:
     void versionChanged();
@@ -429,6 +431,7 @@ private:
 
         if (!session_id_.empty()) {
 // TODO: Enable when we remove the "sid" from the static metadata in the channel
+//       Keep existing options
 // #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 //             qopts.setMetadata({std::make_pair("sid", session_id_.c_str())});
 // #else
@@ -497,26 +500,51 @@ private:
         return std::make_shared<GrpcIncomingStream>(std::move(svr_stream));
     }
 
-    template <ProtoMessage reqT, QueuedRequestType rq>
-    QCoro::Task<bool> rpcQueueAndExecute(reqT request) {
+    template <QueuedRequest::Type rq, ProtoMessage reqT>
+    QCoro::Task<bool> rpcQueueAndExecute(const reqT& request) {
         QProtobufSerializer serializer;
-
         QueuedRequest qr;
         qr.type = rq;
         qr.time = QDateTime::currentDateTime();
-        qr.data = request.serialize(serializer);
+        qr.data = request.serialize(&serializer);
 
-        if (QSettings{}.value("server/resend_requests", true).toBool()) {
-            LOG_INFO << "Queued request: " << request.GetDescriptor()->full_name();
-
-            co_await save(qr);
+        if (request.hasDue()) {
+            const auto& due = request.due();
+            auto kind = due.kind();
+            LOG_TRACE << "Request has a due kind: " ;
         }
 
-        co_return co_await execute(qr);
+        bool delete_req = false;
+
+        if (QSettings{}.value("server/resend_requests", true).toBool()) {
+            LOG_INFO << "Queuing request: " << qr.id.toString()
+                     << " type: " << static_cast<int>(rq)
+                     << " name: " << boost::typeindex::type_id<reqT>().pretty_name();
+
+            if (!co_await save(qr)) {
+                LOG_WARN_N << "Failed to save the request";
+                co_return false;
+            }
+
+            // If there are other queued requests, we must return
+            // Requests must be exceuted sequentially, in order
+            if (queued_requests_count_ > 1 || !connected()) {
+                co_return true;
+            }
+
+            // We saved it, so it must be deleted if successfuly executed
+            delete_req = true;
+        }
+
+        co_return co_await execute(qr, delete_req);
     }
 
     QCoro::Task<bool> save(const QueuedRequest& qr);
-    QCoro::Task<bool> execute(const QueuedRequest& qr);
+    QCoro::Task<bool> execute(const QueuedRequest& qr, bool deleteRequest);
+    QCoro::Task<void> retryRequests();
+    QCoro::Task<bool> deleteRequestFromDb(const QUuid& id);
+    QCoro::Task<void> housekeeping();
+
 
     bool shouldReconnect() const noexcept;
 
@@ -549,4 +577,7 @@ private:
     unsigned ping_timer_interval_sec_{60}; // 60 seconds
     nextapp::pb::DataVersionsInfo server_data_versions_;
     nextapp::pb::DataVersionsInfo local_data_versions_;
+    int executing_request_count_{0};
+    int queued_requests_count_{0};
+    bool retrying_requests_{false};
 };

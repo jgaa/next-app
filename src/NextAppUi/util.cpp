@@ -50,6 +50,8 @@ std::ostream& operator<<(std::ostream& os, const nextapp::pb::ErrorGadget::Error
         "CONFLICT",
         "MISSING_AUTH",
         "DEVICE_DISABLED",
+        "CLIENT_GRPC_ERROR",
+        "REPLAY_DETECTED",
     });
 
     const auto err = static_cast<size_t>(error);

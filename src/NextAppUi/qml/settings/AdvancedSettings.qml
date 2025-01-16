@@ -101,12 +101,11 @@ Item {
 
         Label {
             text: qsTr("Resend")
-            color: "red"
         }
 
         CheckBox {
             id: resend
-            text: qsTr("Re-send unconfirmed requests to the server.")
+            text: qsTr("Re-send pending requests to the server.")
             checked: settings.value("server/resend_requests") === "true"
         }
 

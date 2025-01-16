@@ -212,6 +212,8 @@ ColumnLayout {
                     Layout.fillWidth: true
                     clip: true
                     placeholderText: qsTr("Description")
+                    wrapMode: TextEdit.Wrap
+
                     //text: root.action.descr
                     // background: Rectangle {
                     //     color: descr.focus ? "lightblue" : "lightgray"

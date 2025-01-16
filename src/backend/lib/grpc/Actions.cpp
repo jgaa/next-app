@@ -357,6 +357,17 @@ boost::asio::awaitable<void>
     LOG_TRACE << "Reply: " << grpc.toJsonForLog(*reply);
 }
 
+void sanitize(pb::Action& action) {
+    if (action.has_due()) {
+        auto* d = action.mutable_due();
+        if (!d->has_due() || d->due() == 0) {
+            d->clear_start();
+            d->set_kind(pb::ActionDueKind::UNSET);
+            d->clear_timezone();
+        }
+    }
+}
+
 } // anon ns
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetActions(::grpc::CallbackServerContext *ctx, const pb::GetActionsReq *req, pb::Status *reply)
@@ -447,10 +458,6 @@ boost::asio::awaitable<void>
                 query += ") ";
             }
 
-            // if (!unscheduled.empty() && !req->has_startspan() && !req->has_duespan()) {
-            //     query += " AND " + unscheduled;
-            // }
-
             if (req->flags().active() && !req->flags().done()) {
                 query += " AND (a.status!='done' || DATE(completed_time) = CURDATE()) ";
             } else if (req->flags().done() && !req->flags().active()) {
@@ -532,6 +539,8 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
         action.set_completedtime(time({}));
     }
 
+    sanitize(action);
+
     // Not an idempotent query
     dbopts.reconnect_and_retry_query = false;
 
@@ -609,6 +618,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
                 new_action.set_completedtime(0);
                 done = DoneChanged::MARKED_UNDONE;
             }
+            sanitize(new_action);
 
             auto res = co_await rctx.dbh->exec(format("UPDATE action SET {} WHERE id=? AND user=? ",
                                                       ToAction::updateStatementBindingStr()), dbopts,
@@ -1129,7 +1139,6 @@ nextapp::pb::Due GrpcServer::adjustDueTime(const pb::Due &fromDue, const UserCon
 
     switch(due.kind()) {
     case pb::ActionDueKind::DATETIME:
-        // TODO: We need a way to handle windows of time, not just a single point in time.
         due.set_due(due.start());
         break;
     case pb::ActionDueKind::DATE: {

@@ -122,6 +122,8 @@ ServerComm::ServerComm()
                 if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
                     LOG_ERROR << "Ping failed: " << status.message();
                     setStatus(Status::ERROR);
+                } else {
+                    housekeeping();
                 }
             }, req);
         }
@@ -422,36 +424,17 @@ void ServerComm::fetchDay(int year, int month, int day)
     }, req);
 }
 
-// void ServerComm::getActions(nextapp::pb::GetActionsReq &filter)
-// {
-//     callRpc<nextapp::pb::Status>([this, filter]() {
-//         return client_->GetActions(filter);
-//     } , [this](const nextapp::pb::Status& status) {
-//         if (status.hasActions()) {
-//             auto actions = make_shared<nextapp::pb::Actions>(status.actions());
-//             emit receivedActions(actions,
-//                 status.hasHasMore() && status.hasMore(),
-//                 status.hasFromStart() && status.fromStart());
-//         }
-//     });
-// }
-
-// void ServerComm::getAction(nextapp::pb::GetActionReq &req)
-// {
-//     callRpc<nextapp::pb::Status>([this, req]() {
-//         return client_->GetAction(req);
-//     }, [this](const nextapp::pb::Status& status) {
-//         emit receivedAction(status);
-//     });
-// }
-
-void ServerComm::addAction(const nextapp::pb::Action &action)
+void ServerComm::addAction(const nextapp::pb::Action& action)
 {
-    callRpc<nextapp::pb::Status>([this, action]() {
-        return client_->CreateAction(action);
-    } , [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    nextapp::pb::Action a{action};
+    rpcQueueAndExecute<QueuedRequest::Type::ADD_ACTION>(a);
+
+
+    // callRpc<nextapp::pb::Status>([this, action]() {
+    //     return client_->CreateAction(action);
+    // } , [this](const nextapp::pb::Status& status) {
+    //     ;
+    // });
 }
 
 void ServerComm::updateAction(const nextapp::pb::Action &action)
@@ -1264,9 +1247,10 @@ QCoro::Task<void> ServerComm::startNextappSession()
     LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
     NextAppCore::instance()->showSyncPopup(true);
     bool close_popup = true;
-    ScopedExit hide_popup_on_exit{[&close_popup] {
+    ScopedExit hide_popup_on_exit{[this, &close_popup] {
         if (close_popup) {
             NextAppCore::instance()->showSyncPopup(false);
+            clearMessages();
         }
     }};
 
@@ -1399,7 +1383,10 @@ failed:
     }
 
     onGrpcReady();
-    clearMessages();
+
+    addMessage(tr("Retrying any pending server-reqests..."));
+    LOG_DEBUG_N << "Retrying server requests...";
+    co_await retryRequests();
 
     co_return;
 }
@@ -1643,55 +1630,251 @@ QCoro::Task<bool> ServerComm::save(const QueuedRequest &qr)
     auto& db = NextAppCore::instance()->db();
     QList<QVariant> params;
 
+
+    LOG_DEBUG_N << "Saving request " << qr.id.toString()
+                << " of type " << static_cast<int>(qr.type)
+                << " to the database.";
+
     params << qr.id.toString(QUuid::StringFormat::WithoutBraces);
     params << qr.time;
     params << static_cast<uint>(qr.type);
     params << qr.data;
 
-    const auto rval = co_await db.query("INSERT INTO requests (id, time, rpcid, data) (?,?,?,?)", &params);
+    const auto rval = co_await db.query("INSERT INTO requests (id, time, rpcid, data) VALUES (?,?,?,?)", &params);
     if (!rval) {
         LOG_WARN_N << "Failed to save request to the database. " << rval.error();
         co_return false;
     }
 
+    ++queued_requests_count_;
     co_return true;
 }
 
 // Execute the request (send it to the server)
 // If it is successful, remove the request from the database.
-QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr)
+QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteRequest)
 {
+    ++executing_request_count_;
+    assert(executing_request_count_ == 1);
+
+    ScopedExit decr{[this] {
+        --executing_request_count_;
+        assert(executing_request_count_ == 0);
+    }};
+
+    GrpcCallOptions options;
+    options.enable_queue = true; // Informative
+    string uuid = qr.id.toString(QUuid::StringFormat::WithoutBraces).toStdString();
+    options.qopts.setMetadata({std::make_pair("req_id", uuid.c_str())}); // Prevent replay if the server has seen this id
+
     nextapp::pb::Status res;
     switch(qr.type) {
-        case QueuedRequestType::INVALID:
+        case QueuedRequest::Type::INVALID:
             assert(false);
             LOG_ERROR_N << "Invalid request type.";
             throw runtime_error{"Invalid request type."};
-        case QueuedRequestType::ADD_ACTION: {
+        case QueuedRequest::Type::ADD_ACTION: {
             QProtobufSerializer serializer;
             const auto req = deserialize<nextapp::pb::Action>(qr.data);
-            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::CreateAction);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::CreateAction, options);
+            break;
         }
     }
 
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         LOG_TRACE_N << "Request " << qr.id.toString() << " executed";
 
-        auto& db = NextAppCore::instance()->db();
-        QList<QVariant> params;
-        params << qr.id.toString(QUuid::StringFormat::WithoutBraces);
-        const auto rval = co_await db.query("DELETE FROM requests WHERE id = ?", &params);
-        if (!rval) {
-            LOG_WARN_N << "Failed to delete request from the database. " << rval.error();
+        if (deleteRequest) {
+            co_await deleteRequestFromDb(qr.id);
         }
-
         co_return true;
-    } else if (res.error() == nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR) {
+    }
+
+    // Handle server-reject replay.
+    if (res.error() == nextapp::pb::ErrorGadget::Error::REPLAY_DETECTED) {
+        LOG_INFO_N << "Request " << qr.id.toString() << " was rejected as replay.";
+
+        if (deleteRequest) {
+            co_await deleteRequestFromDb(qr.id);
+        }
+        co_return true;
+    }
+
+    if (res.error() == nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR) {
         LOG_WARN_N << "Failed to send and receive response for request " << qr.id.toString() << ": " << res.message();
         // TODO: We need to retry. Should we set a timer?
     } else {
-        // TODO: How do we deal with other errors?
+        if (!isTemporaryError(res.error())) {
+            LOG_ERROR_N << "Request " << qr.id.toString() << " failed with a permanent error: " << res.error();
+
+            if (deleteRequest) {
+                co_await deleteRequestFromDb(qr.id);
+            }
+
+            co_return true; // Lets processing the next request continue.
+        }
     }
 
     co_return false;
+}
+
+/* Re-try the requests we have stored in sequential order, oldest first.
+ * If a request fails, and the execute() logic can't handle the error,
+ * we break out so we can retry later.
+ *
+ * TODO: We may need to add a retry-count limit as well as a timeout to prevent one
+ *       persistent error for a request from blocking the queue. However, we should
+ *       adapt to the error conditions that could block a request from ever passing.
+ */
+QCoro::Task<void> ServerComm::retryRequests()
+{
+    // Only enter once as a time.
+    if (retrying_requests_) {
+        co_return;
+    }
+
+    retrying_requests_ = true;
+    ScopedExit reset{[this] {
+        retrying_requests_ = false;
+    }};
+
+    enum Cols {
+        ID = 0,
+        TIME,
+        RPCID,
+        DATA
+    };
+
+    auto& db = NextAppCore::instance()->db();
+
+    while (connected()) {
+        // Get the oldest request from the database
+        const auto rval = co_await db.query("SELECT id, time, rpcid, data FROM requests ORDER BY time LIMIT 1");
+        if (!rval) {
+            LOG_WARN_N << "Failed to get the oldest request from the database. " << rval.error();
+            co_return;
+        }
+        if (rval.value().isEmpty()) {
+            LOG_DEBUG_N << "No [more] requests to retry.";
+            co_return;
+        }
+
+        // Check if it has expired. If it has, delete it.
+        const auto& row = rval.value().at(0);
+        QueuedRequest qr;
+        qr.id = QUuid{row.at(ID).toString()};
+        qr.time = row.at(TIME).toDateTime();
+        qr.type = static_cast<QueuedRequest::Type>(row.at(RPCID).toUInt());
+        qr.data = row.at(DATA).toByteArray();
+
+        const QUuid id{row.at(ID).toString()};
+        const auto now = QDateTime::currentDateTime();
+        const auto max_ttl_hours = QSettings{}.value("server/reqests_ttl", 24*7).toInt();
+        if (qr.time.secsTo(now) > max_ttl_hours * 3600) {
+            LOG_WARN_N << "Request " << id.toString()
+                       << " of type " << static_cast<int>(qr.type)
+                       << " from " << qr.time.toString()
+                       << " has expired. Deleting it.";
+            deleteRequestFromDb(id);
+            continue;
+        }
+
+        // If we failed, we will retry later.
+        if (!co_await execute(qr, true)) {
+            LOG_WARN_N << "Request " << id.toString()
+            << " of type " << static_cast<int>(qr.type)
+            << " from " << qr.time.toString()
+            << " failed retry. Will retry later.";
+            co_return;
+        }
+    }
+
+    co_return;
+}
+
+QCoro::Task<bool> ServerComm::deleteRequestFromDb(const QUuid &id)
+{
+    auto& db = NextAppCore::instance()->db();
+    {
+        QList<QVariant> params;
+        params << id.toString(QUuid::StringFormat::WithoutBraces);
+        const auto rval = co_await db.query("DELETE FROM requests WHERE id = ?", &params);
+        if (!rval) {
+            LOG_WARN_N << "Failed to delete request from the database. " << rval.error();
+            // TODO: Implement a general recovery mechanism. For example, if the disk is full,
+            //       notify the user and exit. Do a full sync on startup.
+            co_return false;
+        }
+    }
+
+    {
+        // Update the count to the actual rows in the db
+        const auto rval2 = co_await db.query("SELECT COUNT(*) FROM requests");
+        if (!rval2) {
+            LOG_WARN_N << "Failed to count request in the database. " << rval2.error();
+            co_return false;
+        }
+
+        queued_requests_count_ = rval2.value().at(0).at(0).toInt();
+    }
+    LOG_TRACE_N << "There are " << queued_requests_count_ << " requests remaining in the database.";
+    co_return true;
+}
+
+QCoro::Task<void> ServerComm::housekeeping()
+{
+    if (connected()) {
+        co_await retryRequests();
+    }
+}
+
+/*
+ * enum class Error : int32_t {
+    OK = 0,
+    MISSING_TENANT_NAME = 1,
+    MISSING_USER_NAME = 2,
+    MISSING_USER_EMAIL = 3,
+    ALREADY_EXIST = 4,
+    INVALID_PARENT = 5,
+    DATABASE_UPDATE_FAILED = 6,
+    DATABASE_REQUEST_FAILED = 7,
+    NOT_FOUND = 8,
+    DIFFEREENT_PARENT = 9,
+    NO_CHANGES = 10,
+    CONSTRAINT_FAILED = 11,
+    GENERIC_ERROR = 12,
+    INVALID_ACTION = 13,
+    INVALID_REQUEST = 14,
+    PAGE_SIZE_TOO_SMALL = 15,
+    AUTH_MISSING_SESSION_ID = 16,
+    NO_RELEVANT_DATA = 17,
+    MISSING_CSR = 18,
+    INVALID_CSR = 19,
+    PERMISSION_DENIED = 20,
+    TENANT_SUSPENDED = 21,
+    USER_SUSPENDED = 22,
+    MISSING_USER_ID = 23,
+    AUTH_FAILED = 24,
+    CONFLICT = 25,
+    MISSING_AUTH = 26,
+    DEVICE_DISABLED = 27,
+    CLIENT_GRPC_ERROR = 28,
+    REPLAY_DETECTED = 29,
+};
+*/
+
+bool ServerComm::isTemporaryError(nextapp::pb::ErrorGadget::Error error) {
+    switch(error) {
+        case nextapp::pb::ErrorGadget::Error::OK:
+        case nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR:
+        case nextapp::pb::ErrorGadget::Error::REPLAY_DETECTED:
+        case nextapp::pb::ErrorGadget::Error::AUTH_MISSING_SESSION_ID:
+        case nextapp::pb::ErrorGadget::Error::DATABASE_UPDATE_FAILED:
+        case nextapp::pb::ErrorGadget::Error::DATABASE_REQUEST_FAILED:
+            return true;
+        default:
+            ;
+    }
+
+    return false;
 }

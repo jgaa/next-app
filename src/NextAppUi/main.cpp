@@ -212,6 +212,10 @@ int main(int argc, char *argv[])
             settings.setValue("UI/theme", "dark");
         }
 
+        if (!settings.contains("server/resend_requests")) {
+            settings.setValue("server/resend_requests", true);
+        }
+
         auto style = styles.at(settings.value("UI/style").toInt());
         auto scale = scales.at(settings.value("UI/scale").toInt());
 
