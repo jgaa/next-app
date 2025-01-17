@@ -58,8 +58,8 @@ QList<QVariant> getParams(const pb::Action& action) {
     params.append(action.name());
     params.append(action.descr());
     params.append(toQDate(action.createdDate()));
-    params.append(static_cast<quint32>(action.due().kind()));
     if (action.hasDue()) {
+        params.append(static_cast<quint32>(action.due().kind()));
         if (action.due().hasStart()) {
             params.append(QDateTime::fromSecsSinceEpoch(action.due().start()));
         } else {
@@ -85,6 +85,11 @@ QList<QVariant> getParams(const pb::Action& action) {
         } else {
             params.append(QVariant{});
         }
+    } else {
+        params.append(static_cast<quint32>(nextapp::pb::ActionDueKindGadget::ActionDueKind::UNSET));
+        params.append(QVariant{});
+        params.append(QVariant{});
+        params.append(QVariant{});
     }
     params.append(static_cast<qlonglong>(action.timeEstimate()));
     params.append(static_cast<quint32>(action.difficulty()));
@@ -290,7 +295,7 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         CATEGORY
     };
 
-    auto rval = co_await db.query(query, &params);
+    auto rval = co_await db.legacyQuery(query, &params);
     if (rval && !rval->empty()) {
         auto& row = rval->front();
         auto item = make_shared<pb::Action>();
@@ -405,7 +410,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         params.append(action.id_proto());
         LOG_TRACE_N << "Deleting action " << action.id_proto() << " " << action.name();
 
-        const auto rval = co_await db.query(sql, &params);
+        const auto rval = co_await db.legacyQuery(sql, &params);
         if (!rval) {
             LOG_WARN_N << "Failed to delete action " << action.id_proto() << " " << action.name()
             << " err=" << rval.error();
@@ -415,7 +420,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
 
     params = getParams(action);
 
-    const auto rval = co_await db.query(insert_query, &params);
+    const auto rval = co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update action: " << action.id_proto() << " " << action.name()
         << " err=" << rval.error();
@@ -462,7 +467,7 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
 
     uint count = 0;
 
-    auto rval = co_await db.query(query);
+    auto rval = co_await db.legacyQuery(query);
     if (rval) {
         for (const auto& row : rval.value()) {
             nextapp::pb::ActionInfo item;

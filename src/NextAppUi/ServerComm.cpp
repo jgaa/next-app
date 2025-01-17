@@ -30,6 +30,7 @@
 #include "MainTreeModel.h"
 #include "WorkCache.h"
 #include "CalendarCache.h"
+#include "AppInstanceMgr.h"
 
 using namespace std;
 
@@ -1382,6 +1383,12 @@ failed:
         goto failed;
     }
 
+    if (full_sync) {
+        nextapp::pb::ResetPlaybackReq req;
+        req.setInstanceId(AppInstanceMgr::instance()->instanceId());
+        co_await rpc(req, &nextapp::pb::Nextapp::Client::ResetPlayback);
+    }
+
     onGrpcReady();
 
     addMessage(tr("Retrying any pending server-reqests..."));
@@ -1625,25 +1632,37 @@ bool ServerComm::shouldReconnect() const noexcept
 }
 
 
-QCoro::Task<bool> ServerComm::save(const QueuedRequest &qr)
+QCoro::Task<bool> ServerComm::save(QueuedRequest &qr)
 {
     auto& db = NextAppCore::instance()->db();
     QList<QVariant> params;
 
 
-    LOG_DEBUG_N << "Saving request " << qr.id.toString()
+    LOG_DEBUG_N << "Saving request " << qr.uuid.toString()
                 << " of type " << static_cast<int>(qr.type)
                 << " to the database.";
 
-    params << qr.id.toString(QUuid::StringFormat::WithoutBraces);
+    params << qr.uuid.toString(QUuid::StringFormat::WithoutBraces);
     params << qr.time;
     params << static_cast<uint>(qr.type);
     params << qr.data;
 
-    const auto rval = co_await db.query("INSERT INTO requests (id, time, rpcid, data) VALUES (?,?,?,?)", &params);
+    const auto rval = co_await db.query("INSERT INTO requests (uuid, time, rpcid, data) VALUES (?,?,?,?)",
+                                        qr.uuid.toString(QUuid::StringFormat::WithoutBraces),
+                                        qr.time,
+                                        static_cast<uint>(qr.type),
+                                        qr.data);
     if (!rval) {
         LOG_WARN_N << "Failed to save request to the database. " << rval.error();
         co_return false;
+    }
+
+    if (auto id = rval.value().insert_id) {
+        LOG_TRACE_N << "Saved request #" << *id << " to the database.";
+        qr.id = *id;
+    } else {
+        LOG_WARN_N << "Query apparently suceeded, but the insert id was lost!";
+        assert(false);
     }
 
     ++queued_requests_count_;
@@ -1662,10 +1681,23 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
         assert(executing_request_count_ == 0);
     }};
 
+    if (deleteRequest) {
+        assert(qr.id > 0);
+    };
+
     GrpcCallOptions options;
     options.enable_queue = true; // Informative
-    string uuid = qr.id.toString(QUuid::StringFormat::WithoutBraces).toStdString();
-    options.qopts.setMetadata({std::make_pair("req_id", uuid.c_str())}); // Prevent replay if the server has seen this id
+    string uuid = qr.uuid.toString(QUuid::StringFormat::WithoutBraces).toStdString();
+
+    QHash<QByteArray, QByteArray> metadata{{std::make_pair("req_id", uuid.c_str())}};
+
+    // The default instance_id is 1. If we have a higher id, we need to send "instance_id".
+    if (auto iid = AppInstanceMgr::instance()->instanceId(); iid > 1) {
+        const auto str = to_string(iid);
+        metadata.insert("instance_id", str.c_str());
+    };
+
+    options.qopts.setMetadata(std::move(metadata)); // Prevent replay if the server has seen this id
 
     nextapp::pb::Status res;
     switch(qr.type) {
@@ -1682,7 +1714,7 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
     }
 
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
-        LOG_TRACE_N << "Request " << qr.id.toString() << " executed";
+        LOG_TRACE_N << "Request " << qr.uuid.toString() << " executed";
 
         if (deleteRequest) {
             co_await deleteRequestFromDb(qr.id);
@@ -1692,7 +1724,7 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
 
     // Handle server-reject replay.
     if (res.error() == nextapp::pb::ErrorGadget::Error::REPLAY_DETECTED) {
-        LOG_INFO_N << "Request " << qr.id.toString() << " was rejected as replay.";
+        LOG_INFO_N << "Request " << qr.uuid.toString() << " was rejected as replay.";
 
         if (deleteRequest) {
             co_await deleteRequestFromDb(qr.id);
@@ -1701,11 +1733,11 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
     }
 
     if (res.error() == nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR) {
-        LOG_WARN_N << "Failed to send and receive response for request " << qr.id.toString() << ": " << res.message();
+        LOG_WARN_N << "Failed to send and receive response for request " << qr.uuid.toString() << ": " << res.message();
         // TODO: We need to retry. Should we set a timer?
     } else {
         if (!isTemporaryError(res.error())) {
-            LOG_ERROR_N << "Request " << qr.id.toString() << " failed with a permanent error: " << res.error();
+            LOG_ERROR_N << "Request " << qr.uuid.toString() << " failed with a permanent error: " << res.error();
 
             if (deleteRequest) {
                 co_await deleteRequestFromDb(qr.id);
@@ -1740,16 +1772,18 @@ QCoro::Task<void> ServerComm::retryRequests()
 
     enum Cols {
         ID = 0,
+        UUID,
         TIME,
+        TRIES,
         RPCID,
         DATA
     };
 
     auto& db = NextAppCore::instance()->db();
+    uint current = 0;
 
     while (connected()) {
-        // Get the oldest request from the database
-        const auto rval = co_await db.query("SELECT id, time, rpcid, data FROM requests ORDER BY time LIMIT 1");
+        const auto rval = co_await db.legacyQuery("SELECT id, uuid, time, tries, rpcid, data FROM requests ORDER BY id LIMIT 1");
         if (!rval) {
             LOG_WARN_N << "Failed to get the oldest request from the database. " << rval.error();
             co_return;
@@ -1762,43 +1796,66 @@ QCoro::Task<void> ServerComm::retryRequests()
         // Check if it has expired. If it has, delete it.
         const auto& row = rval.value().at(0);
         QueuedRequest qr;
-        qr.id = QUuid{row.at(ID).toString()};
+        qr.id = row.at(ID).toUInt();
+        qr.uuid = QUuid{row.at(UUID).toString()};
         qr.time = row.at(TIME).toDateTime();
         qr.type = static_cast<QueuedRequest::Type>(row.at(RPCID).toUInt());
         qr.data = row.at(DATA).toByteArray();
 
-        const QUuid id{row.at(ID).toString()};
+        // Sanity check. If a request was somehow not deleted, we don't want to go into a infinite loop re-trying it.
+        if (current >= qr.id) {
+            LOG_WARN_N << "Request " << qr.uuid.toString() << " has already been processed. Deleting it.";
+            deleteRequestFromDb(qr.id);
+            continue;
+        }
+
+        const QUuid uuid{row.at(UUID).toString()};
         const auto now = QDateTime::currentDateTime();
         const auto max_ttl_hours = QSettings{}.value("server/reqests_ttl", 24*7).toInt();
         if (qr.time.secsTo(now) > max_ttl_hours * 3600) {
-            LOG_WARN_N << "Request " << id.toString()
+            LOG_WARN_N << "Request " << uuid.toString()
                        << " of type " << static_cast<int>(qr.type)
                        << " from " << qr.time.toString()
                        << " has expired. Deleting it.";
-            deleteRequestFromDb(id);
+            deleteRequestFromDb(qr.id);
+            current = qr.id;
+            continue;
+        }
+
+        const auto tries = row.at(TRIES).toUInt();
+        if (tries >  QSettings{}.value("server/reqests_retries", 9).toInt()) {
+            LOG_WARN_N << "Request " << uuid.toString()
+            << " of type " << static_cast<int>(qr.type)
+            << " from " << qr.time.toString()
+            << " has reached the maximum number of retries. Deleting it.";
+            deleteRequestFromDb(qr.id);
+            current = qr.id;
             continue;
         }
 
         // If we failed, we will retry later.
         if (!co_await execute(qr, true)) {
-            LOG_WARN_N << "Request " << id.toString()
+
+            db.query("UPDATE requests SET tries = tries + 1 WHERE id = ?", qr.id);
+
+            LOG_WARN_N << "Request " << uuid.toString()
             << " of type " << static_cast<int>(qr.type)
             << " from " << qr.time.toString()
             << " failed retry. Will retry later.";
             co_return;
         }
+
+        current = qr.id;
     }
 
     co_return;
 }
 
-QCoro::Task<bool> ServerComm::deleteRequestFromDb(const QUuid &id)
+QCoro::Task<bool> ServerComm::deleteRequestFromDb(const uint id)
 {
     auto& db = NextAppCore::instance()->db();
     {
-        QList<QVariant> params;
-        params << id.toString(QUuid::StringFormat::WithoutBraces);
-        const auto rval = co_await db.query("DELETE FROM requests WHERE id = ?", &params);
+        const auto rval = co_await db.query("DELETE FROM requests WHERE id = ?", id);
         if (!rval) {
             LOG_WARN_N << "Failed to delete request from the database. " << rval.error();
             // TODO: Implement a general recovery mechanism. For example, if the disk is full,
@@ -1809,7 +1866,7 @@ QCoro::Task<bool> ServerComm::deleteRequestFromDb(const QUuid &id)
 
     {
         // Update the count to the actual rows in the db
-        const auto rval2 = co_await db.query("SELECT COUNT(*) FROM requests");
+        const auto rval2 = co_await db.legacyQuery("SELECT COUNT(*) FROM requests");
         if (!rval2) {
             LOG_WARN_N << "Failed to count request in the database. " << rval2.error();
             co_return false;
@@ -1828,46 +1885,10 @@ QCoro::Task<void> ServerComm::housekeeping()
     }
 }
 
-/*
- * enum class Error : int32_t {
-    OK = 0,
-    MISSING_TENANT_NAME = 1,
-    MISSING_USER_NAME = 2,
-    MISSING_USER_EMAIL = 3,
-    ALREADY_EXIST = 4,
-    INVALID_PARENT = 5,
-    DATABASE_UPDATE_FAILED = 6,
-    DATABASE_REQUEST_FAILED = 7,
-    NOT_FOUND = 8,
-    DIFFEREENT_PARENT = 9,
-    NO_CHANGES = 10,
-    CONSTRAINT_FAILED = 11,
-    GENERIC_ERROR = 12,
-    INVALID_ACTION = 13,
-    INVALID_REQUEST = 14,
-    PAGE_SIZE_TOO_SMALL = 15,
-    AUTH_MISSING_SESSION_ID = 16,
-    NO_RELEVANT_DATA = 17,
-    MISSING_CSR = 18,
-    INVALID_CSR = 19,
-    PERMISSION_DENIED = 20,
-    TENANT_SUSPENDED = 21,
-    USER_SUSPENDED = 22,
-    MISSING_USER_ID = 23,
-    AUTH_FAILED = 24,
-    CONFLICT = 25,
-    MISSING_AUTH = 26,
-    DEVICE_DISABLED = 27,
-    CLIENT_GRPC_ERROR = 28,
-    REPLAY_DETECTED = 29,
-};
-*/
-
 bool ServerComm::isTemporaryError(nextapp::pb::ErrorGadget::Error error) {
     switch(error) {
         case nextapp::pb::ErrorGadget::Error::OK:
         case nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR:
-        case nextapp::pb::ErrorGadget::Error::REPLAY_DETECTED:
         case nextapp::pb::ErrorGadget::Error::AUTH_MISSING_SESSION_ID:
         case nextapp::pb::ErrorGadget::Error::DATABASE_UPDATE_FAILED:
         case nextapp::pb::ErrorGadget::Error::DATABASE_REQUEST_FAILED:

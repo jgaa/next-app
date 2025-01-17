@@ -114,7 +114,8 @@ private:
             ADD_ACTION
         };
 
-        QUuid id = QUuid::createUuid();
+        quint32 id{0};
+        QUuid uuid = QUuid::createUuid();
         Type type{Type::INVALID};
         QDateTime time;
         QByteArray data;
@@ -517,7 +518,7 @@ private:
         bool delete_req = false;
 
         if (QSettings{}.value("server/resend_requests", true).toBool()) {
-            LOG_INFO << "Queuing request: " << qr.id.toString()
+            LOG_INFO << "Queuing request: " << qr.uuid.toString()
                      << " type: " << static_cast<int>(rq)
                      << " name: " << boost::typeindex::type_id<reqT>().pretty_name();
 
@@ -539,10 +540,10 @@ private:
         co_return co_await execute(qr, delete_req);
     }
 
-    QCoro::Task<bool> save(const QueuedRequest& qr);
+    QCoro::Task<bool> save(QueuedRequest& qr);
     QCoro::Task<bool> execute(const QueuedRequest& qr, bool deleteRequest);
     QCoro::Task<void> retryRequests();
-    QCoro::Task<bool> deleteRequestFromDb(const QUuid& id);
+    QCoro::Task<bool> deleteRequestFromDb(uint id);
     QCoro::Task<void> housekeeping();
 
 

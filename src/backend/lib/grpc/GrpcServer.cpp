@@ -346,6 +346,20 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
     });
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::ResetPlayback(::grpc::CallbackServerContext *ctx,
+                                                                   const pb::ResetPlaybackReq *req,
+                                                                   pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+        const auto& device_id = rctx.session().deviceId();
+        LOG_TRACE_N << "Resetting replay for device " << device_id << " for instance " << req->instanceid()
+                    << " from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid();
+        rctx.uctx->resetReplay(device_id, req->instanceid());
+        co_return;
+    }, __func__);
+}
 
 GrpcServer::GrpcServer(Server &server)
     : server_{server}, sessionManager_{server}
@@ -450,5 +464,26 @@ boost::asio::awaitable<void> GrpcServer::loadCert()
 
     }, __func__);
 }
+
+bool GrpcServer::isReplay(::grpc::CallbackServerContext *ctx, RequestCtx &rctx)
+{
+    // Check if the request is protected against replay
+    if (const auto it = ctx->client_metadata().find("req_id"); it != ctx->client_metadata().end()) {
+        if (const uint req_id = stoul(it->second.data()); req_id > 0) {
+            // Validate
+
+            // The client only sends instance_id if the instance_id is > 1.
+            uint instance_id = 1;
+            if (const auto iit = ctx->client_metadata().find("instance_id"); iit != ctx->client_metadata().end()) {
+                instance_id = stoul(iit->second.data());
+            }
+            const auto& device_id = rctx.session().deviceId();
+            return rctx.uctx->checkForReplay(device_id, instance_id, req_id);
+        }
+    }
+
+    return false;
+}
+
 
 } // ns

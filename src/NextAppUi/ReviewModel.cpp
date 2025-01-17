@@ -428,7 +428,7 @@ ORDER BY
 
     setState(State::FETCHING);
     auto& db = NextAppCore::instance()->db();
-    auto rval = co_await db.query(QString::fromLatin1(sql));
+    auto rval = co_await db.legacyQuery(QString::fromLatin1(sql));
     if (!rval) {
         LOG_ERROR_N << "Error fetching: " << rval.error();
         setState(State::ERROR);

@@ -297,7 +297,7 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
                 params.append(score);
                 params.append(cdd.name());
                 params.append(updated);
-                const auto rval = co_await db.query(sql, &params);
+                const auto rval = co_await db.legacyQuery(sql, &params);
                 if (!rval) {
                     LOG_ERROR_N << "Failed to update day color "
                                 << cdd.id_proto() << " " << cdd.name()
@@ -396,7 +396,7 @@ QCoro::Task<bool> GreenDaysModel::loadColorDefsFromCache()
     color_definitions_.clear();
     color_data_.clear();
 
-    const auto rval = co_await db.query(query);
+    const auto rval = co_await db.legacyQuery(query);
     if (rval) {
         color_data_.reserve(rval.value().size());
         for (const auto& row : rval.value()) {
@@ -440,7 +440,7 @@ QCoro::Task<bool> GreenDaysModel::loadDaysFromCache()
 
     months_.clear();
 
-    const auto rval = co_await db.query(query);
+    const auto rval = co_await db.legacyQuery(query);
     if (rval) {
         for (const auto& row : rval.value()) {
             const auto date = row.at(DATE).toDate();
@@ -478,7 +478,7 @@ QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullD
         LOG_TRACE_N << "Deleting day " << fullDay.day().date().year() << '-'
                     << fullDay.day().date().month() << '-'
                     << fullDay.day().date().mday();
-        const auto rval = co_await db.query(sql, &params);
+        const auto rval = co_await db.legacyQuery(sql, &params);
         if (!rval) {
             LOG_ERROR_N << "Failed to delete day "
                         << fullDay.day().date().year() << '-'
@@ -494,7 +494,7 @@ QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullD
     LOG_TRACE_N << "Updating day " << day.date().year() << '-'
                 << day.date().month() << '-'
                 << day.date().mday();
-    const auto rval = co_await db.query(insert_query, &params);
+    const auto rval = co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update day "
                     << day.date().year() << '-'

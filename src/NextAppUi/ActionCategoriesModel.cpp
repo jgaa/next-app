@@ -259,7 +259,7 @@ QCoro::Task<bool> ActionCategoriesModel::synchFromServer()
         if (res.hasActionCategories()) {
 
             auto& db = NextAppCore::instance()->db();
-            co_await db.query("DELETE FROM action_category");
+            co_await db.legacyQuery("DELETE FROM action_category");
 
             const auto& cats = res.actionCategories();
             for(const auto cat : cats.categories()) {
@@ -284,7 +284,7 @@ QCoro::Task<bool> ActionCategoriesModel::loadFromDb()
         endResetModel();
     });
 
-    auto res = co_await db.query("SELECT data FROM action_category");
+    auto res = co_await db.legacyQuery("SELECT data FROM action_category");
     if (res.has_value()) {
         action_categories_.clear();
         for(const auto& row : res.value()) {
@@ -314,7 +314,7 @@ QCoro::Task<bool> ActionCategoriesModel::save(const nextapp::pb::ActionCategory 
     params << category.name();
     params << category.serialize(&serializer);
 
-    const auto res = co_await db.query(R"(INSERT INTO action_category (id, version, name, data)
+    const auto res = co_await db.legacyQuery(R"(INSERT INTO action_category (id, version, name, data)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             version = excluded.version,
@@ -333,7 +333,7 @@ QCoro::Task<bool> ActionCategoriesModel::remove(const QString &id)
     auto& db = NextAppCore::instance()->db();
     DbStore::param_t params;
     params.append(id);
-    const auto res = co_await db.query("DELETE FROM action_category WHERE id = ?", &params);
+    const auto res = co_await db.legacyQuery("DELETE FROM action_category WHERE id = ?", &params);
     if (res.has_value()) {
         co_return true;
     }

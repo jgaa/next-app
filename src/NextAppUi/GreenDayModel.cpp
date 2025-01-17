@@ -181,7 +181,7 @@ QCoro::Task<void> GreenDayModel::fetch()
 
     QList<QVariant> params;
     params.append(QDate{year_, month_, mday_});
-    auto res = co_await db.query("SELECT date, color, notes, report, updated FROM day WHERE date = ?", &params);
+    auto res = co_await db.legacyQuery("SELECT date, color, notes, report, updated FROM day WHERE date = ?", &params);
     enum Cols { DATE, COLOR, NOTES, REPORT, UPDATED };
     if (res) {
         if (!res.value().empty()) {

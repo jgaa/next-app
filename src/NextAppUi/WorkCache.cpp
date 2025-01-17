@@ -185,7 +185,7 @@ QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
 
     auto& db = NextAppCore::instance()->db();
     const auto params = getParams(work);
-    const auto rval = co_await db.query(insert_query, &params);
+    const auto rval = co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update action: " << work.id_proto() << " " << work.name()
         << " err=" << rval.error();
@@ -201,7 +201,7 @@ QCoro::Task<bool> WorkCache::loadFromCache()
     auto& db = NextAppCore::instance()->db();
     DbStore::param_t params;
     params << static_cast<uint>(nextapp::pb::WorkSession::State::DONE);
-    auto res = co_await db.query("SELECT data FROM work_session WHERE state <?", &params);
+    auto res = co_await db.legacyQuery("SELECT data FROM work_session WHERE state <?", &params);
 
     if (res) {
         for (const auto& row : *res) {
@@ -304,7 +304,7 @@ ORDER BY {}
 LIMIT {} OFFSET {})", where, order, limit, offset);
     }
 
-    auto res = co_await db.query(QString::fromLatin1(sql), &params);
+    auto res = co_await db.legacyQuery(QString::fromLatin1(sql), &params);
     if (!res) {
         LOG_ERROR_N << "Failed to fetch work sessions: " << res.error();
         co_return sessions;
@@ -383,7 +383,7 @@ QCoro::Task<void> WorkCache::remove(const QUuid &id)
     QList<QVariant> params;
 
     params << id.toString();
-    auto res = co_await db.query("DELETE FROM work_session WHERE id = ?", &params);
+    auto res = co_await db.legacyQuery("DELETE FROM work_session WHERE id = ?", &params);
     co_return;
 }
 

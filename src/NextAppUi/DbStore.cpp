@@ -111,7 +111,7 @@ void DbStore::createDbObject()
     }
 }
 
-QCoro::Task<DbStore::rval_t> DbStore::query(const QString &sql, const QList<QVariant> *params)
+QCoro::Task<DbStore::rval_t> DbStore::legacyQuery(const QString &sql, const QList<QVariant> *params)
 {
     QPromise<rval_t> promise;
 
@@ -162,6 +162,81 @@ QCoro::Task<bool> DbStore::clear()
 
     createDbObject();
     co_return true;
+}
+
+DbStore::qrval_t DbStore::executeQuery(const QString &sql, const QList<QVariant> &params) {
+    QSqlQuery query;
+    if (!query.prepare(sql)) {
+        LOG_ERROR_N << "Failed to prepare statement: \"" << sql
+                    << "\", db=" << query.lastError().databaseText()
+                    << ", driver=" << query.lastError().driverText()
+                    << ", params=#" << params.size();
+        return tl::make_unexpected(Error::PREPARE_STATEMENT_FAILED);
+    }
+
+    for (const auto &param : params) {
+        query.addBindValue(param);
+    }
+
+    if (!query.exec()) {
+        LOG_ERROR_N << "Failed to execute: \"" << sql
+                    << "\", db=" << query.lastError().databaseText()
+                    << ", driver=" << query.lastError().driverText()
+                    << ", params=#" << params.size();
+        return tl::make_unexpected(Error::QUERY_FAILED);
+    }
+
+    LOG_TRACE_N << "Executing query: " << sql << " with " << params.size() << " params";
+
+    QueryResult result;
+    while (query.next()) {
+        QList<QVariant> row;
+        for (int i = 0; i < query.record().count(); ++i) {
+            row.append(query.value(i));
+        }
+        result.rows.append(row);
+    }
+
+    if (auto num = query.numRowsAffected(); num > 0) {
+        result.affected_rows = num;
+    };
+    result.affected_rows = query.numRowsAffected();
+    if (query.lastInsertId().isValid()) {
+        result.insert_id = query.lastInsertId().toUInt();
+    }
+
+    return result;
+}
+
+QCoro::Task<DbStore::qrval_t> DbStore::runQueryInWorker(const QString &sql, const QList<QVariant> &params) {
+    QMetaObject::Connection conn;
+
+    if (QThread::currentThread() == thread_) {
+        // Run immediately if already in the correct thread
+        co_return executeQuery(sql, params);
+    }
+
+    // Use a promise to wait for the result asynchronously
+    auto promise = QSharedPointer<QPromise<qrval_t>>::create();
+
+    // Schedule the query execution in the worker thread
+    auto future = promise->future();
+    QMetaObject::invokeMethod(this, [this, promise, sql, params]() mutable {
+        qrval_t result = executeQuery(sql, params);
+        promise->start();
+        promise->addResult(result);
+        promise->finish();
+    }, Qt::QueuedConnection);
+
+    QFutureWatcher<qrval_t> watcher;
+    watcher.setFuture(future);
+
+    // Move the watcher to the correct thread
+    //watcher.moveToThread(thread_);
+
+    // Wait for completion in a coroutine-safe way
+    co_await watcher.future();
+    co_return future.result();
 }
 
 bool DbStore::batchQueryImpl(QSqlQuery &query)
@@ -358,12 +433,13 @@ bool DbStore::updateSchema(uint version)
         )",
 
         R"(CREATE TABLE IF NOT EXISTS "requests" (
-            "id" VARCHAR(32) NOT NULL,
-            "time" INTEGER NOT NULL,
-            "rpcid" INTEGER NOT NULL,
-            "data" BLOB NOT NULL,
-            PRIMARY KEY("id")
-        ))",
+            id INTEGER PRIMARY KEY,
+            uuid VARCHAR(32) NOT NULL,
+            tries INTEGER NOT NULL DEFAULT 0,
+            time INTEGER NOT NULL,
+            rpcid INTEGER NOT NULL,
+            data BLOB NOT NULL)
+        )",
 
     });
 

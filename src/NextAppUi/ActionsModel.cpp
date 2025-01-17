@@ -1439,7 +1439,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
     }
 
     auto& db = NextAppCore::instance()->db();
-    auto result = co_await db.query(QString::fromLatin1(sql), &params);
+    auto result = co_await db.legacyQuery(QString::fromLatin1(sql), &params);
     if (result) {
         // Make a new list of actions with the sorted ID's
         decltype(actions_) new_actions;
@@ -1450,16 +1450,6 @@ ORDER BY {} LIMIT {} OFFSET {})",
 
         // Send the list to the cache to fill in the data-pointers
         co_await ActionInfoCache::instance()->fill(new_actions);
-
-        // for(const auto& a: new_actions) {
-        //     const auto secs = a.action->hasDue() ? a.action->due().due() : 0;
-        //     LOG_DEBUG << format("Action {} {:<40} due: {:<11} {}  completed: {}",
-        //         static_cast<int>(toKind(*a.action)),
-        //         a.action->name().toStdString(),
-        //         secs,
-        //         QDateTime::fromSecsSinceEpoch(secs).toString().toStdString(),
-        //         a.action->completedTime());
-        // }
 
         // Insert or replace the new list depending on it's page.
         start_reset();
@@ -1520,55 +1510,69 @@ void ActionsModel::actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &a
             }
             break;
         case FetchWhat::FW_TODAY:
-            if (ai->due().due() >= QDateTime::currentDateTime().toSecsSinceEpoch()
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
-                && ai->due().due() < QDateTime::currentDateTime().addDays(1).toSecsSinceEpoch()) {
-                add = true;
+            if (ai->hasDue() && ai->due().hasDue()) {
+                if (ai->due().due() >= QDateTime::currentDateTime().toSecsSinceEpoch()
+                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
+                    && ai->due().due() < QDateTime::currentDateTime().addDays(1).toSecsSinceEpoch()) {
+                    add = true;
+                }
             }
             break;
         case FetchWhat::FW_TODAY_AND_OVERDUE:
-            if (ai->due().due() <= QDateTime::currentDateTime().toSecsSinceEpoch()
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
+            if (ai->hasDue() && ai->due().hasDue()) {
+                if (ai->due().due() <= QDateTime::currentDateTime().toSecsSinceEpoch()
+                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                    add = true;
+                }
             }
             break;
         case FetchWhat::FW_TOMORROW:
-            if (ai->due().due() >= QDateTime::currentDateTime().addDays(1).toSecsSinceEpoch()
-                && ai->due().due() < QDateTime::currentDateTime().addDays(2).toSecsSinceEpoch()
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
+            if (ai->hasDue() && ai->due().hasDue()) {
+                if (ai->due().due() >= QDateTime::currentDateTime().addDays(1).toSecsSinceEpoch()
+                    && ai->due().due() < QDateTime::currentDateTime().addDays(2).toSecsSinceEpoch()
+                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                    add = true;
+                }
             }
             break;
         case FetchWhat::FW_CURRENT_WEEK: {
-            auto start_of_week = getFirstDayOfWeek(QDate::currentDate());
-            if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
-                && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
+            if (ai->hasDue() && ai->due().hasDue()) {
+                auto start_of_week = getFirstDayOfWeek(QDate::currentDate());
+                if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
+                    && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
+                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                    add = true;
+                }
             }
         } break;
         case FetchWhat::FW_NEXT_WEEK: {
-            auto start_of_week = getFirstDayOfWeek(QDate::currentDate().addDays(7));
-            if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
-                && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
+            if (ai->hasDue() && ai->due().hasDue()) {
+                auto start_of_week = getFirstDayOfWeek(QDate::currentDate().addDays(7));
+                if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
+                    && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
+                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                    add = true;
+                }
             }
         } break;
         case FetchWhat::FW_CURRENT_MONTH: {
-            auto start_of_month = QDate{QDate::currentDate().year(), QDate::currentDate().month(), 1};
-            if (ai->due().due() >= start_of_month.startOfDay().toSecsSinceEpoch()
-                && ai->due().due() < start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
+            if (ai->hasDue() && ai->due().hasDue()) {
+                auto start_of_month = QDate{QDate::currentDate().year(), QDate::currentDate().month(), 1};
+                if (ai->due().due() >= start_of_month.startOfDay().toSecsSinceEpoch()
+                    && ai->due().due() < start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
+                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                    add = true;
+                }
             }
         } break;
         case FetchWhat::FW_NEXT_MONTH: {
-            auto start_of_month = QDate{QDate::currentDate().year(), QDate::currentDate().month(), 1};
-            if (ai->due().due() >= start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
-                && ai->due().due() < start_of_month.addMonths(2).startOfDay().toSecsSinceEpoch()
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
+            if (ai->hasDue() && ai->due().hasDue()) {
+                auto start_of_month = QDate{QDate::currentDate().year(), QDate::currentDate().month(), 1};
+                if (ai->due().due() >= start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
+                    && ai->due().due() < start_of_month.addMonths(2).startOfDay().toSecsSinceEpoch()
+                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
+                    add = true;
+                }
             }
         } break;
         case FetchWhat::FW_SELECTED_NODE:
@@ -1589,7 +1593,7 @@ void ActionsModel::actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &a
             }
             break;
         case FetchWhat::FW_UNASSIGNED:
-            if (!ai->hasDue()
+            if ((!ai->hasDue() || !ai->due().hasDue() || ai->due().kind() ==  pb::ActionDueKindGadget::ActionDueKind::UNSET)
                 && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
                 add = true;
             }

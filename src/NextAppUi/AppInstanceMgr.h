@@ -20,11 +20,14 @@ public:
     static AppInstanceMgr *instance();
 
     QString name() const noexcept { return name_; }
+    uint instanceId() const noexcept { return instance_id_; }
 
     void init();
     void close();
 
 private:
+    // TODO: We should probably use a hash aagainst the server we use
+    //       to support multiple servers on the same device.
 #ifdef _DEBUG
     const QString SHARED_MEMORY_KEY = "NextApp_InstanceTracker_dbg";
 #else
@@ -35,4 +38,5 @@ private:
 #endif
     QString name_{"singleton"};
     bool closed_{true};
+    uint instance_id_{1}; // Default to 1, also on systems that don't support multiple instances.
 };

@@ -52,6 +52,7 @@ std::ostream& operator<<(std::ostream& os, const nextapp::pb::ErrorGadget::Error
         "DEVICE_DISABLED",
         "CLIENT_GRPC_ERROR",
         "REPLAY_DETECTED",
+        "INVALID_ARGUMENT",
     });
 
     const auto err = static_cast<size_t>(error);

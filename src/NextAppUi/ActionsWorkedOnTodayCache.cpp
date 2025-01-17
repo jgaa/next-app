@@ -67,7 +67,7 @@ again:
         WHERE DATE(start_time) = DATE('now', 'localtime');
     )";
 
-    auto rval = co_await db.query(query);
+    auto rval = co_await db.legacyQuery(query);
 
     if (pending_initialize_) {
         pending_initialize_ = false;

@@ -150,7 +150,7 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
         QList<QVariant> params;
         const QString sql = "DELETE FROM time_block_actions WHERE time_block = ?";
         params << tblock.id_proto();
-        const auto rval = co_await db.query(sql, &params);
+        const auto rval = co_await db.legacyQuery(sql, &params);
         if (!rval) {
             LOG_ERROR_N << "Failed to delete time block: " << tblock.id_proto() << " err=" << rval.error();
             co_return false;
@@ -161,14 +161,14 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
         QList<QVariant> params;
         params << tblock.id_proto();
         QString sql = "DELETE FROM time_block WHERE id = ?";
-        const auto rval = co_await db.query(sql, &params);
+        const auto rval = co_await db.legacyQuery(sql, &params);
         if (!rval) {
             LOG_ERROR_N << "Failed to delete time block: " << tblock.id_proto() << " err=" << rval.error();
             co_return false;
         }
     } else {
         const auto params = getParams(tblock);
-        const auto rval = co_await db.query(insert_query, &params);
+        const auto rval = co_await db.legacyQuery(insert_query, &params);
         if (!rval) {
             LOG_ERROR_N << "Failed to update action: " << tblock.id_proto() << " " << tblock.name()
             << " err=" << rval.error();
@@ -185,7 +185,7 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
             params.clear();
             params << tblock.id_proto();
             params << aid;
-            const auto rval = co_await db.query(sql, &params);
+            const auto rval = co_await db.legacyQuery(sql, &params);
             if (!rval) {
                 LOG_WARN_N << "Failed to insert time block reference: " << tblock.id_proto() << " err=" << rval.error();
                 co_return false;
@@ -219,7 +219,7 @@ QCoro::Task<bool> CalendarCache::remove(const nextapp::pb::TimeBlock &tb)
 
     QString sql = "DELETE FROM time_block WHERE id = ?";
     params << tb.id_proto();
-    auto res = co_await db.query(sql, &params);
+    auto res = co_await db.legacyQuery(sql, &params);
     if (!res) {
         LOG_ERROR_N << "Failed to delete time block: " << tb.id_proto() << " err=" << res.error();
         co_return false;
@@ -237,7 +237,7 @@ QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent> > > CalendarCache:
     QString sql = "SELECT id, data FROM time_block WHERE start_time >= ? AND end_time < ? ORDER BY start_time";
     params << start.startOfDay();
     params << end.startOfDay();
-    auto res = co_await db.query(sql, &params);
+    auto res = co_await db.legacyQuery(sql, &params);
     if (!res) {
         LOG_ERROR_N << "Failed to get time blocks: " << res.error();
         co_return events;

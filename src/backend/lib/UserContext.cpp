@@ -115,9 +115,44 @@ void UserContext::publish(const std::shared_ptr<pb::Update> &update)
     }
 }
 
+bool UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId, uint reqId)
+{
+    lock_guard lock{instance_mutex_};
+    auto& device = devices_[deviceId];
+    validateInstanceId(instanceId);
+
+    const auto index = instanceId - 1; // Instance start at 1
+    if (reqId <= device.last_request_id.get(index, 0)) {
+        LOG_DEBUG_N << "Replay detected for device" << deviceId
+                    << ", instanceId=" << instanceId
+                    << ", reqId=" << reqId
+                    << ", for user=" << userUuid();
+        return true;
+    }
+    device.last_request_id.set(index, reqId);
+    return false;
+}
+
+void UserContext::resetReplay(const boost::uuids::uuid &deviceId, uint instanceId)
+{
+    lock_guard lock{instance_mutex_};
+    auto& device = devices_[deviceId];
+    validateInstanceId(instanceId);
+
+    const auto index = instanceId - 1; // Instance start at 1
+    device.last_request_id.set(index, 0);
+}
+
 boost::uuids::uuid UserContext::newUuid()
 {
     return ::nextapp::newUuid();
+}
+
+void UserContext::validateInstanceId(uint instanceId)
+{
+    if (instanceId < 1 || instanceId > 10) {
+        throw server_err{pb::Error::INVALID_ARGUMENT, "Invalid instanceId"};
+    }
 }
 
 string mapToString(const auto &map) {

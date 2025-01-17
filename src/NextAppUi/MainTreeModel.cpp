@@ -559,7 +559,7 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
         DATA
     };
 
-    auto rval = co_await db.query(query);
+    auto rval = co_await db.legacyQuery(query);
     if (rval) {
         for (const auto& row : rval.value()) {
             QProtobufSerializer serializer;
@@ -614,7 +614,7 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
         params.append(node.uuid());
         LOG_TRACE_N << "Deleting node " << node.uuid() << " " << node.name();
 
-        const auto rval = co_await db.query(sql, &params);
+        const auto rval = co_await db.legacyQuery(sql, &params);
         if (!rval) {
             LOG_WARN_N << "Failed to delete node " << node.uuid() << " " << node.name()
                         << " err=" << rval.error();
@@ -632,7 +632,7 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
     params << node.excludeFromWeeklyReview();
     params << node.serialize(&serializer);
 
-    const auto rval = co_await db.query(insert_query, &params);
+    const auto rval = co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update node: " << node.uuid() << " " << node.name()
                     << " err=" << rval.error();

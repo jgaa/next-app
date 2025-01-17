@@ -180,6 +180,7 @@ public:
         ::grpc::ServerUnaryReactor *GetDevices(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *UpdateDevice(::grpc::CallbackServerContext *, const pb::DeviceUpdateReq *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *DeleteDevice(::grpc::CallbackServerContext *, const pb::Uuid *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *ResetPlayback(::grpc::CallbackServerContext *, const pb::ResetPlaybackReq *, pb::Status *) override;
 
 
     private:
@@ -200,6 +201,18 @@ public:
 
                         RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx, allowNewSession)};
                         rctx.session().touch();
+
+                        // We only provide reply-protection for standard rpc calls returning a Status object.
+                        if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
+                            if (owner_.isReplay(ctx, rctx)) {
+                                LOG_DEBUG << "Request [" << name << "] is a replay.";
+                                reply->Clear();
+                                reply->set_error(nextapp::pb::Error::REPLAY_DETECTED);
+                                reply->set_message("Replay. Ignoring request.");
+                                reactor->Finish(::grpc::Status::OK);
+                                co_return;
+                            }
+                        }
 
                         if constexpr (UnaryFnWithoutContext<FnT, ReplyT>) {
                             co_await fn(reply);
@@ -231,8 +244,16 @@ public:
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
                     } catch (const std::exception& ex) {
-                        LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
-                        reactor->Finish(::grpc::Status::CANCELLED);
+                        if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
+                            LOG_DEBUG << "Request [" << name << "] Caught exception while handling grpc request: " << ex.what();
+                            reply->Clear();
+                            reply->set_error(nextapp::pb::Error::GENERIC_ERROR);
+                            reply->set_message(ex.what());
+                            reactor->Finish(::grpc::Status::OK);
+                        } else {
+                            LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
+                            reactor->Finish(::grpc::Status::CANCELLED);
+                        }
                     }
 
                     LOG_TRACE << "Request [" << name << "] Exiting unary handler.";
@@ -399,6 +420,7 @@ private:
     }
 
     boost::asio::awaitable<void> loadCert();
+    bool isReplay(::grpc::CallbackServerContext *ctx, RequestCtx& rctx);
 
     SessionManager sessionManager_;
 

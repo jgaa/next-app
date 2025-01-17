@@ -34,8 +34,83 @@ private:
     const boost::uuids::uuid uuid_ = newUuid();
 };
 
+/*! \brief A container that can hold either a single value or a vector of values.
+ *
+ * This is useful for storing values that may be either a single value or a list of values.
+ * The container is optimized for the single value case, and will transition to a vector
+ * when a second value is added.
+ */
+template <typename T, size_t maxT, bool reserveT = true>
+class ValueContainer {
+public:
+    ValueContainer() : storage(T{}) {}
+
+    size_t size() const {
+        if (std::holds_alternative<T>(storage)) {
+            return 1;
+        } else {
+            return std::get<std::vector<T>>(storage).size();
+        }
+    }
+
+    T get(size_t index = 0, const std::optional<T>& emptyVal = {}) const {
+        if (std::holds_alternative<T>(storage)) {
+            if (index == 0) {
+                return std::get<T>(storage);
+            } else {
+                if (emptyVal) {
+                    return *emptyVal;
+                }
+                throw std::out_of_range("Index out of range");
+            }
+        } else {
+            const auto& vec = std::get<std::vector<T>>(storage);
+            if (index >= vec.size()) {
+                throw std::out_of_range("Index out of range");
+            }
+            return vec[index];
+        }
+    }
+
+    void set(size_t index, const T& value) {
+        if (index >= maxT) {
+            throw std::out_of_range("Index out of range");
+        }
+        if (std::holds_alternative<T>(storage)) {
+            if (index == 0) {
+                storage = value;
+            } else {
+                // Transition to vector if index exceeds the single value
+                std::vector<T> vec;
+                if constexpr (reserveT) {
+                    // Useful if the vector is expected to contains a small number of elements.
+                    vec.reserve(maxT);
+                }
+                vec.resize(index + 1);
+                vec[0] = std::get<T>(storage);
+                vec[index] = value;
+                storage = std::move(vec);
+            }
+        } else {
+            auto& vec = std::get<std::vector<T>>(storage);
+            if (index >= vec.size()) {
+                vec.resize(index + 1);
+            }
+            vec[index] = value;
+        }
+    }
+
+private:
+    std::variant<T, std::vector<T>> storage;
+};
+
+
 class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
+    struct Device {
+        ValueContainer<uint32_t, 10> last_request_id;;
+    };
+
     class Session : public std::enable_shared_from_this<Session> {
     public:
         using cleanup_t = std::function<void()>;
@@ -147,8 +222,12 @@ public:
     void removePublisher(const boost::uuids::uuid& uuid);
     void publish(const std::shared_ptr<pb::Update>& message);
 
+    bool checkForReplay(const boost::uuids::uuid& deviceId, uint instanceId, uint reqId);
+    void resetReplay(const boost::uuids::uuid& deviceId, uint instanceId);
+
 private:
     static boost::uuids::uuid newUuid();
+    void validateInstanceId(uint instanceId);
 
     std::string user_uuid_;
     std::string tenant_uuid_;
@@ -158,7 +237,9 @@ private:
     pb::User::Kind kind_{pb::User::Kind::User_Kind_REGULAR};
     std::vector<std::shared_ptr<Session>> sessions_; // NB: Circular reference.
     std::vector<std::weak_ptr<Publisher>> publishers_;
+    std::map<boost::uuids::uuid, Device> devices_;
     std::shared_mutex mutex_;
+    std::mutex instance_mutex_;
 };
 
 

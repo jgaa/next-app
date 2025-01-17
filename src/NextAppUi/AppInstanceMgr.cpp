@@ -55,7 +55,7 @@ void AppInstanceMgr::init()
     InstanceInfo *info = static_cast<InstanceInfo*>(shared_memory_.data());
 
     // Find an available instance slot or re-use an existing one
-    for (int i = 0; i < 10; ++i) {
+    for (uint i = 0; i < 10; ++i) {
         if (info->pids[i] == 0) {  // Unused slot
             info->pids[i] = QCoreApplication::applicationPid();
             info->activeInstances++;
@@ -63,6 +63,7 @@ void AppInstanceMgr::init()
             name_ = QString("/instance_%1").arg(i + 1);
             LOG_INFO_N << "Instance name: " << name_ << ". Active instances: "
                        << info->activeInstances << " of " << max_instances;
+            instance_id_ = i + 1;
             return;
         }
     }

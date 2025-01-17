@@ -14,6 +14,7 @@
 #include <QFutureWatcher>
 #include <QtConcurrent>
 #include "qcorotask.h"
+#include "qcorofuture.h"
 
 class DbStore : public QObject
 {
@@ -44,20 +45,26 @@ public:
         OK,
         GENERIC_ERROR,
         QUERY_FAILED,
-        EMPTY_RESULT
+        EMPTY_RESULT,
+        PREPARE_STATEMENT_FAILED
     };
 
     using rval_t = tl::expected<QList<QList<QVariant>>, Error>;
     using param_t = QList<QVariant>;
 
+    struct DbRval {
+
+    };
+
     explicit DbStore(QObject *parent = nullptr);
     ~DbStore();
 
-    QCoro::Task<rval_t> query(const QString& sql, const param_t *params = {});
+    //[[deprecated]]
+    QCoro::Task<rval_t> legacyQuery(const QString& sql, const param_t *params = {});
 
     template <typename T>
     QCoro::Task<tl::expected<T, Error>> queryOne(const QString& sql, const param_t *params = {}) {
-        auto vals = co_await query(sql, params);
+        auto vals = co_await legacyQuery(sql, params);
         if (vals) {
             auto& value = vals.value();
             if (value.empty()) {
@@ -67,6 +74,21 @@ public:
         }
         co_return vals.error();
     }
+
+    struct QueryResult {
+        QList<QList<QVariant>> rows;
+        std::optional<uint> affected_rows;
+        std::optional<uint> insert_id;
+    };
+
+    using qrval_t = tl::expected<QueryResult, Error>;
+
+    template<typename... Args>
+    QCoro::Task<qrval_t> query(const QString &sql, Args&&... args) {
+        QList<QVariant> params = { QVariant(std::forward<Args>(args))... };
+        co_return co_await runQueryInWorker(sql, params);
+    }
+
 
     /*! Process a batch of data-records in the database-thread.
      *
@@ -140,6 +162,10 @@ signals:
     void error(Error error);
 
 private:
+    QCoro::Task<qrval_t> runQueryInWorker(const QString &sql, const QList<QVariant> &params);
+
+    qrval_t executeQuery(const QString &sql, const QList<QVariant> &params);
+
     void start();
     void createDbObject();
     void initImpl(QPromise<rval_t>& promise);
