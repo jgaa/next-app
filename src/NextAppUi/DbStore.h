@@ -103,8 +103,12 @@ public:
         const D& isDeleted,
         const I& getId) {
 
+        auto promise = QSharedPointer<QPromise<bool>>::create();
+        auto future = promise->future();
+
         // Wrap the operation in a lambda that will be executed in the DBs thread
-        QFuture<bool> future = QtConcurrent::run([this, insertQurey, deleteQuery, data, getParams, isDeleted, getId]() -> bool {
+        //QFuture<bool> future = QtConcurrent::run([this, insertQurey, deleteQuery, data, getParams, isDeleted, getId]() -> bool {
+        QMetaObject::invokeMethod(this, [&]() {
             auto success = true;
             QSqlQuery query{*db_};
             query.prepare(insertQurey);
@@ -117,29 +121,19 @@ public:
                     continue;
                 };
 
-                // uint param_ix = 0;
-                // const auto params = getParams(row);
-                // for(const auto& param : params) {
-                //     query.bindValue(param_ix++, param);
-                // }
-
                 bindParams(query, getParams(row));
 
                 if (!batchQueryImpl(query)) {
                     success = false;
                 }
             }
-            return success;
+            promise->start();
+            promise->addResult(success);
+            promise->finish();
         });
 
-        // Move the watcher to the existing thread and suspend until it completes
         QFutureWatcher<bool> watcher;
         watcher.setFuture(future);
-
-        // Move the watcher to the correct thread
-        watcher.moveToThread(thread_);
-
-        // Wait for completion in a coroutine-safe way
         co_await watcher.future();
         co_return future.result();
     }
