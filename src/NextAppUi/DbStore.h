@@ -107,7 +107,6 @@ public:
         auto future = promise->future();
 
         // Wrap the operation in a lambda that will be executed in the DBs thread
-        //QFuture<bool> future = QtConcurrent::run([this, insertQurey, deleteQuery, data, getParams, isDeleted, getId]() -> bool {
         QMetaObject::invokeMethod(this, [&]() {
             auto success = true;
             QSqlQuery query{*db_};

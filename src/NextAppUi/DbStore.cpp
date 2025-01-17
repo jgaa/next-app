@@ -433,7 +433,7 @@ bool DbStore::updateSchema(uint version)
         )",
 
         R"(CREATE TABLE IF NOT EXISTS "requests" (
-            id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid VARCHAR(32) NOT NULL,
             tries INTEGER NOT NULL DEFAULT 0,
             time INTEGER NOT NULL,

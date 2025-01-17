@@ -111,7 +111,20 @@ private:
     struct QueuedRequest {
         enum class Type {
             INVALID,
-            ADD_ACTION
+            ADD_ACTION,
+            UPDATE_ACTION,
+            DELETE_ACTION,
+            MARK_ACTION_AS_DONE,
+            MARK_ACTION_AS_FAVORITE,
+            MOVE_ACTION,
+            //CREATE_ACTION_CATEGORY,
+            ADD_NODE,
+            UPDATE_NODE,
+            MOVE_NODE,
+            DELETE_NODE,
+            ADD_TIME_BLOCK,
+            UPDATE_TIME_BLOCK,
+            DELETE_TIME_BLOCK,
         };
 
         quint32 id{0};
@@ -191,8 +204,6 @@ public:
     void moveNode(const QUuid &uuid, const QUuid &toParentUuid);
 
     void deleteNode(const QUuid& uuid);
-
-    void getNodeTree();
 
     void getDayColorDefinitions();
 
@@ -508,12 +519,6 @@ private:
         qr.type = rq;
         qr.time = QDateTime::currentDateTime();
         qr.data = request.serialize(&serializer);
-
-        if (request.hasDue()) {
-            const auto& due = request.due();
-            auto kind = due.kind();
-            LOG_TRACE << "Request has a due kind: " ;
-        }
 
         bool delete_req = false;
 

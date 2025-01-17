@@ -343,16 +343,12 @@ void ServerComm::addNode(const nextapp::pb::Node &node)
     nextapp::pb::CreateNodeReq req;
     req.setNode(node);
 
-    callRpc<nextapp::pb::Status>([this](nextapp::pb::CreateNodeReq req) {
-        return client_->CreateNode(req);
-    }, req);
+    rpcQueueAndExecute<QueuedRequest::Type::ADD_NODE>(req);
 }
 
 void ServerComm::updateNode(const nextapp::pb::Node &node)
 {
-    callRpc<nextapp::pb::Status>([this](nextapp::pb::Node node) {
-        return client_->UpdateNode(node);
-    }, node);
+    rpcQueueAndExecute<QueuedRequest::Type::UPDATE_NODE>(node);
 }
 
 void ServerComm::moveNode(const QUuid &uuid, const QUuid &toParentUuid)
@@ -370,6 +366,8 @@ void ServerComm::moveNode(const QUuid &uuid, const QUuid &toParentUuid)
         return;
     }
 
+    rpcQueueAndExecute<QueuedRequest::Type::MOVE_NODE>(req);
+
     callRpc<nextapp::pb::Status>([this](nextapp::pb::MoveNodeReq req) {
         return client_->MoveNode(req);
     }, req);
@@ -377,22 +375,10 @@ void ServerComm::moveNode(const QUuid &uuid, const QUuid &toParentUuid)
 
 void ServerComm::deleteNode(const QUuid &uuid)
 {
-    callRpc<nextapp::pb::Status>([this](QUuid uuid) {
-        nextapp::pb::DeleteNodeReq req;
-        req.setUuid(uuid.toString(QUuid::WithoutBraces));
-        return client_->DeleteNode(req);
-    }, uuid);
-}
+    nextapp::pb::DeleteNodeReq req;
+    req.setUuid(uuid.toString(QUuid::WithoutBraces));
 
-void ServerComm::getNodeTree()
-{
-    nextapp::pb::GetNodesReq req;
-
-    callRpc<nextapp::pb::NodeTree>([this](nextapp::pb::GetNodesReq req) {
-        return client_->GetNodes(req);
-    }, [this](const nextapp::pb::NodeTree& tree) {
-        emit receivedNodeTree(tree);
-    }, req);
+    rpcQueueAndExecute<QueuedRequest::Type::DELETE_NODE>(req);
 }
 
 void ServerComm::getDayColorDefinitions()
@@ -427,36 +413,19 @@ void ServerComm::fetchDay(int year, int month, int day)
 
 void ServerComm::addAction(const nextapp::pb::Action& action)
 {
-    nextapp::pb::Action a{action};
-    rpcQueueAndExecute<QueuedRequest::Type::ADD_ACTION>(a);
-
-
-    // callRpc<nextapp::pb::Status>([this, action]() {
-    //     return client_->CreateAction(action);
-    // } , [this](const nextapp::pb::Status& status) {
-    //     ;
-    // });
+    rpcQueueAndExecute<QueuedRequest::Type::ADD_ACTION>(action);
 }
 
 void ServerComm::updateAction(const nextapp::pb::Action &action)
 {
-    callRpc<nextapp::pb::Status>([this, action]() {
-        return client_->UpdateAction(action);
-    } , [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    rpcQueueAndExecute<QueuedRequest::Type::UPDATE_ACTION>(action);
 }
 
 void ServerComm::deleteAction(const QString &actionUuid)
 {
     nextapp::pb::DeleteActionReq req;
     req.setActionId(actionUuid);
-
-    callRpc<nextapp::pb::Status>([this, req]() {
-        return client_->DeleteAction(req);
-    } , [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    rpcQueueAndExecute<QueuedRequest::Type::DELETE_ACTION>(req);
 }
 
 void ServerComm::markActionAsDone(const QString &actionUuid, bool done)
@@ -465,11 +434,7 @@ void ServerComm::markActionAsDone(const QString &actionUuid, bool done)
     req.setUuid(actionUuid);
     req.setDone(done);
 
-    callRpc<nextapp::pb::Status>([this, &req]() {
-        return client_->MarkActionAsDone(req);
-    } , [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    rpcQueueAndExecute<QueuedRequest::Type::MARK_ACTION_AS_DONE>(req);
 }
 
 void ServerComm::markActionAsFavorite(const QString &actionUuid, bool favorite)
@@ -478,15 +443,11 @@ void ServerComm::markActionAsFavorite(const QString &actionUuid, bool favorite)
     req.setUuid(actionUuid);
     req.setFavorite(favorite);
 
-    callRpc<nextapp::pb::Status>([this, &req]() {
-        return client_->MarkActionAsFavorite(req);
-    } , [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    rpcQueueAndExecute<QueuedRequest::Type::MARK_ACTION_AS_FAVORITE>(req);
 }
+
 void ServerComm::getActiveWorkSessions()
 {
-
     callRpc<nextapp::pb::Status>([this]() {
         nextapp::pb::Empty req;
         return client_->ListCurrentWorkSessions(req);
@@ -642,29 +603,17 @@ void ServerComm::moveAction(const QString &actionUuid, const QString &nodeUuid)
     req.setActionId(actionUuid);
     req.setNodeId(nodeUuid);
 
-    callRpc<nextapp::pb::Status>([this, req]() {
-        return client_->MoveAction(req);
-    }, [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    rpcQueueAndExecute<QueuedRequest::Type::MOVE_ACTION>(req);
 }
 
 void ServerComm::addTimeBlock(const nextapp::pb::TimeBlock &tb)
 {
-    callRpc<nextapp::pb::Status>([this, tb]() {
-        return client_->CreateTimeblock(tb);
-    }, [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    rpcQueueAndExecute<QueuedRequest::Type::ADD_TIME_BLOCK>(tb);
 }
 
 void ServerComm::updateTimeBlock(const nextapp::pb::TimeBlock &tb)
 {
-    callRpc<nextapp::pb::Status>([this, tb]() {
-        return client_->UpdateTimeblock(tb);
-    }, [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    rpcQueueAndExecute<QueuedRequest::Type::UPDATE_TIME_BLOCK>(tb);
 }
 
 void ServerComm::deleteTimeBlock(const QString &timeBlockUuid)
@@ -672,11 +621,7 @@ void ServerComm::deleteTimeBlock(const QString &timeBlockUuid)
     nextapp::pb::DeleteTimeblockReq req;
     req.setId_proto(timeBlockUuid);
 
-    callRpc<nextapp::pb::Status>([this, req]() {
-        return client_->DeleteTimeblock(req);
-    }, [this](const nextapp::pb::Status& status) {
-        ;
-    });
+    rpcQueueAndExecute<QueuedRequest::Type::DELETE_TIME_BLOCK>(req);
 }
 
 void ServerComm::fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents> && done)
@@ -1681,21 +1626,23 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
         assert(executing_request_count_ == 0);
     }};
 
-    if (deleteRequest) {
-        assert(qr.id > 0);
-    };
-
     GrpcCallOptions options;
     options.enable_queue = true; // Informative
-    string uuid = qr.uuid.toString(QUuid::StringFormat::WithoutBraces).toStdString();
 
-    QHash<QByteArray, QByteArray> metadata{{std::make_pair("req_id", uuid.c_str())}};
+    QHash<QByteArray, QByteArray> metadata;
 
-    // The default instance_id is 1. If we have a higher id, we need to send "instance_id".
-    if (auto iid = AppInstanceMgr::instance()->instanceId(); iid > 1) {
-        const auto str = to_string(iid);
-        metadata.insert("instance_id", str.c_str());
-    };
+    // Don't enable replay protection for direct requests that are not stored in the database.
+    if (deleteRequest) {
+        assert(qr.id > 0);
+        const string id_str = to_string(qr.id); // qr.uuid.toString(QUuid::StringFormat::WithoutBraces).toStdString();
+        metadata.insert("req_id", id_str.c_str());
+
+        // The default instance_id is 1. If we have a higher id, we need to send "instance_id".
+        if (auto iid = AppInstanceMgr::instance()->instanceId(); iid > 1) {
+            const auto str = to_string(iid);
+            metadata.insert("instance_id", str.c_str());
+        };
+    }
 
     options.qopts.setMetadata(std::move(metadata)); // Prevent replay if the server has seen this id
 
@@ -1709,8 +1656,56 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
             QProtobufSerializer serializer;
             const auto req = deserialize<nextapp::pb::Action>(qr.data);
             res = co_await rpc(req, &nextapp::pb::Nextapp::Client::CreateAction, options);
-            break;
-        }
+        } break;
+        case QueuedRequest::Type::UPDATE_ACTION: {
+            QProtobufSerializer serializer;
+            const auto req = deserialize<nextapp::pb::Action>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::UpdateAction, options);
+        } break;
+        case QueuedRequest::Type::DELETE_ACTION: {
+            const auto req = deserialize<nextapp::pb::DeleteActionReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::DeleteAction, options);
+        } break;
+        case QueuedRequest::Type::MARK_ACTION_AS_DONE: {
+            const auto req = deserialize<nextapp::pb::ActionDoneReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::MarkActionAsDone, options);
+        } break;
+        case QueuedRequest::Type::MARK_ACTION_AS_FAVORITE: {
+            const auto req = deserialize<nextapp::pb::ActionFavoriteReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::MarkActionAsFavorite, options);
+        } break;
+        case QueuedRequest::Type::MOVE_ACTION: {
+            const auto req = deserialize<nextapp::pb::MoveActionReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::MoveAction, options);
+        } break;
+        case QueuedRequest::Type::ADD_NODE: {
+            const auto req = deserialize<nextapp::pb::CreateNodeReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::CreateNode, options);
+        } break;
+        case QueuedRequest::Type::UPDATE_NODE: {
+            const auto req = deserialize<nextapp::pb::Node>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::UpdateNode, options);
+        } break;
+        case QueuedRequest::Type::MOVE_NODE: {
+            const auto req = deserialize<nextapp::pb::MoveNodeReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::MoveNode, options);
+        } break;
+        case QueuedRequest::Type::DELETE_NODE: {
+            const auto req = deserialize<nextapp::pb::DeleteNodeReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::DeleteNode, options);
+        } break;
+        case QueuedRequest::Type::ADD_TIME_BLOCK: {
+            const auto req = deserialize<nextapp::pb::TimeBlock>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::CreateTimeblock, options);
+        } break;
+        case QueuedRequest::Type::UPDATE_TIME_BLOCK: {
+            const auto req = deserialize<nextapp::pb::TimeBlock>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::UpdateTimeblock, options);
+        } break;
+        case QueuedRequest::Type::DELETE_TIME_BLOCK: {
+            const auto req = deserialize<nextapp::pb::DeleteTimeblockReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::DeleteTimeblock, options);
+        } break;
     }
 
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {

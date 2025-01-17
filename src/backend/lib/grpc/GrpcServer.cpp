@@ -477,6 +477,10 @@ bool GrpcServer::isReplay(::grpc::CallbackServerContext *ctx, RequestCtx &rctx)
             if (const auto iit = ctx->client_metadata().find("instance_id"); iit != ctx->client_metadata().end()) {
                 instance_id = stoul(iit->second.data());
             }
+
+            LOG_TRACE_N << "Checking replay for instance " << instance_id << " and req " << req_id
+                        << " from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid();
+
             const auto& device_id = rctx.session().deviceId();
             return rctx.uctx->checkForReplay(device_id, instance_id, req_id);
         }
