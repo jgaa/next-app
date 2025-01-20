@@ -356,7 +356,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         const auto& device_id = rctx.session().deviceId();
         LOG_TRACE_N << "Resetting replay for device " << device_id << " for instance " << req->instanceid()
                     << " from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid();
-        rctx.uctx->resetReplay(device_id, req->instanceid());
+        co_await rctx.uctx->resetReplay(device_id, req->instanceid());
         co_return;
     }, __func__);
 }
@@ -465,7 +465,7 @@ boost::asio::awaitable<void> GrpcServer::loadCert()
     }, __func__);
 }
 
-bool GrpcServer::isReplay(::grpc::CallbackServerContext *ctx, RequestCtx &rctx)
+boost::asio::awaitable<bool> GrpcServer::isReplay(::grpc::CallbackServerContext *ctx, RequestCtx &rctx)
 {
     // Check if the request is protected against replay
     if (const auto it = ctx->client_metadata().find("req_id"); it != ctx->client_metadata().end()) {
@@ -482,11 +482,11 @@ bool GrpcServer::isReplay(::grpc::CallbackServerContext *ctx, RequestCtx &rctx)
                         << " from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid();
 
             const auto& device_id = rctx.session().deviceId();
-            return rctx.uctx->checkForReplay(device_id, instance_id, req_id);
+            co_return co_await rctx.uctx->checkForReplay(device_id, instance_id, req_id);
         }
     }
 
-    return false;
+    co_return false;
 }
 
 

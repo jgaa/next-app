@@ -204,7 +204,7 @@ public:
 
                         // We only provide reply-protection for standard rpc calls returning a Status object.
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
-                            if (owner_.isReplay(ctx, rctx)) {
+                            if (co_await owner_.isReplay(ctx, rctx)) {
                                 LOG_DEBUG << "Request [" << name << "] is a replay.";
                                 reply->Clear();
                                 reply->set_error(nextapp::pb::Error::REPLAY_DETECTED);
@@ -420,7 +420,7 @@ private:
     }
 
     boost::asio::awaitable<void> loadCert();
-    bool isReplay(::grpc::CallbackServerContext *ctx, RequestCtx& rctx);
+    boost::asio::awaitable<bool> isReplay(::grpc::CallbackServerContext *ctx, RequestCtx& rctx);
 
     SessionManager sessionManager_;
 

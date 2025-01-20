@@ -107,8 +107,11 @@ private:
 
 class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
-    struct Device {
-        ValueContainer<uint32_t, 10> last_request_id;;
+    class Device {
+    public:
+        using value_t = std::optional<uint32_t>;
+        using values_t = ValueContainer<value_t, 10>;
+        values_t last_request_id;
     };
 
     class Session : public std::enable_shared_from_this<Session> {
@@ -137,15 +140,7 @@ public:
         std::chrono::steady_clock::time_point touched() const;
 
         // Call when the session is removed
-        void cleanup() {
-            for(auto& c : cleanup_) {
-                try {
-                    c();
-                } catch(const std::exception& e) {
-                    LOG_WARN_N << "Exception in cleanup: " << e.what();
-                }
-            }
-        }
+        void cleanup();
 
         void addCleanup(cleanup_t cleanup) {
             cleanup_.push_back(std::move(cleanup));
@@ -222,12 +217,17 @@ public:
     void removePublisher(const boost::uuids::uuid& uuid);
     void publish(const std::shared_ptr<pb::Update>& message);
 
-    bool checkForReplay(const boost::uuids::uuid& deviceId, uint instanceId, uint reqId);
-    void resetReplay(const boost::uuids::uuid& deviceId, uint instanceId);
+    boost::asio::awaitable<bool> checkForReplay(const boost::uuids::uuid& deviceId, uint instanceId, uint reqId);
+    boost::asio::awaitable<void> resetReplay(const boost::uuids::uuid& deviceId, uint instanceId);
+    void saveReplayStateForDevice(const boost::uuids::uuid& deviceId);
+    boost::asio::awaitable<Device::value_t> getLastReqId(const boost::uuids::uuid& deviceId, uint instanceId);
+    boost::asio::awaitable<void> setLastReqId(const boost::uuids::uuid& deviceId, uint instanceId, Device::value_t value);
+    boost::asio::awaitable<void> resetLastReqId(const boost::uuids::uuid& deviceId, uint instanceId);
 
 private:
     static boost::uuids::uuid newUuid();
     void validateInstanceId(uint instanceId);
+    boost::asio::awaitable<void> saveLastReqIds(const boost::uuids::uuid& deviceId);
 
     std::string user_uuid_;
     std::string tenant_uuid_;

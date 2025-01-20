@@ -115,32 +115,119 @@ void UserContext::publish(const std::shared_ptr<pb::Update> &update)
     }
 }
 
-bool UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId, uint reqId)
+boost::asio::awaitable<bool>
+UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId, uint reqId)
 {
-    lock_guard lock{instance_mutex_};
-    auto& device = devices_[deviceId];
     validateInstanceId(instanceId);
-
     const auto index = instanceId - 1; // Instance start at 1
-    if (reqId <= device.last_request_id.get(index, 0)) {
-        LOG_DEBUG_N << "Replay detected for device" << deviceId
-                    << ", instanceId=" << instanceId
-                    << ", reqId=" << reqId
-                    << ", for user=" << userUuid();
-        return true;
+
+    bool rval = false;
+    Device::value_t last_req_id;
+
+    auto process = [&] {
+        LOG_TRACE << "Replay check for device " << deviceId
+                  << ", instanceId=" << instanceId
+                  << ", reqId=" << reqId
+                  << ", last_req_id=" << *last_req_id
+                  << ", user=" << userUuid();
+
+        if (*last_req_id >= reqId) {
+            LOG_DEBUG_N << "Replay detected for device" << deviceId
+                        << ", instanceId=" << instanceId
+                        << ", reqId=" << reqId
+                        << ", for user=" << userUuid();
+            rval = true;
+        }
+    };
+
+    {
+        lock_guard lock{instance_mutex_};
+        auto& device = devices_[deviceId];
+        auto last_req_id = device.last_request_id.get(index);
+
+        // If we have a value in memory, use it now. We don't want to aquire the
+        // lock twice, but we need to do that if we access the db.
+        if (last_req_id.has_value()) {
+            process();
+            device.last_request_id.set(index, max(*last_req_id, reqId));
+            co_return rval;
+        };
     }
-    device.last_request_id.set(index, reqId);
-    return false;
+
+    assert(!last_req_id.has_value());
+    {
+        // Fetch from database
+        auto& db = Server::instance().db();
+        auto res = co_await db.exec("SELECT request_id FROM request_state WHERE userid=? AND devid=? AND instance=?",
+                                    userUuid(), deviceId, instanceId);
+        if (!res.rows().empty()) {
+            last_req_id = static_cast<uint32_t>(res.rows().front().at(0).as_int64());
+            {
+                lock_guard lock{instance_mutex_};
+                auto& device = devices_[deviceId];
+                device.last_request_id.set(index, last_req_id);
+            }
+        } else {
+            last_req_id = 0;
+        }
+    }
+
+    process();
+
+    {
+        lock_guard lock{instance_mutex_};
+        auto& device = devices_[deviceId];
+        device.last_request_id.set(index, max(*last_req_id, reqId));
+    }
+
+    co_return rval;
 }
 
-void UserContext::resetReplay(const boost::uuids::uuid &deviceId, uint instanceId)
+boost::asio::awaitable<void> UserContext::resetReplay(const boost::uuids::uuid &deviceId, uint instanceId)
 {
-    lock_guard lock{instance_mutex_};
-    auto& device = devices_[deviceId];
-    validateInstanceId(instanceId);
+    {
+        lock_guard lock{instance_mutex_};
+        auto& device = devices_[deviceId];
+        validateInstanceId(instanceId);
 
-    const auto index = instanceId - 1; // Instance start at 1
-    device.last_request_id.set(index, 0);
+        const auto index = instanceId - 1; // Instance start at 1
+        device.last_request_id.set(index, 0);
+    }
+    co_await saveLastReqIds(deviceId);
+}
+
+void UserContext::saveReplayStateForDevice(const boost::uuids::uuid &deviceId)
+{
+    boost::asio::co_spawn(Server::instance().ctx(), [self = shared_from_this(), deviceId] () -> boost::asio::awaitable<void> {
+        co_await self->saveLastReqIds(deviceId);
+    }, boost::asio::detached);
+}
+
+boost::asio::awaitable<void> UserContext::saveLastReqIds(const boost::uuids::uuid& deviceId) {
+    try {
+        Device::values_t values;
+        {
+            lock_guard lock{instance_mutex_};
+            if (auto it = devices_.find(deviceId); it != devices_.end()) {
+                values = it->second.last_request_id;
+            } else {
+                co_return;
+            }
+        }
+        const string devid_str = to_string(deviceId);
+        auto db = co_await Server::instance().db().getConnection();
+        for (size_t i = 0; i < values.size(); ++i) {
+            co_await db.exec(R"(INSERT INTO request_state (userid, devid, instance, request_id)
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        request_id = VALUES(request_id),
+                        last_update = CURRENT_TIMESTAMP)",
+                             userUuid(),  deviceId, i + 1, values.get(i, 0));
+        }
+    } catch(const std::exception& e) {
+        LOG_WARN << "Failed to save replay state for device " << deviceId
+                 << " for user " << userUuid() << ". Error: " << e.what();
+    }
 }
 
 boost::uuids::uuid UserContext::newUuid()
@@ -312,6 +399,19 @@ void SessionManager::removeSession_(const boost::uuids::uuid &sessionId)
     } else {
         LOG_WARN_N << "Session " << sessionId << " not found.";
     }
+}
+
+void UserContext::Session::cleanup() {
+    LOG_TRACE_N << "Cleaning up session " << sessionid_ << " for user " << user_->userUuid() << " on device " << deviceid_;
+    for(auto& c : cleanup_) {
+        try {
+            c();
+        } catch(const std::exception& e) {
+            LOG_WARN_N << "Exception in cleanup: " << e.what();
+        }
+    }
+
+    user().saveReplayStateForDevice(deviceid_);
 }
 
 void SessionManager::setUserSettings(const boost::uuids::uuid &userUuid, pb::UserGlobalSettings settings)

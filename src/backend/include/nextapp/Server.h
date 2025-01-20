@@ -22,7 +22,7 @@ class GrpcServer;
 
 class Server {
 public:
-    static constexpr uint latest_version = 14;
+    static constexpr uint latest_version = 15;
     static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";
     static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
 

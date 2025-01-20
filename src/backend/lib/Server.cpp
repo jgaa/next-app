@@ -960,6 +960,21 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v15_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE TABLE IF NOT EXISTS request_state  (
+            userid UUID NOT NULL,
+            devid UUID NOT NULL,
+            instance INT NOT NULL,
+            last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            request_id INT NOT NULL DEFAULT 0,
+            PRIMARY KEY (userid, devid, instance),
+            CONSTRAINT fk_reqst_userid FOREIGN KEY (userid) REFERENCES user(id) ON DELETE CASCADE))",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
@@ -975,7 +990,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v11_upgrade,
         v12_upgrade,
         v13_upgrade,
-        v14_upgrade
+        v14_upgrade,
+        v15_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
