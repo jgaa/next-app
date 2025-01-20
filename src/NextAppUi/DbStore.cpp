@@ -167,7 +167,7 @@ QCoro::Task<bool> DbStore::clear()
 }
 
 DbStore::qrval_t DbStore::executeQuery(const QString &sql, const QList<QVariant> &params) {
-    QSqlQuery query;
+    QSqlQuery query{*db_};
     if (!query.prepare(sql)) {
         LOG_ERROR_N << "Failed to prepare statement: \"" << sql
                     << "\", db=" << query.lastError().databaseText()
