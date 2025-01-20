@@ -1212,7 +1212,8 @@ QCoro::Task<void> ServerComm::startNextappSession()
         settings.sync();
     }
 
-    const bool full_sync = settings.value("sync/resync", "false") == "true";
+    const bool full_sync = settings.value("sync/resync", false).toBool()
+                           || NextAppCore::instance()->db().dbWasInitialized();
 
     if (full_sync) {
         LOG_WARN << "Resyncing from the server. Will delete the local cache.";
@@ -1339,6 +1340,9 @@ failed:
     addMessage(tr("Retrying any pending server-reqests..."));
     LOG_DEBUG_N << "Retrying server requests...";
     co_await retryRequests();
+
+    // If we re-run this later, we don't need to do a full sync again.
+    NextAppCore::instance()->db().clearDbInitializedFlag();
 
     co_return;
 }

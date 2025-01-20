@@ -144,6 +144,16 @@ public:
 
     void queryImpl(const QString& sql, const param_t *params, QPromise<rval_t> *promise);
 
+    /*! The database was created and initialized.
+     */
+    bool dbWasInitialized() const noexcept {
+        return db_was_initialized_;
+    }
+
+    void clearDbInitializedFlag() {
+        db_was_initialized_ = false;
+    }
+
 signals:
     // Emitted from the main thread to query the database.
     void doQuery(const QString& sql, const param_t *params, QPromise<rval_t> *promise);
@@ -173,6 +183,7 @@ private:
     QString data_dir_;
     QString db_path_;
     bool clear_pending_{false};
+    bool db_was_initialized_{false};
     std::mutex mutex_;
 };
 

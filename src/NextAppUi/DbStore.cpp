@@ -90,6 +90,8 @@ void DbStore::createDbObject()
         clear_pending_ = false;
     }
 
+    db_was_initialized_ = !QFile{db_path_}.exists();
+
     db_->setDatabaseName(db_path_);
     if (!db_->open()) {
         LOG_ERROR << "Failed to open database: \"" << db_path_ << "\", error=" << db_->lastError().text();
