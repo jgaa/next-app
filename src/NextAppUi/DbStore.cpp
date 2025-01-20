@@ -202,7 +202,7 @@ DbStore::qrval_t DbStore::executeQuery(const QString &sql, const QList<QVariant>
     if (auto num = query.numRowsAffected(); num > 0) {
         result.affected_rows = num;
     };
-    result.affected_rows = query.numRowsAffected();
+
     if (query.lastInsertId().isValid()) {
         result.insert_id = query.lastInsertId().toUInt();
     }

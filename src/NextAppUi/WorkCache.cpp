@@ -380,10 +380,11 @@ void WorkCache::updateSessionsDurations()
 QCoro::Task<void> WorkCache::remove(const QUuid &id)
 {
     auto& db = NextAppCore::instance()->db();
-    QList<QVariant> params;
-
-    params << id.toString();
-    auto res = co_await db.legacyQuery("DELETE FROM work_session WHERE id = ?", &params);
+    auto res = co_await db.query("DELETE FROM work_session WHERE id = ?",
+                                 id.toString(QUuid::WithoutBraces));
+    if (!res || !res->affected_rows.has_value() || res->affected_rows.value() != 1) {
+        LOG_DEBUG_N << "Failed to delete work session: " << res.error();
+    }
     co_return;
 }
 
