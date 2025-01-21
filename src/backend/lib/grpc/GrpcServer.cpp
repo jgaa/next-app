@@ -1,5 +1,6 @@
 
 #include "shared_grpc_server.h"
+#include "nextapp/util.h"
 
 using namespace std;
 using namespace std::literals;
@@ -44,7 +45,18 @@ struct ToDevice {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
         LOG_DEBUG << "Hello from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid() << " at " << ctx->peer();
-        reply->set_sessionid(to_string(rctx.session().sessionId()));
+        if (auto hello = reply->mutable_hello()) {
+            hello->set_sessionid(to_string(rctx.session().sessionId()));
+            hello->set_serverid(Server::instance().serverId());
+            hello->set_serverinstancetag(Server::instance().instanceTag());
+            const auto last_req_id = co_await rctx.uctx->getLastReqId(rctx.session().deviceId(),
+                                                                      GrpcServer::getInstanceId(ctx),
+                                                                      /*lookupInDbOnly*/ false);
+            if (last_req_id.has_value()) {
+                hello->set_lastpublishid(*last_req_id);
+            }
+        };
+
         co_return;
     }, __func__, true /* allow new session */);
 }
@@ -120,9 +132,12 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             try {
                 auto session = owner_.sessionManager().getExistingSession(context_);
                 assert(session);
-                session->addCleanup([w=weak_from_this(), sid=session->sessionId()] {
+                session->addCleanup([w=weak_from_this(), sid=session->sessionId(), when=session->createdTime()] {
                     if (auto self = w.lock()) {
-                        LOG_TRACE << "Session " << sid << " was closed. Closing subscription.";
+                        LOG_TRACE << "Session " << sid
+                                  << " was closed after "
+                                  << formatDuration(UserContext::Session::duration(when))
+                                  << ". Closing subscription.";
                         self->close();
                     }
                 });
@@ -472,12 +487,7 @@ boost::asio::awaitable<bool> GrpcServer::isReplay(::grpc::CallbackServerContext 
         if (const uint req_id = stoul(it->second.data()); req_id > 0) {
             // Validate
 
-            // The client only sends instance_id if the instance_id is > 1.
-            uint instance_id = 1;
-            if (const auto iit = ctx->client_metadata().find("instance_id"); iit != ctx->client_metadata().end()) {
-                instance_id = stoul(iit->second.data());
-            }
-
+            const auto instance_id = getInstanceId(ctx);
             LOG_TRACE_N << "Checking replay for instance " << instance_id << " and req " << req_id
                         << " from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid();
 
@@ -487,6 +497,15 @@ boost::asio::awaitable<bool> GrpcServer::isReplay(::grpc::CallbackServerContext 
     }
 
     co_return false;
+}
+
+uint GrpcServer::getInstanceId(::grpc::CallbackServerContext *ctx)
+{
+    // The client only sends instance_id if the instance_id is > 1.
+    if (const auto iit = ctx->client_metadata().find("instance_id"); iit != ctx->client_metadata().end()) {
+        return stoul(iit->second.data());
+    }
+    return 1;
 }
 
 

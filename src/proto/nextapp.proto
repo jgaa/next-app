@@ -614,6 +614,7 @@ message Update {
     }
 
     Operation op = 2;
+    uint32 messageId = 3; // An incremental id for the message. Resets to 1 when teh server starts.
 
     oneof what {
         PingResp ping = 10;
@@ -778,6 +779,14 @@ message ResetPlaybackReq {
     uint32 instanceId = 2; // starts at 1
 }
 
+message Hello {
+    string sessionId = 1;
+    string serverId = 2;
+    uint64 serverInstanceTag = 3; // Used to detect server restarts
+    uint32 lastPublishId = 4; // Last puiblished message-id to the user
+}
+
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -805,7 +814,7 @@ message Status {
         CreateDeviceResp createDeviceResp = 25;
         ServerInfo serverInfo = 26;
         OtpResponse otpResponse = 27;
-        string sessionId = 28; // From Hello
+        Hello hello = 28; // From Hello
         ListOfDays days = 29; // For day colors
         DayColorDefinitions dayColorDefinitions = 30;
         CompleteDay day = 31; // for day color

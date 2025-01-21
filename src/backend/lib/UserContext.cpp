@@ -96,7 +96,7 @@ void UserContext::removePublisher(const boost::uuids::uuid &uuid)
     });
 }
 
-void UserContext::publish(const std::shared_ptr<pb::Update> &update)
+void UserContext::publish(std::shared_ptr<pb::Update> &update)
 {
     LOG_TRACE_N << "Publishing "
                 << pb::Update::Operation_Name(update->op())
@@ -104,10 +104,11 @@ void UserContext::publish(const std::shared_ptr<pb::Update> &update)
                 << toJsonForLog(*update);
 
     shared_lock lock{mutex_};
-
+    update->set_messageid(++publish_message_id_);
     for(auto& weak_pub: publishers_) {
         if (auto pub = weak_pub.lock()) {
-            LOG_TRACE_N << "Publish to " << pub->uuid();
+            LOG_TRACE_N << "Publish #" << update->messageid()
+                        << " to " << pub->uuid();
             pub->publish(update);
         } else {
             LOG_WARN_N << "Failed to get a pointer to a publisher ";
@@ -154,24 +155,14 @@ UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId,
         };
     }
 
-    assert(!last_req_id.has_value());
-    {
-        // Fetch from database
-        auto& db = Server::instance().db();
-        auto res = co_await db.exec("SELECT request_id FROM request_state WHERE userid=? AND devid=? AND instance=?",
-                                    userUuid(), deviceId, instanceId);
-        if (!res.rows().empty()) {
-            last_req_id = static_cast<uint32_t>(res.rows().front().at(0).as_int64());
-            {
-                lock_guard lock{instance_mutex_};
-                auto& device = devices_[deviceId];
-                device.last_request_id.set(index, last_req_id);
-            }
-        } else {
-            last_req_id = 0;
-        }
+    // Get the value from the database
+    if (auto v = co_await getLastReqId(deviceId, instanceId, true); v.has_value()) {
+        last_req_id = *v;
+    } else {
+        last_req_id = 0; // Initialize it
     }
 
+    assert(!last_req_id.has_value());
     process();
 
     {
@@ -181,6 +172,38 @@ UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId,
     }
 
     co_return rval;
+}
+
+boost::asio::awaitable<UserContext::Device::value_t>
+UserContext::getLastReqId(const boost::uuids::uuid &deviceId, uint instanceId, bool lookupInDbOnly) {
+    validateInstanceId(instanceId);
+    const auto index = instanceId - 1; // Instance start at 1
+
+    if (!lookupInDbOnly) {
+        lock_guard lock{instance_mutex_};
+        auto& device = devices_[deviceId];
+
+        if (auto value = device.last_request_id.get(index); value.has_value()) {
+            co_return value;
+        }
+    }
+
+    // Fetch from database
+    auto& db = Server::instance().db();
+    auto res = co_await db.exec("SELECT request_id FROM request_state WHERE userid=? AND devid=? AND instance=?",
+                                userUuid(), deviceId, instanceId);
+    if (!res.rows().empty()) {
+        const auto last_req_id = static_cast<uint32_t>(res.rows().front().at(0).as_int64());
+        {
+            lock_guard lock{instance_mutex_};
+            auto& device = devices_[deviceId];
+            device.last_request_id.set(index, last_req_id);
+        }
+
+        co_return last_req_id;
+    }
+
+    co_return std::nullopt;
 }
 
 boost::asio::awaitable<void> UserContext::resetReplay(const boost::uuids::uuid &deviceId, uint instanceId)

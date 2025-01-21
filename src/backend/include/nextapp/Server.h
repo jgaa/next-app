@@ -90,6 +90,27 @@ public:
         return *instance_;
     }
 
+    /*! A presumably unique tag for this instance of the server.
+     *
+     *  This is used by clients to detect if they are connected to the same
+     *  instance of the server as before.
+     *
+     *  Currently we only support one server instance, and that will not change in the
+     *  foreseable future. So if the server restarts, the user can safely use this tag to
+     *  detect it.
+     */
+    time_t instanceTag() const noexcept {
+        return instance_tag_;
+    }
+
+    /*! A unique id for this server deployment.
+     *
+     *  The id is created when the server is deployed annd the database bootstrapped.
+     */
+    const std::string& serverId() const noexcept {
+        return server_id_;
+    }
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
@@ -114,6 +135,8 @@ private:
     std::optional<CertAuthority> ca_;
     std::optional<yahat::HttpServer> http_server_;
     static Server *instance_;
+    const time_t instance_tag_{time({})};
+    std::string server_id_;
 };
 
 template <ProtoMessage T>

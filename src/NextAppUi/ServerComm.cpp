@@ -1226,11 +1226,22 @@ QCoro::Task<void> ServerComm::startNextappSession()
     }
 
     setStatus(Status::CONNECTING);
-    nextapp::pb::Empty req;
-    auto res = co_await rpc(req, &nextapp::pb::Nextapp::Client::Hello);
+
+    GrpcCallOptions options;
+    // The default instance_id is 1. If we have a higher id, we need to send "instance_id".
+    if (auto iid = AppInstanceMgr::instance()->instanceId(); iid > 1) {
+        const auto str = to_string(iid);
+        QHash<QByteArray, QByteArray> metadata;
+        metadata.insert("instance_id", str.c_str());
+        options.qopts.setMetadata(std::move(metadata));
+    };
+
+    auto res = co_await rpc(nextapp::pb::Empty{},
+                            &nextapp::pb::Nextapp::Client::Hello,
+                            options);
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
-        if (res.hasSessionId()) {
-            session_id_ = res.sessionId().toLatin1();
+        if (res.hasHello()) {
+            session_id_ = res.hello().sessionId().toLatin1();
         }
         LOG_INFO << "Session started. Session-id: " << session_id_;
         addMessage(tr("Connected and authenticated with the server."));

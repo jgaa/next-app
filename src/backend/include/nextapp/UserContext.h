@@ -146,6 +146,18 @@ public:
             cleanup_.push_back(std::move(cleanup));
         }
 
+        auto currentDuration() const {
+            return std::chrono::steady_clock::now() - created_;
+        }
+
+        auto createdTime() const {
+            return created_;
+        }
+
+        static auto duration(const std::chrono::steady_clock::time_point created) {
+            return std::chrono::steady_clock::now() - created;
+        };
+
     private:
         std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
         const boost::uuids::uuid sessionid_;
@@ -215,14 +227,16 @@ public:
 
     void addPublisher(const std::shared_ptr<Publisher>& publisher);
     void removePublisher(const boost::uuids::uuid& uuid);
-    void publish(const std::shared_ptr<pb::Update>& message);
+    void publish(std::shared_ptr<pb::Update>& message);
 
     boost::asio::awaitable<bool> checkForReplay(const boost::uuids::uuid& deviceId, uint instanceId, uint reqId);
     boost::asio::awaitable<void> resetReplay(const boost::uuids::uuid& deviceId, uint instanceId);
     void saveReplayStateForDevice(const boost::uuids::uuid& deviceId);
-    boost::asio::awaitable<Device::value_t> getLastReqId(const boost::uuids::uuid& deviceId, uint instanceId);
-    boost::asio::awaitable<void> setLastReqId(const boost::uuids::uuid& deviceId, uint instanceId, Device::value_t value);
-    boost::asio::awaitable<void> resetLastReqId(const boost::uuids::uuid& deviceId, uint instanceId);
+    boost::asio::awaitable<Device::value_t>getLastReqId(const boost::uuids::uuid& deviceId,
+                                                                        uint instanceId,
+                                                                        bool lookupInDbOnly = false);
+    // boost::asio::awaitable<void> setLastReqId(const boost::uuids::uuid& deviceId, uint instanceId, Device::value_t value);
+    // boost::asio::awaitable<void> resetLastReqId(const boost::uuids::uuid& deviceId, uint instanceId);
 
 private:
     static boost::uuids::uuid newUuid();
@@ -231,6 +245,7 @@ private:
 
     std::string user_uuid_;
     std::string tenant_uuid_;
+    uint32_t publish_message_id_{0};
     const std::chrono::time_zone* tz_{};
     jgaa::mysqlpool::Options db_options_;
     pb::UserGlobalSettings settings_;

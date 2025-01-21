@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <span>
 #include <string_view>
+#include <format>
 
 #include <boost/json.hpp>
 #include <boost/uuid/random_generator.hpp>
@@ -183,6 +184,41 @@ std::vector<char> base64Decode(const std::string_view in);
 std::string Base64Encode(const span_t in);
 
 std::string sha256(span_t what, bool encodeToBase64);
+
+template<typename T>
+std::string formatDuration(const T& elapsed) {
+    using namespace std::chrono;
+
+    // Convert the duration to seconds for easier manipulation
+    auto total_seconds = duration_cast<seconds>(elapsed).count();
+
+    // Compute days, hours, minutes, and seconds
+    auto days = total_seconds / (24 * 3600);
+    total_seconds %= (24 * 3600);
+    auto hours = total_seconds / 3600;
+    total_seconds %= 3600;
+    auto minutes = total_seconds / 60;
+    auto seconds = total_seconds % 60;
+
+    // Create the result string and reserve memory for the max length
+    std::string result;
+    result.reserve(16);
+
+    // Build the formatted string with only relevant parts
+    if (days > 0) {
+        result += std::format("{:02}d ", days);
+    }
+    if (hours > 0 || !result.empty()) { // Show hours if non-zero or if days are already added
+        result += std::format("{:02}h ", hours);
+    }
+    if (minutes > 0 || !result.empty()) { // Show minutes if non-zero or if higher units are added
+        result += std::format("{:02}m ", minutes);
+    }
+    result += std::format("{:02}s", seconds); // Always include seconds
+
+    return result;
+}
+
 
 } // ns
 

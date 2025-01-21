@@ -408,6 +408,7 @@ done:
     }
 
     std::shared_ptr<UserContext::Session> session(::grpc::ServerContextBase& ctx);
+    static uint getInstanceId(::grpc::CallbackServerContext *ctx);
 
 private:
     // The Server instance where we get objects in the application, like config and database

@@ -84,6 +84,12 @@ void Server::run()
                 throw std::runtime_error("Database version is wrong");
             }
 
+            auto res = co_await db().exec("SELECT serverid from nextapp where id=1");
+            if (res.has_value() && !res.rows().empty()) {
+                server_id_ = res.rows().front().front().as_string();
+                LOG_INFO << "The server-id for this deployment is " << server_id_;
+            }
+
             co_await loadCertAuthority();
             co_await startGrpcService();
         }, boost::asio::use_future).get();
@@ -974,7 +980,6 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
-
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,

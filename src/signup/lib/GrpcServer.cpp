@@ -315,11 +315,12 @@ void GrpcServer::startNextapp()
         if (resp.error() != nextapp::pb::Error::OK) {
             throw runtime_error{"Failed to connect and authorize with nextappd: " + resp.message()};
         } else {
-            if (resp.has_sessionid()) {
-                LOG_DEBUG << "Got session id: " << resp.sessionid();
-                session_id_ = resp.sessionid();
+            if (resp.has_hello()) {
+                const auto& hello = resp.hello();
+                session_id_ = hello.sessionid();
+                LOG_DEBUG << "Got session id: " << session_id_;
             } else {
-                LOG_WARN << "Failed to get session id from nextapp-server's reply";
+                LOG_WARN << "Failed to get hello from nextapp-server's reply";
             }
         }
 
