@@ -61,12 +61,15 @@ public:
                 if (emptyVal) {
                     return *emptyVal;
                 }
-                throw std::out_of_range("Index out of range");
+                return std::nullopt;
             }
         } else {
             const auto& vec = std::get<std::vector<T>>(storage);
             if (index >= vec.size()) {
-                throw std::out_of_range("Index out of range");
+                if (emptyVal) {
+                    return *emptyVal;
+                }
+                return std::nullopt;
             }
             return vec[index];
         }

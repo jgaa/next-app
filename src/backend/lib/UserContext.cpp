@@ -144,7 +144,7 @@ UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId,
     {
         lock_guard lock{instance_mutex_};
         auto& device = devices_[deviceId];
-        auto last_req_id = device.last_request_id.get(index);
+        last_req_id = device.last_request_id.get(index);
 
         // If we have a value in memory, use it now. We don't want to aquire the
         // lock twice, but we need to do that if we access the db.
@@ -162,7 +162,7 @@ UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId,
         last_req_id = 0; // Initialize it
     }
 
-    assert(!last_req_id.has_value());
+    assert(last_req_id.has_value());
     process();
 
     {
