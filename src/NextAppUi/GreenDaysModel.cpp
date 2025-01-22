@@ -365,20 +365,21 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
     co_return true;
 }
 
-QCoro::Task<void> GreenDaysModel::loadFromCache()
+QCoro::Task<bool> GreenDaysModel::loadFromCache()
 {
     if (state_ == State::LOADING) {
         LOG_DEBUG_N << "Already loading";
-        co_return;
+        co_return true;
     }
     setState(State::LOADING);
 
     if (!co_await loadColorDefsFromCache() || ! co_await loadDaysFromCache()) {
         setState(State::ERROR);
-        co_return;
+        co_return false;
     }
 
     setState(State::VALID);
+    co_return true;
 }
 
 QCoro::Task<bool> GreenDaysModel::loadColorDefsFromCache()

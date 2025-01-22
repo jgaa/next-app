@@ -80,6 +80,8 @@ ServerComm::ServerComm()
 
     nextapp::pb::Nextapp::Client xx;
     instance_ = this;
+    last_seen_update_id_ = QSettings{}.value(lastSeenUpdateIdKey(), 0u).toUInt();
+    last_seen_server_instance_ = QSettings{}.value(lastSeenServerInstance(), 0u).toULongLong();
 
     QSettings settings;
     device_uuid_ = QUuid{settings.value("device/uuid", QString()).toString()};
@@ -171,6 +173,9 @@ ServerComm::ServerComm()
 
 ServerComm::~ServerComm()
 {
+    LOG_TRACE_N << "ServerComm destructor. last_seen_update_id_=" << last_seen_update_id_;
+    QSettings{}.setValue(lastSeenUpdateIdKey(), last_seen_update_id_);
+    QSettings{}.setValue(lastSeenServerInstance(), static_cast<qulonglong>(last_seen_server_instance_));
     instance_ = {};
 }
 
@@ -986,6 +991,7 @@ void ServerComm::onGrpcReady()
 void ServerComm::onUpdateMessage()
 {
     LOG_TRACE_N << "Received an update...";
+
     try {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
         if (auto value = updates_->read<nextapp::pb::Update>()) {
@@ -994,7 +1000,15 @@ void ServerComm::onUpdateMessage()
         {
             auto msg = make_shared<nextapp::pb::Update>(std::move(updates_->read<nextapp::pb::Update>()));
 #endif
-            LOG_TRACE << "Got update: " << msg->when().seconds();
+            LOG_TRACE << "Got update: #" << msg->messageId() << " " << msg->when().seconds();
+            const auto msgid = msg->messageId();
+            if (msgid != last_seen_update_id_ + 1) {
+                LOG_WARN_N << "Received out of order update #" << msgid
+                           << ". I expected messageid #" << (last_seen_update_id_ + 1);
+
+                // TODO: Reconnect?
+            };
+            last_seen_update_id_ = msgid;
 
             if (msg->hasUserGlobalSettings()) {
                 const auto& new_settings = msg->userGlobalSettings();
@@ -1188,6 +1202,15 @@ void ServerComm::setMessage(const QString &msg)
     emit messagesChanged();
 }
 
+QString ServerComm::lastSeenUpdateIdKey() const {
+    return AppInstanceMgr::instance()->name() + "/last_seen_update_id";
+}
+
+QString ServerComm::lastSeenServerInstance() const
+{
+    return AppInstanceMgr::instance()->name() + "/last_seen_server_instance";
+}
+
 QCoro::Task<void> ServerComm::startNextappSession()
 {
     LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
@@ -1236,12 +1259,29 @@ QCoro::Task<void> ServerComm::startNextappSession()
         options.qopts.setMetadata(std::move(metadata));
     };
 
+    bool needs_sync = false;
     auto res = co_await rpc(nextapp::pb::Empty{},
                             &nextapp::pb::Nextapp::Client::Hello,
                             options);
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasHello()) {
             session_id_ = res.hello().sessionId().toLatin1();
+
+            if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
+                needs_sync = true;
+                last_seen_server_instance_ = res.hello().serverInstanceTag();
+                LOG_TRACE_N << "Server instance tag changed to " << last_seen_server_instance_;
+            }
+
+            if (res.hello().lastPublishId() != last_seen_update_id_) {
+                needs_sync = true;
+                last_seen_update_id_ = res.hello().lastPublishId();
+                LOG_TRACE_N << "Servers update id is " << res.hello().lastPublishId()
+                            << " (was " << last_seen_update_id_ << ")";
+            }
+        } else {
+            LOG_ERROR <<  "Server did not send a Hello message!";
+            goto failed;
         }
         LOG_INFO << "Session started. Session-id: " << session_id_;
         addMessage(tr("Connected and authenticated with the server."));
@@ -1286,64 +1326,101 @@ failed:
 
     connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
 
-    // Do the initial synch.
-    LOG_DEBUG_N << "Fetching data versions...";
-    if (!co_await getDataVersions()) {
-        LOG_WARN_N << "Failed to get data versions.";
-        goto failed;
-    }
+    if (needs_sync || full_sync) {
 
-    LOG_DEBUG_N << "Fetching global settings...";
-    if (!co_await getGlobalSetings()) {
-        LOG_WARN_N << "Failed to get global settings.";
-        goto failed;
-    }
+        // Do the initial synch.
+        LOG_DEBUG_N << "Fetching data versions...";
+        if (!co_await getDataVersions()) {
+            LOG_WARN_N << "Failed to get data versions.";
+            goto failed;
+        }
 
-    addMessage(tr("Fetching green days"));
-    LOG_DEBUG_N << "Fetching green days...";
-    if (!co_await GreenDaysModel::instance()->synchFromServer()) {
-        LOG_WARN_N << "Failed to get green days.";
-        goto failed;
-    }
+        LOG_DEBUG_N << "Fetching global settings...";
+        if (!co_await getGlobalSetings()) {
+            LOG_WARN_N << "Failed to get global settings.";
+            goto failed;
+        }
 
-    addMessage(tr("Fetching lists"));
-    LOG_DEBUG_N << "Fetching nodes...";
-    if (!co_await MainTreeModel::instance()->doSynch(full_sync)) {
-        LOG_WARN_N << "Failed to get nodes.";
-        goto failed;
-    }
+        addMessage(tr("Fetching green days"));
+        LOG_DEBUG_N << "Fetching green days...";
+        if (!co_await GreenDaysModel::instance()->synchFromServer()) {
+            LOG_WARN_N << "Failed to get green days.";
+            goto failed;
+        }
 
-    LOG_DEBUG_N << "Fetching  action categories...";
-    if (!co_await ActionCategoriesModel::instance().synch(full_sync)) {
-        LOG_WARN_N << "Failed to get action categories.";
-        goto failed;
-    }
+        addMessage(tr("Fetching lists"));
+        LOG_DEBUG_N << "Fetching nodes...";
+        if (!co_await MainTreeModel::instance()->doSynch(full_sync)) {
+            LOG_WARN_N << "Failed to get nodes.";
+            goto failed;
+        }
 
-    addMessage(tr("Fetching actions"));
-    LOG_DEBUG_N << "Fetching  actions...";
-    if (!co_await ActionInfoCache::instance()->synch(full_sync)) {
-        LOG_WARN_N << "Failed to get action info.";
-        goto failed;
-    }
+        LOG_DEBUG_N << "Fetching  action categories...";
+        if (!co_await ActionCategoriesModel::instance().synch(full_sync)) {
+            LOG_WARN_N << "Failed to get action categories.";
+            goto failed;
+        }
 
-    addMessage(tr("Fetching work sessions"));
-    LOG_DEBUG_N << "Fetching work sessions...";
-    if (!co_await WorkCache::instance()->synch(full_sync)) {
-        LOG_WARN_N << "Failed to get work sessions.";
-        goto failed;
-    }
+        addMessage(tr("Fetching actions"));
+        LOG_DEBUG_N << "Fetching  actions...";
+        if (!co_await ActionInfoCache::instance()->synch(full_sync)) {
+            LOG_WARN_N << "Failed to get action info.";
+            goto failed;
+        }
 
-    addMessage(tr("Fetching time blocks for the calendar"));
-    LOG_DEBUG_N << "Fetching time blocks...";
-    if (!co_await CalendarCache::instance()->synch(full_sync)) {
-        LOG_WARN_N << "Failed to get time-blocks for the calendar.";
-        goto failed;
-    }
+        addMessage(tr("Fetching work sessions"));
+        LOG_DEBUG_N << "Fetching work sessions...";
+        if (!co_await WorkCache::instance()->synch(full_sync)) {
+            LOG_WARN_N << "Failed to get work sessions.";
+            goto failed;
+        }
 
-    if (full_sync) {
-        nextapp::pb::ResetPlaybackReq req;
-        req.setInstanceId(AppInstanceMgr::instance()->instanceId());
-        co_await rpc(req, &nextapp::pb::Nextapp::Client::ResetPlayback);
+        addMessage(tr("Fetching time blocks for the calendar"));
+        LOG_DEBUG_N << "Fetching time blocks...";
+        if (!co_await CalendarCache::instance()->synch(full_sync)) {
+            LOG_WARN_N << "Failed to get time-blocks for the calendar.";
+            goto failed;
+        }
+
+        if (full_sync) {
+            nextapp::pb::ResetPlaybackReq req;
+            req.setInstanceId(AppInstanceMgr::instance()->instanceId());
+            co_await rpc(req, &nextapp::pb::Nextapp::Client::ResetPlayback);
+        }
+    } else {
+        LOG_INFO << "Omitting server-sync as the local cache is up to date.";
+        // Omit this if we are just reconnecting?
+        emit globalSettingsChanged();
+
+        if (!co_await GreenDaysModel::instance()->loadFromCache()) {
+            LOG_WARN_N << "Failed to get green days.";
+            goto failed;
+        }
+
+        if (!co_await MainTreeModel::instance()->doLoadLocally()) {
+            LOG_WARN_N << "Failed to load nodes.";
+            goto failed;
+        }
+
+        if (!co_await ActionCategoriesModel::instance().loadFromDb()) {
+            LOG_WARN_N << "Failed to get action categories.";
+            goto failed;
+        }
+
+        if (!co_await ActionInfoCache::instance()->loadLocally()) {
+            LOG_WARN_N << "Failed to get action info.";
+            goto failed;
+        }
+
+        if (!co_await WorkCache::instance()->loadLocally()) {
+            LOG_WARN_N << "Failed to get work sessions.";
+            goto failed;
+        }
+
+        if (!co_await CalendarCache::instance()->loadLocally(full_sync)) {
+            LOG_WARN_N << "Failed to get time-blocks for the calendar.";
+            goto failed;
+        }
     }
 
     onGrpcReady();

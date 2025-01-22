@@ -279,10 +279,7 @@ QCoro::Task<bool> ActionCategoriesModel::loadFromDb()
 {
     auto& db = NextAppCore::instance()->db();
     beginResetModel();
-
-    ScopedExit do_later([this] {
-        endResetModel();
-    });
+    endResetModel();
 
     auto res = co_await db.legacyQuery("SELECT data FROM action_category");
     if (res.has_value()) {
@@ -296,6 +293,8 @@ QCoro::Task<bool> ActionCategoriesModel::loadFromDb()
         }
 
         ranges::sort(action_categories_, compare);
+        beginResetModel();
+        endResetModel();
         setValid(true);
         co_return true;
     }

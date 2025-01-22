@@ -216,6 +216,7 @@ public:
 
     // Call this in stead of synch() to avoid problems with a populated model
     QCoro::Task<bool> doSynch(bool fullSync);
+    QCoro::Task<bool> doLoadLocally();
 
 private:
     void addNode(TreeNode *parent, const nextapp::pb::Node& node);

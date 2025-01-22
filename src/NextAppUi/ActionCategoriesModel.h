@@ -59,6 +59,7 @@ public:
     static ActionCategoriesModel& instance();
 
     QCoro::Task<bool> synch(bool fullSync);
+    QCoro::Task<bool> loadFromDb();
 
 signals:
     void validChanged();
@@ -71,7 +72,6 @@ private:
     // void fetchIf();
     // void onReceivedActionCategories(nextapp::pb::ActionCategories& action_categories);
     QCoro::Task<bool> synchFromServer();
-    QCoro::Task<bool> loadFromDb();
     QCoro::Task<bool> save(const nextapp::pb::ActionCategory& category);
     QCoro::Task<bool> remove(const QString& id);
 

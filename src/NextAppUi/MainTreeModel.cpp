@@ -602,6 +602,22 @@ QCoro::Task<bool> MainTreeModel::doSynch(bool fullSync)
     co_return co_await synch(fullSync);
 }
 
+QCoro::Task<bool> MainTreeModel::doLoadLocally()
+{
+    beginResetModel();
+    endResetModel();
+    suspend_model_notifications_ = true;
+    ScopedExit guard{[this] {
+        suspend_model_notifications_ = false;
+        if (state() == State::VALID) {
+            beginResetModel();
+            endResetModel();
+        }
+    }};
+
+    co_return co_await loadLocally();
+}
+
 QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
 {
     const auto& node = static_cast<const nextapp::pb::Node&>(item);

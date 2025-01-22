@@ -60,26 +60,32 @@ public:
 
         setState(State::SYNCHING);
         clear();
-        if (co_await synchFromServer()) {
-            setState(State::LOADING);
-            if (co_await loadFromCache()) {
-                setState(State::APPLYING_UPDATES);
-
-                do {
-                    auto pending = std::move(pending_updates_);
-                    for (const auto& update : pending) {
-                        co_await pocessUpdate(update);
-                    }
-
-                } while(!pending_updates_.empty());
-
-                setState(State::VALID);
-                co_return true;
-            }
-
+        if (co_await synchFromServer() && co_await loadLocally(false)) {
             co_return true;
-        } else {
-            setState(State::ERROR);
+        }
+
+        setState(State::ERROR);
+        co_return false;
+    }
+
+    virtual QCoro::Task<bool> loadLocally(bool doClear = true) {
+        setState(State::LOADING);
+        if (doClear) {
+            clear();
+        }
+        if (co_await loadFromCache()) {
+            setState(State::APPLYING_UPDATES);
+
+            do {
+                auto pending = std::move(pending_updates_);
+                for (const auto& update : pending) {
+                    co_await pocessUpdate(update);
+                }
+
+            } while(!pending_updates_.empty());
+
+            setState(State::VALID);
+            co_return true;
         }
 
         co_return false;

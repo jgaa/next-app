@@ -319,6 +319,8 @@ private:
     void clearMessages();
     void addMessage(const QString &msg);
     void setMessage(const QString &msg);
+    QString lastSeenUpdateIdKey() const;
+    QString lastSeenServerInstance() const;
 
     struct GrpcCallOptions {
 
@@ -586,4 +588,6 @@ private:
     int executing_request_count_{0};
     int queued_requests_count_{0};
     bool retrying_requests_{false};
+    uint last_seen_update_id_{0};
+    uint64_t last_seen_server_instance_;
 };

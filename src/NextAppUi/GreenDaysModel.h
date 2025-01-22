@@ -129,6 +129,7 @@ public:
     const nextapp::pb::DayColorDefinitions getAsDayColorDefinitions() const;
 
     QCoro::Task<bool> synchFromServer();
+    QCoro::Task<bool> loadFromCache();
 
 signals:
     void validChanged();
@@ -152,7 +153,6 @@ private:
     void setState(State state) noexcept;
     QCoro::Task<bool> synchColorsFromServer();
     QCoro::Task<bool> synchDaysFromServer();
-    QCoro::Task<void> loadFromCache();
     QCoro::Task<bool> loadColorDefsFromCache();
     QCoro::Task<bool> loadDaysFromCache();
     QCoro::Task<bool> storeDay(const nextapp::pb::CompleteDay& day);
