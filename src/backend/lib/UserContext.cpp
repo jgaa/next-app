@@ -133,10 +133,10 @@ UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId,
                   << ", user=" << userUuid();
 
         if (*last_req_id >= reqId) {
-            LOG_DEBUG_N << "Replay detected for device" << deviceId
-                        << ", instanceId=" << instanceId
-                        << ", reqId=" << reqId
-                        << ", for user=" << userUuid();
+            LOG_DEBUG << "Replay detected for device" << deviceId
+                      << ", instanceId=" << instanceId
+                      << ", reqId=" << reqId
+                      << ", for user=" << userUuid();
             rval = true;
         }
     };

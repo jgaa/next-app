@@ -10,8 +10,7 @@ import "common.js" as Common
 
 Rectangle {
     id: root
-    //anchors.fill: parent
-    property string selectedItemUuid: NaMainTreeModel.selected
+    //property string selectedItemUuid: NaMainTreeModel.selected
     property var priorityColors: ["magenta", "red", "orangered", "orange", "green", "blue", "lightblue", "gray"]
     property var statusIcons: ["\uf058", "\uf111", "\uf0c8"]
     property alias model: listView.model
@@ -47,12 +46,52 @@ Rectangle {
 
         ListView {
             id: listView
-
             boundsBehavior: Flickable.StopAtBounds
             boundsMovement: Flickable.StopAtBounds
             clip: true
             Layout.fillHeight: true
             Layout.fillWidth: true
+
+            property var selectedItems: []
+            signal mySelectedItemsChanged()
+            function selectUuid(uuid) {
+                if (!selectedItems.includes(uuid)) {
+                    selectedItems.push(uuid);
+                    mySelectedItemsChanged();
+                }
+                console.log("[toggle] The list currently contains: ")
+                for(let i = 0; i < selectedItems.length; i++) {
+                    console.log(" - " + selectedItems[i])
+                }
+            }
+
+            function toggleUuid(uuid) {
+                console.log("ActionsList: Toggling selection for " + uuid)
+                if (selectedItems.includes(uuid)) {
+                    selectedItems.splice(selectedItems.indexOf(uuid), 1); // Remove it
+                } else {
+                    selectedItems.push(uuid); // Add it
+                }
+                mySelectedItemsChanged();
+                console.log("[toggle] The list currently contains: ")
+                for(let i = 0; i < selectedItems.length; i++) {
+                    console.log(" - " + selectedItems[i])
+                }
+            }
+
+            function resetSelection() {
+                selectedItems = [];
+                mySelectedItemsChanged();
+            }
+
+            function isSelected(uuid) {
+                console.log("ActionsList: Checking if " + uuid + " is selected")
+                console.log("The list currently contains: ")
+                for(let i = 0; i < selectedItems.length; i++) {
+                    console.log(" - " + selectedItems[i])
+                }
+                return selectedItems.includes(uuid);
+            }
 
             ScrollBar.vertical: ScrollBar {
                 id: vScrollBar
@@ -75,13 +114,8 @@ Rectangle {
 
                 function onModelReset() {
                     if (root.selectFirstOnModelReset) {
-                        if (listView.model.rowCount() > 0) {
-                            console.log("ActionsList: Setting currentIndex to 0 because model was reset")
-                            listView.currentIndex = 0
-                        } else {
-                            console.log("ActionsList: Setting currentIndex to -1 because model was reset and empty")
-                            listView.currentIndex = -1
-                        }
+                        console.log("ActionsList: Setting currentIndex to -1 because model was reset and empty")
+                        listView.currentIndex = -1
                     }
                 }
             }
@@ -91,7 +125,8 @@ Rectangle {
 
             delegate: Item {
                 id: actionItem
-                property bool selected: listView.currentIndex === index
+                property bool selected: listView.isSelected(uuid)
+                property bool current: listView.currentIndex === index
                 property bool deleted: status === 3 //NextappPB.ActionState.DELETED
                 required property int index
                 required property string name
@@ -114,14 +149,22 @@ Rectangle {
                 width: listView.width - MaterialDesignStyling.scrollBarWidth
                 clip: true
 
+                Connections {
+                    target: listView
+                    function onMySelectedItemsChanged() {
+                        selected = listView.isSelected(uuid)
+                    }
+                }
+
                 Rectangle {
                     id: background
                     color: actionItem.deleted ? "red" :
-                           selected
+                           current
                            ? MaterialDesignStyling.surfaceContainerHighest
                            : done ? MaterialDesignStyling.surfaceContainer
                            : index % 2 ? MaterialDesignStyling.surface : MaterialDesignStyling.surfaceContainer
                     anchors.fill: parent
+                    radius: 8
                 }
 
                 TapHandler {
@@ -130,9 +173,15 @@ Rectangle {
                         switch (button) {
                             case 0: // touch
                             case Qt.LeftButton:
-                                listView.currentIndex = index
-                                if (root.callOnSelectionEvent) {
-                                    root.onSelectionEvent(uuid)
+                                if (point.modifiers & Qt.ControlModifier) {
+                                    listView.toggleUuid(uuid)
+                                } else {
+                                    listView.resetSelection()
+                                    listView.selectUuid(uuid)
+                                    listView.currentIndex = index
+                                    if (root.callOnSelectionEvent) {
+                                        root.onSelectionEvent(uuid)
+                                    }
                                 }
                                 break;
                             case Qt.RightButton:
