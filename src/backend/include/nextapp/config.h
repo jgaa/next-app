@@ -43,6 +43,12 @@ struct ServerOptions {
 
     /*! DNS names in the self-signed server cert for grpc */
     std::vector<std::string> server_cert_dns_names;
+
+    /*! The max number of items that can be updated in a batch
+     *
+     *  see for example rpc UpdateActions
+     */
+    size_t max_batch_updates = 100;
 };
 
 struct Config {

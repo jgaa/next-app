@@ -146,6 +146,7 @@ public:
         ::grpc::ServerUnaryReactor *GetAction(::grpc::CallbackServerContext *ctx, const pb::GetActionReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *CreateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *UpdateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *UpdateActions(::grpc::CallbackServerContext *ctx, const pb::UpdateActionsReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *DeleteAction(::grpc::CallbackServerContext *ctx, const pb::DeleteActionReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *MarkActionAsFavorite(::grpc::CallbackServerContext *ctx, const pb::ActionFavoriteReq *req, pb::Status *reply) override;

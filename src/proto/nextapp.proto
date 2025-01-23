@@ -416,6 +416,20 @@ message Action {
     int64 updated = 23; // time_t as ms
 }
 
+// Allow updating multiple actions at once, without altering the other fields.
+message UpdateActionsReq {
+    repeated Uuid actions = 1;
+
+    optional Due due = 2; // Sets the due on the actions
+    optional ActionPriority priority = 3; // Sets the priority on the actions
+    optional ActionStatus status = 4; // Sets the status on the actions
+    optional bool favorite = 5; // Sets the favorite flag on the actions
+    optional Uuid category = 6; // Sets the category on the actions
+    optional ActionDifficulty difficulty = 7; // Sets the difficulty on the actions
+    optional uint64 timeEstimate = 8; // Sets the time estimate on the actions
+}
+
+
 message DayColor {
     string id = 1;
     bool systemColor = 2; // Should not be deleted or modified
@@ -786,7 +800,6 @@ message Hello {
     uint32 lastPublishId = 4; // Last puiblished message-id to the user
 }
 
-
 message Status {
     Error error = 1;
     string message = 2;
@@ -858,6 +871,7 @@ service Nextapp {
     rpc GetAction(GetActionReq) returns (Status) {}
     rpc CreateAction(Action) returns (Status) {}
     rpc UpdateAction(Action) returns (Status) {}
+    rpc UpdateActions(UpdateActionsReq) returns (Status) {}
     rpc MoveAction(MoveActionReq) returns (Status) {}
     rpc DeleteAction(DeleteActionReq) returns (Status) {}
     rpc MarkActionAsDone(ActionDoneReq) returns (Status) {}

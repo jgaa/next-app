@@ -157,6 +157,12 @@ int main(int argc, char* argv[]) {
              "TLS mode; one of 'ca' or 'none'. Ca will use a self-signed server cert.")
             ("session-timeout", po::value(&config.svr.session_timeout_sec)->default_value(config.svr.session_timeout_sec),
              "Client-session timeout in seconds. Client sessions are removed after this period." )
+            ("stream_batch_size", po::value(&config.options.stream_batch_size)->default_value(config.options.stream_batch_size),
+             "Number of messages to batch together in an update stream")
+            ("max-page-size", po::value(&config.options.max_page_size)->default_value(config.options.max_page_size),
+             "Maximum page size for paginated results")
+            ("max-batch-updates", po::value(&config.options.max_batch_updates)->default_value(config.options.max_batch_updates),
+             "The max number of items that can be updated in a batch")
             ;
 
         po::options_description metrics("Metrics");

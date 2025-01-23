@@ -357,14 +357,18 @@ boost::asio::awaitable<void>
     LOG_TRACE << "Reply: " << grpc.toJsonForLog(*reply);
 }
 
+void sanitize(pb::Due& d) {
+    if (!d.has_due() || d.due() == 0) {
+        d.clear_start();
+        d.set_kind(pb::ActionDueKind::UNSET);
+        d.clear_timezone();
+    }
+}
+
 void sanitize(pb::Action& action) {
     if (action.has_due()) {
         auto* d = action.mutable_due();
-        if (!d->has_due() || d->due() == 0) {
-            d->clear_start();
-            d->set_kind(pb::ActionDueKind::UNSET);
-            d->clear_timezone();
-        }
+        sanitize(*d);
     }
 }
 
@@ -631,6 +635,141 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
             } else {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated.", uuid));
+            }
+
+            co_await trx.commit();
+
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateActions(::grpc::CallbackServerContext *ctx, const pb::UpdateActionsReq *req, pb::Status *reply) {
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+            if (req->actions().size() > owner_.server().config().options.max_batch_updates) {
+                throw server_err{pb::Error::INVALID_ARGUMENT,
+                                 format("Too many actions to update. The limit is {}",
+                                        owner_.server().config().options.max_batch_updates)};
+            };
+
+            const auto& cuser = rctx.uctx->userUuid();
+            const auto& dbopts = rctx.uctx->dbOptions();
+            DoneChanged done = DoneChanged::NO_CHANGE;
+            auto trx = co_await rctx.dbh->transaction();
+
+            string updates;
+            auto append = [&updates](const string& col) {
+                if (!updates.empty()) {
+                    updates += ", ";
+                }
+                updates += col;
+            };
+
+            if (req->has_due()) {
+                append("start_time=?, due_by_time=?, due_timezone=?, due_kind=?");
+            };
+
+            if (req->has_priority()) {
+                append("priority=?");
+            }
+
+            if (req->has_status()) {
+                append("status=?");
+                throw server_err(pb::Error::GENERIC_ERROR, "status update not supported yet");
+            }
+
+            if (req->has_favorite()) {
+                append("favorite=?");
+            }
+
+            if (req->has_category()) {
+                append("category=?");
+            }
+
+            if (req->has_difficulty()) {
+                append("difficulty=?");
+            }
+
+            if (req->has_timeestimate()) {
+                append("time_estimate=?");
+            }
+
+            string sql = format("UPDATE action SET {} WHERE user=? AND id=? ", updates);
+
+            for (const auto& uuid: req->actions()) {
+                //co_await owner_.validateAction(*rctx.dbh, uuid.uuid(), cuser);
+
+                // Build the binding args
+                std::vector<boost::mysql::field_view> args;
+
+                // We are using views to bind args, so we need data in actual buffers to view.
+                optional<string> start, due, time_zone;
+                string kind, priority, difficulty;
+
+                if (req->has_due()) {
+                    auto d = req->due();
+                    sanitize(d);
+                    if (d.has_start()) {
+                        if (start = toAnsiTime(d.start(), rctx.uctx->tz()); start.has_value()) {
+                            args.emplace_back(*start);
+                        } else {
+                            args.emplace_back(nullptr);
+                        }
+                    } else {
+                        args.emplace_back(nullptr);
+                    }
+                    if (d.has_due()) {
+                        if (due = toAnsiTime(d.due(), rctx.uctx->tz()); due.has_value()) {
+                            args.emplace_back(*due);
+                        } else {
+                            args.emplace_back(nullptr);
+                        }
+                    } else {
+                        args.emplace_back(nullptr);
+                    }
+                    if (time_zone = toStringOrNull(d.timezone()); time_zone.has_value()) {
+                        args.emplace_back(*time_zone);
+                    } else {
+                        args.emplace_back(nullptr);
+                    }
+                    kind = pb::ActionDueKind_Name(d.kind());
+                    args.emplace_back(kind);
+                }
+
+                if (req->has_priority()) {
+                    priority = pb::ActionPriority_Name(req->priority());
+                    args.emplace_back(priority);
+                }
+
+                if (req->has_favorite()) {
+                    args.emplace_back(req->favorite());
+                }
+
+                if (req->has_category()) {
+                    args.emplace_back(req->category().uuid());
+                }
+
+                if (req->has_difficulty()) {
+                    difficulty = pb::ActionDifficulty_Name(req->difficulty());
+                    args.emplace_back(difficulty);
+                }
+
+                if (req->has_timeestimate()) {
+                    args.emplace_back(req->timeestimate());
+                }
+
+                args.emplace_back(cuser);
+                args.emplace_back(uuid.uuid());
+
+                auto res = co_await rctx.dbh->exec(sql, dbopts, args);
+                assert(res.has_value());
+                if (res.affected_rows() == 1) {
+                    auto& publish = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+                    auto* action = publish.mutable_action();
+                    co_await owner_.getAction(*action, uuid.uuid(), rctx);
+                } else {
+                    throw server_err(pb::Error::GENERIC_ERROR, format("Action with id={} was not updated.", uuid.uuid()));
+                }
             }
 
             co_await trx.commit();
