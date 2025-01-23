@@ -48,7 +48,7 @@ Rectangle {
         ToolBar {
             id: headerCtl
             Layout.fillWidth: true
-            property int comboWidth: (width - (2 * 4) - refreschButton.width) / 2
+            property int comboWidth: (width - (2 * 5) - refreschButton.width - selectionsButton.width) / 2
 
             background: Rectangle {
                 color: MaterialDesignStyling.surfaceContainer
@@ -108,6 +108,42 @@ Rectangle {
                     onActivated: (ix) => {
                         // console.log("Sorting changed to", ix)
                         NaActionsModel.sort = ix
+                    }
+                }
+
+                StyledButton {
+                    id: selectionsButton
+                    enabled: actions.hasSelection
+                    Layout.preferredWidth: parent.height
+                    Layout.minimumWidth: 20
+                    text: "";
+                    onClicked: {
+                        menu.open()
+                    }
+
+                    Image {
+                        id: multiSelectIcon
+                        source: "qrc:/qt/qml/NextAppUi/icons/multiselection-menu.svg"
+                        fillMode: Image.PreserveAspectFit
+                        sourceSize: Qt.size(18, 18)
+                        anchors.centerIn: parent
+                    }
+
+                    Menu {
+                        id: menu
+                        title: qsTr("On selection(s)")
+                        MenuItem {
+                            text: qsTr("Change when")
+                            onTriggered: {
+
+                            }
+                        }
+                        MenuItem {
+                            text: qsTr("Move due time")
+                            onTriggered: {
+
+                            }
+                        }
                     }
                 }
 

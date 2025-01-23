@@ -353,6 +353,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/globe.svg
         icons/info_sign.svg
         icons/light_bulb.svg
+        icons/multiselection-menu.svg
         icons/nextapp.svg
         icons/organization.svg
         icons/person.svg

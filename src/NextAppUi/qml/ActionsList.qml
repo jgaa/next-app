@@ -20,6 +20,7 @@ Rectangle {
     property bool callOnSelectionEvent: typeof onSelectionEvent === "function"
     color: MaterialDesignStyling.surface
     property bool hasReview: false
+    property bool hasSelection: selectedItems.length > 0
 
     ColumnLayout {
         anchors.fill: parent
@@ -63,6 +64,7 @@ Rectangle {
                 for(let i = 0; i < selectedItems.length; i++) {
                     console.log(" - " + selectedItems[i])
                 }
+                hasSelection = selectedItems.length > 0
             }
 
             function toggleUuid(uuid) {
@@ -77,11 +79,13 @@ Rectangle {
                 for(let i = 0; i < selectedItems.length; i++) {
                     console.log(" - " + selectedItems[i])
                 }
+                hasSelection = selectedItems.length > 0
             }
 
             function resetSelection() {
                 selectedItems = [];
                 mySelectedItemsChanged();
+                hasSelection = selectedItems.length > 0
             }
 
             function isSelected(uuid) {
