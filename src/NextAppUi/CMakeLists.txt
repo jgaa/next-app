@@ -151,6 +151,11 @@ qt_add_grpc(NextappGrpcClient CLIENT
     PROTO_FILES ${protofile_nextapp} ${protofile_signup}
 )
 
+target_sources(NextappGrpcClient
+  PRIVATE
+    qml/components/WhenSelector.qml
+)
+
 target_link_libraries(NextappGrpcClient
     PRIVATE
         NextappProtoMessageLib
@@ -300,6 +305,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/components/DatePicker.qml
         qml/components/TimeAndDurationInput.qml
         qml/components/TimeInput.qml
+        qml/components/WhenSelector.qml
         qml/greendays/DayDialog.qml
         qml/greendays/DaysInYear.qml
         qml/greendays/GdMonth.qml

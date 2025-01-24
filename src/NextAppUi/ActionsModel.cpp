@@ -680,6 +680,13 @@ QStringListModel *ActionsModel::getDueSelections(uint64_t when, nextapp::pb::Act
     return model;
 }
 
+pb::Due ActionsModel::getEmptyDue() const
+{
+    pb::Due due;
+    due.setKind(pb::ActionDueKindGadget::ActionDueKind::UNSET);
+    return due;
+}
+
 pb::Due ActionsModel::setDue(time_t start, time_t until, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const
 {
     assert(start <= until);
@@ -992,6 +999,24 @@ bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid
 void ActionsModel::refresh()
 {
     fetchIf(true);
+}
+
+void ActionsModel::batchChangeDue(const nextapp::pb::Due &due, const QStringList &actions)
+{
+    pb::UpdateActionsReq req;
+    req.setDue(due);
+
+    // QT protobuf don't support mutable sub-members, so we must write
+    // with the detail of assambly-langue
+    pb::UuidRepeated uuids;
+    for(const auto& action: actions) {
+        pb::Uuid uuid;
+        uuid.setUuid(action);
+        uuids.append(uuid);
+    }
+    req.setActions(uuids);
+
+    ServerComm::instance().updateActions(req);
 }
 
 int ActionsModel::rowCount(const QModelIndex &parent) const

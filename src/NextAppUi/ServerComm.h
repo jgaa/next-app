@@ -125,6 +125,7 @@ private:
             ADD_TIME_BLOCK,
             UPDATE_TIME_BLOCK,
             DELETE_TIME_BLOCK,
+            UPDATE_ACTIONS,
         };
 
         quint32 id{0};
@@ -213,6 +214,7 @@ public:
     //void getAction(nextapp::pb::GetActionReq &req);
     void addAction(const nextapp::pb::Action& action);
     void updateAction(const nextapp::pb::Action& action);
+    void updateActions(const nextapp::pb::UpdateActionsReq& action);
     void deleteAction(const QString& actionUuid);
     void markActionAsDone(const QString& actionUuid, bool done);
     void markActionAsFavorite(const QString& actionUuid, bool favorite);

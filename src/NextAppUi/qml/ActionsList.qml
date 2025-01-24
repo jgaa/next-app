@@ -21,6 +21,7 @@ Rectangle {
     color: MaterialDesignStyling.surface
     property bool hasReview: false
     property bool hasSelection: selectedItems.length > 0
+    property alias selectedIds: listView.selectedItems
 
     ColumnLayout {
         anchors.fill: parent

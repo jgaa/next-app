@@ -426,6 +426,11 @@ void ServerComm::updateAction(const nextapp::pb::Action &action)
     rpcQueueAndExecute<QueuedRequest::Type::UPDATE_ACTION>(action);
 }
 
+void ServerComm::updateActions(const nextapp::pb::UpdateActionsReq &action)
+{
+    rpcQueueAndExecute<QueuedRequest::Type::UPDATE_ACTIONS>(action);
+}
+
 void ServerComm::deleteAction(const QString &actionUuid)
 {
     nextapp::pb::DeleteActionReq req;
@@ -1753,6 +1758,11 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
             QProtobufSerializer serializer;
             const auto req = deserialize<nextapp::pb::Action>(qr.data);
             res = co_await rpc(req, &nextapp::pb::Nextapp::Client::UpdateAction, options);
+        } break;
+        case QueuedRequest::Type::UPDATE_ACTIONS: {
+            QProtobufSerializer serializer;
+            const auto req = deserialize<nextapp::pb::UpdateActionsReq>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::UpdateActions, options);
         } break;
         case QueuedRequest::Type::DELETE_ACTION: {
             const auto req = deserialize<nextapp::pb::DeleteActionReq>(qr.data);

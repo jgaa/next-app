@@ -135,7 +135,8 @@ Rectangle {
                         MenuItem {
                             text: qsTr("Change when")
                             onTriggered: {
-
+                                changeWhenDlg.due = null
+                                changeWhenDlg.open()
                             }
                         }
                         MenuItem {
@@ -185,6 +186,26 @@ Rectangle {
         onApply: {
             // console.log("Filter applied")
             NaActionsModel.filter = filter.filter
+        }
+    }
+
+    Dialog {
+        title: qsTr("Change when")
+        id: changeWhenDlg
+        width: 400
+        height: 300
+        property alias due: whenCtl.due
+
+        // Show cancel button
+        standardButtons: Dialog.Cancel
+
+        WhenSelector {
+            id: whenCtl
+            onDueWasSelected: (due) => {
+                // console.log("Due was selected", due)
+                NaActionsModel.batchChangeDue(due, actions.selectedIds)
+                changeWhenDlg.close()
+            }
         }
     }
 }
