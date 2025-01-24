@@ -1006,17 +1006,40 @@ void ActionsModel::batchChangeDue(const nextapp::pb::Due &due, const QStringList
     pb::UpdateActionsReq req;
     req.setDue(due);
 
-    // QT protobuf don't support mutable sub-members, so we must write
-    // with the detail of assambly-langue
-    pb::UuidRepeated uuids;
-    for(const auto& action: actions) {
-        pb::Uuid uuid;
-        uuid.setUuid(action);
-        uuids.append(uuid);
-    }
-    req.setActions(uuids);
+    batchUpdateActions(req, actions);
+}
 
-    ServerComm::instance().updateActions(req);
+void ActionsModel::batchChangeCategory(const QString &category, const QStringList &actions)
+{
+    pb::UpdateActionsReq req;
+    pb::Uuid uuid;
+    uuid.setUuid(category);
+    req.setCategory(uuid);
+    batchUpdateActions(req, actions);
+}
+
+void ActionsModel::batchChangePriority(int priority, const QStringList &actions)
+{
+    if (priority < 0 || priority > 7) {
+        LOG_WARN_N << "Invalid priority " << priority;
+        return;
+    }
+    const auto pri = static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(priority);
+    pb::UpdateActionsReq req;
+    req.setPriority(pri);
+    batchUpdateActions(req, actions);
+}
+
+void ActionsModel::batchChangeDifficulty(int difficulty, const QStringList &actions)
+{
+    if (difficulty < 0 || difficulty > 5) {
+        LOG_WARN_N << "Invalid difficulty " << difficulty;
+        return;
+    }
+    const auto diff = static_cast<nextapp::pb::ActionDifficultyGadget::ActionDifficulty>(difficulty);
+    pb::UpdateActionsReq req;
+    req.setDifficulty(diff);
+    batchUpdateActions(req, actions);
 }
 
 int ActionsModel::rowCount(const QModelIndex &parent) const
@@ -1652,6 +1675,21 @@ void ActionsModel::refreshVisibleItems()
     auto first = createIndex(0,0);
     auto last = createIndex(actions_.size(), 0);
     emit dataChanged(first, last);
+}
+
+void ActionsModel::batchUpdateActions(nextapp::pb::UpdateActionsReq &req, const QStringList &actions)
+{
+    // QT protobuf don't support mutable sub-members, so we must write
+    // with the detail of assambly-langue
+    pb::UuidRepeated uuids;
+    for(const auto& action: actions) {
+        pb::Uuid uuid;
+        uuid.setUuid(action);
+        uuids.append(uuid);
+    }
+    req.setActions(uuids);
+
+    ServerComm::instance().updateActions(req);
 }
 
 QStringList ActionsModel::mimeTypes() const

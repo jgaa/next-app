@@ -14,8 +14,13 @@ ComboBox {
     property string uuid: ""
     currentIndex: -1
     displayText: currentIndex === -1 ? qsTr("Select a Category") : currentText
+    signal categorySelected(string uuid)
 
     onActivated: {
+        if (root.currentIndex === -1) {
+            return
+        }
+
         var item = root.model.get(root.currentIndex)
         if (item) {
             root.uuid = item.id_proto
@@ -26,6 +31,7 @@ ComboBox {
         // console.log("CategoryComboBox/onUuidChanged: category is", root.uuid)
         if (root.uuid !== "") {
             root.currentIndex = root.model.getIndexByUuid(root.uuid)
+            categorySelected(root.uuid)
         } else {
             root.currentIndex = -1
         }

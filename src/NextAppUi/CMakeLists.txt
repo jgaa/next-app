@@ -298,7 +298,9 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/categories/EditCategoryDlg.qml
         qml/common.js
         qml/components/DatePicker.qml
+        qml/components/DifficultySelector.qml
         qml/components/MoveDue.qml
+        qml/components/PrioritySelector.qml
         qml/components/TimeAndDurationInput.qml
         qml/components/TimeInput.qml
         qml/components/WhenSelector.qml

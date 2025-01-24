@@ -115,6 +115,6 @@ ComboBox {
     }
 
     function reset() {
-        setWhenCurrentIndex = -1;
+        root.currentIndex  = -1;
     }
 }

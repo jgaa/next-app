@@ -231,6 +231,9 @@ public:
     Q_INVOKABLE bool moveToNode(const QString& actionUuid, const QString& nodeUuid);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void batchChangeDue(const nextapp::pb::Due& due, const QStringList& actions);
+    Q_INVOKABLE void batchChangeCategory(const QString& category, const QStringList& actions);
+    Q_INVOKABLE void batchChangePriority(int priority, const QStringList& actions);
+    Q_INVOKABLE void batchChangeDifficulty(int difficulty, const QStringList& actions);
 
    //QCoro::Task<void> fetch(nextapp::pb::GetActionsReq& filter);
     //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
@@ -269,6 +272,7 @@ private:
     void actionDeleted(const QUuid &uuid);
     void actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
     void refreshVisibleItems();
+    void batchUpdateActions(nextapp::pb::UpdateActionsReq& req, const QStringList& actions);
 
     //QList<nextapp::pb::ActionInfo> actions_;
     std::deque<ActionData> actions_;

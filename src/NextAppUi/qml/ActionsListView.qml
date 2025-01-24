@@ -138,12 +138,24 @@ Rectangle {
                                 changeWhenDlg.open()
                             }
                         }
-                        // MenuItem {
-                        //     text: qsTr("Move due time")
-                        //     onTriggered: {
-                        //         moveWhenDlg.open()
-                        //     }
-                        // }
+                        MenuItem {
+                            text: qsTr("Set Category")
+                            onTriggered: {
+                                setCategoryDlg.open()
+                            }
+                        }
+                        MenuItem {
+                            text: qsTr("Set Priority")
+                            onTriggered: {
+                                setPriorityDlg.open()
+                            }
+                        }
+                        MenuItem {
+                            text: qsTr("Set Difficulty")
+                            onTriggered: {
+                                setDifficultyDlg.open()
+                            }
+                        }
                     }
                 }
 
@@ -229,28 +241,84 @@ Rectangle {
         }
     }
 
-    // Dialog {
-    //     title: qsTr("Move due to")
-    //     id: moveWhenDlg
-    //     width: 300
-    //     height: 200
+    Dialog {
+        title: qsTr("Set Category")
+        id: setCategoryDlg
+        width: 300
+        height: 150
 
-    //     // Show cancel button
-    //     standardButtons: Dialog.Cancel
+        // Show cancel button
+        standardButtons: Dialog.Cancel
 
-    //     onOpenedChanged: {
-    //         if (opened) {
-    //             moveToCtl.reset()
-    //         }
-    //     }
+        onOpenedChanged: {
+            if (opened) {
+                moveToCtl.reset()
+            }
+        }
 
-    //     MoveDue {
-    //         width: parent.width
-    //         id: moveToCtl
-    //         onDueValueChanged: (due) => {
-    //             NaActionsModel.batchChangeDue(due, actions.selectedIds)
-    //             moveWhenDlg.close()
-    //         }
-    //     }
-    // }
+        CategoryComboBox {
+            id: category
+            Layout.leftMargin: root.leftMarginForControls
+            Layout.fillWidth: true
+
+            onCategorySelected: (category) => {
+                NaActionsModel.batchChangeCategory(category, actions.selectedIds)
+                setCategoryDlg.close()
+            }
+        }
+    }
+
+    Dialog {
+        title: qsTr("Set Priority")
+        id: setPriorityDlg
+        width: 300
+        height: 150
+
+        // Show cancel button
+        standardButtons: Dialog.Cancel
+
+        onOpenedChanged: {
+            if (opened) {
+                setPriorityDlg.reset()
+            }
+        }
+
+        PrioritySelector {
+            id: priority
+            Layout.leftMargin: root.leftMarginForControls
+            Layout.fillWidth: true
+
+            onPriorityChanged: (pri) => {
+                NaActionsModel.batchChangePriority(pri, actions.selectedIds)
+                setPriorityDlg.close()
+            }
+        }
+    }
+
+    Dialog {
+        title: qsTr("Set Difficulty")
+        id: setDifficultyDlg
+        width: 300
+        height: 150
+
+        // Show cancel button
+        standardButtons: Dialog.Cancel
+
+        onOpenedChanged: {
+            if (opened) {
+                difficulty.reset()
+            }
+        }
+
+        DifficultySelector {
+            id: difficulty
+            Layout.leftMargin: root.leftMarginForControls
+            Layout.fillWidth: true
+
+            onDifficultyChanged: (diff) => {
+                NaActionsModel.batchChangeDifficulty(diff, actions.selectedIds)
+                setDifficultyDlg.close()
+            }
+        }
+    }
 }

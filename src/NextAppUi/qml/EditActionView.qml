@@ -250,7 +250,6 @@ ColumnLayout {
                 CategoryComboBox {
                     id: category
                     Layout.leftMargin: root.leftMarginForControls
-                    //Layout.preferredWidth: root.controlsPreferredWidth
                     Layout.fillWidth: true
                 }
 
@@ -300,38 +299,6 @@ ColumnLayout {
                         whenCtl.due = due
                     }
                 }
-
-            //     ComboBox {
-            //         id: shortcuts
-            //         //Layout.preferredWidth: root.controlsPreferredWidth * (NaCore.isMobile ? 1 : 2)
-            //         Layout.fillWidth: true
-            //         Layout.leftMargin: root.leftMarginForControls
-            //         //Layout.rowSpan: NaCore.isMobile ? 1 : 2
-
-            //         displayText: qsTr("Move the due time")
-            //         currentIndex: -1
-            //         model: ListModel {
-            //             ListElement{ text: qsTr("Today")}
-            //             ListElement{ text: qsTr("Tomorrow")}
-            //             ListElement{ text: qsTr("This Weekend")}
-            //             ListElement{ text: qsTr("Next Monday")}
-            //             ListElement{ text: qsTr("This week")}
-            //             ListElement{ text: qsTr("After one week")}
-            //             ListElement{ text: qsTr("Next Week")}
-            //             ListElement{ text: qsTr("This month")}
-            //             ListElement{ text: qsTr("Next month")}
-            //             ListElement{ text: qsTr("This Quarter")}
-            //             ListElement{ text: qsTr("Next Quarter")}
-            //             ListElement{ text: qsTr("This Year")}
-            //             ListElement{ text: qsTr("Next Year")}
-            //         }
-
-            //         onCurrentIndexChanged: {
-            //             if (currentIndex >= 0) {
-            //                 whenCtl.due = NaActionsModel.changeDue(currentIndex, whenCtl.due)
-            //             }
-            //         }
-            //     }
             }
 
         } // Main tab
@@ -414,20 +381,10 @@ ColumnLayout {
                     text: qsTr("Priority")
                 }
 
-                ComboBox {
+                PrioritySelector {
                     id: priority
                     Layout.leftMargin: root.leftMarginForControls
                     Layout.preferredWidth: root.controlsPreferredWidth
-                    model: ListModel {
-                        ListElement{ text: qsTr("Critical")}
-                        ListElement{ text: qsTr("Very Important")}
-                        ListElement{ text: qsTr("Higher")}
-                        ListElement{ text: qsTr("High")}
-                        ListElement{ text: qsTr("Normal")}
-                        ListElement{ text: qsTr("Medium")}
-                        ListElement{ text: qsTr("Low")}
-                        ListElement{ text: qsTr("Insignificant")}
-                    }
                 }
 
                 Label {
@@ -436,19 +393,12 @@ ColumnLayout {
                     text: qsTr("Difficulty")
                 }
 
-                ComboBox {
+                DifficultySelector {
                     id: difficultyCtl
                     Layout.leftMargin: root.leftMarginForControls
                     Layout.preferredWidth: root.controlsPreferredWidth
-                    model: ListModel {
-                        ListElement{ text: qsTr("Trivial")}
-                        ListElement{ text: qsTr("Easy")}
-                        ListElement{ text: qsTr("Normal")}
-                        ListElement{ text: qsTr("Hard")}
-                        ListElement{ text: qsTr("Very Hard")}
-                        ListElement{ text: qsTr("Inspiered moment")}
-                    }
                 }
+
             } // Grid Layout
         } // Details tab
 
