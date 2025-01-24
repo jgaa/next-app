@@ -73,4 +73,9 @@ ComboBox {
             visible: root.currentIndex >= 0
         }
     }
+
+    function reset() {
+        root.currentIndex = -1
+        root.uuid = ""
+    }
 }

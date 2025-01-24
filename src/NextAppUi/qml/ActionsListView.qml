@@ -210,8 +210,8 @@ Rectangle {
         // Show cancel button
         standardButtons: Dialog.Cancel
 
-        onOpenedChanged: {
-            if (opened) {
+        onVisibleChanged: {
+            if (visible) {
                 whenCtl.reset()
                 moveToCtl.reset()
             }
@@ -250,9 +250,9 @@ Rectangle {
         // Show cancel button
         standardButtons: Dialog.Cancel
 
-        onOpenedChanged: {
-            if (opened) {
-                moveToCtl.reset()
+        onVisibleChanged: {
+            if (visible) {
+                category.reset()
             }
         }
 
@@ -277,9 +277,9 @@ Rectangle {
         // Show cancel button
         standardButtons: Dialog.Cancel
 
-        onOpenedChanged: {
-            if (opened) {
-                setPriorityDlg.reset()
+        onVisibleChanged: {
+            if (visible) {
+                priority.reset()
             }
         }
 
@@ -304,8 +304,8 @@ Rectangle {
         // Show cancel button
         standardButtons: Dialog.Cancel
 
-        onOpenedChanged: {
-            if (opened) {
+        onVisibleChanged: {
+            if (visible) {
                 difficulty.reset()
             }
         }
