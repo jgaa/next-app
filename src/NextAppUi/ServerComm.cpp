@@ -943,14 +943,14 @@ void ServerComm::errorOccurred(const QGrpcStatus &status)
 
     emit errorRecieved(tr("Connection to gRPC server failed: %1").arg(status.message()));
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-    if (status.code() == QGrpcStatus::StatusCode::Cancelled) {
-#else
-    if (status.code() == QtGrpc::StatusCode::Cancelled) {
-#endif
-        setStatus(Status::OFFLINE);
-        return;
-    }
+// #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+//     if (status.code() == QGrpcStatus::StatusCode::Cancelled) {
+// #else
+//     if (status.code() == QtGrpc::StatusCode::Cancelled) {
+// #endif
+//         setStatus(Status::OFFLINE);
+//         return;
+//     }
     setStatus(Status::ERROR);
     scheduleReconnect();
 }
@@ -1099,8 +1099,17 @@ void ServerComm::scheduleReconnect()
         reconnect_after_seconds_ = std::min(reconnect_after_seconds_ * 2, 60 * 5);
     }
 
-    LOG_INFO_N << "Reconnecting in " << reconnect_after_seconds_ << " seconds";
-    QTimer::singleShot(reconnect_after_seconds_ * 1000, this, &ServerComm::start);
+    LOG_INFO_N << "Will consider reconnecting in " << reconnect_after_seconds_ << " seconds";
+    QTimer::singleShot(reconnect_after_seconds_ * 1000, [this] () {
+        const auto shold_reconnect = shouldReconnect();
+        if (status_ == Status::ERROR && shold_reconnect) {
+            LOG_INFO_N << "Reconnecting!";
+            start();
+            return;
+        }
+
+        LOG_DEBUG_N << "Not reconnecting. status=" << status_ << ", shouldReconnect=" << shold_reconnect;
+    });
 }
 
 QString ServerComm::toString(const QGrpcStatus& status) {
@@ -1232,6 +1241,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
     QSettings settings;
     session_id_.clear();
 
+    bool upgraded = false;
     auto prev_version = settings.value("client/version", "").toString();
     if (prev_version != NEXTAPP_UI_VERSION) {
         LOG_INFO << "Client version changed from " << prev_version << " to " << NEXTAPP_UI_VERSION;
@@ -1303,6 +1313,7 @@ failed:
 
         stop();
         close_popup = false;
+        scheduleReconnect();
         co_return;
     }
 

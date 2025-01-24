@@ -360,10 +360,12 @@ private:
             connect(ptr, &QGrpcCallReply::finished, this, [this, rpc_method=std::move(rpc_method), done=std::move(done), opts=std::move(opts)] (const QGrpcStatus& status) {
                 if (!status.isOk()) [[unlikely]] {
                     LOG_ERROR <<  "RPC failed: " << toString(status);
+                    errorOccurred(status);
                     if constexpr (IsValidFunctor<doneT, CbError>) {
                         done(CbError{nextapp::pb::ErrorGadget::Error::GENERIC_ERROR, status.message()});
-                        setStatus(Status::ERROR);
-                        stop();
+                        // setStatus(Status::ERROR);
+                        // stop();
+                        // scheduleReconnect();
                         return;
                     }
                 }
@@ -462,8 +464,7 @@ private:
             if (!status.isOk()) [[unlikely]] {
                 // gRPC level error
                 LOG_ERROR <<  "RPC failed: " << toString(status);
-                setStatus(Status::ERROR);
-                stop();
+                errorOccurred(status);
                 replyT rval;
                 rval.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
                 rval.setMessage(status.message());

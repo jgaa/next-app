@@ -11,6 +11,11 @@ Rectangle {
     opacity: 0.8
     anchors.fill: parent
 
+    MouseArea {
+        anchors.fill: parent
+        onClicked: root.visible = false // Hide the rectangle on click
+    }
+
     ColumnLayout {
         anchors.fill: parent
         id: columnLayout
