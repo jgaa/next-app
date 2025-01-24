@@ -135,16 +135,15 @@ Rectangle {
                         MenuItem {
                             text: qsTr("Change when")
                             onTriggered: {
-                                changeWhenDlg.due = null
                                 changeWhenDlg.open()
                             }
                         }
-                        MenuItem {
-                            text: qsTr("Move due time")
-                            onTriggered: {
-
-                            }
-                        }
+                        // MenuItem {
+                        //     text: qsTr("Move due time")
+                        //     onTriggered: {
+                        //         moveWhenDlg.open()
+                        //     }
+                        // }
                     }
                 }
 
@@ -192,20 +191,66 @@ Rectangle {
     Dialog {
         title: qsTr("Change when")
         id: changeWhenDlg
-        width: 400
-        height: 300
+        width: 300
+        height: 200
         property alias due: whenCtl.due
 
         // Show cancel button
         standardButtons: Dialog.Cancel
 
-        WhenSelector {
-            id: whenCtl
-            onDueWasSelected: (due) => {
-                // console.log("Due was selected", due)
-                NaActionsModel.batchChangeDue(due, actions.selectedIds)
-                changeWhenDlg.close()
+        onOpenedChanged: {
+            if (opened) {
+                whenCtl.reset()
+                moveToCtl.reset()
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            WhenSelector {
+                Layout.fillWidth: true
+                id: whenCtl
+                onDueWasSelected: (due) => {
+                    NaActionsModel.batchChangeDue(due, actions.selectedIds)
+                    changeWhenDlg.close()
+                }
+            }
+
+            MoveDue {
+                Layout.fillWidth: true
+                id: moveToCtl
+                onDueValueChanged: (due) => {
+                    NaActionsModel.batchChangeDue(due, actions.selectedIds)
+                    changeWhenDlg.close()
+                }
             }
         }
     }
+
+    // Dialog {
+    //     title: qsTr("Move due to")
+    //     id: moveWhenDlg
+    //     width: 300
+    //     height: 200
+
+    //     // Show cancel button
+    //     standardButtons: Dialog.Cancel
+
+    //     onOpenedChanged: {
+    //         if (opened) {
+    //             moveToCtl.reset()
+    //         }
+    //     }
+
+    //     MoveDue {
+    //         width: parent.width
+    //         id: moveToCtl
+    //         onDueValueChanged: (due) => {
+    //             NaActionsModel.batchChangeDue(due, actions.selectedIds)
+    //             moveWhenDlg.close()
+    //         }
+    //     }
+    // }
 }

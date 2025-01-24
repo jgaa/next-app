@@ -290,39 +290,48 @@ ColumnLayout {
                     Layout.leftMargin: root.leftMarginForControls
                 }
 
-
-
-                ComboBox {
-                    id: shortcuts
-                    //Layout.preferredWidth: root.controlsPreferredWidth * (NaCore.isMobile ? 1 : 2)
+                MoveDue {
+                    id: moveDue
+                    due: root.action.due || NaActionsModel.getEmptyDue()
                     Layout.fillWidth: true
                     Layout.leftMargin: root.leftMarginForControls
-                    //Layout.rowSpan: NaCore.isMobile ? 1 : 2
 
-                    displayText: qsTr("Move the due time")
-                    currentIndex: -1
-                    model: ListModel {
-                        ListElement{ text: qsTr("Today")}
-                        ListElement{ text: qsTr("Tomorrow")}
-                        ListElement{ text: qsTr("This Weekend")}
-                        ListElement{ text: qsTr("Next Monday")}
-                        ListElement{ text: qsTr("This week")}
-                        ListElement{ text: qsTr("After one week")}
-                        ListElement{ text: qsTr("Next Week")}
-                        ListElement{ text: qsTr("This month")}
-                        ListElement{ text: qsTr("Next month")}
-                        ListElement{ text: qsTr("This Quarter")}
-                        ListElement{ text: qsTr("Next Quarter")}
-                        ListElement{ text: qsTr("This Year")}
-                        ListElement{ text: qsTr("Next Year")}
-                    }
-
-                    onCurrentIndexChanged: {
-                        if (currentIndex >= 0) {
-                            whenCtl.due = NaActionsModel.changeDue(currentIndex, whenCtl.due)
-                        }
+                    onDueValueChanged: (due) => {
+                        whenCtl.due = due
                     }
                 }
+
+            //     ComboBox {
+            //         id: shortcuts
+            //         //Layout.preferredWidth: root.controlsPreferredWidth * (NaCore.isMobile ? 1 : 2)
+            //         Layout.fillWidth: true
+            //         Layout.leftMargin: root.leftMarginForControls
+            //         //Layout.rowSpan: NaCore.isMobile ? 1 : 2
+
+            //         displayText: qsTr("Move the due time")
+            //         currentIndex: -1
+            //         model: ListModel {
+            //             ListElement{ text: qsTr("Today")}
+            //             ListElement{ text: qsTr("Tomorrow")}
+            //             ListElement{ text: qsTr("This Weekend")}
+            //             ListElement{ text: qsTr("Next Monday")}
+            //             ListElement{ text: qsTr("This week")}
+            //             ListElement{ text: qsTr("After one week")}
+            //             ListElement{ text: qsTr("Next Week")}
+            //             ListElement{ text: qsTr("This month")}
+            //             ListElement{ text: qsTr("Next month")}
+            //             ListElement{ text: qsTr("This Quarter")}
+            //             ListElement{ text: qsTr("Next Quarter")}
+            //             ListElement{ text: qsTr("This Year")}
+            //             ListElement{ text: qsTr("Next Year")}
+            //         }
+
+            //         onCurrentIndexChanged: {
+            //             if (currentIndex >= 0) {
+            //                 whenCtl.due = NaActionsModel.changeDue(currentIndex, whenCtl.due)
+            //             }
+            //         }
+            //     }
             }
 
         } // Main tab

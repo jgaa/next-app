@@ -77,7 +77,7 @@ ComboBox {
 
                         due.due = 0
                         due.start = 0;
-                        dueWasSelected(whenCtl.due)
+                        dueWasSelected(root.due)
                         break;
                 }
 
@@ -93,24 +93,28 @@ ComboBox {
 
         onSelectedDateClosed: (date, accepted) => {
             if (accepted) {
-                whenCtl.due = NaActionsModel.adjustDue(date.getTime() / 1000, whenCtl.maybeKind);
+                root.due = NaActionsModel.adjustDue(date.getTime() / 1000, root.maybeKind);
+                setWhenCurrentIndex(root.due.kind)
+                dueWasSelected(root.due)
             }
-            setWhenCurrentIndex(whenCtl.due.kind)
-            dueWasSelected(whenCtl.due)
         }
 
         onSelectedDurationClosed: (from, until, accepted) => {
             if (accepted) {
-                whenCtl.due = NaActionsModel.setDue(from.getTime() / 1000, until.getTime() / 1000, whenCtl.maybeKind);
+                root.due = NaActionsModel.setDue(from.getTime() / 1000, until.getTime() / 1000, root.maybeKind);
+                setWhenCurrentIndex(root.due.kind)
+                dueWasSelected(root.due)
             }
-            setWhenCurrentIndex(whenCtl.due.kind)
-            dueWasSelected(whenCtl.due)
         }
     }
 
     // Set the current index and the text
     function setWhenCurrentIndex(index) {
-        whenCtl.currentIndex = index
-        whenCtl.displayText = NaActionsModel.formatDue(whenCtl.due)
+        root.currentIndex = index
+        root.displayText = NaActionsModel.formatDue(root.due)
+    }
+
+    function reset() {
+        setWhenCurrentIndex = -1;
     }
 }
