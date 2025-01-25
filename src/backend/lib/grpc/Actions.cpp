@@ -624,9 +624,10 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
             }
             sanitize(new_action);
 
-            auto res = co_await rctx.dbh->exec(format("UPDATE action SET {} WHERE id=? AND user=? ",
-                                                      ToAction::updateStatementBindingStr()), dbopts,
-                                               ToAction::prepareBindingArgs<false>(new_action, *rctx.uctx, uuid, cuser));
+            const auto sql = format("UPDATE action SET {} WHERE id=? AND user=? ",
+                              ToAction::updateStatementBindingStr());
+            const auto args = ToAction::prepareBindingArgs<false>(new_action, *rctx.uctx, uuid, cuser);
+            auto res = co_await rctx.dbh->exec(sql, dbopts, args);
 
             assert(!res.empty());
 
