@@ -308,6 +308,8 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/greendays/DaysInYear.qml
         qml/greendays/GdMonth.qml
         qml/greendays/GdQuarter.qml
+        qml/log/LogDialog.qml
+        qml/log/LogView.qml
         qml/onboard/AddDevicePage.qml
         qml/onboard/GetNewOtpForDevice.qml
         qml/onboard/OnBoardingWizard.qml
@@ -341,6 +343,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/circle.svg
         icons/fontawsome/clock.svg
         icons/fontawsome/cloud-bolt.svg
+        icons/fontawsome/file-lines.svg
         icons/fontawsome/folder-tree.svg
         icons/fontawsome/folder.svg
         icons/fontawsome/gear.svg
@@ -407,6 +410,8 @@ qt_add_qml_module(${PROJECT_NAME}
         GreenMonthModel.cpp
         GreenMonthModel.h
         GrpcIncomingStream.h
+        LogModel.cpp
+        LogModel.h
         MainTreeModel.cpp
         MainTreeModel.h
         MaterialDesignStyling.cpp

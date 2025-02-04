@@ -52,6 +52,11 @@ ApplicationWindow {
             }
 
             Action {
+                text: qsTr("Application log")
+                onTriggered: { openDialog("log/LogDialog.qml") }
+            }
+
+            Action {
                 text: qsTr("Exit")
                 onTriggered: Qt.exit(0)
                 shortcut: StandardKey.Quit

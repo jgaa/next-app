@@ -222,6 +222,20 @@ Rectangle {
             RoundButton {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillWidth: true
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/file-lines.svg"
+                checkable: false
+                text: qsTr("Application log")
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/log/LogDialog.qml", appWindow, {});
+            }
+
+            Action {
+                text: qsTr("Application log")
+                onTriggered: { openDialog("log/LogDialog.qml") }
+            }
+
+            RoundButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
                 text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/cloud-bolt.svg"
                 checkable: false

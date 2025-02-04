@@ -24,6 +24,7 @@
 #include "GreenDaysModel.h"
 #include "WorkSessionsModel.h"
 #include "AppInstanceMgr.h"
+#include "LogModel.h"
 #include "nextapp.qpb.h"
 
 #include "logging.h"
@@ -132,6 +133,8 @@ int main(int argc, char *argv[])
         "debug";
 #endif
     QGuiApplication app(argc, argv);
+
+    LogModel log_handler;
 
 #ifndef __ANDROID__
     // Handle multiple instances of the app with their own data
@@ -282,6 +285,7 @@ int main(int argc, char *argv[])
     qRegisterMetaType<TimeBoxActionsModel*>("TimeBoxActionsModel*");
 
     LOG_TRACE_N << "Registering static models for QML...";
+    qmlRegisterSingletonInstance<LogModel>("Nextapp.Models", 1, 0, "NaLogModel", &log_handler);
     qmlRegisterSingletonInstance<NextAppCore>("Nextapp.Models", 1, 0, "NaCore", &core);
     qmlRegisterSingletonInstance<ServerComm>("Nextapp.Models", 1, 0, "NaComm", &comms);
     qmlRegisterSingletonInstance<ActionCategoriesModel>("Nextapp.Models", 1, 0, "NaAcModel", &ac_model);
