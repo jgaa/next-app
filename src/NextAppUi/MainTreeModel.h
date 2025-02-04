@@ -206,7 +206,7 @@ public:
     bool isRelevant(const nextapp::pb::Update& update) const noexcept override {
         return update.hasNode();
     }
-    nextapp::pb::NodeRepeated getItems(const nextapp::pb::Status& status) override{
+    QList<nextapp::pb::Node> getItems(const nextapp::pb::Status& status) override{
         return status.nodes().nodes();
     }
     std::string_view itemName() const noexcept override {

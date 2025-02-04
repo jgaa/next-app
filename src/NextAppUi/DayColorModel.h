@@ -31,5 +31,5 @@ signals:
 private:
     void setDefinitions();
 
-    nextapp::pb::DayColorRepeated daycolors_;
+    QList<nextapp::pb::DayColor> daycolors_;
 };

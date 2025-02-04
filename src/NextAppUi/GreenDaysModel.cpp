@@ -172,7 +172,7 @@ uint GreenDaysModel::getColorIx(const QUuid& uuid) const noexcept {
 const pb::DayColorDefinitions GreenDaysModel::getAsDayColorDefinitions() const
 {
     nextapp::pb::DayColorDefinitions defs;
-    nextapp::pb::DayColorRepeated list;
+    QList<nextapp::pb::DayColor> list;
 
     for(const auto& cd : color_data_) {
         nextapp::pb::DayColor dc;

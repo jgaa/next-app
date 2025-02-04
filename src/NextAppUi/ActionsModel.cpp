@@ -1681,7 +1681,7 @@ void ActionsModel::batchUpdateActions(nextapp::pb::UpdateActionsReq &req, const 
 {
     // QT protobuf don't support mutable sub-members, so we must write
     // with the detail of assambly-langue
-    pb::UuidRepeated uuids;
+    QList<pb::Uuid> uuids;
     for(const auto& action: actions) {
         pb::Uuid uuid;
         uuid.setUuid(action);

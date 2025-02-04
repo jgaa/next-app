@@ -45,6 +45,8 @@ struct ToTimeBlock {
         pb::TimeBlock::Kind kind;
         if (pb::TimeBlock_Kind_Parse(toUpper(row.at(KIND).as_string()), &kind)) {
             tb.set_kind(kind);
+        } else {
+            tb.set_kind(pb::TimeBlock::Kind::TimeBlock_Kind_ACTIONS);
         }
         if (const auto& category = row.at(CATEGORY); category.is_string()) {
             tb.set_category(pb_adapt(category.as_string()));
