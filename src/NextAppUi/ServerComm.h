@@ -460,6 +460,17 @@ private:
         auto handle = (client_.get()->*call)(request, options.qopts);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
         auto ptr = handle.get();
+        if (!ptr) {
+            LOG_ERROR_N << "handle returned null. Unable to initiate RPC call.";
+            if constexpr (std::is_same_v<nextapp::pb::Status, replyT>) {
+                nextapp::pb::Status err;
+                err.setError(nextapp::pb::ErrorGadget::Error::GENERIC_ERROR);
+                err.setMessage("Unable to initiate RPC call");
+                co_return err;
+            } else {
+                abort();
+            }
+        }
         connect(ptr, &QGrpcCallReply::finished, this, [this, handle=std::move(handle), options, promise=std::move(promise)] (const QGrpcStatus& status) mutable {
             if (!status.isOk()) [[unlikely]] {
                 // gRPC level error
