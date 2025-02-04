@@ -6,11 +6,11 @@ ENV USER_UID=999 USER_NAME=nextappd
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get -y -q --no-install-recommends upgrade &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q --no-install-recommends \
-    libssl3 libprotobuf32 libicu74 liblz4-1 libz3-4 libsnappy1v5 libgrpc++1.51t64 \
-    libcurl4t64 tzdata gdb libprotobuf-lite32t64
+        libssl3 libprotobuf32 libicu74 liblz4-1 libz3-4 libsnappy1v5 libgrpc++1.51t64 \
+        libcurl4t64 tzdata libquadmath0 libprotobuf-lite32t64 \
+        gdb
 
-COPY bin/* /usr/local/bin/
-# COPY lib/* /usr/local/lib/
+COPY bin/nextappd /usr/local/bin/
 COPY logbt.sh /usr/local/bin/logbt
 COPY startup.sh /usr/local/bin/startup.sh
 
