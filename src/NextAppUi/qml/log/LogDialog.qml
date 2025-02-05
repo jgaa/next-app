@@ -6,7 +6,7 @@ import Nextapp.Models
 
 Dialog {
     id: root
-    title: "About NextApp"
+    title: qsTr("Application log")
     standardButtons: Dialog.Close
     x: NaCore.isMobile ? 0 : (ApplicationWindow.window.width - width) / 3
     y: NaCore.isMobile ? 0 : (ApplicationWindow.window.height - height) / 3

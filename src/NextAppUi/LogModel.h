@@ -8,6 +8,7 @@
 #include <QQmlEngine>
 #include <QDateTime>
 #include <QSettings>
+#include <QTimer>
 #include "qcorotask.h"
 
 #include "nextapp.qpb.h"
@@ -16,6 +17,9 @@ class LogModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_ELEMENT
+
+    Q_PROPERTY(QString message MEMBER shortMessage_ NOTIFY messageChanged)
+    Q_PROPERTY(QString messageColor MEMBER shortMessageColor_ NOTIFY messageChanged)
 
 public:
     enum Roles {
@@ -56,10 +60,16 @@ public:
 
 signals:
     void messageAdded(const LogMessage& message);
+    void messageChanged();
 
 private:
+    void setMessage(const LogMessage& msg);
+
     static constexpr size_t queue_size_ = 1000;
     boost::circular_buffer<LogMessage> messages_{queue_size_};
+    QString shortMessage_;
+    QString shortMessageColor_;
+    QTimer clearMessageTimer_;
     alignas(64) std::mutex mutex_;
     // read/write mutex
 };

@@ -105,128 +105,175 @@ ApplicationWindow {
         }
     }
 
-    SplitView {
-        // Green
+    ColumnLayout {
         anchors.fill: parent
-        orientation: Qt.Horizontal
-        handle: SplitterStyle {}
+        SplitView {
+            // Green
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            orientation: Qt.Horizontal
+            handle: SplitterStyle {}
 
-        RowLayout {
-            // Purple
-            //anchors.fill: parent
-            SplitView.preferredWidth: root.width - 360
-            SplitView.fillHeight: true
-            //Layout.preferredWidth: root.width - dayPlan.implicitWidth - 10
-
-            // Stores the buttons that navigate the application.
-            Sidebar {
-                id: sidebar
-                dragWindow: root
-                Layout.preferredWidth: 100
-                Layout.fillHeight: true
-            }
-
-            StackLayout {
+            RowLayout {
+                // Purple
                 //anchors.fill: parent
-                currentIndex: sidebar.currentMainItem
+                SplitView.preferredWidth: root.width - 360
+                SplitView.fillHeight: true
+                //Layout.preferredWidth: root.width - dayPlan.implicitWidth - 10
 
-                DaysInYear {
-                    // Layout.fillWidth: true
-                    // Layout.fillHeight: true
+                // Stores the buttons that navigate the application.
+                Sidebar {
+                    id: sidebar
+                    dragWindow: root
+                    Layout.preferredWidth: 100
+                    Layout.fillHeight: true
                 }
 
-                SplitView {
-                    // Orange
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    orientation: Qt.Vertical
-                    handle: SplitterStyle {
-                        vertical: true
+                StackLayout {
+                    //anchors.fill: parent
+                    currentIndex: sidebar.currentMainItem
+
+                    DaysInYear {
+                        // Layout.fillWidth: true
+                        // Layout.fillHeight: true
                     }
 
                     SplitView {
-                        SplitView.fillWidth: true
-                        SplitView.fillHeight: true
-                        orientation: Qt.Horizontal
-                        handle: SplitterStyle {}
-
-                        Rectangle {
-                            id: navigationView
-                            color: "yellow"
-                            SplitView.preferredWidth: 250
-
-                            StackLayout {
-                                anchors.fill: parent
-                                MainTree {
-                                    id: mainTree
-                                    color: MaterialDesignStyling.surface
-                                }
-                            }
+                        // Orange
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        orientation: Qt.Vertical
+                        handle: SplitterStyle {
+                            vertical: true
                         }
 
-                        Rectangle {
-                            // Data
-                            color: "red"
-                            //SplitView.fillWidth: true
+                        SplitView {
+                            SplitView.fillWidth: true
                             SplitView.fillHeight: true
-                            SplitView.minimumWidth: 100
-                            SplitView.preferredWidth: 600
-                            StackLayout {
-                                id: currentData
-                                currentIndex: sidebar.currentTabIndex
-                                anchors.fill: parent
+                            orientation: Qt.Horizontal
+                            handle: SplitterStyle {}
 
-                                ActionsListView {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
+                            Rectangle {
+                                id: navigationView
+                                color: "yellow"
+                                SplitView.preferredWidth: 250
+
+                                StackLayout {
+                                    anchors.fill: parent
+                                    MainTree {
+                                        id: mainTree
+                                        color: MaterialDesignStyling.surface
+                                    }
                                 }
+                            }
 
-                                WorkSessionsView {}
+                            Rectangle {
+                                // Data
+                                color: "red"
+                                //SplitView.fillWidth: true
+                                SplitView.fillHeight: true
+                                SplitView.minimumWidth: 100
+                                SplitView.preferredWidth: 600
+                                StackLayout {
+                                    id: currentData
+                                    currentIndex: sidebar.currentTabIndex
+                                    anchors.fill: parent
 
-                                ReportsView {}
+                                    ActionsListView {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                    }
 
-                                WeeklyReview {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    navigation: mainTree
+                                    WorkSessionsView {}
+
+                                    ReportsView {}
+
+                                    WeeklyReview {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        navigation: mainTree
+                                    }
                                 }
                             }
                         }
+
+                        CurrentWorkSessionsView {
+                            SplitView.fillWidth: true
+                            SplitView.fillHeight: false
+                            SplitView.preferredHeight: 220
+                        }
+                    } // ColumnLayout for tree views
+
+                    CalendarView {
+                        id: calendarView
+                        mode: CalendarModel.CM_WEEK
+                        days: 7
                     }
 
-                    CurrentWorkSessionsView {
-                        SplitView.fillWidth: true
-                        SplitView.fillHeight: false
-                        SplitView.preferredHeight: 220
-                    }
-                } // ColumnLayout for tree views
+                } // StackLayout
+            } // Purple RowLayout
+
+            ColumnLayout {
+                SplitView.preferredWidth: 400
+                //SplitView.maximumWidth: 360
+                SplitView.minimumWidth: 150
+                SplitView.fillHeight: true
+                Layout.maximumWidth: dayPlan.implicitWidth
 
                 CalendarView {
-                    id: calendarView
-                    mode: CalendarModel.CM_WEEK
-                    days: 7
+                    id: dayPlan
+                    Layout.fillHeight: true
+                    visible: sidebar.currentMainItem !== 2
+                    mode: CalendarModel.CM_DAY
+                    days: 1
+                    primaryForActionList: true
+                }
+            }
+        } //Green SplitView
+
+        Rectangle {
+            id: bottomBar
+            Layout.fillWidth: true
+            Layout.preferredHeight: root.menuBar.height
+            color: MaterialDesignStyling.surfaceContainer
+
+            RowLayout {
+                anchors.fill: parent
+
+                Item {
+                    Layout.fillWidth: true
                 }
 
-            } // StackLayout
-        } // Purple RowLayout
+                Text {
+                    Layout.preferredWidth: Math.max(parent.width * 0.3, 300)
+                    Layout.minimumWidth: 300
+                    Layout.maximumWidth: 500
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.fillHeight: true
+                    text: NaLogModel.message
+                    color: NaLogModel.messageColor
+                    //font.bold: true
+                    verticalAlignment: Text.AlignVCenter
 
-        ColumnLayout {
-            SplitView.preferredWidth: 400
-            //SplitView.maximumWidth: 360
-            SplitView.minimumWidth: 150
-            SplitView.fillHeight: true
-            Layout.maximumWidth: dayPlan.implicitWidth
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor // Change cursor on hover
+                        onClicked: {
+                            openDialog("log/LogDialog.qml")
+                        }
+                    }
 
-            CalendarView {
-                id: dayPlan
-                Layout.fillHeight: true
-                visible: sidebar.currentMainItem !== 2
-                mode: CalendarModel.CM_DAY
-                days: 1
-                primaryForActionList: true
+                    Rectangle {
+                        // put it under the Text so the text is visible
+                        z: -1
+                        anchors.fill: parent
+                        color: NaLogModel.message.length > 1 ? "white" : "transparent"
+                        radius: 5
+                    }
+                }
             }
         }
-    } //Green SplitView
+    }
 
     ResizeButton {
         visible: false

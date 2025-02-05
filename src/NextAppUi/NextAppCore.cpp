@@ -97,20 +97,20 @@ NextAppCore::NextAppCore() {
         switch(state) {
         case Qt::ApplicationActive:
             setState(State::ACTIVE);
-            LOG_INFO << "NextAppCore: The application is active.";
+            LOG_DEBUG << "NextAppCore: The application is active.";
             if (old_state == State::SUSPENDED) {
                 emit wokeFromSleep();
             }
             break;
 
         case Qt::ApplicationSuspended:
-            LOG_INFO << "NextAppCore: The application is is suspended.";
+            LOG_DEBUG << "NextAppCore: The application is is suspended.";
             setState(State::SUSPENDED);
             emit suspending();
             break;
 
         case Qt::ApplicationHidden:
-            LOG_INFO << "NextAppCore: The application is is hidden.";
+            LOG_DEBUG << "NextAppCore: The application is is hidden.";
             setState(State::HIDDEN);
             if (old_state == State::SUSPENDED) {
                 emit wokeFromSleep();
@@ -118,7 +118,7 @@ NextAppCore::NextAppCore() {
             break;
 
         case Qt::ApplicationInactive:
-            LOG_INFO << "NextAppCore: The application is is inactive.";
+            LOG_DEBUG << "NextAppCore: The application is is inactive.";
             setState(State::INACTIVE);
             if (old_state == State::SUSPENDED) {
                 emit wokeFromSleep();
