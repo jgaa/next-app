@@ -23,6 +23,9 @@ Item {
         settings.setValue("sync/resync", resync.checked ? "true" : "false")
         settings.setValue("server/reconnect_level", reconnectLevel.currentIndex.toString())
         settings.setValue("server/resend_requests", resend.checked ? "true" : "false")
+        if (!NaCore.isMobile) {
+            settings.setValue("client/maxInstances", instances.value)
+        }
         settings.sync()
     }
 
@@ -30,6 +33,32 @@ Item {
         anchors.fill: parent
         rowSpacing: 4
         columns: 2
+
+        Label {
+            visible: !NaCore.isMobile
+            text: qsTr("Instances")
+        }
+
+        RowLayout {
+            visible: !NaCore.isMobile
+
+            Slider {
+                id: instances
+                Layout.fillWidth: true
+                visible: !NaCore.isMobile
+                from: 1
+                to: 10
+                stepSize: 1
+                snapMode: Slider.SnapAlways
+                value: parseInt(settings.value("client/maxInstances"))
+            }
+
+            Text {
+                property string singleton: qsTr("Singleton")
+                Layout.preferredWidth: textMetrics.boundingRect(text).width + 10 // Add some padding
+                text: instances.value == 1 ? singleton : instances.value.toFixed(0)
+            }
+        }
 
         Label { text: qsTr("Logfile")}
         RowLayout {
@@ -73,7 +102,7 @@ Item {
         }
 
         Label {
-            text: qsTr("Reconnect to the server")
+            text: qsTr("Reconnect")
             // Line wrap
             wrapMode: Text.WordWrap
             }
@@ -95,7 +124,7 @@ Item {
 
         CheckBox {
             id: resync
-            text: qsTr("Do a full re-synch when connecting to the server")
+            text: qsTr("Do a full re-synch when\nconnecting to the server")
             checked: settings.value("sync/resync") === "true"
         }
 
@@ -105,7 +134,7 @@ Item {
 
         CheckBox {
             id: resend
-            text: qsTr("Re-send pending requests to the server.")
+            text: qsTr("Re-send pending requests")
             checked: settings.value("server/resend_requests") === "true"
         }
 

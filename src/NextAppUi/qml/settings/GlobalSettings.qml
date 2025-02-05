@@ -42,6 +42,7 @@ Item {
     }
 
     GridLayout {
+        id: grid
         anchors.fill: parent
         rowSpacing: 4
         columns: 2
@@ -82,13 +83,6 @@ Item {
             Layout.fillWidth: true
         }
 
-        // Label { text: qsTr("Language")}
-
-        // DlgInputField {
-        //     id: language
-        //     //placeholderText: qsTr("to");
-        // }
-
         Item {}
 
         CheckBox {
@@ -100,14 +94,14 @@ Item {
 
         CheckBox {
             id: autoStartNewWs
-            text: qsTr("When a work session is created, start it automatically")
+            text: qsTr("When a work session is created,\nstart it automatically")
         }
 
         Item {}
 
         CheckBox {
             id: autoStartNextWs
-            text: qsTr("When a work session is completed, automatically start the next one")
+            text: qsTr("When a work session is\ncompleted, start the next")
         }
 
         Item {

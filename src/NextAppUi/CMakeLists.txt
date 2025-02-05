@@ -441,6 +441,7 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
+        QML_FILES qml/NoInstance.qml
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)

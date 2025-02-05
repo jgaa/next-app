@@ -22,7 +22,7 @@ public:
     QString name() const noexcept { return name_; }
     uint instanceId() const noexcept { return instance_id_; }
 
-    void init();
+    bool init();
     void close();
 
 private:

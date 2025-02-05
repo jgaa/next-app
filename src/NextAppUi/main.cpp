@@ -136,14 +136,6 @@ int main(int argc, char *argv[])
 
     LogModel log_handler;
 
-#ifndef __ANDROID__
-    // Handle multiple instances of the app with their own data
-    AppInstanceMgr::instance()->init();
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
-        AppInstanceMgr::instance()->close();
-    });
-#endif
-
     // Allow us to use an alternative config-file for testing
     if (const auto* org = getenv("NEXTAPP_ORG")){
          QGuiApplication::setOrganizationName(org);
@@ -219,6 +211,10 @@ int main(int argc, char *argv[])
             settings.setValue("server/resend_requests", true);
         }
 
+        if (!settings.contains("client/maxInstances")) {
+            settings.setValue("client/maxInstances", 1);
+        }
+
         // if (!settings.contains("server/reqests_retries")) {
         //     settings.setValue("server/reqests_retries", 9);
         // }
@@ -233,6 +229,30 @@ int main(int argc, char *argv[])
                     make_unique<logfault::StreamHandler>(path, static_cast<logfault::LogLevel>(level), prune));
             }
         }
+
+#ifndef __ANDROID__
+        // Handle multiple instances of the app with their own data
+        const auto has_instance = AppInstanceMgr::instance()->init();
+        QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
+            AppInstanceMgr::instance()->close();
+        });
+#else
+        // Android doesn't support multiple instances
+        const bool has_instance = true;
+#endif
+
+        if (!has_instance) {
+            // Open qml/NoInstance.qml as the main window and exit when it closes
+            LOG_WARN_N << "Opening NoInstance.qml as the main window.";
+            QQmlApplicationEngine engine;
+            engine.load(QUrl("qrc:/qt/qml/NextAppUi/qml/NoInstance.qml"));
+            if (engine.rootObjects().isEmpty()) {
+                LOG_ERROR_N << "Failed to initialize QML engine!";
+                return -1;
+            }
+            return app.exec();
+        }
+
 
         LOG_INFO << app_name << ' ' << NEXTAPP_UI_VERSION << " starting up.";
 
