@@ -81,7 +81,7 @@ I'm working towards an Beta version in February 2025.
 
 ## Building
 
-The application use CMake, QT 6.8 and require g++-12 ow never for the client and clang++-17 or newer for the server (the templates are too complex for g++). It's developed under
+The application use CMake, QT 6.8 and require g++-12 or never for the client and clang++-17 or newer for the server (the templates are too complex for g++). It's developed under
 Linux (Ubuntu 24.04). The server require boost version 1.85 or newer.
 
 ## Running
