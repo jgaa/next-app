@@ -9,7 +9,7 @@ I have used a "light" version of David Allans [Getting Things Done](https://gett
 idea for even longer. I wrote an app for Android in 2013 [VikingGTD](https://github.com/jgaa/VikingGTD)
 that I a still use to organize my life. However, I want something that runs on multiple 
 devices - so I can use it on my laptops *and* my phone. I also want it to use location 
-and my energy level to suggest the most relevant next action - as well as reminding me abot people to 
+and my energy level to suggest the most relevant next action - as well as reminding me about people to
 ping and tings I need to get from nearby shops when I move around. 
 Not to mention delegation and cooperation with other people.
 
@@ -20,7 +20,7 @@ Everything is open source. I will probably offer a hosting-plan for people who d
 their own backend. But for people and companies where privacy and security is paramount,
 the code for the server and the apps will be freely available.
 
-## Architecture
+## Native code
 
 The app is a real, native application written in C++ using the QT framework
 to be cross platform for user interfaces across operating systems. The advantage
@@ -28,17 +28,24 @@ of a *real*, native app, over "web apps", is that it's faster, leaner, and that
 it comes without any of the constraints of "software" that is really nothing but a
 web-page.
 
-The app currently require to be connected to a back-end server that keeps it's
-data and state. The reason for this is that I want to work seamlessly with the app
-on various devices, without having to "sync" anything. So whenever you change
-something in the app on one device (for example on your phone), the change is immediately
-available and visible on any other devices (for example your MacBook and PC). In the
-future, the plan is to have an off-line mode where the app can work without a connection
-and then push all the changes to the back-end when the connection is back online.
+The back-end server is implemented in C++20 and leverages asynchronous coroutines to ensure high efficiency and a low memory footprint across all operations. This design allows the server to handle numerous concurrent connections with a small number of threads. When a client requests a large dataset—such as during a full sync of the local cache—the server fetches a batch of records from the database, streams it to the client via gRPC, and then proceeds with the next batch. This batched processing minimizes resource usage and prevents memory overload. Additionally, the use of the Boost.MySQL library for asynchronous database operations ensures that database queries are handled efficiently, further reducing the need for numerous threads while still serving a large number of users effectively.
+
+## Architecture
+
+NextApp employs a distributed Model-View-Controller (MVC) pattern where the backend serves as the central controller. This design enables a seamless update mechanism across multiple devices. When a change is made on one device, the client sends an update request to the server, which then propagates the change to all connected clients.
+
+### Key Components
+- **Centralized Controller**: The server handles all update requests, ensuring data consistency by performing atomic operations on a MariaDB backend.
+- **Local Caching with SQLite**: Each client maintains a local cache using SQLite. This approach not only improves startup performance but also reduces reliance on constant server communication. The app leverages Qt’s native support for SQLite and lazy loading to minimize memory footprint and ensure responsiveness.
+- **Data Synchronization and Conflict Resolution**: Updates are tagged with an incremental counter and synchronized via gRPC. When a client connects, it performs a full sync of relevant tables from the server, while also subscribing to real-time update notifications. To handle potential race conditions (e.g., updates during sync), any incoming changes are queued and processed only after the full sync completes.
+- **Efficient Update Propagation**: By replicating only the updated data rather than the entire dataset, NextApp reduces network overhead and server load. This design is particularly effective in scenarios where frequent, incremental changes occur.
+- **Efficient use of the backend**: By leveraging a robust local cache on each client, NextApp minimizes the frequency of server requests by handling most data operations locally. Since interactions and UI updates are predominantly managed via the local SQLite database, only essential changes are pushed to or pulled from the backend. This results in considerably lower network traffic and reduced load on the server, allowing each backend instance to support more concurrent users or operate on less expensive hardware compared to traditional web apps that rely on frequent, full data fetches.
+
+This architecture provides a robust and efficient way to maintain consistency and performance across distributed devices, making NextApp both scalable and responsive in multi-device environments.
 
 ## How to play with the current version
 
-The application at this moment is "pre-alpha", which means that lots of things
+The application at this moment is "pre-beta", which means that some things
 are unstable, or not ready yet.
 
 ## Features that works
@@ -59,22 +66,23 @@ are unstable, or not ready yet.
   - Overlap
 - Reports
   - Weekly overview
+- Weekly Review
 
 ## Platforms
 
 - Linux desktop (Debian, Ubuntu)
 - MacOS
-- Windows 11
+- Windows 10/11
 - Android
 
 ## Roadmap
 
-I'm working towards an Alpha version in August 2024 and a Beta in September.
+I'm working towards an Beta version in February 2025.
 
 ## Building
 
-The application use CMake, QT 6.8 and require g++-13 or clang-17. It's developed under
-Linux (Ubuntu 24.04). The server require boost version 1.84 or newer.
+The application use CMake, QT 6.8 and require g++-12 ow never for the client and clang++-17 or newer for the server (the templates are too complex for g++). It's developed under
+Linux (Ubuntu 24.04). The server require boost version 1.85 or newer.
 
 ## Running
 
