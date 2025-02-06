@@ -199,8 +199,9 @@ check_cxx_source_compiles("
 include(FetchContent)
 
 # If std::format is not available, fallback to fmtlib
-if(NOT HAS_STD_FORMAT OR ANDROID)
-    message(STATUS "std::format not available, using fmtlib...")
+#if(NOT HAS_STD_FORMAT OR ANDROID)
+#    message(STATUS "std::format not available, using fmtlib...")
+    message(STATUS "std::format maybe not available (hard to tell sometimes!), enabeling fmtlib...")
     FetchContent_Declare(
       fmt
       GIT_REPOSITORY https://github.com/fmtlib/fmt
@@ -209,7 +210,7 @@ if(NOT HAS_STD_FORMAT OR ANDROID)
     include_directories(${fmt_SOURCE_DIR}/include)
     set(FMT_TARGET fmt)
     set(FMT_DEPS fmt::fmt)
-endif()
+#endif()
 
 if (NOT ANDROID)
     find_package(Boost CONFIG REQUIRED)

@@ -392,7 +392,7 @@ QCoro::Task<void> ReviewModel::fetchIf()
     }
 
     // Query suggested by ChatGPT 4o
-    const auto sql = NA_FORMAT(R"(WITH RECURSIVE
+    const auto sql = nextapp::format(R"(WITH RECURSIVE
     sorted_nodes(uuid, parent, name, path) AS (
         -- Base case: Start from root nodes (nodes without parents)
         SELECT

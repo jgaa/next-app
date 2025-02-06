@@ -422,10 +422,10 @@ QCoro::Task<bool> GreenDaysModel::loadDaysFromCache()
     assert(!years_to_cache_.empty());
 
     if (years_to_cache_.size() == 1) {
-        where = NA_FORMAT(" WHERE strftime('%Y', date) = '{}' ",
+        where = nextapp::format(" WHERE strftime('%Y', date) = '{}' ",
                        *years_to_cache_.begin());
     } else {
-        where = NA_FORMAT(" WHERE strftime('%Y', date) BETWEEN '{}' AND '{}'",
+        where = nextapp::format(" WHERE strftime('%Y', date) BETWEEN '{}' AND '{}'",
                        *years_to_cache_.begin(), *years_to_cache_.rbegin());
     }
 

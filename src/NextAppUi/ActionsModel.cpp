@@ -1274,7 +1274,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     switch(mode_) {
     case FetchWhat::FW_ACTIVE:
         // Fetch all active actions with start-time before tomorrow.
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.start_time <= ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.start_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
@@ -1286,7 +1286,7 @@ LIMIT {} OFFSET {})",
 
     case FetchWhat::FW_TODAY:
         // Only show todays actions and actions completed today.
-        sql = NA_FORMAT(R"(SELECT a.id,
+        sql = nextapp::format(R"(SELECT a.id,
 CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a {}
 WHERE (a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?)
 OR a.completed_time >= ? AND a.completed_time < ?
@@ -1294,7 +1294,7 @@ ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
-                    NA_FORMAT("{}{}", sort_completed, sorting.at(sort_)),
+                    nextapp::format("{}{}", sort_completed, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
         params << date.startOfDay();
         params << date.startOfDay().addDays(1);
@@ -1303,7 +1303,7 @@ LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_TODAY_AND_OVERDUE:
-        sql = NA_FORMAT(R"(SELECT a.id,
+        sql = nextapp::format(R"(SELECT a.id,
 CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a {}
 WHERE (a.status={} AND a.due_by_time < ?)
 OR a.completed_time >= ? AND a.completed_time <= ?
@@ -1311,7 +1311,7 @@ ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
-                    NA_FORMAT("{}{}", sort_completed, sorting.at(sort_)),
+                    nextapp::format("{}{}", sort_completed, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(date.addDays(1).startOfDay());
         params << date.startOfDay();
@@ -1319,7 +1319,7 @@ LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_TOMORROW:
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
@@ -1332,7 +1332,7 @@ LIMIT {} OFFSET {})",
 
     case FetchWhat::FW_CURRENT_WEEK: {
         // Fetch all active actions with start-time before tomorrow.
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
@@ -1346,7 +1346,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_NEXT_WEEK: {
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
@@ -1359,7 +1359,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_CURRENT_MONTH: {
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
@@ -1372,7 +1372,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_NEXT_MONTH: {
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
@@ -1385,7 +1385,7 @@ LIMIT {} OFFSET {})",
     } break;
 
     case FetchWhat::FW_SELECTED_NODE:
-        sql = NA_FORMAT(R"(SELECT a.id,
+        sql = nextapp::format(R"(SELECT a.id,
 CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
 FROM action a {}
 JOIN node n ON a.node = n.uuid
@@ -1394,14 +1394,14 @@ ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
-                    NA_FORMAT("{}{}", sort_has_due_prefix, sorting.at(sort_)),
+                    nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(MainTreeModel::instance()->selected());
         break;
 
     case FetchWhat::FW_SELECTED_NODE_AND_CHILDREN:
         // This is where ChatGPT shines ;)
-        sql = NA_FORMAT(R"(WITH RECURSIVE node_hierarchy AS (
+        sql = nextapp::format(R"(WITH RECURSIVE node_hierarchy AS (
     -- Base case: Select the node with the given UUID
     SELECT uuid
     FROM node
@@ -1422,18 +1422,18 @@ ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
-                     NA_FORMAT("{}{}", sort_has_due_prefix, sorting.at(sort_)),
+                     nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(MainTreeModel::instance()->selected());
         break;
 
     case FetchWhat::FW_FAVORITES:
-        sql = NA_FORMAT(R"(SELECT a.id,
+        sql = nextapp::format(R"(SELECT a.id,
 CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
 FROM action a {} WHERE a.favorite = 1 AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                       join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
-                     NA_FORMAT("{}{}", sort_has_due_prefix, sorting.at(sort_)),
+                     nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         break;
 
@@ -1442,7 +1442,7 @@ FROM action a {} WHERE a.favorite = 1 AND a.status={} ORDER BY {} LIMIT {} OFFSE
         if (auto prop = NextAppCore::instance()->getProperty("primaryForActionList"); prop.isValid()) {
             auto cal_date = prop.toDate();
             if (cal_date.isValid()) {
-                sql = NA_FORMAT(R"(SELECT DISTINCT a.id,
+                sql = nextapp::format(R"(SELECT DISTINCT a.id,
 CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
 FROM action a {}
 JOIN time_block_actions tba on a.id=tba.action
@@ -1452,7 +1452,7 @@ AND tb.start_time >= ? AND tb.end_time <= ?
 ORDER BY {} LIMIT {} OFFSET {})",
                              join_action_name_if(),
                              static_cast<uint>(a_status_t::DELETED),
-                             NA_FORMAT("{}{}", sort_has_due_prefix, sorting.at(sort_)),
+                             nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                              pagination_.pageSize(), pagination_.nextOffset());
 
                 params << cal_date;
@@ -1462,7 +1462,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_UNASSIGNED:
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.due_by_time IS NULL AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.due_by_time IS NULL AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
                      sorting.at(sort_),
@@ -1470,7 +1470,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_ON_HOLD:
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ONHOLD),
                      sorting.at(sort_),
@@ -1478,7 +1478,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_COMPLETED:
-        sql = NA_FORMAT(R"(SELECT a.id FROM action a {} WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::DONE),
                      sorting.at(sort_),

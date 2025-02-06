@@ -261,7 +261,7 @@ WorkCache::getWorkSessions(nextapp::pb::GetWorkSessionsReq req)
 
     string sql;
 
-    auto order = NA_FORMAT("{} {}",
+    auto order = nextapp::format("{} {}",
         req.sortCols() == nextapp::pb::GetWorkSessionsReq::SortCols::FROM_TIME ? "w.start_time" : "w.updated",
         req.sortOrder() == nextapp::pb::SortOrderGadget::SortOrder::ASCENDING ? "ASC" : "DESC");
 
@@ -272,7 +272,7 @@ WorkCache::getWorkSessions(nextapp::pb::GetWorkSessionsReq req)
     }
 
     if (req.hasNodeId()) {
-        sql = NA_FORMAT(R"(WITH RECURSIVE node_hierarchy AS (
+        sql = nextapp::format(R"(WITH RECURSIVE node_hierarchy AS (
     -- Base case: Select the node with the given UUID
     SELECT uuid
     FROM node
@@ -299,7 +299,7 @@ LIMIT {} OFFSET {})", where, order, limit, offset);
     }
 
     if (sql.empty()) {
-        sql = NA_FORMAT(R"(SELECT w.id, w.data FROM work_session w {}
+        sql = nextapp::format(R"(SELECT w.id, w.data FROM work_session w {}
 ORDER BY {}
 LIMIT {} OFFSET {})", where, order, limit, offset);
     }
