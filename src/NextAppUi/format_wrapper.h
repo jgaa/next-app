@@ -1,6 +1,6 @@
 #pragma once
 
-#if defined(__cpp_lib_format) && __cpp_lib_format >= 201907L  // Ensure std::format is available
+#if defined(__cpp_lib_format) && __cpp_lib_format >= 201907L
 #include <format>
 namespace nextapp {
 using ::std::format;

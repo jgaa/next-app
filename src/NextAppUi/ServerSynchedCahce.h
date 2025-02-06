@@ -93,7 +93,7 @@ public:
 
     QCoro::Task<bool> synchFromServer()
     {
-        static const QString version_query = QString::fromStdString(NA_FORMAT("SELECT MAX(updated) FROM {}", itemName()));
+        static const QString version_query = QString::fromStdString(::nextapp::format("SELECT MAX(updated) FROM {}", itemName()));
         // Get a stream of updates from servercomm.
         auto& db = NextAppCore::instance()->db();
         const auto last_updated = co_await db.queryOne<qlonglong>(version_query);
