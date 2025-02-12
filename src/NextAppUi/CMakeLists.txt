@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.35 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.1.36 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_UI_VERSION=\"${appNextAppUi_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -199,8 +199,8 @@ check_cxx_source_compiles("
 include(FetchContent)
 
 # If std::format is not available, fallback to fmtlib
-#if(NOT HAS_STD_FORMAT OR ANDROID)
-#    message(STATUS "std::format not available, using fmtlib...")
+if(NOT HAS_STD_FORMAT OR ANDROID)
+   message(STATUS "std::format not available, using fmtlib...")
     message(STATUS "std::format maybe not available (hard to tell sometimes!), enabeling fmtlib...")
     FetchContent_Declare(
       fmt
@@ -210,7 +210,7 @@ include(FetchContent)
     include_directories(${fmt_SOURCE_DIR}/include)
     set(FMT_TARGET fmt)
     set(FMT_DEPS fmt::fmt)
-#endif()
+endif()
 
 if (NOT ANDROID)
     find_package(Boost CONFIG REQUIRED)
@@ -357,6 +357,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/trash-can.svg
+        icons/filter.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg

@@ -429,6 +429,26 @@ void ActionsModel::setSort(Sorting sort)
     }
 }
 
+void ActionsModel::setMatch(QString match)
+{
+    if (match_ != match) {
+        match_ = match;
+        emit matchChanged();
+        if (filters_enabled_) {
+            fetchIf(true);
+        }
+    }
+}
+
+void ActionsModel::setFiltersEnabled(bool match_enabled)
+{
+    if (filters_enabled_ != match_enabled) {
+        filters_enabled_ = match_enabled;
+        emit filtersEnabledChanged();
+        fetchIf(true);
+    }
+}
+
 nextapp::pb::ActionKindGadget::ActionKind ActionsModel::toKind(const nextapp::pb::ActionInfo &action)
 {
     return toKindT(action);
@@ -1265,7 +1285,20 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     const uint offset = pagination_.nextOffset();
     auto date = QDate::currentDate();
     DbStore::param_t params;
-    std::string sql;
+    string sql;
+    string match;
+    QString match_text;
+    if (!match_.isEmpty() && filters_enabled_) {
+        match = " AND a.name LIKE ?";
+        match_text = "%" + match_ + "%";
+    }
+
+    auto pushMatch = [&] {
+        if (!match.empty()) {
+            params.push_back(match_text);
+        }
+    };
+
 
     // // TODO: Remove this when we consistently end a time-span at the end of a day in stad of the start of the next day.
     // const QDateTime end_of_today = QDateTime{date.addDays(1), QTime{0, 0}}.addSecs(-1);
@@ -1274,28 +1307,32 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     switch(mode_) {
     case FetchWhat::FW_ACTIVE:
         // Fetch all active actions with start-time before tomorrow.
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.start_time <= ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.start_time <= ? {}
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
+                    match,
                     sorting.at(sort_),
                     pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(date.addDays(1).startOfDay());
+        pushMatch();
         break;
 
     case FetchWhat::FW_TODAY:
         // Only show todays actions and actions completed today.
         sql = nextapp::format(R"(SELECT a.id,
 CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a {}
-WHERE (a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?)
+WHERE (a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?)
 OR a.completed_time >= ? AND a.completed_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
+                              match,
                     nextapp::format("{}{}", sort_completed, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         params << date.startOfDay();
         params << date.startOfDay().addDays(1);
         params << date.startOfDay();
@@ -1305,80 +1342,91 @@ LIMIT {} OFFSET {})",
     case FetchWhat::FW_TODAY_AND_OVERDUE:
         sql = nextapp::format(R"(SELECT a.id,
 CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a {}
-WHERE (a.status={} AND a.due_by_time < ?)
+WHERE (a.status={} {} AND a.due_by_time < ?)
 OR a.completed_time >= ? AND a.completed_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
+                    match,
                     nextapp::format("{}{}", sort_completed, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         params.push_back(date.addDays(1).startOfDay());
         params << date.startOfDay();
         params << date.startOfDay().addDays(1);
         break;
 
     case FetchWhat::FW_TOMORROW:
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
+                    match,
                     sorting.at(sort_),
                     pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         params << date.startOfDay().addDays(1);
         params << date.startOfDay().addDays(2);
         break;
 
     case FetchWhat::FW_CURRENT_WEEK: {
         // Fetch all active actions with start-time before tomorrow.
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
+                     match,
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
-        //
+        pushMatch();
         auto start_of_week = getFirstDayOfWeek(date);
         params.push_back(start_of_week.startOfDay());
         params.push_back(start_of_week.addDays(7).startOfDay());
     } break;
 
     case FetchWhat::FW_NEXT_WEEK: {
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
+                     match,
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         auto start_of_week = getFirstDayOfWeek(date.addDays(7));
         params.push_back(start_of_week.startOfDay());
         params.push_back(start_of_week.addDays(7).startOfDay());
     } break;
 
     case FetchWhat::FW_CURRENT_MONTH: {
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time < ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
+                     match,
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         auto start_of_month = QDate{date.year(), date.month(), 1};
         params.push_back(start_of_month.startOfDay());
         params.push_back(start_of_month.addMonths(1).startOfDay());
     } break;
 
     case FetchWhat::FW_NEXT_MONTH: {
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.due_by_time >= ? AND a.due_by_time <= ?
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} {} AND a.due_by_time >= ? AND a.due_by_time <= ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
+                     match,
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         auto start_of_month = QDate{date.year(), date.month(), 1};
         params.push_back(start_of_month.addMonths(1).startOfDay());
         params.push_back(start_of_month.addMonths(2).startOfDay());
@@ -1389,13 +1437,15 @@ LIMIT {} OFFSET {})",
 CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
 FROM action a {}
 JOIN node n ON a.node = n.uuid
-WHERE a.status={} AND n.uuid = ?
+WHERE a.status={} {} AND n.uuid = ?
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
+                    match,
                     nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         params.push_back(MainTreeModel::instance()->selected());
         break;
 
@@ -1417,24 +1467,28 @@ SELECT a.id,
 CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
 FROM action a {}
 JOIN node_hierarchy nh ON a.node = nh.uuid
-WHERE a.status={}
+WHERE a.status={} {}
 ORDER BY {}
 LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
+                     match,
                      nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         params.push_back(MainTreeModel::instance()->selected());
+        pushMatch();
         break;
 
     case FetchWhat::FW_FAVORITES:
         sql = nextapp::format(R"(SELECT a.id,
 CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
-FROM action a {} WHERE a.favorite = 1 AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+FROM action a {} WHERE a.favorite = 1 AND a.status={} {} ORDER BY {} LIMIT {} OFFSET {})",
                       join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
+                     match,
                      nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         break;
 
     case FetchWhat::FW_ON_CALENDAR:
@@ -1447,14 +1501,15 @@ CASE WHEN a.due_by_time IS NULL THEN 1 ELSE 0 END AS has_due
 FROM action a {}
 JOIN time_block_actions tba on a.id=tba.action
 JOIN time_block tb on tba.time_block=tb.id
-WHERE a.status != {}
+WHERE a.status != {} {}
 AND tb.start_time >= ? AND tb.end_time <= ?
 ORDER BY {} LIMIT {} OFFSET {})",
                              join_action_name_if(),
                              static_cast<uint>(a_status_t::DELETED),
+                             match,
                              nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
                              pagination_.pageSize(), pagination_.nextOffset());
-
+                pushMatch();
                 params << cal_date;
                 params << cal_date.addDays(1);
             }
@@ -1462,27 +1517,33 @@ ORDER BY {} LIMIT {} OFFSET {})",
         break;
 
     case FetchWhat::FW_UNASSIGNED:
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.due_by_time IS NULL AND a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.due_by_time IS NULL AND a.status={} {} ORDER BY {} LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
+                     match,
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         break;
 
     case FetchWhat::FW_ON_HOLD:
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} {} ORDER BY {} LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::ONHOLD),
+                     match,
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         break;
 
     case FetchWhat::FW_COMPLETED:
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} ORDER BY {} LIMIT {} OFFSET {})",
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} {} ORDER BY {} LIMIT {} OFFSET {})",
                      join_action_name_if(),
                      static_cast<uint>(a_status_t::DONE),
+                     match,
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
         break;
     }
 

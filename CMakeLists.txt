@@ -61,7 +61,7 @@ endif()
 find_package(Doxygen)
 
 if(NOT DEFINED USE_BOOST_VERSION)
-    set(USE_BOOST_VERSION 1.83)
+    set(USE_BOOST_VERSION 1.85)
 endif()
 
 add_subdirectory(dependencies/logfault)

@@ -7,6 +7,7 @@ Button {
     text: qsTr("Button")
     property int useWidth: 100
     property int useHeight: 40
+    property bool dim: false
 
     contentItem: Text {
         text: control.text
@@ -21,7 +22,7 @@ Button {
     background: Rectangle {
         implicitWidth: control.useWidth
         implicitHeight: control.useHeight
-        opacity: enabled ? 1 : 0.3
+        opacity: enabled && !dim ? 1 : 0.3
         border.color: control.down ? MaterialDesignStyling.outline : MaterialDesignStyling.outlineVariant
         border.width: 1
         radius: 2

@@ -205,7 +205,8 @@ public:
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
     Q_PROPERTY(FetchWhat mode READ mode WRITE setMode NOTIFY modeChanged)
     Q_PROPERTY(Sorting sort MEMBER sort_ WRITE setSort NOTIFY sortChanged FINAL)
-
+    Q_PROPERTY(QString match MEMBER match_ WRITE setMatch NOTIFY matchChanged FINAL)
+    Q_PROPERTY(bool filtersEnabled MEMBER filters_enabled_ WRITE setFiltersEnabled NOTIFY filtersEnabledChanged FINAL)
     Q_PROPERTY(nextapp::pb::GetActionsFlags flags READ flags WRITE setFlags NOTIFY flagsChanged)
 
     ActionsModel(QObject *parent = {});
@@ -247,6 +248,8 @@ public:
     nextapp::pb::GetActionsFlags flags() const noexcept { return flags_; }
     void setFlags(nextapp::pb::GetActionsFlags flags);
     void setSort(Sorting sort);
+    void setMatch(QString match);
+    void setFiltersEnabled(bool match_enabled);
 
     static nextapp::pb::ActionKindGadget::ActionKind toKind(const nextapp::pb::ActionInfo& action);
 
@@ -264,6 +267,8 @@ signals:
     void isVisibleChanged();
     void flagsChanged();
     void sortChanged();
+    void matchChanged();
+    void filtersEnabledChanged();
 
 private:
     QCoro::Task<void> fetchIf(bool restart = true);
@@ -284,6 +289,8 @@ private:
     Sorting sort_{SORT_DEFAULT};
     QDate current_calendar_date_;
     bool valid_{false};
+    QString match_;
+    bool filters_enabled_{false};
 
     // QAbstractItemModel interface
 public:

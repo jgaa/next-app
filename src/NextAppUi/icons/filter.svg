@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 512 512"
+   version="1.1"
+   id="svg4"
+   sodipodi:docname="filter.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs8" />
+  <sodipodi:namedview
+     id="namedview6"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="2.0058594"
+     inkscape:cx="206.89387"
+     inkscape:cy="256"
+     inkscape:window-width="2560"
+     inkscape:window-height="1368"
+     inkscape:window-x="2560"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg4" />
+  <!--! Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc. -->
+  <path
+     d="M3.9 54.9C10.5 40.9 24.5 32 40 32H472c15.5 0 29.5 8.9 36.1 22.9s4.6 30.5-5.2 42.5L320 320.9V448c0 12.1-6.8 23.2-17.7 28.6s-23.8 4.3-33.5-3l-64-48c-8.1-6-12.8-15.5-12.8-25.6V320.9L9 97.3C-.7 85.4-2.8 68.8 3.9 54.9z"
+     id="path2" />
+  <path
+     style="fill:#2a7fff;stroke-width:3.25786;stroke-linejoin:round"
+     d="m 280.46109,478.83036 c -1.49012,-0.41673 -4.07006,-1.36388 -5.73321,-2.10479 -4.17421,-1.85956 -71.48775,-52.31707 -74.71718,-56.00721 -1.29625,-1.48117 -3.23723,-4.48779 -4.31328,-6.68136 -3.54439,-7.22537 -3.51047,-6.71757 -3.51047,-52.54312 V 320.62439 L 101.06952,209.29369 C 50.954933,148.06181 9.1045505,96.851411 8.0686723,95.492806 2.1008431,87.665697 -0.85388502,75.906264 0.73499963,66.305745 3.3146485,50.718729 13.425424,39.068092 28.915287,33.833627 l 3.489776,-1.179294 222.348587,-0.128259 c 220.64422,-0.127275 222.37916,-0.120642 226.33691,0.865383 13.16568,3.280073 23.4988,12.56264 28.13955,25.278689 4.30419,11.793727 2.77004,24.724379 -4.15014,34.979629 -1.41575,2.098079 -43.6239,53.955285 -93.79588,115.238245 l -91.22177,111.42357 -0.2539,66.80428 c -0.23987,63.11447 -0.30448,66.95573 -1.16975,69.54625 -3.38488,10.13398 -10.50316,17.57541 -20.27329,21.19364 -4.68595,1.73538 -13.47349,2.21372 -17.90429,0.9746 z"
+     id="path367" />
+</svg>

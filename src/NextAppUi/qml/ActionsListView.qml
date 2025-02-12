@@ -48,7 +48,11 @@ Rectangle {
         ToolBar {
             id: headerCtl
             Layout.fillWidth: true
-            property int comboWidth: (width - (2 * 5) - refreschButton.width - selectionsButton.width) / 2
+            property int comboWidth: (width - (3 * 5)
+                                      - refreschButton.width
+                                      - filterButton.width
+                                      - selectionsButton.width) / 2
+            //property bool showFilter: false
 
             background: Rectangle {
                 color: MaterialDesignStyling.surfaceContainer
@@ -160,6 +164,26 @@ Rectangle {
                 }
 
                 StyledButton {
+                    id: filterButton
+                    Layout.preferredWidth: parent.height
+                    Layout.minimumWidth: 20
+                    //text: qsTr("Filter")
+                    text: "";
+                    dim: NaActionsModel.filtersEnabled
+                    onClicked: {
+                        NaActionsModel.filtersEnabled = !NaActionsModel.filtersEnabled
+                    }
+
+                    Image {
+                        id: filterIcon
+                        source: "qrc:/qt/qml/NextAppUi/icons/filter.svg"
+                        fillMode: Image.PreserveAspectFit
+                        sourceSize: Qt.size(18, 18)
+                        anchors.centerIn: parent
+                    }
+                }
+
+                StyledButton {
                     id: refreschButton
                     Layout.preferredWidth: parent.height
                     Layout.minimumWidth: 20
@@ -176,6 +200,93 @@ Rectangle {
                         sourceSize: Qt.size(18, 18)
                         anchors.centerIn: parent
                     }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+            }
+        }
+
+        ToolBar {
+            id: filtersCtl
+            visible: NaActionsModel.filtersEnabled
+            Layout.fillWidth: true
+            Layout.preferredHeight: headerCtl.height
+
+            background: Rectangle {
+                color: MaterialDesignStyling.surfaceContainer
+            }
+
+            Item {
+                Layout.preferredWidth: 8
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                spacing: 4
+                TextInput {
+                    id: searchCtl
+                    Layout.preferredWidth: parent.width * 0.6
+                    Layout.preferredHeight: headerCtl.height - 10
+                    Layout.alignment: Qt.AlignVCenter
+                    leftPadding: 8
+                    rightPadding: 8
+                    verticalAlignment: TextInput.AlignVCenter
+                    clip: true
+                    color: MaterialDesignStyling.onPrimaryContainer
+                    //text: NaActionsModel.match
+
+                    onTextChanged: {
+                        NaActionsModel.match = searchCtl.text
+                    }
+
+                    Rectangle {
+                        anchors.fill : parent
+                        color: MaterialDesignStyling.primaryContainer
+                        border.color: MaterialDesignStyling.onPrimaryFixed
+                        border.width: 1
+                        z: -1
+                    }
+
+                    Text {
+                        id: searchIcon
+                        visible: searchCtl.text === ""
+                        anchors.right: parent.right
+                        //anchors.centerIn: parent
+                        verticalAlignment: Text.AlignVCenter
+                        font.family: ce.faSolidName
+                        font.styleName: ce.faSolidStyle
+                        text: "\uf002"
+                        //width: parent.height
+                        height: parent.height
+                        color: MaterialDesignStyling.onSecondaryContainer
+                        rightPadding: 4
+                    }
+
+                    Text {
+                        id: clearBtn
+                        visible: !searchIcon.visible
+                        anchors.right: parent.right
+                        verticalAlignment: Text.AlignVCenter
+                        font.family: ce.faSolidName
+                        font.styleName: ce.faSolidStyle
+                        text: "\uf2d3"
+                        //width: parent.height
+                        height: parent.height
+                        color: MaterialDesignStyling.onSecondaryContainer
+                        rightPadding: 4
+
+                        MouseArea {
+                            // set hand mourse
+                            cursorShape: Qt.PointingHandCursor
+                            anchors.fill: parent
+                            onClicked: {
+                                searchCtl.text = ""
+                            }
+                        }
+                    }
+
                 }
 
                 Item {
@@ -320,5 +431,9 @@ Rectangle {
                 setDifficultyDlg.close()
             }
         }
+    }
+
+    CommonElements {
+        id: ce
     }
 }
