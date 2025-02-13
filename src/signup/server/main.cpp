@@ -87,6 +87,7 @@ int main(int argc, char* argv[]) {
     }
 
     Config config;
+    Server::BootstrapOptions bootstrap_opts;
 
     const auto appname = filesystem::path(argv[0]).stem().string();
 
@@ -126,6 +127,20 @@ int main(int argc, char* argv[]) {
              "This mostly applies for debug and trace level log-messages.")
             ;
 
+        po::options_description bs("Bootstrap");
+        bs.add_options()
+            ("bootstrap", po::bool_switch(&bootstrap),
+             "Bootstrap the system. Creates the database and system tenant. Exits when done. "
+             "The databse credentials must be for the system (root) user of the database.")
+            ("drop-database", po::bool_switch(&bootstrap_opts.drop_old_db),
+             "Tells the server to delete the existing database.")
+            ("root-db-user",
+             po::value(&bootstrap_opts.db_root_user)->default_value(bootstrap_opts.db_root_user),
+             "Mysql user to use when logging into the mysql server")
+            ("root-db-passwd",
+             po::value(&bootstrap_opts.db_root_passwd),
+             "Mysql password to use when logging into the mysql server")
+            ;
 
         po::options_description svr("Server");
         svr.add_options()
@@ -168,8 +183,39 @@ int main(int argc, char* argv[]) {
              "Path to the server key")
             ;
 
+        po::options_description db("Database");
+        db.add_options()
+            ("db-user",
+             po::value(&config.db.username),
+             "Mysql user to use when logging into the mysql server")
+            ("db-passwd",
+             po::value(&config.db.password),
+             "Mysql password to use when logging into the mysql server")
+            ("db-name",
+             po::value(&config.db.database)->default_value(config.db.database),
+             "Database to use")
+            ("db-host",
+             po::value(&config.db.host)->default_value(config.db.host),
+             "Hostname or IP address for the database server")
+            ("db-port",
+             po::value(&config.db.port)->default_value(config.db.port),
+             "Port number for the database server")
+            ("db-min-connections",
+             po::value(&config.db.min_connections)->default_value(config.db.min_connections),
+             "Max concurrent connections to the database server")
+            ("db-max-connections",
+             po::value(&config.db.max_connections)->default_value(config.db.max_connections),
+             "Max concurrent connections to the database server")
+            ("db-retry-connect",
+             po::value(&config.db.retry_connect)->default_value(config.db.retry_connect),
+             "Retry connect to the database-server # times on startup. Useful when using containers, where nextappd may be running before the database is ready.")
+            ("db-retry-delay",
+             po::value(&config.db.retry_connect_delay_ms)->default_value(config.db.retry_connect_delay_ms),
+             "Milliseconds to wait between connection retries")
+            ;
+
         po::options_description cmdline_options;
-        cmdline_options.add(general).add(svr).add(cluster);
+        cmdline_options.add(general).add(bs).add(svr).add(cluster).add(db);
         po::variables_map vm;
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
@@ -229,6 +275,18 @@ int main(int argc, char* argv[]) {
         }
 
         LOG_TRACE_N << "Getting ready...";
+
+        if (bootstrap) {
+            LOG_INFO << appname << ' ' << APP_VERSION << ".";
+            try {
+                Server server{config};
+                server.bootstrap(bootstrap_opts);
+                return 0; // Done
+            } catch (const exception& ex) {
+                LOG_ERROR << "Caught exception during bootstrap: " << ex.what();
+                return -4;
+            }
+        }
     }
 
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";

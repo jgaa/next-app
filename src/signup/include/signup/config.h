@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdint>
 //#include "nextapp/util.h"
+#include "mysqlpool/conf.h"
 
 namespace nextapp {
 
@@ -54,11 +55,17 @@ struct Cluster {
 };
 
 struct Config {
+    Config() {
+        db.database = "signup";
+        db.username = "signup";
+    }
+
     ServerConfig svr;
     GrpcConfig grpc_signup{"localhost:10322"};
     GrpcConfig grpc_nextapp{"https://localhost:10321"};
     ServerOptions options;
     Cluster cluster;
+    jgaa::mysqlpool::DbConfig db;
 };
 
 } // ns

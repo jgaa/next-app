@@ -7,6 +7,7 @@
 #include <boost/asio.hpp>
 
 #include "signup/config.h"
+#include "nextapp/util.h"
 
 #include "signup.pb.h"
 
@@ -17,7 +18,13 @@ class GrpcServer;
 
 class Server {
 public:
-    static constexpr uint latest_version = 8;
+    static constexpr uint latest_version = 1;
+
+    struct BootstrapOptions {
+        bool drop_old_db = false;
+        std::string db_root_user = getEnv("NA_ROOT_DBUSER", "root");
+        std::string db_root_passwd = getEnv("NA_ROOT_DBPASSWD");
+    };
 
     Server(const Config& config);
     ~Server();
@@ -53,10 +60,19 @@ public:
         return eula_text;
     }
 
+    void bootstrap(const BootstrapOptions& opts);
+
+    static std::string getPasswordHash(std::string_view password, std::string_view userUuid);
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
     void runIoThread(size_t id);
+    boost::asio::awaitable<bool> checkDb();
+    boost::asio::awaitable<void> createDb(const BootstrapOptions& opts);
+    boost::asio::awaitable<void> upgradeDbTables(uint version);
+    boost::asio::awaitable<void> createAdminUser();
+    boost::asio::awaitable<void> createDefaultNextappInstance(); // For bootstrap
     boost::asio::awaitable<void> startGrpcService();
 
     boost::asio::io_context ctx_;
