@@ -33,7 +33,7 @@ Rectangle
         Text {
             id: icon
             font.family: (checkBox.useSolidForAll || (checkBox.isChecked && checkBox.useSolidForChecked)) ? ce.faSolidName : ce.faNormalName
-            font.styleName: (checkBox.useSolidForAll ||(checkBox.isChecked && checkBox.useSolidForChecked)) ? ce.faSolidStyle : ce.faNormalStyle
+            font.styleName: (checkBox.useSolidForAll ||(checkBox.isChecked && checkBox.useSolidForChecked)) ? ce.faNormalName : ce.faNormalStyle
             font.pixelSize: checkBox.iconSize
             text: checkBox.isChecked ? checkBox.checkedCode : checkBox.uncheckedCode
             color: checkBox.isChecked ? checkBox.checkedColor : checkBox.uncheckedColor
