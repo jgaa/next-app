@@ -40,8 +40,7 @@ GrpcServer::GrpcServer(Server &server)
 
         if (auto * response = reply->mutable_getinforesponse()) {
             assert(response);
-            response->set_greeting(owner_.server().getWelcomeText(*req));
-            response->set_eula(owner_.server().getEulaText(*req));
+            *response = co_await owner_.server().getInfo(*req);
         } else {
             throw runtime_error{"Failed to create getinforesponse object"};
         }
@@ -250,6 +249,7 @@ void GrpcServer::stop() {
     nextapp_stub_.reset();
 }
 
+// TODO: Refactor so we start one client for each nextapp server in the cluster.
 void GrpcServer::startNextapp()
 {
     const auto server_url = nextapp_config().address;

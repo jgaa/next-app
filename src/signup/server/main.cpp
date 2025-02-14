@@ -100,8 +100,42 @@ int main(int argc, char* argv[]) {
         string log_level = "info";
         string log_file;
         bool trunc_log = false;
-        bool bootstrap = false;
-        bool bootstrap_ca = false;
+
+        auto init_logging_and_config_file = [&](auto& cmdline_options, auto& vm) {
+            if (!config_file.empty()) {
+                if (filesystem::exists(config_file)) {
+                    try {
+                        ifstream config_file_stream(config_file);
+                        po::store(po::parse_config_file(config_file_stream, cmdline_options), vm);
+                        po::notify(vm);
+                    } catch (const exception& ex) {
+                        cerr << appname << " Failed to load configuration file '" << config_file << "': " << ex.what() << endl;
+                        return -4;
+                    }
+                } else {
+                    if (config_file == default_config_file) {
+                        cerr << appname << " Default configuration file '" << config_file << "' does not exist." << endl;
+                    } else {
+                        cerr << appname << " Configuration file '" << config_file << "' does not exist." << endl;
+                        return -4;
+                    }
+                }
+            }
+
+            if (auto level = toLogLevel(log_level_console)) {
+                logfault::LogManager::Instance().AddHandler(
+                    make_unique<logfault::StreamHandler>(clog, *level));
+            }
+
+            if (!log_file.empty()) {
+                if (auto level = toLogLevel(log_level)) {
+                    logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+                }
+            }
+
+            return 0;
+        };
 
         general.add_options()
             ("help,h", "Print help and exit")
@@ -129,17 +163,28 @@ int main(int argc, char* argv[]) {
 
         po::options_description bs("Bootstrap");
         bs.add_options()
-            ("bootstrap", po::bool_switch(&bootstrap),
-             "Bootstrap the system. Creates the database and system tenant. Exits when done. "
-             "The databse credentials must be for the system (root) user of the database.")
             ("drop-database", po::bool_switch(&bootstrap_opts.drop_old_db),
-             "Tells the server to delete the existing database.")
+             "Delete the existing database if it exists.")
             ("root-db-user",
              po::value(&bootstrap_opts.db_root_user)->default_value(bootstrap_opts.db_root_user),
              "Mysql user to use when logging into the mysql server")
             ("root-db-passwd",
              po::value(&bootstrap_opts.db_root_passwd),
              "Mysql password to use when logging into the mysql server")
+            ;
+
+        po::options_description cluster("Cluster");
+        cluster.add_options()
+            ("nextapp-address,n", po::value(&config.grpc_nextapp.address)->default_value(config.grpc_nextapp.address),
+             "Protocol, address and port to use for gRPC client-connectiopn to NextApp")
+            ("nextapp-public-url", po::value(&config.cluster.nextapp_public_url),
+             "Public URL for nextappd. If unset, uses the value specified with `--nextapp-address`")
+            ("grpc-client-ca-cert", po::value(&config.grpc_nextapp.ca_cert),
+             "Path to the CA certificate")
+            ("grpc-client-cert", po::value(&config.grpc_nextapp.server_cert),
+             "Path to the server certificate")
+            ("grpc-client-key", po::value(&config.grpc_nextapp.server_key),
+             "Path to the server key")
             ;
 
         po::options_description svr("Server");
@@ -163,24 +208,12 @@ int main(int argc, char* argv[]) {
              "Number seconds to wait before re-trying the initial connect to nextappd. 0 to disale retrying.")
             ;
 
-        po::options_description cluster("Cluster");
-        cluster.add_options()
-            // ("backend,b", po::value(&config.cluster.backends),
-            //  "host:port for a nextappd backend. Can be repeated.")
+        po::options_description info("Info");
+        info.add_options()
             ("welcome", po::value(&config.cluster.welcome_path),
              "Path to the welcome page")
             ("eula", po::value(&config.cluster.eula_path),
              "Path to the EULA page")
-            ("nextapp-address,n", po::value(&config.grpc_nextapp.address)->default_value(config.grpc_nextapp.address),
-             "Protocol, address and port to use for gRPC client-connectiopn to NextApp")
-            ("nextapp-public-url", po::value(&config.cluster.nextapp_public_url),
-             "Public URL for nextappd. If unset, uses the value specified with `--nextapp-address`")
-            ("grpc-client-ca-cert", po::value(&config.grpc_nextapp.ca_cert),
-             "Path to the CA certificate")
-            ("grpc-client-cert", po::value(&config.grpc_nextapp.server_cert),
-             "Path to the server certificate")
-            ("grpc-client-key", po::value(&config.grpc_nextapp.server_key),
-             "Path to the server key")
             ;
 
         po::options_description db("Database");
@@ -191,9 +224,12 @@ int main(int argc, char* argv[]) {
             ("db-passwd",
              po::value(&config.db.password),
              "Mysql password to use when logging into the mysql server")
-            ("db-name",
-             po::value(&config.db.database)->default_value(config.db.database),
-             "Database to use")
+
+            // TODO: Add support for database name. For now hard-coded to `signup`
+            // ("db-name",
+            //  po::value(&config.db.database)->default_value(config.db.database),
+            //  "Database to use")
+
             ("db-host",
              po::value(&config.db.host)->default_value(config.db.host),
              "Hostname or IP address for the database server")
@@ -215,7 +251,51 @@ int main(int argc, char* argv[]) {
             ;
 
         po::options_description cmdline_options;
-        cmdline_options.add(general).add(bs).add(svr).add(cluster).add(db);
+
+        // Handle `bootstrap` mode
+        if (argc > 1) {
+            if (argv[1] == "bootstrap"s) {
+                cmdline_options.add(general).add(bs).add(db).add(cluster);
+                po::variables_map vm;
+                try {
+                    // Shift arguments left to remove "bootstrap"
+                    vector<char*> new_argv(argv, argv + argc); // Copy argv
+                    new_argv.erase(new_argv.begin() + 1); // Remove second element (index 1)
+
+                    po::store(po::command_line_parser(new_argv.size(), new_argv.data()).options(cmdline_options).run(), vm);
+                    po::notify(vm);
+                } catch (const exception& ex) {
+                    cerr << appname
+                         << " Failed to parse command-line arguments: " << ex.what() << endl;
+                    return -1;
+                }
+
+                if (vm.count("help")) {
+                    cout <<appname << " [options]"
+                         << cmdline_options << endl << endl
+                         << "If Cluster options are provided, the Nextappd instance "
+                         << "is added to the runtime-configuration." << endl
+                         << "If the evvironment variable SIGNUP_ADMIN_PASSWORD is unset, "
+                         << "a random password will be generated for the admin user." << endl;
+                    return -2;
+                }
+
+                if (auto err = init_logging_and_config_file(cmdline_options, vm)) {
+                    return err;
+                }
+
+                try {
+                    Server server{config};
+                    server.bootstrap(bootstrap_opts);
+                    return 0; // Done
+                } catch (const exception& ex) {
+                    LOG_ERROR << "Caught exception during bootstrap: " << ex.what();
+                    return -4;
+                }
+            }
+        }
+
+        cmdline_options.add(general).add(svr).add(info).add(db);
         po::variables_map vm;
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
@@ -229,6 +309,8 @@ int main(int argc, char* argv[]) {
         if (vm.count("help")) {
             cout <<appname << " [options]";
             cout << cmdline_options << endl;
+            cout << "To bootstrap the instance:" << endl;
+            cout << "  " << appname << " bootstrap [bootstrap-options] [--help]" << endl;
             return -2;
         }
 
@@ -242,51 +324,11 @@ int main(int argc, char* argv[]) {
             return -3;
         }
 
-        if (!config_file.empty()) {
-            if (filesystem::exists(config_file)) {
-                try {
-                    ifstream config_file_stream(config_file);
-                    po::store(po::parse_config_file(config_file_stream, cmdline_options), vm);
-                    po::notify(vm);
-                } catch (const exception& ex) {
-                    cerr << appname << " Failed to load configuration file '" << config_file << "': " << ex.what() << endl;
-                    return -4;
-                }
-            } else {
-                if (config_file == default_config_file) {
-                    cerr << appname << " Default configuration file '" << config_file << "' does not exist." << endl;
-                } else {
-                    cerr << appname << " Configuration file '" << config_file << "' does not exist." << endl;
-                    return -4;
-                }
-            }
-        }
-
-        if (auto level = toLogLevel(log_level_console)) {
-            logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(clog, *level));
-        }
-
-        if (!log_file.empty()) {
-            if (auto level = toLogLevel(log_level)) {
-                logfault::LogManager::Instance().AddHandler(
-                    make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
-            }
+        if (auto err = init_logging_and_config_file(cmdline_options, vm)) {
+            return err;
         }
 
         LOG_TRACE_N << "Getting ready...";
-
-        if (bootstrap) {
-            LOG_INFO << appname << ' ' << APP_VERSION << ".";
-            try {
-                Server server{config};
-                server.bootstrap(bootstrap_opts);
-                return 0; // Done
-            } catch (const exception& ex) {
-                LOG_ERROR << "Caught exception during bootstrap: " << ex.what();
-                return -4;
-            }
-        }
     }
 
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";

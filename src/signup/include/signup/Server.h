@@ -52,13 +52,7 @@ public:
         return *grpc_service_;
     }
 
-    const std::string& getWelcomeText(const ::signup::pb::GetInfoRequest& /*req*/) const noexcept {
-        return welcome_text;
-    }
-
-    const std::string& getEulaText(const ::signup::pb::GetInfoRequest& /*req*/) const noexcept {
-        return eula_text;
-    }
+    boost::asio::awaitable<::signup::pb::GetInfoResponse> getInfo(const ::signup::pb::GetInfoRequest& req);
 
     void bootstrap(const BootstrapOptions& opts);
 
@@ -68,6 +62,12 @@ private:
     void handleSignals();
     void initCtx(size_t numThreads);
     void runIoThread(size_t id);
+    boost::asio::awaitable<bool> loadRegions();
+
+    std::shared_ptr<std::vector<::signup::pb::Region>> getRegions() {
+        return regions_.load();
+    }
+
     boost::asio::awaitable<bool> checkDb();
     boost::asio::awaitable<void> createDb(const BootstrapOptions& opts);
     boost::asio::awaitable<void> upgradeDbTables(uint version);
@@ -82,8 +82,9 @@ private:
     std::atomic_size_t running_io_threads_{0};
     std::atomic_bool done_{false};
     std::shared_ptr<GrpcServer> grpc_service_;
-    std::string welcome_text;
-    std::string eula_text;
+    std::string welcome_text_;
+    std::string eula_text_;
+    std::atomic<std::shared_ptr<std::vector<::signup::pb::Region>>> regions_;
 };
 
 

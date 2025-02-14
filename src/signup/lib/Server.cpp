@@ -52,10 +52,10 @@ void Server::init()
         throw runtime_error{"Missing welcome path"};
     }
 
-    eula_text = readFileToBuffer(config_.cluster.eula_path);
+    eula_text_ = readFileToBuffer(config_.cluster.eula_path);
     LOG_DEBUG << "EULA text loaded from " << config_.cluster.eula_path;
 
-    welcome_text = readFileToBuffer(config_.cluster.welcome_path);
+    welcome_text_ = readFileToBuffer(config_.cluster.welcome_path);
     LOG_DEBUG << "Welcome text loaded from " << config_.cluster.welcome_path;
 }
 
@@ -63,6 +63,7 @@ void Server::run()
 {
     asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
             try {
+                co_await loadRegions();
                 co_await startGrpcService();
             } catch (const std::exception& ex) {
                 LOG_ERROR << "Failed to start gRPC service: " << ex.what();
@@ -85,6 +86,21 @@ void Server::stop()
     LOG_DEBUG << "Shutting down the thread-pool.";
     ctx_.stop();
     LOG_DEBUG << "Server stopped.";
+}
+
+boost::asio::awaitable<signup::pb::GetInfoResponse> Server::getInfo(const signup::pb::GetInfoRequest &req)
+{
+    signup::pb::GetInfoResponse resp;
+    resp.set_eula(eula_text_);
+    resp.set_greeting(welcome_text_);
+
+    if (auto regions = getRegions()) {
+        for(const auto& r : *regions) {
+            resp.add_regions()->CopyFrom(r);
+        }
+    }
+
+    co_return resp;
 }
 
 
@@ -116,6 +132,35 @@ void Server::runIoThread(const size_t id)
     }
 
     LOG_DEBUG_N << "Io-thread " << id << " is done.";
+}
+
+boost::asio::awaitable<bool> Server::loadRegions()
+{
+    LOG_DEBUG_N << "Loading regions...";
+    auto cfg = config_.db;
+    cfg.max_connections = 1;
+    mysqlpool::Mysqlpool db{ctx_, cfg};
+
+    auto conn = co_await db.getConnection();
+    auto res = co_await conn.exec("SELECT id, name, description FROM region where state='active' ORDER BY name ASC");
+    auto rows = res.rows();
+    auto regions = make_shared<vector<signup::pb::Region>>();
+    regions->reserve(rows.size());
+
+    enum Cols { ID, NAME, DESC };
+
+    for(const auto& row : rows) {
+        signup::pb::Region r;
+        r.set_uuid(row[ID].as_string());
+        r.set_name(row[NAME].as_string());
+        r.set_description(row[DESC].as_string());
+        regions->push_back(r);
+    }
+
+    LOG_INFO << "Loaded " << regions->size() << " regions.";
+
+    regions_.store(std::move(regions));
+    co_return true;
 }
 
 
@@ -293,6 +338,7 @@ boost::asio::awaitable<void> nextapp::Server::upgradeDbTables(uint version)
             id VARCHAR(36) NOT NULL PRIMARY KEY DEFAULT UUID(), -- Our UUID.
             region VARCHAR(36) NOT NULL,
             grpc_url VARCHAR(255) NOT NULL,
+            grpc_public_url VARCHAR(255) NOT NULL,
             metrics_url VARCHAR(255), -- Fixed missing data type
             created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             ca_cert TEXT,
@@ -378,9 +424,11 @@ boost::asio::awaitable<void> nextapp::Server::createAdminUser()
         LOG_DEBUG << "Missing password for the admin user. Generating random password.";
         password = getRandomStr(48);
         LOG_INFO << "Generated random password for the admin user: " << password;
-    };
+    } else {
+        LOG_INFO << "Setting admin password to the value of SIGNUP_ADMIN_PASSWORD";
+    }
 
-    LOG_INFO << "Creating admin user " << admin;
+    LOG_INFO << "Creating admin user: " << admin;
     auto cfg = config_.db;
     cfg.max_connections = 1;
     mysqlpool::Mysqlpool db{ctx_, cfg};
@@ -396,8 +444,7 @@ boost::asio::awaitable<void> nextapp::Server::createAdminUser()
 
 boost::asio::awaitable<void> nextapp::Server::createDefaultNextappInstance()
 {
-    if (config_.grpc_nextapp.server_cert.empty()
-        || config_.grpc_nextapp.ca_cert.empty()
+    if (config_.grpc_nextapp.ca_cert.empty()
         || config_.grpc_nextapp.address.empty()
         || config_.grpc_nextapp.server_key.empty()) {
         LOG_INFO << "Nextapp instance is not configured. Skipping...";
@@ -422,10 +469,14 @@ boost::asio::awaitable<void> nextapp::Server::createDefaultNextappInstance()
         }
     }
 
+    const auto pub_url = config_.cluster.nextapp_public_url.empty()
+        ? config_.grpc_nextapp.address
+        : config_.cluster.nextapp_public_url;
     auto res = co_await conn.exec(
-        "INSERT INTO instance (region, grpc_url, ca_cert, grpc_key, grpc_cert) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO instance (region, grpc_url, grpc_public_url, ca_cert, grpc_key, grpc_cert) VALUES (?, ?, ?, ?, ?, ?)",
         region_id,
         config_.grpc_nextapp.address,
+        pub_url,
         readFileToBuffer(config_.grpc_nextapp.ca_cert),
         readFileToBuffer(config_.grpc_nextapp.server_key),
         readFileToBuffer(config_.grpc_nextapp.server_cert));

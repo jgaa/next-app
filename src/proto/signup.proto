@@ -14,11 +14,18 @@ enum Error {
   MISSING_EMAIL = 6;
 }
 
+message Region {
+  string uuid = 3;
+  string name = 1;
+  string description = 2;
+}
+
 message GetInfoRequest {}
 
 message GetInfoResponse {
   string eula = 1;
   string greeting = 2;
+  repeated Region regions = 3;
 }
 
 message SignUpRequest {
