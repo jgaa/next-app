@@ -33,6 +33,7 @@ message SignUpRequest {
   string userName = 2;
   string tenantName = 3;
   common.Device device = 4;
+  string region = 5;
 }
 
 message SignUpResponse {

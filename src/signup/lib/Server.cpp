@@ -63,7 +63,8 @@ void Server::run()
 {
     asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
             try {
-                co_await loadRegions();
+                co_await loadCluster();
+                co_await connectToInstances();
                 co_await startGrpcService();
             } catch (const std::exception& ex) {
                 LOG_ERROR << "Failed to start gRPC service: " << ex.what();
@@ -134,33 +135,82 @@ void Server::runIoThread(const size_t id)
     LOG_DEBUG_N << "Io-thread " << id << " is done.";
 }
 
-boost::asio::awaitable<bool> Server::loadRegions()
+boost::asio::awaitable<bool> Server::loadCluster()
 {
     LOG_DEBUG_N << "Loading regions...";
     auto cfg = config_.db;
     cfg.max_connections = 1;
     mysqlpool::Mysqlpool db{ctx_, cfg};
 
+    auto cluster = make_shared<Cluster>();
+
     auto conn = co_await db.getConnection();
-    auto res = co_await conn.exec("SELECT id, name, description FROM region where state='active' ORDER BY name ASC");
-    auto rows = res.rows();
-    auto regions = make_shared<vector<signup::pb::Region>>();
-    regions->reserve(rows.size());
 
-    enum Cols { ID, NAME, DESC };
+    {
+        auto res = co_await conn.exec("SELECT id, name, description, created, state FROM region");
+        enum Cols { ID, NAME, DESC, CREATED, STATE };
 
-    for(const auto& row : rows) {
-        signup::pb::Region r;
-        r.set_uuid(row[ID].as_string());
-        r.set_name(row[NAME].as_string());
-        r.set_description(row[DESC].as_string());
-        regions->push_back(r);
+        for(const auto& row : res.rows()) {
+            Cluster::Region r;
+            r.uuid = toUuid(row[ID].as_string());
+            r.name = row[NAME].as_string();
+            r.description = row[DESC].as_string();
+            r.created_at = chrono::system_clock::to_time_t(row[CREATED].as_datetime().get_time_point());
+            r.state = row[STATE].as_string() == "active" ? Cluster::Region::State::ACTIVE
+                                                         : Cluster::Region::State::INACTIVE;
+
+            cluster->regions_.emplace(r.uuid, std::move(r));
+        }
     }
 
-    LOG_INFO << "Loaded " << regions->size() << " regions.";
+    {
+        auto res = co_await conn.exec(
+            "SELECT id, region, grpc_url, grpc_public_url, metrics_url, created, ca_cert, grpc_key, grpc_cert, "
+            "grpc_pam_cert, grpc_pam_key, server_id, state, free_slots FROM instance");
+        enum Cols { ID, REGION, GRPC_URL, GRPC_PUBLIC_URL, METRICS_URL, CREATED, CA_CERT, GRPC_KEY, GRPC_CERT, GRPC_PAM_CERT, GRPC_PAM_KEY, SERVER_ID, STATE, FREE_SLOTS };
 
-    regions_.store(std::move(regions));
+        for(const auto& row : res.rows()) {
+            auto region = toUuid(row[REGION].as_string());
+            Cluster::Region::Instance i;
+            i.uuid = toUuid(row[ID].as_string());
+            i.url = row[GRPC_URL].as_string();
+            i.pub_url = row[GRPC_PUBLIC_URL].as_string();
+            //i.metrics_url = row[METRICS_URL].as_string();
+            i.created_at = chrono::system_clock::to_time_t(row[CREATED].as_datetime().get_time_point());
+            i.x509_ca_cert = row[CA_CERT].as_string();
+            i.x509_cert = row[GRPC_CERT].as_string();
+            i.x509_key = row[GRPC_KEY].as_string();
+            i.server_id = row[SERVER_ID].as_string();
+            i.state = row[STATE].as_string() == "active" ? Cluster::Region::Instance::State::ACTIVE
+                                                         : Cluster::Region::Instance::State::INACTIVE;
+            i.free_slots = row[FREE_SLOTS].as_int64();
+
+            if (auto it = cluster->regions_.find(region); it != cluster->regions_.end()) {
+                it->second.instances_.emplace(i.uuid, std::move(i));
+            } else {
+                LOG_ERROR << "Instance " << i.uuid << " references unknown region " << region;
+            }
+        }
+    }
+
+    cluster_.store(std::move(cluster));
     co_return true;
+}
+
+std::shared_ptr<std::vector<signup::pb::Region> > Server::getRegions()
+{
+    auto regions = make_shared<std::vector<signup::pb::Region>>();
+    if (auto cluster = cluster_.load()) {
+        for(const auto& [_, region] : cluster->regions_) {
+            signup::pb::Region r;
+            r.set_uuid(to_string(region.uuid));
+            r.set_name(region.name);
+            r.set_description(region.description);
+            regions->push_back(r);
+        };
+    }
+
+    return regions;
 }
 
 
@@ -171,6 +221,31 @@ boost::asio::awaitable<void> Server::startGrpcService()
     grpc_service_ = make_shared<GrpcServer>(*this);
     grpc_service_->start();
     co_return;
+}
+
+
+// This creates and connects to all active instances
+boost::asio::awaitable<void> Server::connectToInstances()
+{
+    assert(grpc_service_); // Must be initialized
+    if (auto cluster = cluster_.load()) {
+        for(auto& [_, region] : cluster->regions_) {
+            LOG_INFO << "Connecting to instances in region " << region.name;
+            for(auto& [_, instance] : region.instances_) {
+                if (instance.state == Cluster::Region::Instance::State::ACTIVE) {
+                    LOG_INFO << "  -- Connecting to instance " << instance.uuid << " at " << instance.url;
+                    GrpcServer::InstanceCommn::InstanceInfo i;
+                    i.url = instance.url;
+                    i.x509_ca_cert = instance.x509_ca_cert;
+                    i.x509_cert = instance.x509_cert;
+                    i.x509_key = instance.x509_key;
+                    instance.is_online = co_await grpc_service_->connectToInstance(instance.uuid, i);
+                    // TODO: Schedule retry if not online
+                    // TODO: Update the online status from grpc server if it loose the connection
+                }
+            }
+        }
+    }
 }
 
 void Server::handleSignals()
@@ -238,6 +313,32 @@ void nextapp::Server::bootstrap(const BootstrapOptions &opts)
     LOG_INFO << "Bootstrapping is complete";
 }
 
+boost::asio::awaitable<nextapp::Server::AssignedInstance> nextapp::Server::assignInstance(const boost::uuids::uuid &region)
+{
+    if (auto cluster = cluster_.load()) {
+        if (auto it = cluster->regions_.find(region); it != cluster->regions_.end()) {
+            vector<const Cluster::Region::Instance *> alternatives;
+            for(const auto& [_, instance] : it->second.instances_) {
+                if (instance.is_online && instance.state == Cluster::Region::Instance::State::ACTIVE) {
+                    alternatives.push_back(&instance);
+                }
+            }
+
+            if (!alternatives.empty()) {
+                // TODO: Implement load balancing
+                const auto& use_instance = *alternatives.at(getRandomNumber32() % alternatives.size());
+                co_return AssignedInstance{
+                    .region = region,
+                    .instance = use_instance.uuid,
+                    .pub_url = use_instance.pub_url,
+                };
+            }
+        }
+    }
+
+    co_return AssignedInstance{};
+}
+
 string nextapp::Server::getPasswordHash(std::string_view password, std::string_view userUuid)
 {
     const auto v = format("{}:{}", password, userUuid);
@@ -248,7 +349,7 @@ string nextapp::Server::getPasswordHash(std::string_view password, std::string_v
 
 boost::asio::awaitable<bool> nextapp::Server::checkDb()
 {
-
+    // TODO: Implement
 }
 
 

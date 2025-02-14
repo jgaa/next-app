@@ -11,12 +11,6 @@
 
 #include "signup/Server.h"
 #include "signup/config.h"
-// #include "nextapp.pb.h"
-// #include "nextapp.grpc_signup.pb.h"
-// #include "nextapp/logging.h"
-// #include "nextapp/errors.h"
-// #include "nextapp/UserContext.h"
-// #include "nextapp/certs.h"
 
 #include "signup.pb.h"
 #include "signup.grpc.pb.h"
@@ -50,6 +44,75 @@ public:
         return toJson(obj, server().config().options.log_protobuf_messages);
     }
 
+    class InstanceCommn {
+    public:
+        struct InstanceInfo {
+            std::string url;
+            std::string x509_ca_cert; // for instance's nextapp server
+            std::string x509_cert;
+            std::string x509_key;
+        };
+
+
+        InstanceCommn(GrpcServer& owner)
+            : owner_{owner}, timer_{owner.server().ctx()} {}
+
+        boost::asio::awaitable<bool> connect(const InstanceInfo& info);
+
+        template <ProtoMessage replyT, ProtoMessage reqT, typename T>
+        struct CallData {
+            CallData(reqT && req, T& self)
+                : req{std::forward<reqT>(req)}, self_{std::move(self)} {}
+            reqT req;
+            ::grpc::ClientContext ctx;
+            replyT reply;
+            std::remove_cvref_t<T> self_;
+        };
+
+        template <ProtoMessage replyT, ProtoMessage reqT, typename CompletionToken>
+        auto callRpc(reqT request,
+            void (::nextapp::pb::Nextapp::Stub::async::*call)(::grpc::ClientContext* context, const reqT* request, replyT* response, std::function<void(::grpc::Status)>),
+                     CompletionToken&& token) {
+
+            return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, replyT)>(
+                [this, request=std::move(request), call](auto& self) mutable {
+                    auto cd = std::make_shared<CallData<replyT, reqT, decltype(self)>>(std::move(request), self);
+
+                    // TODO: Find a better way! We are using a shared pointer here, which is not good.
+                    auto fn = [this, cd](const ::grpc::Status& status) mutable {
+                        boost::system::error_code ec;
+                        if (!status.ok()) {
+                            ec = make_error_code(status.error_code());
+                        }
+
+                        LOG_TRACE << "RPC call completed. Status: " << status.error_message();
+                        LOG_TRACE << "Reply: " << owner_.toJsonForLog(cd->reply);
+                        cd->self_.complete(ec, cd->reply);
+                    };
+
+                    if (!session_id_.empty()) {
+                        cd->ctx.AddMetadata("sid", session_id_);
+                    }
+
+                    (nextapp_stub_->async()->*call)(&cd->ctx, &cd->req, &cd->reply,
+                                                    [fn=std::move(fn)](const ::grpc::Status& status) mutable {
+                        fn(status);
+                    });
+
+            }, token);
+        }
+
+    private:
+        void startNextTimer(size_t seconds);
+        void onTimer();
+
+        std::unique_ptr<nextapp::pb::Nextapp::Stub> nextapp_stub_;
+        std::string session_id_;
+        boost::asio::steady_timer timer_;
+        GrpcServer& owner_;
+        std::string url_;
+    };
+
     template <typename T>
     class ReqBase {
     public:
@@ -73,49 +136,6 @@ public:
     protected:
         const size_t client_id_ = getNewClientId();
     };
-
-    template <ProtoMessage replyT, ProtoMessage reqT, typename T>
-    struct CallData {
-        CallData(reqT && req, T& self)
-            : req{std::forward<reqT>(req)}, self_{std::move(self)} {}
-        reqT req;
-        ::grpc::ClientContext ctx;
-        replyT reply;
-        std::remove_cvref_t<T> self_;
-    };
-
-    template <ProtoMessage replyT, ProtoMessage reqT, typename CompletionToken>
-    auto callRpc(reqT request,
-        void (::nextapp::pb::Nextapp::Stub::async::*call)(::grpc::ClientContext* context, const reqT* request, replyT* response, std::function<void(::grpc::Status)>),
-                 CompletionToken&& token) {
-
-        return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, replyT)>(
-            [this, request=std::move(request), call](auto& self) mutable {
-                auto cd = std::make_shared<CallData<replyT, reqT, decltype(self)>>(std::move(request), self);
-
-                // TODO: Find a better way! We are using a shared pointer here, which is not good.
-                auto fn = [this, cd](const ::grpc::Status& status) mutable {
-                    boost::system::error_code ec;
-                    if (!status.ok()) {
-                        ec = make_error_code(status.error_code());
-                    }
-
-                    LOG_TRACE << "RPC call completed. Status: " << status.error_message();
-                    LOG_TRACE << "Reply: " << toJsonForLog(cd->reply);
-                    cd->self_.complete(ec, cd->reply);
-                };
-
-                if (!session_id_.empty()) {
-                    cd->ctx.AddMetadata("sid", session_id_);
-                }
-
-                (nextapp_stub_->async()->*call)(&cd->ctx, &cd->req, &cd->reply,
-                                                [fn=std::move(fn)](const ::grpc::Status& status) mutable {
-                    fn(status);
-                });
-
-        }, token);
-    }
 
     template <typename T, typename... Args>
     static auto createNew(GrpcServer& parent, Args... args) {
@@ -214,14 +234,27 @@ public:
         return server_.config().grpc_nextapp;
     }
 
+    std::shared_ptr<InstanceCommn> getInstance(const boost::uuids::uuid& uuid) {
+        std::lock_guard lock{mutex_};
+        if (auto it = instances_.find(uuid); it != instances_.end()) {
+            return it->second;
+        }
+        return {};
+    }
+
+    void addInstance(const boost::uuids::uuid& uuid, std::shared_ptr<InstanceCommn> instance) {
+        std::lock_guard lock{mutex_};
+        instances_.emplace(uuid, std::move(instance));
+    }
+
+    boost::asio::awaitable<bool> connectToInstance(const boost::uuids::uuid&uuid,
+                                                   const InstanceCommn::InstanceInfo& info);
+
 private:
     // The Server instance where we get objects in the application, like config and database
     Server& server_;
-
     void startNextapp();
     void startSignup();
-    void startNextTimer(size_t seconds);
-    void onTimer();
 
     // Thread-safe method to get a unique client-id for a new RPC.
     static size_t getNewClientId() {
@@ -237,9 +270,11 @@ private:
 
     mutable std::mutex mutex_;
     std::atomic_bool active_{false};
-    std::unique_ptr<nextapp::pb::Nextapp::Stub> nextapp_stub_;
-    std::optional<boost::asio::steady_timer> timer_;
-    std::string session_id_;
+    //std::unique_ptr<nextapp::pb::Nextapp::Stub> nextapp_stub_;
+    //std::optional<boost::asio::steady_timer> timer_;
+    //std::string session_id_;
+
+    std::map<boost::uuids::uuid, std::shared_ptr<InstanceCommn>> instances_;
 };
 
 using server_err = GrpcServer::Error;

@@ -58,7 +58,15 @@ GrpcServer::GrpcServer(Server &server)
 
         // Validate the information in the request
 
-        // TODO: Add support for a cluster of nextapp servers. For now we only have one.
+        if (!req->region().empty()) {
+            throw runtime_error{"Region is unset"};
+        }
+
+        // Get an instance to use
+        const auto assigned_instance = co_await owner_.server().assignInstance(toUuid(req->region()));
+
+        // Get the RPC connection to that instance
+        auto conn = owner_.getInstance(assigned_instance.instance);
 
         // Ask the nextapp server to create the tenant and user.
         nextapp::pb::Tenant newTenant;
@@ -82,7 +90,7 @@ GrpcServer::GrpcServer(Server &server)
             user->set_kind(nextapp::pb::User::Kind::User_Kind_REGULAR);
             user->set_active(true);
 
-            auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
+            auto resp = co_await conn->callRpc<nextapp::pb::Status>(
                 tenant_req,
                 &stub_t::async::CreateTenant,
                 asio::use_awaitable);
@@ -121,7 +129,7 @@ GrpcServer::GrpcServer(Server &server)
             }
             *auth = newTenant.users(0).uuid();
 
-            auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
+            auto resp = co_await conn->callRpc<nextapp::pb::Status>(
                 device_req,
                 &stub_t::async::CreateDevice,
                 asio::use_awaitable);
@@ -186,6 +194,8 @@ GrpcServer::GrpcServer(Server &server)
             } else {
                 throw server_err{nextapp::pb::Error::MISSING_AUTH, "Missing OTP"};
             }
+
+            // TODO: Deduce the tenant from the email and see if we have a connection to the tenants nextapp instance.
 
             auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
                 device_req,
@@ -252,102 +262,102 @@ void GrpcServer::stop() {
 // TODO: Refactor so we start one client for each nextapp server in the cluster.
 void GrpcServer::startNextapp()
 {
-    const auto server_url = nextapp_config().address;
+    // const auto server_url = nextapp_config().address;
 
-    LOG_INFO << "Connecting to NextApp gRPC endpoint at "
-             << server_url;
-    const bool use_tls = server_url.starts_with("https://");
+    // LOG_INFO << "Connecting to NextApp gRPC endpoint at "
+    //          << server_url;
+    // const bool use_tls = server_url.starts_with("https://");
 
-    auto server_address = server_url;
-    if (auto pos = server_address.find("://"); pos != string::npos) {
-        server_address = server_address.substr(pos + 3);
-    }
+    // auto server_address = server_url;
+    // if (auto pos = server_address.find("://"); pos != string::npos) {
+    //     server_address = server_address.substr(pos + 3);
+    // }
 
-    // Create a gRPC channel to the NextApp service.
-    // Set up TLS credentials with our own certificate.
-    std::shared_ptr<::grpc::ChannelCredentials> creds;
-    if (use_tls) {
-        ::grpc::SslCredentialsOptions ssl_opts;
-        if (!nextapp_config().ca_cert.empty()) {
-            ssl_opts.pem_root_certs = readFileToBuffer(nextapp_config().ca_cert);
-            LOG_DEBUG_N << "Using ca-cert from " << nextapp_config().ca_cert;
-        }
-        if (!nextapp_config().server_cert.empty() && !nextapp_config().server_key.empty()) {
-            // Load our own certificate and private key (for client auth)
-            ssl_opts.pem_private_key = readFileToBuffer(nextapp_config().server_key);
-            ssl_opts.pem_cert_chain = readFileToBuffer(nextapp_config().server_cert);
-            LOG_DEBUG_N << "Using client-cert from " << nextapp_config().server_cert;
-            creds = ::grpc::SslCredentials(ssl_opts);
-        } else {
-            LOG_WARN_N << "No TLS cert provided. Proceeding without client cert.";
-            ::grpc::experimental::TlsChannelCredentialsOptions tls_opts;
-            tls_opts.set_verify_server_certs(false);
-            creds = ::grpc::experimental::TlsCredentials(tls_opts);
-        }
+    // // Create a gRPC channel to the NextApp service.
+    // // Set up TLS credentials with our own certificate.
+    // std::shared_ptr<::grpc::ChannelCredentials> creds;
+    // if (use_tls) {
+    //     ::grpc::SslCredentialsOptions ssl_opts;
+    //     if (!nextapp_config().ca_cert.empty()) {
+    //         ssl_opts.pem_root_certs = readFileToBuffer(nextapp_config().ca_cert);
+    //         LOG_DEBUG_N << "Using ca-cert from " << nextapp_config().ca_cert;
+    //     }
+    //     if (!nextapp_config().server_cert.empty() && !nextapp_config().server_key.empty()) {
+    //         // Load our own certificate and private key (for client auth)
+    //         ssl_opts.pem_private_key = readFileToBuffer(nextapp_config().server_key);
+    //         ssl_opts.pem_cert_chain = readFileToBuffer(nextapp_config().server_cert);
+    //         LOG_DEBUG_N << "Using client-cert from " << nextapp_config().server_cert;
+    //         creds = ::grpc::SslCredentials(ssl_opts);
+    //     } else {
+    //         LOG_WARN_N << "No TLS cert provided. Proceeding without client cert.";
+    //         ::grpc::experimental::TlsChannelCredentialsOptions tls_opts;
+    //         tls_opts.set_verify_server_certs(false);
+    //         creds = ::grpc::experimental::TlsCredentials(tls_opts);
+    //     }
 
-    } else {
-        LOG_WARN_N << "Not using TLS on nextapp grpc connection. Don't do this over a public network!!";
-        creds = ::grpc::InsecureChannelCredentials();
-    }
-    assert(creds);
-    if (!creds) {
-        LOG_ERROR_N << "Failed to create gRPC channel credentials.";
-        throw runtime_error{"Failed to create gRPC channel credentials."};
-    }
+    // } else {
+    //     LOG_WARN_N << "Not using TLS on nextapp grpc connection. Don't do this over a public network!!";
+    //     creds = ::grpc::InsecureChannelCredentials();
+    // }
+    // assert(creds);
+    // if (!creds) {
+    //     LOG_ERROR_N << "Failed to create gRPC channel credentials.";
+    //     throw runtime_error{"Failed to create gRPC channel credentials."};
+    // }
 
-    ::grpc::ChannelArguments args;
-    args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, nextapp_config().keepalive_time_sec * 1000);
-    args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, nextapp_config().keepalive_timeout_sec * 1000);
+    // ::grpc::ChannelArguments args;
+    // args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, nextapp_config().keepalive_time_sec * 1000);
+    // args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, nextapp_config().keepalive_timeout_sec * 1000);
 
-    auto channel = ::grpc::CreateCustomChannel(server_address, creds, args);
-    nextapp_stub_ = nextapp::pb::Nextapp::NewStub(channel);
+    // auto channel = ::grpc::CreateCustomChannel(server_address, creds, args);
+    // nextapp_stub_ = nextapp::pb::Nextapp::NewStub(channel);
 
-    // Test the connection to the NextApp server.
-    // Create asio C++20 coro scope
-    auto f = asio::co_spawn(server().ctx(), [this]() -> asio::awaitable<void> {
-        ::grpc::ClientContext ctx;
+    // // Test the connection to the NextApp server.
+    // // Create asio C++20 coro scope
+    // auto f = asio::co_spawn(server().ctx(), [this]() -> asio::awaitable<void> {
+    //     ::grpc::ClientContext ctx;
 
-        auto resp = co_await callRpc<nextapp::pb::Status>(
-            nextapp::pb::Empty{},
-            &stub_t::async::Hello,
-            asio::use_awaitable);
+    //     auto resp = co_await callRpc<nextapp::pb::Status>(
+    //         nextapp::pb::Empty{},
+    //         &stub_t::async::Hello,
+    //         asio::use_awaitable);
 
-        if (resp.error() != nextapp::pb::Error::OK) {
-            throw runtime_error{"Failed to connect and authorize with nextappd: " + resp.message()};
-        } else {
-            if (resp.has_hello()) {
-                const auto& hello = resp.hello();
-                session_id_ = hello.sessionid();
-                LOG_DEBUG << "Got session id: " << session_id_;
-            } else {
-                LOG_WARN << "Failed to get hello from nextapp-server's reply";
-            }
-        }
+    //     if (resp.error() != nextapp::pb::Error::OK) {
+    //         throw runtime_error{"Failed to connect and authorize with nextappd: " + resp.message()};
+    //     } else {
+    //         if (resp.has_hello()) {
+    //             const auto& hello = resp.hello();
+    //             session_id_ = hello.sessionid();
+    //             LOG_DEBUG << "Got session id: " << session_id_;
+    //         } else {
+    //             LOG_WARN << "Failed to get hello from nextapp-server's reply";
+    //         }
+    //     }
 
-        resp = co_await callRpc<nextapp::pb::Status>(
-            nextapp::pb::Empty{},
-            &stub_t::async::GetServerInfo,
-            asio::use_awaitable);
+    //     resp = co_await callRpc<nextapp::pb::Status>(
+    //         nextapp::pb::Empty{},
+    //         &stub_t::async::GetServerInfo,
+    //         asio::use_awaitable);
 
-        LOG_INFO << "Connected to nextapp-server at " << nextapp_config().address;
-        if (resp.has_serverinfo()) {
-            for(const auto& kv : resp.serverinfo().properties()) {
-                LOG_INFO << kv.key() << ": " << kv.value();
-            }
-        }
+    //     LOG_INFO << "Connected to nextapp-server at " << nextapp_config().address;
+    //     if (resp.has_serverinfo()) {
+    //         for(const auto& kv : resp.serverinfo().properties()) {
+    //             LOG_INFO << kv.key() << ": " << kv.value();
+    //         }
+    //     }
 
-        co_return;
+    //     co_return;
 
-    }, asio::use_future);
+    // }, asio::use_future);
 
-    try {
-        f.get();
-    } catch (const std::exception &ex) {
-        LOG_ERROR << "Failed to connect to NextApp server: " << ex.what();
-        throw;
-    }
+    // try {
+    //     f.get();
+    // } catch (const std::exception &ex) {
+    //     LOG_ERROR << "Failed to connect to NextApp server: " << ex.what();
+    //     throw;
+    // }
 
-    startNextTimer(server_.config().options.timer_interval_sec);
+    // startNextTimer(server_.config().options.timer_interval_sec);
 }
 
 void GrpcServer::startSignup()
@@ -407,49 +417,138 @@ signup::pb::Error translateError(const pb::Error &e) {
     }
 }
 
-void GrpcServer::startNextTimer(size_t seconds)
+boost::asio::awaitable<bool> GrpcServer::InstanceCommn::connect(const InstanceInfo &info)
 {
-    if (!timer_) {
-        timer_.emplace(server_.ctx());
+    url_ = info.url;
+
+    LOG_INFO << "Connecting to NextApp gRPC endpoint at " << url_;
+    const bool use_tls = url_.starts_with("https://");
+
+    auto server_address = url_;
+    if (auto pos = server_address.find("://"); pos != string::npos) {
+        server_address = server_address.substr(pos + 3);
     }
 
+    // Create a gRPC channel to the NextApp service.
+    // Set up TLS credentials with our own certificate.
+    std::shared_ptr<::grpc::ChannelCredentials> creds;
+    if (use_tls) {
+        ::grpc::SslCredentialsOptions ssl_opts;
+        if (!info.x509_ca_cert.empty()) {
+            ssl_opts.pem_root_certs = info.x509_ca_cert;
+        }
+        if (!info.x509_cert.empty() && !info.x509_key.empty()) {
+            // Load our own certificate and private key (for client auth)
+            ssl_opts.pem_private_key = info.x509_key;
+            ssl_opts.pem_cert_chain = info.x509_cert;
+            creds = ::grpc::SslCredentials(ssl_opts);
+        } else {
+            LOG_WARN_N << "No TLS cert provided. Proceeding without client cert.";
+            ::grpc::experimental::TlsChannelCredentialsOptions tls_opts;
+            tls_opts.set_verify_server_certs(false);
+            creds = ::grpc::experimental::TlsCredentials(tls_opts);
+        }
+
+    } else {
+        LOG_WARN_N << "Not using TLS on nextapp grpc connection. Don't do this over a public network!!";
+        creds = ::grpc::InsecureChannelCredentials();
+    }
+    assert(creds);
+    if (!creds) {
+        LOG_ERROR_N << "Failed to create gRPC channel credentials.";
+        throw runtime_error{"Failed to create gRPC channel credentials."};
+    }
+
+    ::grpc::ChannelArguments args;
+    args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, owner_.nextapp_config().keepalive_time_sec * 1000);
+    args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, owner_.nextapp_config().keepalive_timeout_sec * 1000);
+
+    auto channel = ::grpc::CreateCustomChannel(server_address, creds, args);
+    nextapp_stub_ = nextapp::pb::Nextapp::NewStub(channel);
+
+    // Connect
     try {
-        timer_->expires_after(std::chrono::seconds(server_.config().options.timer_interval_sec));
+        ::grpc::ClientContext ctx;
+        auto resp = co_await callRpc<nextapp::pb::Status>(
+            nextapp::pb::Empty{},
+            &stub_t::async::Hello,
+            asio::use_awaitable);
+
+        if (resp.error() != nextapp::pb::Error::OK) {
+            throw runtime_error{"Failed to connect and authorize with nextappd: " + resp.message()};
+        } else {
+            if (resp.has_hello()) {
+                const auto& hello = resp.hello();
+                session_id_ = hello.sessionid();
+                LOG_DEBUG << "Got session id: " << session_id_;
+            } else {
+                LOG_WARN << "Failed to get hello from nextapp-server's reply";
+            }
+        }
+
+        resp = co_await callRpc<nextapp::pb::Status>(
+            nextapp::pb::Empty{},
+            &stub_t::async::GetServerInfo,
+            asio::use_awaitable);
+
+        LOG_INFO << "Connected to nextapp-server at " << owner_.nextapp_config().address;
+        if (resp.has_serverinfo()) {
+            for(const auto& kv : resp.serverinfo().properties()) {
+                LOG_INFO << kv.key() << ": " << kv.value();
+            }
+        }
+    } catch (const std::exception &ex) {
+        LOG_ERROR << "Failed to connect to NextApp server at "
+                  << info.url
+                  <<": "<< ex.what();
+        co_return false;
+    }
+
+    startNextTimer(owner_.server_.config().options.timer_interval_sec
+                   // Add some randomness to avoid all the timers to fire at the same time
+                   + getRandomNumber32() % 15);
+    co_return true;
+}
+
+void GrpcServer::InstanceCommn::startNextTimer(size_t seconds)
+{
+    try {
+        timer_.expires_after(std::chrono::seconds(owner_.server_.config().options.timer_interval_sec));
     } catch(const std::exception &ex) {
-        if (server_.is_done()) {
+        if (owner_.server_.is_done()) {
             LOG_DEBUG_N << "Failed to set timer, but it appears as we are shutting down.";
             return;
         }
         LOG_ERROR << "Failed to set timer: " << ex.what();
-        LOG_ERROR << "Shutting down!";
-        server_.stop();
+        // TODO: Should we shut down? How do we recover from this?
+        assert(false);
     }
 
-    timer_->async_wait([this](const boost::system::error_code &ec) {
+    timer_.async_wait([this](const boost::system::error_code &ec) {
         if (ec) {
             LOG_DEBUG_N << "Timer cancelled: " << ec.message();
             return;
         }
-        LOG_DEBUG << "Timer fired. Refreshing server info.";
+        LOG_DEBUG << "Timer fired. Refreshing server info for " << url_;
         try {
             onTimer();
         } catch(const std::exception &ex) {
-            LOG_ERROR << "Caught exceptin from onTimer(): " << ex.what();
+            LOG_ERROR << "Caught exception from onTimer(): " << ex.what();
         }
-        startNextTimer(server_.config().options.timer_interval_sec);
+        startNextTimer(owner_.server_.config().options.timer_interval_sec
+                       + getRandomNumber32() % 15);
     });
 }
 
-void GrpcServer::onTimer()
-{
-    if (server_.is_done()) {
+void GrpcServer::InstanceCommn::onTimer() {
+    if (owner_.server_.is_done()) {
         LOG_DEBUG_N << "Timer fired, but server is done. Ignoring.";
         return;
     }
 
     // Test the connection to the NextApp server.
     // Create asio C++20 coro scope
-    auto f = asio::co_spawn(server().ctx(), [this]() -> asio::awaitable<void> {
+    auto f = asio::co_spawn(owner_.server().ctx(), [this]() -> asio::awaitable<void> {
         ::grpc::ClientContext ctx;
 
         try {
@@ -458,14 +557,24 @@ void GrpcServer::onTimer()
                 &stub_t::async::Ping,
                 asio::use_awaitable);
 
-            LOG_DEBUG_N << "Still connected to nextapp-server at " << nextapp_config().address;
+            LOG_DEBUG_N << "Still connected to nextapp-server at " << url_;
         } catch(const std::exception &ex) {
             LOG_ERROR << "Failed to ping nextapp-server: " << ex.what();
         }
+    }, boost::asio::use_awaitable);
+}
 
-        co_return;
+boost::asio::awaitable<bool> GrpcServer::connectToInstance(const boost::uuids::uuid&uuid,,
+                                                           const InstanceCommn::InstanceInfo &info)
+{
+    auto instance = std::make_shared<InstanceCommn>(info);
+    auto res = co_await instance->connect(info);
+    if (res) {
+        addInstance(uuid, instance);
+        co_return true;
+    }
 
-    }, asio::use_future);
+    LOG_ERROR << "Failed to connect to instance at " << info.url;
 }
 
 } // ns
