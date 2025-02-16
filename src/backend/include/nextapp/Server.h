@@ -5,6 +5,7 @@
 #include <atomic>
 
 #include <boost/asio.hpp>
+#include <boost/uuid.hpp>
 
 #include "nextapp/nextapp.h"
 #include "nextapp/config.h"
@@ -22,7 +23,7 @@ class GrpcServer;
 
 class Server {
 public:
-    static constexpr uint latest_version = 15;
+    static constexpr uint latest_version = 16;
     static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";
     static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
 
@@ -110,6 +111,9 @@ public:
     const std::string& serverId() const noexcept {
         return server_id_;
     }
+
+    boost::uuids::uuid getAdminUserId();
+
 
 private:
     void handleSignals();

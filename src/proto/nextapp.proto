@@ -36,6 +36,7 @@ enum Error {
     CLIENT_GRPC_ERROR = 28; // Used internally in the client to notify about comm error
     REPLAY_DETECTED = 29; // The request-id is already seen. This is a replay
     INVALID_ARGUMENT = 30;
+    TEMPORATY_FAILURE = 31;
 }
 
 message Page {
@@ -789,6 +790,9 @@ message GetNewReq {
     int64 since = 3; // time_t. Use 0 to fetch all
 }
 
+message ListTenantsReq {
+}
+
 message ResetPlaybackReq {
     uint32 instanceId = 2; // starts at 1
 }
@@ -853,6 +857,7 @@ service Nextapp {
     rpc SetDay(CompleteDay) returns (Status) {}
     rpc SubscribeToUpdates(UpdatesReq) returns (stream Update) {}
     rpc CreateTenant(CreateTenantReq) returns (Status) {}
+    rpc ListTenants(ListTenantsReq) returns (stream Status) {} // admin only
 
     // If called by a super-user, user.uuid can point to any tenant. If unset, the logged-in tenant is used.
     rpc CreateUser(User) returns (Status) {}

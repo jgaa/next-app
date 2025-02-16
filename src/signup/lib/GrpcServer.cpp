@@ -196,8 +196,17 @@ GrpcServer::GrpcServer(Server &server)
             }
 
             // TODO: Deduce the tenant from the email and see if we have a connection to the tenants nextapp instance.
+            auto instance = co_await owner_.server().getInstanceFromUserEmail(req->otpauth().email());
+            if (!instance) {
+                throw server_err{nextapp::pb::Error::GENERIC_ERROR, "Failed to lookup instance from email"};
+            }
 
-            auto resp = co_await owner_.callRpc<nextapp::pb::Status>(
+            auto conn = owner_.getInstance(*instance);
+            if (!conn) {
+                throw server_err{nextapp::pb::Error::TEMPORATY_FAILURE, "No connection for your instance."};
+            }
+
+            auto resp = co_await conn->callRpc<nextapp::pb::Status>(
                 device_req,
                 &stub_t::async::CreateDevice,
                 asio::use_awaitable);
@@ -230,8 +239,9 @@ GrpcServer::GrpcServer(Server &server)
 
 void GrpcServer::start() {
     while(!server_.is_done()) {
+        // Wait for us to be connected to the nextapp instances
         try {
-            startNextapp();
+
             break; // OK
         } catch(const std::exception &ex) {
             LOG_ERROR << "Caught exception while connecting to nextappd: " << ex.what();
@@ -255,109 +265,15 @@ void GrpcServer::stop() {
     grpc_server_.reset();
     LOG_DEBUG << "GrpcServer is done.";
 
-    LOG_DEBUG << "Shutting down NextApp gRPC channel to Nextapp server.";
-    nextapp_stub_.reset();
-}
-
-// TODO: Refactor so we start one client for each nextapp server in the cluster.
-void GrpcServer::startNextapp()
-{
-    // const auto server_url = nextapp_config().address;
-
-    // LOG_INFO << "Connecting to NextApp gRPC endpoint at "
-    //          << server_url;
-    // const bool use_tls = server_url.starts_with("https://");
-
-    // auto server_address = server_url;
-    // if (auto pos = server_address.find("://"); pos != string::npos) {
-    //     server_address = server_address.substr(pos + 3);
-    // }
-
-    // // Create a gRPC channel to the NextApp service.
-    // // Set up TLS credentials with our own certificate.
-    // std::shared_ptr<::grpc::ChannelCredentials> creds;
-    // if (use_tls) {
-    //     ::grpc::SslCredentialsOptions ssl_opts;
-    //     if (!nextapp_config().ca_cert.empty()) {
-    //         ssl_opts.pem_root_certs = readFileToBuffer(nextapp_config().ca_cert);
-    //         LOG_DEBUG_N << "Using ca-cert from " << nextapp_config().ca_cert;
-    //     }
-    //     if (!nextapp_config().server_cert.empty() && !nextapp_config().server_key.empty()) {
-    //         // Load our own certificate and private key (for client auth)
-    //         ssl_opts.pem_private_key = readFileToBuffer(nextapp_config().server_key);
-    //         ssl_opts.pem_cert_chain = readFileToBuffer(nextapp_config().server_cert);
-    //         LOG_DEBUG_N << "Using client-cert from " << nextapp_config().server_cert;
-    //         creds = ::grpc::SslCredentials(ssl_opts);
-    //     } else {
-    //         LOG_WARN_N << "No TLS cert provided. Proceeding without client cert.";
-    //         ::grpc::experimental::TlsChannelCredentialsOptions tls_opts;
-    //         tls_opts.set_verify_server_certs(false);
-    //         creds = ::grpc::experimental::TlsCredentials(tls_opts);
-    //     }
-
-    // } else {
-    //     LOG_WARN_N << "Not using TLS on nextapp grpc connection. Don't do this over a public network!!";
-    //     creds = ::grpc::InsecureChannelCredentials();
-    // }
-    // assert(creds);
-    // if (!creds) {
-    //     LOG_ERROR_N << "Failed to create gRPC channel credentials.";
-    //     throw runtime_error{"Failed to create gRPC channel credentials."};
-    // }
-
-    // ::grpc::ChannelArguments args;
-    // args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, nextapp_config().keepalive_time_sec * 1000);
-    // args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, nextapp_config().keepalive_timeout_sec * 1000);
-
-    // auto channel = ::grpc::CreateCustomChannel(server_address, creds, args);
-    // nextapp_stub_ = nextapp::pb::Nextapp::NewStub(channel);
-
-    // // Test the connection to the NextApp server.
-    // // Create asio C++20 coro scope
-    // auto f = asio::co_spawn(server().ctx(), [this]() -> asio::awaitable<void> {
-    //     ::grpc::ClientContext ctx;
-
-    //     auto resp = co_await callRpc<nextapp::pb::Status>(
-    //         nextapp::pb::Empty{},
-    //         &stub_t::async::Hello,
-    //         asio::use_awaitable);
-
-    //     if (resp.error() != nextapp::pb::Error::OK) {
-    //         throw runtime_error{"Failed to connect and authorize with nextappd: " + resp.message()};
-    //     } else {
-    //         if (resp.has_hello()) {
-    //             const auto& hello = resp.hello();
-    //             session_id_ = hello.sessionid();
-    //             LOG_DEBUG << "Got session id: " << session_id_;
-    //         } else {
-    //             LOG_WARN << "Failed to get hello from nextapp-server's reply";
-    //         }
-    //     }
-
-    //     resp = co_await callRpc<nextapp::pb::Status>(
-    //         nextapp::pb::Empty{},
-    //         &stub_t::async::GetServerInfo,
-    //         asio::use_awaitable);
-
-    //     LOG_INFO << "Connected to nextapp-server at " << nextapp_config().address;
-    //     if (resp.has_serverinfo()) {
-    //         for(const auto& kv : resp.serverinfo().properties()) {
-    //             LOG_INFO << kv.key() << ": " << kv.value();
-    //         }
-    //     }
-
-    //     co_return;
-
-    // }, asio::use_future);
-
-    // try {
-    //     f.get();
-    // } catch (const std::exception &ex) {
-    //     LOG_ERROR << "Failed to connect to NextApp server: " << ex.what();
-    //     throw;
-    // }
-
-    // startNextTimer(server_.config().options.timer_interval_sec);
+    LOG_DEBUG << "Shutting down NextApp gRPC channels to Nextapp servers.";
+    for(auto& [id, conn] : instances_) {
+        try {
+            conn->shutdown();
+        } catch(const std::exception &ex) {
+            LOG_ERROR << "Caught exception while shutting down NextApp connection "
+                << id << ": " << ex.what();
+        }
+    };
 }
 
 void GrpcServer::startSignup()
@@ -421,7 +337,7 @@ boost::asio::awaitable<bool> GrpcServer::InstanceCommn::connect(const InstanceIn
 {
     url_ = info.url;
 
-    LOG_INFO << "Connecting to NextApp gRPC endpoint at " << url_;
+    LOG_DEBUG << "Connecting to NextApp gRPC endpoint at " << url_;
     const bool use_tls = url_.starts_with("https://");
 
     auto server_address = url_;
@@ -463,8 +379,8 @@ boost::asio::awaitable<bool> GrpcServer::InstanceCommn::connect(const InstanceIn
     args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, owner_.nextapp_config().keepalive_time_sec * 1000);
     args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, owner_.nextapp_config().keepalive_timeout_sec * 1000);
 
-    auto channel = ::grpc::CreateCustomChannel(server_address, creds, args);
-    nextapp_stub_ = nextapp::pb::Nextapp::NewStub(channel);
+    channel_ = ::grpc::CreateCustomChannel(server_address, creds, args);
+    nextapp_stub_ = nextapp::pb::Nextapp::NewStub(channel_);
 
     // Connect
     try {
@@ -496,6 +412,7 @@ boost::asio::awaitable<bool> GrpcServer::InstanceCommn::connect(const InstanceIn
             for(const auto& kv : resp.serverinfo().properties()) {
                 LOG_INFO << kv.key() << ": " << kv.value();
             }
+            server_info_ = resp.serverinfo();
         }
     } catch (const std::exception &ex) {
         LOG_ERROR << "Failed to connect to NextApp server at "
@@ -564,17 +481,19 @@ void GrpcServer::InstanceCommn::onTimer() {
     }, boost::asio::use_awaitable);
 }
 
-boost::asio::awaitable<bool> GrpcServer::connectToInstance(const boost::uuids::uuid&uuid,,
-                                                           const InstanceCommn::InstanceInfo &info)
+boost::asio::awaitable<std::optional<::nextapp::pb::ServerInfo>>
+GrpcServer::connectToInstance(const boost::uuids::uuid&uuid,
+                              const InstanceCommn::InstanceInfo &info)
 {
-    auto instance = std::make_shared<InstanceCommn>(info);
+    auto instance = std::make_shared<InstanceCommn>(*this);
     auto res = co_await instance->connect(info);
     if (res) {
         addInstance(uuid, instance);
-        co_return true;
+        co_return instance->serverInfo();
     }
 
     LOG_ERROR << "Failed to connect to instance at " << info.url;
+    co_return std::nullopt;
 }
 
 } // ns

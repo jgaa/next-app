@@ -311,9 +311,15 @@ int main(int argc, char* argv[]) {
             LOG_INFO << appname << ' ' << APP_VERSION << ".";
             try {
                 Server server{config};
+                server.init();
+
+                ScopedExit se([&] {
+                    server.stop();
+                });
+
                 boost::uuids::uuid userUuid;
                 if (admin_cert) {
-                    userUuid = toUuid(nextapp::Server::system_user);
+                    userUuid = server.getAdminUserId();
                 } else if (!client_cert_uuid.empty()){
                     userUuid = toUuid(client_cert_uuid);
                 } else {

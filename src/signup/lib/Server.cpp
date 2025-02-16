@@ -57,12 +57,19 @@ void Server::init()
 
     welcome_text_ = readFileToBuffer(config_.cluster.welcome_path);
     LOG_DEBUG << "Welcome text loaded from " << config_.cluster.welcome_path;
+
+    db_.emplace(ctx_, config().db);
+
+    assert(!grpc_service_);
+    grpc_service_ = make_shared<GrpcServer>(*this);
 }
 
 void Server::run()
 {
     asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
             try {
+                co_await db().init();
+                co_await checkDb();
                 co_await loadCluster();
                 co_await connectToInstances();
                 co_await startGrpcService();
@@ -138,13 +145,10 @@ void Server::runIoThread(const size_t id)
 boost::asio::awaitable<bool> Server::loadCluster()
 {
     LOG_DEBUG_N << "Loading regions...";
-    auto cfg = config_.db;
-    cfg.max_connections = 1;
-    mysqlpool::Mysqlpool db{ctx_, cfg};
 
     auto cluster = make_shared<Cluster>();
 
-    auto conn = co_await db.getConnection();
+    auto conn = co_await db().getConnection();
 
     {
         auto res = co_await conn.exec("SELECT id, name, description, created, state FROM region");
@@ -154,11 +158,10 @@ boost::asio::awaitable<bool> Server::loadCluster()
             Cluster::Region r;
             r.uuid = toUuid(row[ID].as_string());
             r.name = row[NAME].as_string();
-            r.description = row[DESC].as_string();
+            r.description = toStringIfValue(row, DESC);
             r.created_at = chrono::system_clock::to_time_t(row[CREATED].as_datetime().get_time_point());
             r.state = row[STATE].as_string() == "active" ? Cluster::Region::State::ACTIVE
                                                          : Cluster::Region::State::INACTIVE;
-
             cluster->regions_.emplace(r.uuid, std::move(r));
         }
     }
@@ -171,24 +174,26 @@ boost::asio::awaitable<bool> Server::loadCluster()
 
         for(const auto& row : res.rows()) {
             auto region = toUuid(row[REGION].as_string());
-            Cluster::Region::Instance i;
-            i.uuid = toUuid(row[ID].as_string());
-            i.url = row[GRPC_URL].as_string();
-            i.pub_url = row[GRPC_PUBLIC_URL].as_string();
-            //i.metrics_url = row[METRICS_URL].as_string();
-            i.created_at = chrono::system_clock::to_time_t(row[CREATED].as_datetime().get_time_point());
-            i.x509_ca_cert = row[CA_CERT].as_string();
-            i.x509_cert = row[GRPC_CERT].as_string();
-            i.x509_key = row[GRPC_KEY].as_string();
-            i.server_id = row[SERVER_ID].as_string();
-            i.state = row[STATE].as_string() == "active" ? Cluster::Region::Instance::State::ACTIVE
+            auto instance = make_unique<Cluster::Region::Instance>();
+            instance->uuid = toUuid(row[ID].as_string());
+            instance->url = row[GRPC_URL].as_string();
+            instance->pub_url = row[GRPC_PUBLIC_URL].as_string();
+            instance->metrics_url = toStringIfValue(row, METRICS_URL);
+            instance->created_at = chrono::system_clock::to_time_t(row[CREATED].as_datetime().get_time_point());
+            instance->x509_ca_cert = toStringIfValue(row, CA_CERT);
+            instance->x509_cert = toStringIfValue(row, GRPC_CERT);
+            instance->x509_key = toStringIfValue(row, GRPC_KEY);
+            instance->server_id = toStringIfValue(row, SERVER_ID);
+            instance->state = row[STATE].as_string() == "active" ? Cluster::Region::Instance::State::ACTIVE
                                                          : Cluster::Region::Instance::State::INACTIVE;
-            i.free_slots = row[FREE_SLOTS].as_int64();
+            instance->free_slots = toIntIfValue(row, SERVER_ID);
 
             if (auto it = cluster->regions_.find(region); it != cluster->regions_.end()) {
-                it->second.instances_.emplace(i.uuid, std::move(i));
+                auto& region = it->second;
+                const auto id = instance->uuid;
+                it->second.instances_.emplace(id, std::move(instance));
             } else {
-                LOG_ERROR << "Instance " << i.uuid << " references unknown region " << region;
+                LOG_ERROR << "Instance " << instance->uuid << " references unknown region " << region;
             }
         }
     }
@@ -217,8 +222,6 @@ std::shared_ptr<std::vector<signup::pb::Region> > Server::getRegions()
 boost::asio::awaitable<void> Server::startGrpcService()
 {
     LOG_DEBUG_N << "Starting gRPC services...";
-    assert(!grpc_service_);
-    grpc_service_ = make_shared<GrpcServer>(*this);
     grpc_service_->start();
     co_return;
 }
@@ -227,25 +230,82 @@ boost::asio::awaitable<void> Server::startGrpcService()
 // This creates and connects to all active instances
 boost::asio::awaitable<void> Server::connectToInstances()
 {
+    const auto max_wait = chrono::steady_clock::now() + chrono::seconds(config().options.max_retry_time_to_nextapp_secs);
     assert(grpc_service_); // Must be initialized
-    if (auto cluster = cluster_.load()) {
-        for(auto& [_, region] : cluster->regions_) {
-            LOG_INFO << "Connecting to instances in region " << region.name;
-            for(auto& [_, instance] : region.instances_) {
-                if (instance.state == Cluster::Region::Instance::State::ACTIVE) {
-                    LOG_INFO << "  -- Connecting to instance " << instance.uuid << " at " << instance.url;
-                    GrpcServer::InstanceCommn::InstanceInfo i;
-                    i.url = instance.url;
-                    i.x509_ca_cert = instance.x509_ca_cert;
-                    i.x509_cert = instance.x509_cert;
-                    i.x509_key = instance.x509_key;
-                    instance.is_online = co_await grpc_service_->connectToInstance(instance.uuid, i);
-                    // TODO: Schedule retry if not online
-                    // TODO: Update the online status from grpc server if it loose the connection
+    while(!is_done()) {
+        if (auto cluster = cluster_.load()) {
+            auto num_instances = 0u;
+            auto num_connected = 0u;
+
+            for(auto& [_, region] : cluster->regions_) {
+                LOG_INFO << "Connecting to instances in region " << region.name;
+                num_instances += region.instances_.size();
+                for(auto& [_, instance] : region.instances_) {
+                    if (instance->is_online) {
+                        ++num_connected;
+                        continue;
+                    }
+
+                    if (instance->state == Cluster::Region::Instance::State::ACTIVE) {
+                        LOG_INFO << "  -- Connecting to instance " << instance->uuid << " at " << instance->url;
+                        GrpcServer::InstanceCommn::InstanceInfo i;
+                        i.url = instance->url;
+                        i.x509_ca_cert = instance->x509_ca_cert;
+                        i.x509_cert = instance->x509_cert;
+                        i.x509_key = instance->x509_key;
+                        auto info = co_await grpc_service_->connectToInstance(instance->uuid, i);
+                        if (info) {
+                            instance->is_online = true;
+                            ++num_connected;
+
+                            // Is this the first time we connect to this instance?
+                            if (instance->server_id.empty()) {
+                                if (auto server_id = getValueFromKey(info->properties(), "server-id")) {
+                                    instance->server_id = *server_id;
+                                    co_await initializeInstance(*instance);
+                                } else {
+                                    LOG_ERROR << "Failed to get server-id from the instance " << instance->uuid;
+                                }
+                            }
+
+                        }
+                        // TODO: Schedule retry if not online
+                        // TODO: Update the online status from grpc server if it loose the connection
+                    }
                 }
             }
+
+            if (num_instances == num_connected) {
+                LOG_INFO << "All instances are connected.";
+                break;
+            }
+
+            if (chrono::steady_clock::now() > max_wait) {
+                LOG_ERROR << "Failed to connect to all instances in time."
+                          << ". Connected to " << num_connected << " out of " << num_instances;
+                break;
+            };
+
+            LOG_INFO << "Connected to " << num_connected << " out of " << num_instances << " instances."
+                     << " Retrying in " << config().options.retry_connect_to_nextappd_secs << " seconds.";
+
+            auto timer = asio::steady_timer(ctx_, chrono::seconds(config().options.retry_connect_to_nextappd_secs));
+            co_await timer.async_wait(asio::use_awaitable);
         }
     }
+}
+
+boost::asio::awaitable<void> Server::initializeInstance(Cluster::Region::Instance &instance)
+{
+    // TODO: Do initial sync to get any tenants and users
+    // auto conn = grpc_service_->getInstance(instance.uuid);
+    // if (!conn) {
+    //     throw runtime_error("Failed to get connection to the instance " + to_string(instance.uuid));
+    // }
+
+    co_await db().exec("UPDATE instance SET server_id = ? WHERE id = ?", instance.server_id, instance.uuid);
+
+    co_return;
 }
 
 void Server::handleSignals()
@@ -319,18 +379,18 @@ boost::asio::awaitable<nextapp::Server::AssignedInstance> nextapp::Server::assig
         if (auto it = cluster->regions_.find(region); it != cluster->regions_.end()) {
             vector<const Cluster::Region::Instance *> alternatives;
             for(const auto& [_, instance] : it->second.instances_) {
-                if (instance.is_online && instance.state == Cluster::Region::Instance::State::ACTIVE) {
-                    alternatives.push_back(&instance);
+                if (instance->is_online && instance->state == Cluster::Region::Instance::State::ACTIVE) {
+                    alternatives.push_back(instance.get());
                 }
             }
 
             if (!alternatives.empty()) {
                 // TODO: Implement load balancing
-                const auto& use_instance = *alternatives.at(getRandomNumber32() % alternatives.size());
+                const auto *use_instance = alternatives.at(getRandomNumber32() % alternatives.size());
                 co_return AssignedInstance{
                     .region = region,
-                    .instance = use_instance.uuid,
-                    .pub_url = use_instance.pub_url,
+                    .instance = use_instance->uuid,
+                    .pub_url = use_instance->pub_url,
                 };
             }
         }
@@ -349,7 +409,29 @@ string nextapp::Server::getPasswordHash(std::string_view password, std::string_v
 
 boost::asio::awaitable<bool> nextapp::Server::checkDb()
 {
-    // TODO: Implement
+    LOG_TRACE_N << "Checking the database version...";
+    auto res = co_await db_->exec("SELECT version, salt FROM signup where id = 1");
+
+    enum Cols { VERSION, SALT };
+
+    if (res.has_value()) {
+        const auto version = res.rows().front().at(VERSION).as_int64();
+        salt_ = res.rows().front().at(SALT).as_string();
+        if (salt_.empty()) {
+            LOG_ERROR << "Salt is empty in the 'signup' table.!";
+            co_return false;
+        }
+        LOG_DEBUG << "I need the database to be at version " << latest_version
+                  << ". The existing database is at version " << version << '.';
+
+        if (latest_version > version) {
+            co_await upgradeDbTables(version);
+            co_return true;
+        }
+        co_return version == latest_version;
+    }
+
+    co_return false;
 }
 
 
@@ -426,18 +508,22 @@ boost::asio::awaitable<void> nextapp::Server::upgradeDbTables(uint version)
     static constexpr auto v1_bootstrap = to_array<string_view>({
         R"(CREATE TABLE signup (
             id INTEGER NOT NULL PRIMARY KEY,
-            version INTEGER NOT NULL))",
-        "INSERT INTO signup (id, version) VALUES (1, 0)",
-            R"(CREATE TABLE region (
-            id VARCHAR(36) NOT NULL PRIMARY KEY DEFAULT UUID(),
+            version INTEGER NOT NULL,
+            salt VARCHAR(255) NOT NULL
+        ))",
+
+        R"(CREATE TABLE region (
+            id UUID NOT NULL PRIMARY KEY DEFAULT UUID(),
             name VARCHAR(255) NOT NULL,
             description TEXT,
             created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             state ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
-        UNIQUE KEY (name)))",
+        UNIQUE KEY (name)
+        ))",
+
         R"(CREATE TABLE instance (
-            id VARCHAR(36) NOT NULL PRIMARY KEY DEFAULT UUID(), -- Our UUID.
-            region VARCHAR(36) NOT NULL,
+            id UUID NOT NULL PRIMARY KEY DEFAULT UUID(), -- Our UUID.
+            region UUID NOT NULL,
             grpc_url VARCHAR(255) NOT NULL,
             grpc_public_url VARCHAR(255) NOT NULL,
             metrics_url VARCHAR(255), -- Fixed missing data type
@@ -455,29 +541,43 @@ boost::asio::awaitable<void> nextapp::Server::upgradeDbTables(uint version)
             db_size INTEGER,
             free_dispspace INTEGER,
         FOREIGN KEY (region) REFERENCES region(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
         R"(CREATE TABLE tenant (
-            id VARCHAR(36) NOT NULL PRIMARY KEY DEFAULT UUID(),
+            id UUID NOT NULL PRIMARY KEY DEFAULT UUID(),
             state ENUM('active', 'inactive', 'migrating') NOT NULL DEFAULT 'active',
-            instance VARCHAR(36) NOT NULL,
-            region VARCHAR(36) NOT NULL,
+            instance UUID NOT NULL,
+            region UUID NOT NULL,
             created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (instance) REFERENCES instance(id) ON DELETE CASCADE ON UPDATE RESTRICT,
         FOREIGN KEY (region) REFERENCES region(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
-        R"(CREATE TABLE voucher (
-            id VARCHAR(36) NOT NULL PRIMARY KEY DEFAULT UUID(),
-            comment TEXT, -- optional
-            region VARCHAR(36), -- optional
-            created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            ttl INTEGER NOT NULL DEFAULT 604800, -- one week
-        FOREIGN KEY (region) REFERENCES region(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
         R"(CREATE TABLE user (
-            id VARCHAR(36) NOT NULL PRIMARY KEY DEFAULT UUID(),
-            nickname VARCHAR(255) NOT NULL, -- unix name, email, whatever the admin likes
+            id UUID NOT NULL PRIMARY KEY DEFAULT UUID(),
+            email_hash VARCHAR(255) NOT NULL COMMENT 'SHA256(email:signup.salt)',
+            tenant UUID NOT NULL,
             created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             state ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
-            type ENUM('admin', 'user', 'metrics') NOT NULL DEFAULT 'user',
+            UNIQUE KEY (email_hash),
+        FOREIGN KEY (tenant) REFERENCES tenant(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        R"(CREATE TABLE voucher (
+            id VARCHAR(36) NOT NULL PRIMARY KEY DEFAULT UUID(),
+            comment TEXT, -- optional
+            region UUID, -- optional
+            created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ttl INTEGER NOT NULL DEFAULT 604800, -- one week
+        FOREIGN KEY (region) REFERENCES region(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+
+        // Table for authentication for the signup service itself.
+        R"(CREATE TABLE localuser (
+            id VARCHAR(36) NOT NULL PRIMARY KEY DEFAULT UUID(),
+            nickname VARCHAR(255) NOT NULL COMMENT 'unix name, email, whatever the admin likes.',
+            created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            state ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+            kind ENUM('admin', 'user', 'metrics') NOT NULL DEFAULT 'user',
             auth_token varchar(255),
             auth_type enum('password') NOT NULL DEFAULT 'password',
             UNIQUE KEY (nickname)))",
@@ -508,6 +608,10 @@ boost::asio::awaitable<void> nextapp::Server::upgradeDbTables(uint version)
                 co_await handle.exec(query);
             }
 
+            if (latest_version == 1) {
+                auto salt = getRandomStr(32);
+                co_await handle.exec("INSERT INTO signup (id, version, salt) VALUES (1, 1, ?)", salt);
+            }
 
             co_await handle.exec("UPDATE signup SET VERSION = ? WHERE id = 1", latest_version);
             co_await trx.commit();
@@ -539,7 +643,7 @@ boost::asio::awaitable<void> nextapp::Server::createAdminUser()
 
     auto conn = co_await db.getConnection();
     auto res = co_await conn.exec(
-        "INSERT INTO user (id, nickname, type, auth_token) VALUES (?, ?, ?, ?)",
+        "INSERT INTO localuser (id, nickname, kind, auth_token) VALUES (?, ?, ?, ?)",
         id, admin, "admin", hash);
 }
 
@@ -547,7 +651,8 @@ boost::asio::awaitable<void> nextapp::Server::createDefaultNextappInstance()
 {
     if (config_.grpc_nextapp.ca_cert.empty()
         || config_.grpc_nextapp.address.empty()
-        || config_.grpc_nextapp.server_key.empty()) {
+        || config_.grpc_nextapp.server_key.empty()
+        || config_.grpc_nextapp.server_cert.empty()) {
         LOG_INFO << "Nextapp instance is not configured. Skipping...";
         co_return;
     }
@@ -583,3 +688,32 @@ boost::asio::awaitable<void> nextapp::Server::createDefaultNextappInstance()
         readFileToBuffer(config_.grpc_nextapp.server_cert));
 }
 
+boost::asio::awaitable<std::optional<boost::uuids::uuid> > nextapp::Server::getRegionFromUserEmail(std::string_view email)
+{
+    auto hash = getEmailHash(email);;
+
+    auto conn = co_await db().getConnection();
+    auto res = co_await conn.exec("SELECT t.region FROM tenant t JOIN user u ON u.tenant = t.id WHERE u.email_hash = ?", hash);
+    if (res.rows().empty()) {
+        co_return std::nullopt;
+    }
+
+    co_return toUuid(res.rows().front()[0].as_string());
+}
+
+boost::asio::awaitable<std::optional<boost::uuids::uuid>> nextapp::Server::getInstanceFromUserEmail(std::string_view email) {
+    auto hash = getEmailHash(email);;
+
+    auto conn = co_await db().getConnection();
+    auto res = co_await conn.exec("SELECT t.instance FROM tenant t JOIN user u ON u.tenant = t.id WHERE u.email_hash = ?", hash);
+    if (res.rows().empty()) {
+        co_return std::nullopt;
+    }
+
+    co_return toUuid(res.rows().front()[0].as_string());
+}
+
+string nextapp::Server::getEmailHash(std::string_view email) const
+{
+    return  sha256(format("{}:{}", toLower(email), salt_), true);
+}

@@ -28,10 +28,6 @@ set_property(TARGET boost PROPERTY
 add_subdirectory(lib)
 add_subdirectory(server)
 
-set(DEFAULT_MYSQLPOOL_DBUSER signup CACHE INTERNAL "")
-set(DEFAULT_MYSQLPOOL_DATABASE signup CACHE INTERNAL "")
-
-
 # if (SIGNUP_WITH_TESTS)
 #     find_package(GTest REQUIRED)
 #     enable_testing()

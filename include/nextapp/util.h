@@ -52,6 +52,17 @@ std::string getRandomStr(size_t len, std::string_view chars);
 
 bool isValidEmail(const std::string& email);
 
+template <typename T>
+std::optional<std::string> getValueFromKey(const T& values, std::string_view key) {
+    for(auto& kv : values) {
+        if (kv.key() == key) {
+            return kv.value();
+        }
+    }
+
+    return {};
+}
+
 // BOOST_SCOPE_EXIT confuses Clang-Tidy :/
 template <typename T>
 struct ScopedExit {
@@ -179,6 +190,27 @@ std::optional<std::string> toStringOrNull(const T& val) {
 
     return std::string{val};
 }
+
+template <typename T>
+std::string_view toStringIfValue(const T& row, size_t col) {
+    const auto &r = row.at(col);
+    if (r.is_null()) {
+        return {};
+    };
+
+    return r.as_string();
+}
+
+template <typename T>
+int64_t toIntIfValue(const T& row, size_t col) {
+    const auto &r = row.at(col);
+    if (r.is_null()) {
+        return {};
+    };
+
+    return r.as_int64();
+}
+
 
 std::vector<char> base64Decode(const std::string_view in);
 std::string Base64Encode(const span_t in);

@@ -8,6 +8,7 @@
 
 #include "signup/config.h"
 #include "nextapp/util.h"
+#include "mysqlpool/mysqlpool.h"
 
 #include "signup.pb.h"
 
@@ -43,6 +44,7 @@ public:
                 std::string x509_cert;
                 std::string x509_key;
                 std::string server_id;
+                std::string metrics_url;
                 std::atomic_bool is_online{false};
             };
 
@@ -52,7 +54,15 @@ public:
             time_t created_at{};
             State state{State::ACTIVE};
 
-            std::map<boost::uuids::uuid, Instance> instances_;
+            Instance& instance(const boost::uuids::uuid& uuid) {
+                return *instances_.at(uuid);
+            }
+
+            Instance& instance(const boost::uuids::uuid& uuid) const {
+                return *instances_.at(uuid);
+            }
+
+            std::map<boost::uuids::uuid, std::unique_ptr<Instance>> instances_;
         };
 
         std::map<boost::uuids::uuid, Region> regions_;
@@ -104,6 +114,16 @@ public:
 
     boost::asio::awaitable<AssignedInstance> assignInstance(const boost::uuids::uuid& region);
 
+    std::string getEmailHash(std::string_view email) const;
+
+    boost::asio::awaitable<std::optional<boost::uuids::uuid>> getRegionFromUserEmail(std::string_view email);
+    boost::asio::awaitable<std::optional<boost::uuids::uuid>> getInstanceFromUserEmail(std::string_view email);
+
+    auto& db() {
+        assert(db_.has_value());
+        return *db_;
+    }
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
@@ -118,18 +138,22 @@ private:
     boost::asio::awaitable<void> createDefaultNextappInstance(); // For bootstrap
     boost::asio::awaitable<void> startGrpcService();
     boost::asio::awaitable<void> connectToInstances();
+    boost::asio::awaitable<void> initializeInstance(Cluster::Region::Instance& instance);
 
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;
     std::vector <std::jthread> io_threads_;
+    std::optional<jgaa::mysqlpool::Mysqlpool> db_;
     Config config_;
     std::atomic_size_t running_io_threads_{0};
     std::atomic_bool done_{false};
     std::shared_ptr<GrpcServer> grpc_service_;
     std::string welcome_text_;
     std::string eula_text_;
+    std::string salt_;
     //std::atomic<std::shared_ptr<std::vector<::signup::pb::Region>>> regions_;
     std::atomic<std::shared_ptr<Cluster>> cluster_;
+
 };
 
 

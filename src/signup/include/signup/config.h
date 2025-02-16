@@ -41,7 +41,7 @@ struct ServerOptions {
     unsigned timer_interval_sec = 120;
 
     unsigned retry_connect_to_nextappd_secs = 2; // 0 to disable
-
+    unsigned max_retry_time_to_nextapp_secs = 60; //
 };
 
 struct Cluster {

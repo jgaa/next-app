@@ -102,15 +102,27 @@ public:
             }, token);
         }
 
+        void shutdown() {
+            nextapp_stub_.reset();
+            channel_.reset();
+            //grpc_channel_destroy(channel_.get());
+        }
+
+        const auto& serverInfo() const noexcept {
+            return server_info_;
+        }
+
     private:
         void startNextTimer(size_t seconds);
         void onTimer();
 
+        std::shared_ptr<::grpc::Channel> channel_;
         std::unique_ptr<nextapp::pb::Nextapp::Stub> nextapp_stub_;
         std::string session_id_;
         boost::asio::steady_timer timer_;
         GrpcServer& owner_;
         std::string url_;
+        pb::ServerInfo server_info_;
     };
 
     template <typename T>
@@ -247,13 +259,13 @@ public:
         instances_.emplace(uuid, std::move(instance));
     }
 
-    boost::asio::awaitable<bool> connectToInstance(const boost::uuids::uuid&uuid,
-                                                   const InstanceCommn::InstanceInfo& info);
+    boost::asio::awaitable<std::optional<::nextapp::pb::ServerInfo>>
+    connectToInstance(const boost::uuids::uuid&uuid,
+                      const InstanceCommn::InstanceInfo& info);
 
 private:
     // The Server instance where we get objects in the application, like config and database
     Server& server_;
-    void startNextapp();
     void startSignup();
 
     // Thread-safe method to get a unique client-id for a new RPC.

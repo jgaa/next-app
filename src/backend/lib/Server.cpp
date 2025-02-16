@@ -160,12 +160,6 @@ void Server::bootstrap(const BootstrapOptions& opts)
 
 void Server::createClientCert(const std::string &fileName, const boost::uuids::uuid &user)
 {
-    init();
-
-    ScopedExit se([this] {
-        stop();
-    });
-
     asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
 
         filesystem::path cert_name = fileName + "-cert.pem";
@@ -269,6 +263,23 @@ boost::asio::awaitable<CertData> Server::getCert(std::string_view id, WithMissin
     assert(!cd.key.empty());
 
     co_return cd;
+}
+
+boost::uuids::uuid Server::getAdminUserId()
+{
+    assert(db_);
+    boost::uuids::uuid uuid;
+    boost::asio::co_spawn(ctx_, [&]() -> boost::asio::awaitable<void> {
+        auto res = co_await db().exec("SELECT id FROM user WHERE kind='super' AND active=1 AND system_user=1 LIMIT 1");
+        if (res.has_value() && !res.rows().empty()) {
+            uuid = toUuid(res.rows().front().front().as_string());
+        } else {
+            throw std::runtime_error("No active system/super-user found");
+        }
+        co_return;
+    }, boost::asio::use_future).get();
+
+    return uuid;
 }
 
 void Server::initCtx(size_t numThreads)
@@ -385,9 +396,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               name VARCHAR(128) NOT NULL,
               kind ENUM('super', 'regular') NOT NULL DEFAULT 'regular',
               descr TEXT,
-              active TINYINT(1) NOT NULL DEFAULT 1))",
-
-        "INSERT INTO tenant (id, name, kind) VALUES ('a5e7bafc-9cba-11ee-a971-978657e51f0c', 'nextapp', 'super')",
+              active TINYINT(1) NOT NULL DEFAULT 1),
+              system_tenant TINYINT(1))",
 
         R"(CREATE TABLE user (
               id UUID not NULL default UUID() PRIMARY KEY,
@@ -396,9 +406,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'regular',
               descr TEXT,
               active TINYINT(1) NOT NULL DEFAULT 1,
+              system_user TINYINT(1)
         FOREIGN KEY(tenant) REFERENCES tenant(id)))",
-
-        "INSERT INTO user (id, tenant, name, kind) VALUES ('dd2068f6-9cbb-11ee-bfc9-f78040cadf6b', 'a5e7bafc-9cba-11ee-a971-978657e51f0c', 'admin', 'super')",
 
         R"(CREATE TABLE node (
               id UUID not NULL default UUID() PRIMARY KEY,
@@ -981,6 +990,18 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v16_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(ALTER TABLE tenant
+            ADD COLUMN IF NOT EXISTS system_tenant TINYINT(1))",
+
+        R"(ALTER TABLE user
+            ADD COLUMN IF NOT EXISTS system_user TINYINT(1))",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -997,6 +1018,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v13_upgrade,
         v14_upgrade,
         v15_upgrade,
+        v16_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
@@ -1017,6 +1039,24 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             auto relevant = ranges::drop_view(versions, version);
             for(string_view query : relevant | std::views::join) {
                 co_await handle.exec(query);
+            }
+
+            if (version == 0) {
+                // Create system tenant
+                // Names and uuid's must be globally unique, so it can be used in a cluster.
+                const auto tenant_id = newUuid();
+                const auto user_id = newUuid();
+                const auto tenant_name = format("system-{}", to_string(tenant_id));
+                const auto user_name = format("admin-{}", to_string(user_id));
+
+                // Add tenant
+                co_await handle.exec("INSERT INTO tenant (id, name, kind, system_tenant) VALUES (?, ?, 'super', 1)", tenant_id, tenant_name);
+                // Add user
+                co_await handle.exec("INSERT INTO user (id, tenant, name, kind, system_user) VALUES (?, ?, ?, 'super', 1)", user_id, tenant_id, user_name);
+            } else if (version < 16) {
+                // TODO: Remove after upgrade
+                co_await handle.exec("UPDATE tenant SET system_tenant=1 WHERE kind='super'");
+                co_await handle.exec("UPDATE user SET system_user=1 WHERE kind='super'");
             }
 
 

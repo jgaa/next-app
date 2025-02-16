@@ -55,6 +55,8 @@ struct Config {
     Config() {
         db.timer_interval_ms = 30000;
         db.max_connections = 16;
+        db.username = "nextapp";
+        db.database = "nextapp";
 
         http.http_port = "9012";
         http.num_http_threads = 2;

@@ -95,6 +95,8 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         };
 
         add("version", NEXTAPP_VERSION);
+        add("server-id", Server::instance().serverId());
+
         co_return;
     }, __func__);
 }

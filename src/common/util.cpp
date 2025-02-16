@@ -47,7 +47,7 @@ std::string getEnv(const char *name, std::string def) {
 string readFileToBuffer(const std::filesystem::path &path)
 {
     if (!std::filesystem::exists(path)) {
-        throw runtime_error{format("File {} does not exist", path.string())};
+        throw runtime_error{format("File '{}' does not exist", path.string())};
     }
 
     LOG_TRACE_N << "Reading file: " << path;
