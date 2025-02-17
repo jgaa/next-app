@@ -192,7 +192,7 @@ std::optional<std::string> toStringOrNull(const T& val) {
 }
 
 template <typename T>
-std::string_view toStringIfValue(const T& row, size_t col) {
+auto toStringIfValue(const T& row, size_t col) -> decltype(row[0].as_string()) {
     const auto &r = row.at(col);
     if (r.is_null()) {
         return {};

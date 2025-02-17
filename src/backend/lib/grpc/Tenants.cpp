@@ -54,7 +54,7 @@ string getOtpHash(string_view user, string_view uuid, string_view otp)
             if (tenant.uuid().empty()) {
                 tenant.set_uuid(newUuidStr());
             }
-            if (tenant.properties().empty()) {
+            if (!tenant.has_properties()) {
                 tenant.mutable_properties();
             }
 
@@ -431,5 +431,169 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
             co_return;
         }, __func__);
 }
+
+::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::ListTenants(
+    ::grpc::CallbackServerContext *ctx, const pb::ListTenantsReq *req)
+{
+    return writeStreamHandler(ctx, req,
+    [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        const auto stream_scope = owner_.server().metrics().data_streams_actions().scoped();
+        const auto uctx = rctx.uctx;
+        const auto& cuser = uctx->userUuid();
+
+        if (!uctx->isAdmin()) {
+            throw server_err{nextapp::pb::Error::PERMISSION_DENIED, "Permission denied"};
+        };
+
+        constexpr string_view query = R"(SELECT
+    t.id AS tenant_id,
+    t.name AS tenant_name,
+    t.kind AS tenant_kind,
+    t.descr AS tenant_descr,
+    t.properties AS tenant_properties,
+    t.state AS tenant_state,
+    t.system_tenant AS tenant_system_tenant,
+    u.id AS user_id,
+    u.name AS user_name,
+    u.kind AS user_kind,
+    u.descr AS user_descr,
+    u.active AS user_active,
+    u.email AS user_email,
+    u.properties AS user_properties,
+    u.system_user AS user_system_user
+FROM tenant t
+LEFT JOIN user u ON t.id = u.tenant
+ORDER BY t.id;
+)";
+        enum Cols {
+            TENANT_ID, TENANT_NAME, TENANT_KIND, TENANT_DESCR, TENANT_PROPERTIES, TENANT_STATE, TENANT_SYSTEM_TENANT,
+            USER_ID, USER_NAME, USER_KIND, USER_DESCR, USER_ACTIVE, USER_EMAIL, USER_PROPERTIES, USER_SYSTEM_USER
+        };
+
+        // Use batched reading from the database, so that we can get all the data, but
+        // without running out of memory.
+        assert(rctx.dbh);
+        co_await  rctx.dbh->start_exec(query, rctx.uctx->dbOptions());
+
+        string current_tenant_id;
+
+        nextapp::pb::Status reply;
+
+        auto *tenant = reply.mutable_tenant();
+        auto num_rows_in_batch = 0u;
+        auto total_rows = 0u;
+        auto batch_num = 0u;
+
+        auto flush = [&]() -> boost::asio::awaitable<void> {
+            reply.set_error(::nextapp::pb::Error::OK);
+            if (!num_rows_in_batch) {
+                co_return;
+            }
+            assert(reply.has_tenant());
+            ++batch_num;
+            reply.set_message(format("Fetched {} users for tenant #{}", reply.tenant().users().size(), batch_num));
+            co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
+            reply.Clear();
+            tenant = reply.mutable_tenant();
+            num_rows_in_batch = {};
+        };
+
+        bool read_more = true;
+        for(auto rows = co_await rctx.dbh->readSome()
+             ; read_more
+             ; rows = co_await rctx.dbh->readSome()) {
+
+            read_more = rctx.dbh->shouldReadMore(); // For next iteration
+
+            if (rows.empty()) {
+                LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+                break;
+            }
+
+            for(const auto& row : rows) {
+                const auto tenant_id = row.at(TENANT_ID).as_string();
+                if (tenant_id != current_tenant_id) {
+                    if (!current_tenant_id.empty()) {
+                        co_await flush();
+                    }
+                    // Fill in the tenant-data
+                    current_tenant_id = tenant_id;
+                    tenant->set_uuid(tenant_id);
+                    tenant->set_name(toStringIfValue(row, TENANT_NAME));
+                    // kind enum
+                    {
+                        const auto kind = toUpper((toStringIfValue(row, TENANT_KIND)));
+                        pb::Tenant::Kind kind_value{};
+                        if (pb::Tenant::Kind_Parse(kind, &kind_value)) {
+                            tenant->set_kind(kind_value);
+                        }
+                    }
+                    tenant->set_descr(toStringIfValue(row, TENANT_DESCR));
+                    {
+                        // Read it from protobuf binary format
+                        auto *p = tenant->mutable_properties();
+                        if (auto kv = KeyValueFromBlob(row.at(TENANT_PROPERTIES))) {
+                            tenant->mutable_properties()->CopyFrom(*kv);
+                        }
+                    }
+                    // state enum
+                    {
+                        const auto state = toUpper((toStringIfValue(row, TENANT_STATE)));
+                        pb::Tenant::State state_value{};
+                        if (pb::Tenant::State_Parse(state, &state_value)) {
+                            tenant->set_state(state_value);
+                        }
+                    }
+                    auto st = row.at(TENANT_SYSTEM_TENANT);
+                    tenant->set_system_tenant(!st.is_null() && st.as_int64() > 0);
+
+                    // End of tenant data
+                };
+
+                ++total_rows;
+                ++num_rows_in_batch;
+
+                const auto user_id = row.at(USER_ID).as_string();
+                if (!user_id.empty()) {
+                    // Fill in the user data
+                    auto * u = tenant->add_users();
+                    u->set_uuid(user_id);
+                    u->set_tenant(tenant_id);
+                    u->set_name(toStringIfValue(row, USER_NAME));
+
+                    // kind enum
+                    {
+                        const auto kind = toUpper((toStringIfValue(row, USER_KIND)));
+                        pb::User::Kind kind_value{};
+                        if (pb::User::Kind_Parse(kind, &kind_value)) {
+                            u->set_kind(kind_value);
+                        }
+                    }
+                    u->set_descr(toStringIfValue(row, USER_DESCR));
+                    auto active = row.at(USER_ACTIVE);
+                    u->set_active(!active.is_null() && active.as_int64() > 0);
+                    u->set_email(toStringIfValue(row, USER_EMAIL));
+                    {
+                        // Read it from protobuf binary format
+                        auto *p = u->mutable_properties();
+                        if (auto kv = KeyValueFromBlob(row.at(TENANT_PROPERTIES))) {
+                            tenant->mutable_properties()->CopyFrom(*kv);
+                        }
+                    }
+                    auto su = row.at(USER_SYSTEM_USER);
+                    u->set_system_user(!su.is_null() && su.as_int64() > 0);
+                }
+            }
+
+        } // read more from db loop
+
+        co_await flush();
+
+        LOG_DEBUG_N << "Sent " << total_rows << " tenants/users to client.";
+        co_return;
+
+    }, __func__);
+}
+
 
 } // ns

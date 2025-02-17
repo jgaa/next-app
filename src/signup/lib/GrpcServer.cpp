@@ -407,10 +407,10 @@ boost::asio::awaitable<bool> GrpcServer::InstanceCommn::connect(const InstanceIn
             &stub_t::async::GetServerInfo,
             asio::use_awaitable);
 
-        LOG_INFO << "Connected to nextapp-server at " << owner_.nextapp_config().address;
+        LOG_INFO << "Connected to nextapp-server at " << url_;
         if (resp.has_serverinfo()) {
-            for(const auto& kv : resp.serverinfo().properties()) {
-                LOG_INFO << kv.key() << ": " << kv.value();
+            for(const auto& [key, value] : resp.serverinfo().properties().kv()) {
+                LOG_INFO << key << ": " << value;
             }
             server_info_ = resp.serverinfo();
         }

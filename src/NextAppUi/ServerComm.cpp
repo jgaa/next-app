@@ -1328,7 +1328,7 @@ failed:
     assert(res.hasServerInfo());
     if (res.hasServerInfo()) {
         const auto& se = res.serverInfo();
-        server_version_ = se.properties().front().value();
+        server_version_ = se.properties().kv()["server-version"];
         LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
     } else {
         LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";

@@ -87,15 +87,9 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             throw runtime_error{"Could not allocate serverinfo"};
         }
 
-
-        auto add = [&reply, si](string key, string value) {
-            auto prop = si->mutable_properties()->Add();
-            prop->set_key(key);
-            prop->set_value(value);
-        };
-
-        add("version", NEXTAPP_VERSION);
-        add("server-id", Server::instance().serverId());
+        auto* prop = si->mutable_properties()->mutable_kv();
+        prop->emplace("version", NEXTAPP_VERSION);
+        prop->emplace("server-id", Server::instance().serverId());
 
         co_return;
     }, __func__);

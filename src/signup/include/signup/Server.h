@@ -138,7 +138,7 @@ private:
     boost::asio::awaitable<void> createDefaultNextappInstance(); // For bootstrap
     boost::asio::awaitable<void> startGrpcService();
     boost::asio::awaitable<void> connectToInstances();
-    boost::asio::awaitable<void> initializeInstance(Cluster::Region::Instance& instance);
+    boost::asio::awaitable<void> initializeInstance(const Cluster::Region& region, Cluster::Region::Instance& instance);
 
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;

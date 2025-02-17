@@ -999,6 +999,11 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         R"(ALTER TABLE user
             ADD COLUMN IF NOT EXISTS system_user TINYINT(1))",
 
+        "UPDATE tenant set properties=NULL", // We are changing from json to protobuf binary format
+        "UPDATE user set properties=NULL",
+        "ALTER TABLE tenant MODIFY COLUMN properties BLOB",
+        "ALTER TABLE user MODIFY COLUMN properties BLOB",
+
         "SET FOREIGN_KEY_CHECKS=1"
     });
 

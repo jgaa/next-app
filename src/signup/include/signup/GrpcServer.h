@@ -90,9 +90,7 @@ public:
                         cd->self_.complete(ec, cd->reply);
                     };
 
-                    if (!session_id_.empty()) {
-                        cd->ctx.AddMetadata("sid", session_id_);
-                    }
+                    prepareMetadata(cd->ctx);
 
                     (nextapp_stub_->async()->*call)(&cd->ctx, &cd->req, &cd->reply,
                                                     [fn=std::move(fn)](const ::grpc::Status& status) mutable {
@@ -111,6 +109,16 @@ public:
         const auto& serverInfo() const noexcept {
             return server_info_;
         }
+
+        auto& stub() {
+            return *nextapp_stub_;
+        }
+
+    void prepareMetadata(::grpc::ClientContext& ctx) {
+        if (!session_id_.empty()) {
+            ctx.AddMetadata("sid", session_id_);
+        }
+    }
 
     private:
         void startNextTimer(size_t seconds);

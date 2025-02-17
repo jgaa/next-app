@@ -334,11 +334,6 @@ int main(int argc, char* argv[]) {
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";
 
     try {
-        if (config.cluster.nextapp_public_url.empty()) {
-            config.cluster.nextapp_public_url = config.grpc_nextapp.address;
-            LOG_INFO << "Setting nextapp-public-url to '" <<config.cluster.nextapp_public_url << "' as it was unset.";
-        }
-
         Server server{config};
         server.init();
         server.run();

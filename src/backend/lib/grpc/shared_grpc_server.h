@@ -142,4 +142,17 @@ auto toBlob(const T& buffer) {
     return blob;
 }
 
+template<typename T>
+std::optional<nextapp::pb::KeyValue> KeyValueFromBlob(const T& row) {
+    if (row.is_blob()) {
+        auto data = row.as_blob();
+        pb::KeyValue kv;
+        if (kv.ParseFromArray(data.data(), data.size())) {
+            return kv;
+        }
+    }
+    return std::nullopt;
+}
+
+
 } // ns

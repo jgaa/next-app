@@ -260,14 +260,14 @@ boost::asio::awaitable<void> Server::connectToInstances()
 
                             // Is this the first time we connect to this instance?
                             if (instance->server_id.empty()) {
-                                if (auto server_id = getValueFromKey(info->properties(), "server-id")) {
-                                    instance->server_id = *server_id;
-                                    co_await initializeInstance(*instance);
-                                } else {
+                                auto server_id = info->properties().kv().at("server-id");
+                                if (server_id.empty()) {
                                     LOG_ERROR << "Failed to get server-id from the instance " << instance->uuid;
+                                } else {
+                                    instance->server_id = server_id;
+                                    co_await initializeInstance(region, *instance);
                                 }
                             }
-
                         }
                         // TODO: Schedule retry if not online
                         // TODO: Update the online status from grpc server if it loose the connection
@@ -295,14 +295,50 @@ boost::asio::awaitable<void> Server::connectToInstances()
     }
 }
 
-boost::asio::awaitable<void> Server::initializeInstance(Cluster::Region::Instance &instance)
+boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& region, Cluster::Region::Instance &instance)
 {
-    // TODO: Do initial sync to get any tenants and users
-    // auto conn = grpc_service_->getInstance(instance.uuid);
-    // if (!conn) {
-    //     throw runtime_error("Failed to get connection to the instance " + to_string(instance.uuid));
-    // }
+    auto conn = grpc_service_->getInstance(instance.uuid);
+    if (!conn) {
+        throw runtime_error("Failed to get connection to the instance " + to_string(instance.uuid));
+    }
 
+    ::grpc::ClientContext ctx;
+    conn->prepareMetadata(ctx);
+    auto stream = conn->stub().ListTenants(&ctx, {});
+    nextapp::pb::Status status;
+    unsigned tenants{}, users{};
+    while(stream->Read(&status)) {
+        if (status.error() != nextapp::pb::Error::OK) {
+            LOG_ERROR_N << "Failed to get tenants from the instance " << instance.uuid
+                        << ". Error: " << status.error();
+            co_return;
+        }
+
+        if (!status.has_tenant()) {
+            LOG_ERROR_N << "Instance " << instance.uuid
+                        << " did not return the expected stream of Status.Tenant";
+            co_return;
+        };
+        const auto& tenant = status.tenant();
+
+        ++tenants;
+        LOG_TRACE << "Adding tenant " << tenant.uuid() << " from instance " << instance.uuid;
+        co_await db().exec("INSERT INTO tenant (id, state, instance, region) VALUES (?, ?, ?, ?)",
+                           tenant.uuid(), tenant.state(), instance.uuid, region.uuid);
+
+        for(const auto& user : tenant.users()) {
+            ++users;
+            LOG_TRACE << "Adding user " << user.uuid() << " from tenant " << tenant.uuid();
+            const auto email_hash = getEmailHash(user.email());
+            const string_view state = user.active() ? "active" : "inactive";
+
+            co_await db().exec("INSERT INTO user (id, email_hash, tenant, state) VALUES (?, ?, ?, ?)",
+                               user.uuid(), email_hash, tenant.uuid(), state);
+        }
+    }
+
+    LOG_INFO << "Added " << tenants << " tenants and " << users << " users from instance "
+             << instance.uuid << " in region " << region.uuid << ' ' << region.name;
     co_await db().exec("UPDATE instance SET server_id = ? WHERE id = ?", instance.server_id, instance.uuid);
 
     co_return;
