@@ -12,12 +12,23 @@ enum Error {
   INVALID_EMAIL = 4;
   EMAIL_ALREADY_EXISTS = 5;
   MISSING_EMAIL = 6;
+  UNAUTHORIZED = 7;
 }
 
 message Region {
+  enum State {
+    ACTIVE = 0;
+    INACTIVE = 1;
+  }
+
   string uuid = 3;
   string name = 1;
   string description = 2;
+  State state = 4;
+}
+
+message Regions {
+  repeated Region regions = 1;
 }
 
 message GetInfoRequest {}
@@ -59,7 +70,8 @@ message Reply {
 
     oneof payload {
         GetInfoResponse getInfoResponse = 10;
-        SignUpResponse signUpResponse = 11;  
+        SignUpResponse signUpResponse = 11;
+        Regions regions = 12;
     }
 }
 
@@ -67,4 +79,9 @@ service SignUp {
   rpc GetInfo(GetInfoRequest) returns (Reply) {}
   rpc SignUp(SignUpRequest) returns (Reply) {}
   rpc CreateNewDevice(CreateNewDeviceRequest) returns (Reply) {}
+
+  // Admin API
+  rpc CreateRegion(Region) returns (Reply) {}
+  rpc DeleteRegion(common.Uuid) returns (Reply) {}
+  rpc ListRegions(common.Empty) returns (Reply) {}
 }

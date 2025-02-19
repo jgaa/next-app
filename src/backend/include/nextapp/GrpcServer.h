@@ -180,7 +180,7 @@ public:
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewTimeBlocks(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
         ::grpc::ServerUnaryReactor *GetDevices(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *UpdateDevice(::grpc::CallbackServerContext *, const pb::DeviceUpdateReq *, pb::Status *) override;
-        ::grpc::ServerUnaryReactor *DeleteDevice(::grpc::CallbackServerContext *, const pb::Uuid *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *DeleteDevice(::grpc::CallbackServerContext *, const common::Uuid *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *ResetPlayback(::grpc::CallbackServerContext *, const pb::ResetPlaybackReq *, pb::Status *) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* ListTenants(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::ListTenantsReq *req) override;
 

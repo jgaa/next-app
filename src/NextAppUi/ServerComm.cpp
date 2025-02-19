@@ -755,7 +755,7 @@ QCoro::Task<nextapp::pb::Status> ServerComm::enableDevice(const QString &deviceI
 
 QCoro::Task<nextapp::pb::Status> ServerComm::deleteDevice(const QString &deviceId)
 {
-    nextapp::pb::Uuid req;
+    common::Uuid req;
     req.setUuid(deviceId);
 
     co_return co_await rpc(req, &nextapp::pb::Nextapp::Client::DeleteDevice);

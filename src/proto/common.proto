@@ -22,3 +22,9 @@ message OtpAuth {
     string email = 1;
     string otp = 2;
 }
+
+message Uuid {
+    string uuid = 1;
+}
+
+message Empty {}

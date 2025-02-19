@@ -1032,7 +1032,7 @@ void ActionsModel::batchChangeDue(const nextapp::pb::Due &due, const QStringList
 void ActionsModel::batchChangeCategory(const QString &category, const QStringList &actions)
 {
     pb::UpdateActionsReq req;
-    pb::Uuid uuid;
+    common::Uuid uuid;
     uuid.setUuid(category);
     req.setCategory(uuid);
     batchUpdateActions(req, actions);
@@ -1742,9 +1742,9 @@ void ActionsModel::batchUpdateActions(nextapp::pb::UpdateActionsReq &req, const 
 {
     // QT protobuf don't support mutable sub-members, so we must write
     // with the detail of assambly-langue
-    QList<pb::Uuid> uuids;
+    QList<common::Uuid> uuids;
     for(const auto& action: actions) {
-        pb::Uuid uuid;
+        common::Uuid uuid;
         uuid.setUuid(action);
         uuids.append(uuid);
     }

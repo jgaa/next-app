@@ -186,7 +186,7 @@ boost::asio::awaitable<bool> Server::loadCluster()
             instance->server_id = toStringIfValue(row, SERVER_ID);
             instance->state = row[STATE].as_string() == "active" ? Cluster::Region::Instance::State::ACTIVE
                                                          : Cluster::Region::Instance::State::INACTIVE;
-            instance->free_slots = toIntIfValue(row, SERVER_ID);
+            instance->free_slots = toIntIfValue(row, FREE_SLOTS);
 
             if (auto it = cluster->regions_.find(region); it != cluster->regions_.end()) {
                 auto& region = it->second;

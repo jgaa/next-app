@@ -186,7 +186,6 @@ public:
                                             const signup::pb::GetInfoRequest *req,
                                             signup::pb::Reply *reply) override;
 
-
         ::grpc::ServerUnaryReactor * SignUp(::grpc::CallbackServerContext *ctx,
                                             const signup::pb::SignUpRequest *req,
                                             signup::pb::Reply *reply) override;
@@ -196,20 +195,36 @@ public:
                                            const signup::pb::CreateNewDeviceRequest *req,
                                            signup::pb::Reply *reply) override;
 
+        ::grpc::ServerUnaryReactor * ListRegions(::grpc::CallbackServerContext *ctx,
+                                                    const common::Empty *req,
+                                                    signup::pb::Reply *reply) override;
+
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
         template <typename ReqT, typename ReplyT, typename FnT>
         ::grpc::ServerUnaryReactor*
-        unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn, std::string_view name = {}) noexcept {
+        unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn,
+                     std::string_view name, bool requireAdminCreds = false) noexcept {
             assert(ctx);
             assert(reply);
 
             auto* reactor = ctx->DefaultReactor();
 
-            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn=std::move(fn), name]() -> boost::asio::awaitable<void> {
+            boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn=std::move(fn), name, requireAdminCreds]() -> boost::asio::awaitable<void> {
                 try {
                     LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
+
+                    if (requireAdminCreds) {
+                        if (!co_await owner_.isAdmin(ctx)) {
+                            LOG_DEBUG << "Request [" << name << "] Unauthorized request. Missing admin credentials.";
+                            reply->set_error(signup::pb::Error::UNAUTHORIZED);
+                            reply->set_message("Unauthorized request. Missing admin credentials.");
+                            reactor->Finish(::grpc::Status::OK);
+                            co_return;
+                        }
+                    }
+
                     co_await fn(reply);
                     LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(*reply);
                     reactor->Finish(::grpc::Status::OK);
@@ -270,6 +285,8 @@ public:
     boost::asio::awaitable<std::optional<::nextapp::pb::ServerInfo>>
     connectToInstance(const boost::uuids::uuid&uuid,
                       const InstanceCommn::InstanceInfo& info);
+
+    boost::asio::awaitable<bool> isAdmin(::grpc::CallbackServerContext *ctx);
 
 private:
     // The Server instance where we get objects in the application, like config and database

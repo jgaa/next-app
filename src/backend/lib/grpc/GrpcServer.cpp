@@ -323,7 +323,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteDevice(::grpc::CallbackServerContext *ctx,
-                                                                  const pb::Uuid *req,
+                                                                  const common::Uuid *req,
                                                                   pb::Status *reply) {
 
     return unaryHandler(ctx, req, reply,

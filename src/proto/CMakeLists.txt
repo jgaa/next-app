@@ -1,3 +1,4 @@
+project(proto)
 INCLUDE(FindProtobuf)
 
 find_package(Protobuf CONFIG)

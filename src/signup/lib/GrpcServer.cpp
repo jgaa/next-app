@@ -173,7 +173,6 @@ GrpcServer::GrpcServer(Server &server)
                                                                     signup::pb::Reply *reply)
 {
     return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
-        LOG_DEBUG << "CreateNewDevice request from client at " << ctx->peer();
 
         // Validate the information in the request
 
@@ -235,6 +234,35 @@ GrpcServer::GrpcServer(Server &server)
             }
         }
     }, __func__);
+}
+
+grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListRegions(
+    grpc::CallbackServerContext *ctx,
+    const common::Empty *req,
+    signup::pb::Reply *reply)
+{
+
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+        auto res = co_await owner_.server().db().exec("SELECT id, name, description, state FROM region ORDER BY name");
+        enum Cols { ID, NAME, DESCRIPTION, STATE };
+
+        auto regions = reply->mutable_regions();
+        for(const auto& row : res.rows()) {
+            auto *r = regions->add_regions();
+            r->set_uuid(row[Cols::ID].as_string());
+            r->set_name(row[Cols::NAME].as_string());
+            r->set_description(toStringIfValue(row, Cols::DESCRIPTION));
+
+            {
+                auto name = row[Cols::STATE].as_string();
+                signup::pb::Region::State state;
+                if (signup::pb::Region::State_Parse(toUpper(name), &state)) {
+                    r->set_state(state);
+                }
+            }
+        }
+
+    }, __func__, true);
 }
 
 void GrpcServer::start() {
@@ -494,6 +522,63 @@ GrpcServer::connectToInstance(const boost::uuids::uuid&uuid,
 
     LOG_ERROR << "Failed to connect to instance at " << info.url;
     co_return std::nullopt;
+}
+
+auto to_string_view(::grpc::string_ref ref) {
+    return string_view{ref.data(), ref.size()};
+}
+
+std::optional<std::string> lookup(grpc::CallbackServerContext *ctx, const std::string& name) {
+    if (auto it = ctx->client_metadata().find(name); it != ctx->client_metadata().end()) {
+        return string{it->second.data(), it->second.size()};
+    }
+    return {};
+}
+
+
+// TODO: Cache all users from the localusers table regularily
+//       The current implementation can be user to DoS the service by sending
+//       a lot of requests with invalid user/password combinations, causing
+//       a lot of SQL queries.
+boost::asio::awaitable<bool> GrpcServer::isAdmin(grpc::CallbackServerContext *ctx)
+{
+    auto user = lookup(ctx, "user");
+    auto passwd = lookup(ctx, "password");
+    if (!user || user->empty() || !passwd || passwd->empty()) {
+        co_return false;
+    }
+
+    auto res = co_await server().db().exec("SELECT id, kind, auth_token from localuser where nickname = ?", *user);
+    if (res.rows().empty()) {
+        LOG_DEBUG_N << "User " << user << " not found in localuser.";
+        co_return false;
+    }
+
+    enum Cols { ID, KIND, AUTH_TOKEN };
+    const auto& row = res.rows().front();
+    const auto kind = row[Cols::KIND].as_string();
+    const auto id = row[Cols::ID].as_string();
+
+    const auto hash = Server::getPasswordHash(*passwd, id);
+    if (hash != row[Cols::AUTH_TOKEN].as_string()) {
+        LOG_DEBUG_N << "Password mismatch for user " << user;
+        co_return false;
+    }
+
+    if (kind != "admin") {
+        LOG_DEBUG_N << "User " << user
+                    << ' ' << id
+                    << " from " << ctx->peer()
+                    << " is not an admin.";
+        co_return false;
+    }
+
+    LOG_INFO << "User " << user
+             << ' ' << id
+             << " is an admin from "
+             << ctx->peer();
+
+    co_return true;
 }
 
 } // ns

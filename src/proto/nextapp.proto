@@ -425,13 +425,13 @@ message Action {
 
 // Allow updating multiple actions at once, without altering the other fields.
 message UpdateActionsReq {
-    repeated Uuid actions = 1;
+    repeated common.Uuid actions = 1;
 
     optional Due due = 2; // Sets the due on the actions
     optional ActionPriority priority = 3; // Sets the priority on the actions
     optional ActionStatus status = 4; // Sets the status on the actions
     optional bool favorite = 5; // Sets the favorite flag on the actions
-    optional Uuid category = 6; // Sets the category on the actions
+    optional common.Uuid category = 6; // Sets the category on the actions
     optional ActionDifficulty difficulty = 7; // Sets the difficulty on the actions
     optional uint64 timeEstimate = 8; // Sets the time estimate on the actions
 }
@@ -506,9 +506,9 @@ message Timestamp {
     uint64 seconds = 1; // C++ time_t UNIX timestamp.
 }
 
-message Uuid {
-    string uuid = 1;
-}
+//message Uuid {
+//    string uuid = 1;
+//}
 
 message StringList {
     repeated string list = 1;
@@ -872,7 +872,7 @@ service Nextapp {
     rpc GetOtpForNewDevice(OtpRequest) returns (Status) {}
     rpc GetDevices(Empty) returns (Status) {}
     rpc UpdateDevice(DeviceUpdateReq) returns (Status) {}
-    rpc DeleteDevice(Uuid) returns (Status) {}
+    rpc DeleteDevice(common.Uuid) returns (Status) {}
 
     rpc CreateNode(CreateNodeReq) returns (Status) {}
     rpc UpdateNode(Node) returns (Status) {}
