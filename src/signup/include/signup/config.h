@@ -52,6 +52,7 @@ struct Cluster {
     std::string welcome_path;
     std::string eula_path;
     std::string nextapp_public_url;
+    unsigned timer_interval_sec = 120;
 };
 
 struct Config {

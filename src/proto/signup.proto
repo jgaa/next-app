@@ -21,7 +21,7 @@ message Region {
     INACTIVE = 1;
   }
 
-  string uuid = 3;
+  common.Uuid uuid = 3;
   string name = 1;
   string description = 2;
   State state = 4;
@@ -29,6 +29,40 @@ message Region {
 
 message Regions {
   repeated Region regions = 1;
+}
+
+enum InstanceState {
+  ACTIVE = 0;
+  INACTIVE = 1;
+}
+
+message SetInstance {
+  common.Uuid uuid = 1;
+  common.Uuid region = 2;
+  string url = 3;
+  string pub_url = 4;
+  string x509_ca_cert = 5;
+  string x509_cert = 6;
+  string x509_key = 7;
+  //common.Uuid server_id = 8;
+  string metrics_url = 9;
+  optional InstanceState state = 10;
+}
+
+message Instance {
+  common.Uuid uuid = 1;
+  common.Uuid region = 2;
+  string regionName = 11;
+  string url = 3;
+  string pub_url = 4;
+  common.Uuid server_id = 8;
+  string metrics_url = 9;
+  optional bool is_online = 10;
+  InstanceState state = 5;
+}
+
+message Instances {
+  repeated Instance instances = 1;
 }
 
 message GetInfoRequest {}
@@ -72,6 +106,8 @@ message Reply {
         GetInfoResponse getInfoResponse = 10;
         SignUpResponse signUpResponse = 11;
         Regions regions = 12;
+        common.Uuid uuid = 13; // For create operations to return the new uuid
+        Instances instances = 14;
     }
 }
 
@@ -82,6 +118,13 @@ service SignUp {
 
   // Admin API
   rpc CreateRegion(Region) returns (Reply) {}
+  rpc UpdateRegion(Region) returns (Reply) {}
   rpc DeleteRegion(common.Uuid) returns (Reply) {}
   rpc ListRegions(common.Empty) returns (Reply) {}
+
+  rpc AddInstance(SetInstance) returns (Reply) {}
+  rpc RemoveInstance(common.Uuid) returns (Reply) {}
+  rpc ListInstances(common.Empty) returns (Reply) {}
+  rpc UpdateInstance(SetInstance) returns (Reply) {}
+
 }

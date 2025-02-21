@@ -190,14 +190,44 @@ public:
                                             const signup::pb::SignUpRequest *req,
                                             signup::pb::Reply *reply) override;
 
-
         ::grpc::ServerUnaryReactor * CreateNewDevice(::grpc::CallbackServerContext *ctx,
                                            const signup::pb::CreateNewDeviceRequest *req,
                                            signup::pb::Reply *reply) override;
 
+        // ================ Admin API
+
         ::grpc::ServerUnaryReactor * ListRegions(::grpc::CallbackServerContext *ctx,
                                                     const common::Empty *req,
                                                     signup::pb::Reply *reply) override;
+
+        ::grpc::ServerUnaryReactor * CreateRegion(::grpc::CallbackServerContext *ctx,
+                                                 const signup::pb::Region *req,
+                                                 signup::pb::Reply *reply) override;
+
+        ::grpc::ServerUnaryReactor * UpdateRegion(::grpc::CallbackServerContext *ctx,
+                                                 const signup::pb::Region *req,
+                                                 signup::pb::Reply *reply) override;
+
+        ::grpc::ServerUnaryReactor * DeleteRegion(::grpc::CallbackServerContext *ctx,
+                                                 const common::Uuid *req,
+                                                 signup::pb::Reply *reply) override;
+
+        ::grpc::ServerUnaryReactor * AddInstance(::grpc::CallbackServerContext *ctx,
+                                                 const signup::pb::SetInstance *req,
+                                                 signup::pb::Reply *reply) override;
+
+        ::grpc::ServerUnaryReactor * RemoveInstance(::grpc::CallbackServerContext *ctx,
+                                                const common::Uuid *req,
+                                                signup::pb::Reply *reply) override;
+
+        ::grpc::ServerUnaryReactor * ListInstances(::grpc::CallbackServerContext *ctx,
+                                                const common::Empty *req,
+                                                signup::pb::Reply *reply) override;
+
+        ::grpc::ServerUnaryReactor * UpdateInstance(::grpc::CallbackServerContext *ctx,
+                                                const signup::pb::SetInstance *req,
+                                                signup::pb::Reply *reply) override;
+
 
 
     private:

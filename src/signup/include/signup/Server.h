@@ -55,17 +55,17 @@ public:
             State state{State::ACTIVE};
 
             Instance& instance(const boost::uuids::uuid& uuid) {
-                return *instances_.at(uuid);
+                return *instances.at(uuid);
             }
 
             Instance& instance(const boost::uuids::uuid& uuid) const {
-                return *instances_.at(uuid);
+                return *instances.at(uuid);
             }
 
-            std::map<boost::uuids::uuid, std::unique_ptr<Instance>> instances_;
+            std::map<boost::uuids::uuid, std::unique_ptr<Instance>> instances;
         };
 
-        std::map<boost::uuids::uuid, Region> regions_;
+        std::map<boost::uuids::uuid, Region> regions;
     };
 
     struct BootstrapOptions {
@@ -100,6 +100,10 @@ public:
         return *grpc_service_;
     }
 
+    std::shared_ptr<Cluster> cluster() {
+        return cluster_.load(std::memory_order_relaxed);
+    }
+
     boost::asio::awaitable<::signup::pb::GetInfoResponse> getInfo(const ::signup::pb::GetInfoRequest& req);
 
     void bootstrap(const BootstrapOptions& opts);
@@ -124,11 +128,13 @@ public:
         return *db_;
     }
 
+    boost::asio::awaitable<bool> loadCluster(bool checkClusterWhenLoaded = true);
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
     void runIoThread(size_t id);
-    boost::asio::awaitable<bool> loadCluster();
+    boost::asio::awaitable<std::shared_ptr<Cluster>> getClusterFromDb();
 
     std::shared_ptr<std::vector<::signup::pb::Region>> getRegions();
     boost::asio::awaitable<bool> checkDb();
@@ -139,6 +145,10 @@ private:
     boost::asio::awaitable<void> startGrpcService();
     boost::asio::awaitable<void> connectToInstances();
     boost::asio::awaitable<void> initializeInstance(const Cluster::Region& region, Cluster::Region::Instance& instance);
+    void checkCluster();
+    boost::asio::awaitable<void> checkCluster_();
+    void startClusterTimer();
+    boost::asio::awaitable<bool> loadCluster_();
 
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;
@@ -153,7 +163,8 @@ private:
     std::string salt_;
     //std::atomic<std::shared_ptr<std::vector<::signup::pb::Region>>> regions_;
     std::atomic<std::shared_ptr<Cluster>> cluster_;
-
+    boost::asio::strand<boost::asio::io_context::executor_type> cluster_strand_{ctx_.get_executor()};
+    boost::asio::steady_timer cluster_timer_{ctx_};
 };
 
 

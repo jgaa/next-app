@@ -28,7 +28,7 @@ message("PROTO_GENERATED_INCLUDE_PATH: ${PROTO_GENERATED_INCLUDE_PATH}")
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
-add_dependencies(${PROJECT_NAME} proto)
+add_dependencies(${PROJECT_NAME} proto logfault)
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE

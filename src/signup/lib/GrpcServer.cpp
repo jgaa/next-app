@@ -236,6 +236,253 @@ GrpcServer::GrpcServer(Server &server)
     }, __func__);
 }
 
+grpc::ServerUnaryReactor *GrpcServer::SignupImpl::UpdateInstance(grpc::CallbackServerContext *ctx,
+                                                                 const signup::pb::SetInstance *req,
+                                                                 signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+        const auto& uuid = req->uuid().uuid();
+        if (uuid.empty()) {
+            throw runtime_error{"Missing or empty instance-uuid"};
+        }
+
+        auto& db = owner_.server().db();
+
+        {
+            // Check that the instance exists
+            auto res = co_await db.exec("SELECT id FROM instance WHERE id = ?", uuid);
+            if (res.rows().empty()) {
+                throw Error{pb::Error::DATABASE_REQUEST_FAILED, "Instance does not exist"};
+            }
+        }
+
+        string pub_url = req->pub_url();
+        if (pub_url.empty()) {
+            pub_url = req->url();
+        }
+
+        string state_name;
+        if (req->has_state()) {
+            state_name = toLower(signup::pb::InstanceState_Name(req->state()));
+        }
+
+        std::vector<boost::mysql::field_view> args;
+        std::string query;
+
+        auto add = [&](string_view name, const auto& value) mutable {
+            if (!query.empty()) {
+                query += ", ";
+            }
+            query += format("{}=?", name);
+            args.emplace_back(value);
+        };
+
+        // Must have id
+        if (!req->has_uuid() || req->uuid().uuid().empty()) {
+            throw runtime_error{"Missing or empty instance-uuid"};
+        }
+
+        if (req->has_region() && !req->region().uuid().empty()) {
+            add("region", req->region().uuid());
+        }
+
+        if (!req->url().empty()) {
+            add("grpc_url", req->url());
+        }
+
+        if (!pub_url.empty()) {
+            add("grpc_public_url", pub_url);
+        } else if (!req->url().empty()) {
+            add("grpc_public_url", req->url());
+        }
+
+        if (!req->x509_ca_cert().empty()) {
+            add("ca_cert", req->x509_ca_cert());
+        }
+
+        if (!req->x509_key().empty()) {
+            add("grpc_key", req->x509_key());
+        }
+
+        if (!req->x509_cert().empty()) {
+            add("grpc_cert", req->x509_cert());
+        }
+
+        if (!req->metrics_url().empty()) {
+            add("metrics_url", req->metrics_url());
+        }
+
+        if (!state_name.empty()) {
+            add("state", state_name);
+        }
+
+        const auto sql = format("UPDATE instance SET {} WHERE id=?", query);
+        args.emplace_back(uuid);
+
+        auto res = co_await db.exec(sql, args);
+
+        co_await owner_.server().loadCluster();
+        reply->mutable_uuid()->set_uuid(uuid);
+        reply->set_message(format("Updated instance {}", uuid));
+    }, __func__, true);
+}
+
+grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListInstances(
+    grpc::CallbackServerContext *ctx,
+    const common::Empty *req,
+    signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+        auto cluster = owner_.server().cluster();
+        for(const auto& [_, r] : cluster->regions) {
+            for(const auto& [uuid, i] : r.instances) {
+                auto *instance = reply->mutable_instances()->add_instances();
+                instance->mutable_uuid()->set_uuid(to_string(i->uuid));
+                instance->set_url(i->url);
+                instance->set_pub_url(i->pub_url);
+                instance->set_metrics_url(i->metrics_url);
+                instance->set_state(i->state == Server::Cluster::Region::Instance::State::ACTIVE
+                                        ? signup::pb::InstanceState::ACTIVE
+                                        : signup::pb::InstanceState::INACTIVE);
+                instance->mutable_region()->set_uuid(to_string(r.uuid));
+                instance->set_regionname(r.name);
+                instance->set_is_online(i->is_online);
+            }
+        }
+
+        co_return;
+    }, __func__, true);
+}
+
+grpc::ServerUnaryReactor *GrpcServer::SignupImpl::RemoveInstance(grpc::CallbackServerContext *ctx,
+                                                                 const common::Uuid *req,
+                                                                 signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+
+        // Get the region-name for the instance
+        string region;
+        {
+            auto res = co_await owner_.server().db().exec(
+                "SELECT r.name FROM region r JOIN instance i ON r.id = i.region WHERE i.id = ?", req->uuid());
+            if (res.rows().empty()) {
+                throw Error{pb::Error::DATABASE_REQUEST_FAILED, "Failed to get region for instance"};
+            }
+            region = res.rows().front()[0].as_string();
+        }
+
+        auto res = co_await owner_.server().db().exec("DELETE FROM instance WHERE id = ?", req->uuid());
+        if (res.affected_rows() != 1) {
+            throw Error{pb::Error::DATABASE_REQUEST_FAILED, "Failed to delete instance from database"};
+        }
+
+        co_await owner_.server().loadCluster();
+        reply->set_message("Deleted instance "s + req->uuid());
+        LOG_INFO << "Removed instance " << req->uuid() << " from region " << region;
+    }, __func__, true);
+}
+
+grpc::ServerUnaryReactor *GrpcServer::SignupImpl::AddInstance(grpc::CallbackServerContext *ctx,
+                                                              const signup::pb::SetInstance *req,
+                                                              signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+
+        string uuid = req->uuid().uuid();
+        if (uuid.empty()) {
+            uuid = newUuidStr();
+        }
+
+        string pub_url = req->pub_url();
+        if (pub_url.empty()) {
+            pub_url = req->url();
+        }
+
+        auto& db = owner_.server().db();
+        string state_name = "active";
+        if (req->has_state()) {
+            state_name = toLower(signup::pb::InstanceState_Name(req->state()));
+        }
+
+        auto res = co_await db.exec(
+            R"(INSERT INTO instance
+                (id, region, grpc_url, grpc_public_url, ca_cert, grpc_key, grpc_cert, metrics_url, state)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?))",
+            uuid,
+            req->region().uuid(),
+            req->url(),
+            pub_url,
+            toStringOrNull(req->x509_ca_cert()),
+            toStringOrNull(req->x509_key()), // Will prevent insert if not set
+            toStringOrNull(req->x509_cert()), // Will prevent insert if not set
+            toStringOrNull(req->metrics_url()),
+            state_name);
+
+        co_await owner_.server().loadCluster();
+        reply->mutable_uuid()->set_uuid(uuid);
+        reply->set_message(format("Created instance {} in region {}", uuid, req->region().uuid()));
+    }, __func__, true);
+}
+
+grpc::ServerUnaryReactor *GrpcServer::SignupImpl::DeleteRegion(
+    grpc::CallbackServerContext *ctx, const common::Uuid *req, signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+        auto res = co_await owner_.server().db().exec("DELETE FROM region WHERE id = ?", req->uuid());
+        if (res.affected_rows() != 1) {
+            throw Error{pb::Error::DATABASE_REQUEST_FAILED, "Failed to delete region from database"};
+        }
+
+        co_await owner_.server().loadCluster();
+        reply->set_message("Deleted region "s + req->uuid());
+    }, __func__, true);
+}
+
+grpc::ServerUnaryReactor *GrpcServer::SignupImpl::UpdateRegion(
+    grpc::CallbackServerContext *ctx, const signup::pb::Region *req, signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+        auto res = co_await owner_.server().db().exec("UPDATE region SET name = ?, description = ?, state = ? WHERE id = ?",
+                                                      req->name(),
+                                                      req->description(),
+                                                      toLower(signup::pb::Region::State_Name(req->state())),
+                                                      req->uuid().uuid());
+
+        if (res.affected_rows() != 1) {
+            throw Error{pb::Error::DATABASE_REQUEST_FAILED, "Failed to update region in database"};
+        }
+
+        co_await owner_.server().loadCluster();
+        reply->set_message("Updated region "s + req->name());
+    }, __func__, true);
+}
+
+grpc::ServerUnaryReactor *GrpcServer::SignupImpl::CreateRegion(
+    grpc::CallbackServerContext *ctx, const signup::pb::Region *req, signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+
+        string uuid = req->uuid().uuid();
+        if (uuid.empty()) {
+            uuid = newUuidStr();
+        }
+
+        auto res = co_await owner_.server().db().exec("INSERT INTO region (id, name, description, state) VALUES (?, ?, ?, ?)",
+                                                      uuid,
+                                                      req->name(),
+                                                      req->description(),
+                                                      toLower(signup::pb::Region::State_Name(req->state())));
+
+        if (res.affected_rows() != 1) {
+            throw Error{nextapp::pb::Error::DATABASE_REQUEST_FAILED, "Failed to insert region into database"};
+        }
+
+        co_await owner_.server().loadCluster();
+        reply->mutable_uuid()->set_uuid(uuid);
+        reply->set_message("Created region "s + req->name());
+    }, __func__, true);
+}
+
 grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListRegions(
     grpc::CallbackServerContext *ctx,
     const common::Empty *req,
@@ -249,7 +496,7 @@ grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListRegions(
         auto regions = reply->mutable_regions();
         for(const auto& row : res.rows()) {
             auto *r = regions->add_regions();
-            r->set_uuid(row[Cols::ID].as_string());
+            r->mutable_uuid()->set_uuid(row[Cols::ID].as_string());
             r->set_name(row[Cols::NAME].as_string());
             r->set_description(toStringIfValue(row, Cols::DESCRIPTION));
 

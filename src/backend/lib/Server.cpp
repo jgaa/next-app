@@ -166,6 +166,11 @@ void Server::createClientCert(const std::string &fileName, const boost::uuids::u
         filesystem::path key_name = fileName + "-key.pem";
         filesystem::path ca_name = fileName + "-ca.pem";
 
+        if (cert_name.has_parent_path() && !filesystem::exists(cert_name.parent_path())) {
+            LOG_INFO << "Creating directories for cert files: " << cert_name.parent_path();
+            filesystem::create_directories(cert_name.parent_path());
+        }
+
         std::ofstream cert_file(cert_name);
         std::ofstream key_file(key_name);
         std::ofstream ca_file(ca_name);

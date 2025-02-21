@@ -70,9 +70,10 @@ void Server::run()
             try {
                 co_await db().init();
                 co_await checkDb();
-                co_await loadCluster();
+                co_await loadCluster(false);
                 co_await connectToInstances();
                 co_await startGrpcService();
+                startClusterTimer();
             } catch (const std::exception& ex) {
                 LOG_ERROR << "Failed to start gRPC service: " << ex.what();
                 co_return;
@@ -142,9 +143,9 @@ void Server::runIoThread(const size_t id)
     LOG_DEBUG_N << "Io-thread " << id << " is done.";
 }
 
-boost::asio::awaitable<bool> Server::loadCluster()
+boost::asio::awaitable<std::shared_ptr<Server::Cluster> > Server::getClusterFromDb()
 {
-    LOG_DEBUG_N << "Loading regions...";
+    LOG_DEBUG_N << "Loading regions from db...";
 
     auto cluster = make_shared<Cluster>();
 
@@ -162,7 +163,7 @@ boost::asio::awaitable<bool> Server::loadCluster()
             r.created_at = chrono::system_clock::to_time_t(row[CREATED].as_datetime().get_time_point());
             r.state = row[STATE].as_string() == "active" ? Cluster::Region::State::ACTIVE
                                                          : Cluster::Region::State::INACTIVE;
-            cluster->regions_.emplace(r.uuid, std::move(r));
+            cluster->regions.emplace(r.uuid, std::move(r));
         }
     }
 
@@ -185,30 +186,29 @@ boost::asio::awaitable<bool> Server::loadCluster()
             instance->x509_key = toStringIfValue(row, GRPC_KEY);
             instance->server_id = toStringIfValue(row, SERVER_ID);
             instance->state = row[STATE].as_string() == "active" ? Cluster::Region::Instance::State::ACTIVE
-                                                         : Cluster::Region::Instance::State::INACTIVE;
+                                                                 : Cluster::Region::Instance::State::INACTIVE;
             instance->free_slots = toIntIfValue(row, FREE_SLOTS);
 
-            if (auto it = cluster->regions_.find(region); it != cluster->regions_.end()) {
+            if (auto it = cluster->regions.find(region); it != cluster->regions.end()) {
                 auto& region = it->second;
                 const auto id = instance->uuid;
-                it->second.instances_.emplace(id, std::move(instance));
+                it->second.instances.emplace(id, std::move(instance));
             } else {
                 LOG_ERROR << "Instance " << instance->uuid << " references unknown region " << region;
             }
         }
     }
 
-    cluster_.store(std::move(cluster));
-    co_return true;
+    co_return cluster;
 }
 
 std::shared_ptr<std::vector<signup::pb::Region> > Server::getRegions()
 {
     auto regions = make_shared<std::vector<signup::pb::Region>>();
     if (auto cluster = cluster_.load()) {
-        for(const auto& [_, region] : cluster->regions_) {
+        for(const auto& [_, region] : cluster->regions) {
             signup::pb::Region r;
-            r.set_uuid(to_string(region.uuid));
+            r.mutable_uuid()->set_uuid(to_string(region.uuid));
             r.set_name(region.name);
             r.set_description(region.description);
             regions->push_back(r);
@@ -217,7 +217,6 @@ std::shared_ptr<std::vector<signup::pb::Region> > Server::getRegions()
 
     return regions;
 }
-
 
 boost::asio::awaitable<void> Server::startGrpcService()
 {
@@ -237,44 +236,44 @@ boost::asio::awaitable<void> Server::connectToInstances()
             auto num_instances = 0u;
             auto num_connected = 0u;
 
-            for(auto& [_, region] : cluster->regions_) {
+            for(auto& [_, region] : cluster->regions) {
                 LOG_INFO << "Connecting to instances in region " << region.name;
-                num_instances += region.instances_.size();
-                for(auto& [_, instance] : region.instances_) {
+                num_instances += region.instances.size();
+                for(auto& [_, instance] : region.instances) {
                     if (instance->is_online) {
                         ++num_connected;
                         continue;
                     }
 
-                    if (instance->state == Cluster::Region::Instance::State::ACTIVE) {
-                        LOG_INFO << "  -- Connecting to instance " << instance->uuid << " at " << instance->url;
-                        GrpcServer::InstanceCommn::InstanceInfo i;
-                        i.url = instance->url;
-                        i.x509_ca_cert = instance->x509_ca_cert;
-                        i.x509_cert = instance->x509_cert;
-                        i.x509_key = instance->x509_key;
-                        auto info = co_await grpc_service_->connectToInstance(instance->uuid, i);
-                        if (info) {
-                            instance->is_online = true;
-                            ++num_connected;
+                    LOG_INFO << "  -- Connecting to instance " << instance->uuid << " at " << instance->url;
+                    GrpcServer::InstanceCommn::InstanceInfo i;
+                    i.url = instance->url;
+                    i.x509_ca_cert = instance->x509_ca_cert;
+                    i.x509_cert = instance->x509_cert;
+                    i.x509_key = instance->x509_key;
+                    auto info = co_await grpc_service_->connectToInstance(instance->uuid, i);
+                    if (info) {
+                        instance->is_online = true;
+                        ++num_connected;
 
-                            // Is this the first time we connect to this instance?
-                            if (instance->server_id.empty()) {
-                                auto server_id = info->properties().kv().at("server-id");
-                                if (server_id.empty()) {
-                                    LOG_ERROR << "Failed to get server-id from the instance " << instance->uuid;
-                                } else {
-                                    instance->server_id = server_id;
-                                    co_await initializeInstance(region, *instance);
-                                }
+                        // Is this the first time we connect to this instance?
+                        if (instance->server_id.empty()) {
+                            auto server_id = info->properties().kv().at("server-id");
+                            if (server_id.empty()) {
+                                LOG_ERROR << "Failed to get server-id from the instance " << instance->uuid;
+                            } else {
+                                instance->server_id = server_id;
+                                co_await initializeInstance(region, *instance);
                             }
                         }
-                        // TODO: Schedule retry if not online
-                        // TODO: Update the online status from grpc server if it loose the connection
                     }
                 }
             }
 
+            if (num_instances == 0) {
+                LOG_WARN << "No instances are added to the server.";
+                break;
+            }
             if (num_instances == num_connected) {
                 LOG_INFO << "All instances are connected.";
                 break;
@@ -344,6 +343,46 @@ boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& r
     co_return;
 }
 
+void Server::startClusterTimer()
+{
+    if (done_) {
+        LOG_DEBUG_N << "Server is done. Cluster timer will not be started.";
+        return;
+    }
+
+    cluster_timer_.expires_after(chrono::seconds(config().cluster.timer_interval_sec));
+    cluster_timer_.async_wait([this](const boost::system::error_code& ec) mutable {
+        if (ec) {
+            if (ec == boost::asio::error::operation_aborted) {
+                LOG_TRACE_N << "Cluster timer was aborted.";
+                return;
+            }
+            LOG_WARN_N << "Cluster timer failed: " << ec.message();
+            return;
+        }
+        LOG_DEBUG_N << "Cluster timer fired.";
+        checkCluster();
+    });
+}
+
+void Server::checkCluster() {
+    boost::asio::co_spawn(cluster_strand_, [this]() -> boost::asio::awaitable<void> {
+        try {
+            co_await checkCluster_();
+        } catch (const std::exception& ex) {
+            LOG_ERROR << "Failed to connect to instances: " << ex.what();
+        }
+        startClusterTimer();
+    }, boost::asio::detached);
+}
+
+boost::asio::awaitable<void> Server::checkCluster_() {
+    LOG_DEBUG_N << "Checking the cluster state...";
+
+    // TODO: add other cluster state checks here
+    co_await connectToInstances();
+}
+
 void Server::handleSignals()
 {
     if (is_done()) {
@@ -385,10 +424,7 @@ void Server::handleSignals()
     });
 }
 
-}
-
-
-void nextapp::Server::bootstrap(const BootstrapOptions &opts)
+void Server::bootstrap(const BootstrapOptions &opts)
 {
     LOG_INFO << "Bootstrapping the system...";
 
@@ -397,24 +433,19 @@ void nextapp::Server::bootstrap(const BootstrapOptions &opts)
         co_await upgradeDbTables(0);
         co_await createAdminUser();
         co_await createDefaultNextappInstance();
-    },
-        [](std::exception_ptr ptr) {
-           if (ptr) {
-               std::rethrow_exception(ptr);
-           }
-        });
+    }, boost::asio::detached);
 
     ctx_.run();
 
     LOG_INFO << "Bootstrapping is complete";
 }
 
-boost::asio::awaitable<nextapp::Server::AssignedInstance> nextapp::Server::assignInstance(const boost::uuids::uuid &region)
+boost::asio::awaitable<Server::AssignedInstance> Server::assignInstance(const boost::uuids::uuid &region)
 {
     if (auto cluster = cluster_.load()) {
-        if (auto it = cluster->regions_.find(region); it != cluster->regions_.end()) {
+        if (auto it = cluster->regions.find(region); it != cluster->regions.end()) {
             vector<const Cluster::Region::Instance *> alternatives;
-            for(const auto& [_, instance] : it->second.instances_) {
+            for(const auto& [_, instance] : it->second.instances) {
                 if (instance->is_online && instance->state == Cluster::Region::Instance::State::ACTIVE) {
                     alternatives.push_back(instance.get());
                 }
@@ -435,15 +466,13 @@ boost::asio::awaitable<nextapp::Server::AssignedInstance> nextapp::Server::assig
     co_return AssignedInstance{};
 }
 
-string nextapp::Server::getPasswordHash(std::string_view password, std::string_view userUuid)
+string Server::getPasswordHash(std::string_view password, std::string_view userUuid)
 {
     const auto v = format("{}:{}", password, userUuid);
     return sha256(v, true);
 }
 
-
-
-boost::asio::awaitable<bool> nextapp::Server::checkDb()
+boost::asio::awaitable<bool> Server::checkDb()
 {
     LOG_TRACE_N << "Checking the database version...";
     auto res = co_await db_->exec("SELECT version, salt FROM signup where id = 1");
@@ -472,7 +501,7 @@ boost::asio::awaitable<bool> nextapp::Server::checkDb()
 
 
 
-boost::asio::awaitable<void> nextapp::Server::createDb(const BootstrapOptions &opts)
+boost::asio::awaitable<void> Server::createDb(const BootstrapOptions &opts)
 {
     LOG_INFO << "Creating the database " << config_.db.database;
 
@@ -539,7 +568,7 @@ boost::asio::awaitable<void> nextapp::Server::createDb(const BootstrapOptions &o
 
 
 
-boost::asio::awaitable<void> nextapp::Server::upgradeDbTables(uint version)
+boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 {
     static constexpr auto v1_bootstrap = to_array<string_view>({
         R"(CREATE TABLE signup (
@@ -657,7 +686,7 @@ boost::asio::awaitable<void> nextapp::Server::upgradeDbTables(uint version)
     //}, asio::use_awaitable);
 }
 
-boost::asio::awaitable<void> nextapp::Server::createAdminUser()
+boost::asio::awaitable<void> Server::createAdminUser()
 {
     const auto admin = getEnv("SIGNUP_ADMIN", "admin");
     auto password = getEnv("SIGNUP_ADMIN_PASSWORD");
@@ -683,7 +712,7 @@ boost::asio::awaitable<void> nextapp::Server::createAdminUser()
         id, admin, "admin", hash);
 }
 
-boost::asio::awaitable<void> nextapp::Server::createDefaultNextappInstance()
+boost::asio::awaitable<void> Server::createDefaultNextappInstance()
 {
     if (config_.grpc_nextapp.ca_cert.empty()
         || config_.grpc_nextapp.address.empty()
@@ -724,7 +753,7 @@ boost::asio::awaitable<void> nextapp::Server::createDefaultNextappInstance()
         readFileToBuffer(config_.grpc_nextapp.server_cert));
 }
 
-boost::asio::awaitable<std::optional<boost::uuids::uuid> > nextapp::Server::getRegionFromUserEmail(std::string_view email)
+boost::asio::awaitable<std::optional<boost::uuids::uuid> > Server::getRegionFromUserEmail(std::string_view email)
 {
     auto hash = getEmailHash(email);;
 
@@ -737,7 +766,7 @@ boost::asio::awaitable<std::optional<boost::uuids::uuid> > nextapp::Server::getR
     co_return toUuid(res.rows().front()[0].as_string());
 }
 
-boost::asio::awaitable<std::optional<boost::uuids::uuid>> nextapp::Server::getInstanceFromUserEmail(std::string_view email) {
+boost::asio::awaitable<std::optional<boost::uuids::uuid>> Server::getInstanceFromUserEmail(std::string_view email) {
     auto hash = getEmailHash(email);;
 
     auto conn = co_await db().getConnection();
@@ -749,7 +778,63 @@ boost::asio::awaitable<std::optional<boost::uuids::uuid>> nextapp::Server::getIn
     co_return toUuid(res.rows().front()[0].as_string());
 }
 
-string nextapp::Server::getEmailHash(std::string_view email) const
+boost::asio::awaitable<bool> Server::loadCluster(bool checkClusterWhenLoaded) {
+    // Load the cluster from it's strand to prevent paralell loading form multiple threads
+    const auto result = co_await boost::asio::co_spawn(cluster_strand_, [this]() -> boost::asio::awaitable<bool> {
+            co_return co_await loadCluster_();
+    }, boost::asio::use_awaitable);
+
+    if (result && checkClusterWhenLoaded) {
+        checkCluster();
+    }
+    co_return result;
+}
+
+boost::asio::awaitable<bool> Server::loadCluster_()
+{
+    auto new_cluster = co_await getClusterFromDb();
+    auto current_cluster = cluster_.load();
+
+    if (current_cluster) {
+        // sync the volatile state in is_online to the new cluster
+        // This is actually a potential race-condition, as the state could
+        // be changed again before the new cluster instance takes over.
+        // However, it will be corrected when we iterate over the instances later on.
+        std::unordered_map<boost::uuids::uuid, Cluster::Region::Instance *> current;
+        for(auto& [_, region] : current_cluster->regions) {
+            for(auto& [_, instance] : region.instances) {
+                current[instance->uuid] = instance.get();
+            }
+        }
+
+        for(auto& [_, region] : new_cluster->regions) {
+            for(auto& [_, instance] : region.instances) {
+                if (auto it = current.find(instance->uuid); it != current.end()) {
+                    instance->is_online.store(it->second->is_online.load());
+                }
+            }
+        }
+    }
+
+    // Set the new cluster as the current cluster
+    LOG_INFO << "Loaded cluster with " << new_cluster->regions.size() << " regions.";
+
+    // Log regions and instances
+    for(const auto& [_, region] : new_cluster->regions) {
+        LOG_INFO << "Region " << region.name << " has " << region.instances.size() << " instance(s).";
+        for(const auto& [_, instance] : region.instances) {
+            LOG_INFO << "  - Instance " << instance->uuid << " at " << instance->url
+                     << ' ' << (instance->is_online ? "[online]" : "[offline]");
+        }
+    }
+    cluster_.store(std::move(new_cluster));
+    co_return true;
+}
+
+string Server::getEmailHash(std::string_view email) const
 {
     return  sha256(format("{}:{}", toLower(email), salt_), true);
 }
+
+
+} // ns
