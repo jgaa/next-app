@@ -215,10 +215,6 @@ int main(int argc, char *argv[])
             settings.setValue("client/maxInstances", 1);
         }
 
-        // if (!settings.contains("server/reqests_retries")) {
-        //     settings.setValue("server/reqests_retries", 9);
-        // }
-
         auto style = styles.at(settings.value("UI/style").toInt());
         auto scale = scales.at(settings.value("UI/scale").toInt());
 

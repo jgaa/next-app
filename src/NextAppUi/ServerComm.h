@@ -172,12 +172,14 @@ public:
     signup::pb::GetInfoResponse getSignupInfo() const;
     Q_INVOKABLE void setSignupServerAddress(const QString &address);
     Q_INVOKABLE void signup(const QString &name, const QString &email,
-                            const QString &company, const QString& deviceName);
+                            const QString &company, const QString& deviceName,
+                            int region);
     Q_INVOKABLE void addDeviceWithOtp(const QString &otp, const QString &email, const QString &deviceName);
     Q_INVOKABLE void signupDone();
     Q_INVOKABLE QString deviceId() const {
         return device_uuid_.toString(QUuid::WithoutBraces);
     }
+    Q_INVOKABLE QStringList getRegionsForSignup() const;
 
     static ServerComm& instance() noexcept {
         assert(instance_);
@@ -316,7 +318,8 @@ private:
                      const QString &email,
                      const QString &company,
                      const QString& deviceName,
-                     const QString &otp);
+                     const QString &otp,
+                     int region);
 
     void clearMessages();
     void addMessage(const QString &msg);

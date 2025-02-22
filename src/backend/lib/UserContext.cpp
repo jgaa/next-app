@@ -240,6 +240,10 @@ boost::asio::awaitable<void> UserContext::saveLastReqIds(const boost::uuids::uui
         const string devid_str = to_string(deviceId);
         auto db = co_await Server::instance().db().getConnection();
         for (size_t i = 0; i < values.size(); ++i) {
+            auto v = values.get(i, 0);
+            if (!v.has_value()) {
+                continue;
+            }
             co_await db.exec(R"(INSERT INTO request_state (userid, devid, instance, request_id)
                     VALUES (?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE

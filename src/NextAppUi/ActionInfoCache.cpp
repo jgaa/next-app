@@ -504,7 +504,7 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
         }
     }
 
-    co_return count > 0;
+    co_return true;
 }
 
 std::shared_ptr<GrpcIncomingStream> ActionInfoCache::openServerStream(nextapp::pb::GetNewReq req)

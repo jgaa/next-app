@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.1.36 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.2.0 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_UI_VERSION=\"${appNextAppUi_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -17,13 +17,6 @@ endif()
 option(USE_STATIC_QT "Build with static Qt libraries" OFF)
 option(WITH_TESTS "Enable Tests" ON)
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
-
-# if(USE_STATIC_QT)
-#     set(BUILD_SHARED_LIBS OFF)
-#     set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib .so .dll)
-# else()
-#     set(BUILD_SHARED_LIBS ON)
-# endif()
 
 if (NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL)
     add_definitions(-DUSE_GRPC_STREAMING_FLOW_CONTROL)
@@ -52,7 +45,6 @@ if(USE_STATIC_QT)
     # Use target_compile_definitions instead of add_definitions for modern CMake
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
-
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Charts Svg Test Grpc Concurrent Test Multimedia Sql)
 

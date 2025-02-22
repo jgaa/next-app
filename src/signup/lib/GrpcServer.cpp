@@ -58,12 +58,12 @@ GrpcServer::GrpcServer(Server &server)
 
         // Validate the information in the request
 
-        if (!req->region().empty()) {
+        if (!req->has_region() || req->region().uuid().empty()) {
             throw runtime_error{"Region is unset"};
         }
 
         // Get an instance to use
-        const auto assigned_instance = co_await owner_.server().assignInstance(toUuid(req->region()));
+        const auto assigned_instance = co_await owner_.server().assignInstance(toUuid(req->region().uuid()));
 
         // Get the RPC connection to that instance
         auto conn = owner_.getInstance(assigned_instance.instance);
@@ -150,7 +150,7 @@ GrpcServer::GrpcServer(Server &server)
 
                 response->set_uuid(dresp.deviceid());
                 response->set_cert(dresp.cert());
-                response->set_serverurl(owner_.server().config().cluster.nextapp_public_url);
+                response->set_serverurl(assigned_instance.pub_url);
                 response->set_cacert(dresp.cacert());
                 assert(!response->cacert().empty());
             } else {
@@ -159,7 +159,7 @@ GrpcServer::GrpcServer(Server &server)
         }
 
         // At this time the user is created, but not activated.
-        // It will be activated the first time the devcice connects to the server.
+        // It will be activated the first time the device connects to the server.
         // If the user tries to create a new account now, the non-active account will be
         // replaced wit the new one. The only stable identifiers at this time is the device uuid
         // and the email.

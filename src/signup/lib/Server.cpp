@@ -442,8 +442,10 @@ void Server::bootstrap(const BootstrapOptions &opts)
 
 boost::asio::awaitable<Server::AssignedInstance> Server::assignInstance(const boost::uuids::uuid &region)
 {
+    string region_name;
     if (auto cluster = cluster_.load()) {
         if (auto it = cluster->regions.find(region); it != cluster->regions.end()) {
+            region_name = it->second.name;
             vector<const Cluster::Region::Instance *> alternatives;
             for(const auto& [_, instance] : it->second.instances) {
                 if (instance->is_online && instance->state == Cluster::Region::Instance::State::ACTIVE) {
@@ -460,10 +462,12 @@ boost::asio::awaitable<Server::AssignedInstance> Server::assignInstance(const bo
                     .pub_url = use_instance->pub_url,
                 };
             }
+        } else {
+            throw runtime_error("Region " + to_string(region) + " not found in the cluster.");
         }
     }
 
-    co_return AssignedInstance{};
+    throw runtime_error("No available instances found in region "s + region_name);
 }
 
 string Server::getPasswordHash(std::string_view password, std::string_view userUuid)

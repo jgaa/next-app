@@ -804,16 +804,17 @@ void ServerComm::setSignupServerAddress(const QString &address)
 }
 
 void ServerComm::signup(const QString &name, const QString &email,
-                        const QString &company, const QString &deviceName)
+                        const QString &company, const QString &deviceName, int region)
 {
-    signupOrAdd(name, email, company, deviceName, {});
+    signupOrAdd(name, email, company, deviceName, {}, region);
 }
 
 void ServerComm::signupOrAdd(const QString &name,
-                     const QString &email,
-                     const QString &company,
-                     const QString& deviceName,
-                     const QString &otp)
+                             const QString &email,
+                             const QString &company,
+                             const QString& deviceName,
+                             const QString &otp,
+                             int region)
 {
     // Create CSR
     // Send signup request
@@ -898,6 +899,11 @@ void ServerComm::signupOrAdd(const QString &name,
          signup::pb::SignUpRequest signup_req;
         signup_req.setUserName(name);
         signup_req.setEmail(email);
+        common::Uuid region_uuid;
+        if (region >= 0 && region < signup_info_.regions().size()) {
+            region_uuid.setUuid(signup_info_.regions().at(region).uuid().uuid());
+            signup_req.setRegion(region_uuid);
+        }
 
         if (company.isEmpty()) {
             auto uuid = QUuid::createUuid();
@@ -916,7 +922,7 @@ void ServerComm::signupOrAdd(const QString &name,
 
 void ServerComm::addDeviceWithOtp(const QString &otp, const QString &email, const QString &deviceName)
 {
-    signupOrAdd({}, email, {}, deviceName, otp);
+    signupOrAdd({}, email, {}, deviceName, otp, -1);
 }
 
 void ServerComm::signupDone()
@@ -925,6 +931,15 @@ void ServerComm::signupDone()
         signup_status_ = SignupStatus::SIGNUP_OK;
         emit signupStatusChanged();
     }
+}
+
+QStringList ServerComm::getRegionsForSignup() const
+{
+    QStringList regions;
+    for (const auto& r : signup_info_.regions()) {
+        regions.append(r.name());
+    }
+    return regions;
 }
 
 void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings)

@@ -22,6 +22,16 @@ ColumnLayout  {
         property string deviceName: ""
     }
 
+    // Connections element to listen to NaComm.signupStatus changes
+    Connections {
+        target: NaComm
+        function onSignupStatusChanged() {
+            if (NaComm.signupStatus === NaComm.SIGNUP_SUCCESS) {
+                root.nextClicked();
+            }
+        }
+    }
+
     GridLayout {
         columns: NaCore.isMobile ? 1 : 2
         Layout.margins: 20
@@ -90,6 +100,23 @@ ColumnLayout  {
                 validate()
             }
         }
+
+        Label {
+            text: qsTr("Region")
+            color: MaterialDesignStyling.onSurfaceVariant
+        }
+
+        ComboBox {
+            id: region
+            Layout.fillWidth: true
+            model: NaComm.getRegionsForSignup()
+            currentIndex: -1
+            displayText: currentIndex === -1 ? qsTr("Select Region") : currentText
+
+            onCurrentIndexChanged: {
+                validate()
+            }
+        }
     }
 
     RowLayout {
@@ -122,18 +149,18 @@ ColumnLayout  {
         Item {Layout.fillWidth: true }
     }
 
-    ScrollView {
-        Layout.leftMargin: 20
-        Layout.rightMargin: 20
-        Layout.preferredHeight: 200
-        Layout.fillWidth: true
+    // ScrollView {
+    //     Layout.leftMargin: 20
+    //     Layout.rightMargin: 20
+    //     Layout.preferredHeight: 200
+    //     Layout.fillWidth: true
 
-        Text {
-            text: NaComm.messages
-            wrapMode: Text.Wrap
-            color: MaterialDesignStyling.onSurface
-        }
-    }
+    //     Text {
+    //         text: NaComm.messages
+    //         wrapMode: Text.Wrap
+    //         color: MaterialDesignStyling.onSurface
+    //     }
+    // }
 
     RowLayout {
         spacing: 20
@@ -157,7 +184,7 @@ ColumnLayout  {
                 //nextClicked()
                 loadingIndicator.visible = true;
                 createCtl.enabled = false
-                NaComm.signup(name.text, email.text, company.text, deviceName.text)
+                NaComm.signup(name.text, email.text, company.text, deviceName.text, region.currentIndex)
             }
         }
 
@@ -180,6 +207,7 @@ ColumnLayout  {
 
     function validate() {
         accepted = name.text.length >= 3 && isValidEmail(email.text)
+            && region.currentIndex >= 0
     }
 
     function isValidEmail(email) {

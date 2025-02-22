@@ -19,6 +19,20 @@ ColumnLayout  {
         property string serverAddress : NaComm.defaultServerAddress
     }
 
+    // Connections element to listen to NaComm.signupStatus changes
+    Connections {
+        target: NaComm
+        function onSignupStatusChanged() {
+            if (NaComm.signupStatus === NaComm.SIGNUP_HAVE_INFO) {
+                if (modeCtl.currentIndex === 0) {
+                    root.nextNewSubscrClicked();
+                } else {
+                    root.nextAddDeviceClicked();
+                }
+            }
+        }
+    }
+
     TextArea {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -45,38 +59,28 @@ ColumnLayout  {
         }
     }
 
-    ScrollView {
-        Layout.leftMargin: 20
-        Layout.rightMargin: 20
-        Layout.preferredHeight: 50
+    RowLayout {
         Layout.fillWidth: true
-
-        Text {
-            text: NaComm.messages
-            wrapMode: Text.Wrap
-            color: MaterialDesignStyling.onSurface
-        }
-    }
-
-    Label {
-        id: label
-        text: qsTr("Server")
-        color: MaterialDesignStyling.onSurface
+        spacing: 20
     }
 
     RowLayout {
+        Layout.leftMargin: 25
+        Layout.rightMargin: 25
         Layout.fillWidth: true
+        spacing: 10
 
-        Item {
-            Layout.fillWidth: true
+        Label {
+            id: label
+            text: qsTr("Server")
+            color: MaterialDesignStyling.onSurface
         }
+
         DlgInputField {
-            Layout.preferredWidth: (root.width / 3) * 2
+            Layout.fillWidth: true
+            //Layout.preferredWidth: (root.width / 3) * 2
             id: address
             text: settings.serverAddress
-        }
-        Item {
-            Layout.fillWidth: true
         }
     }
 
@@ -117,19 +121,6 @@ ColumnLayout  {
             onClicked: {
                 settings.serverAddress = address.text
                 NaComm.setSignupServerAddress(settings.serverAddress)
-            }
-        }
-
-        Button {
-            id: nextBtn
-            text: qsTr("Next")
-            visible: NaComm.signupStatus === NaComm.SIGNUP_HAVE_INFO
-            onClicked: {
-                if (modeCtl.currentIndex === 0) {
-                    nextNewSubscrClicked()
-                } else {
-                    nextAddDeviceClicked()
-                }
             }
         }
 
