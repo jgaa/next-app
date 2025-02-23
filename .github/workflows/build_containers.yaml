@@ -1,0 +1,31 @@
+name: Build and Push NextApp Docker Image
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types: [published]  # Run when a release is published
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest  # Uses Ubuntu for Docker support
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.MY_PAT }}
+
+      - name: Run the Build Script
+        run: |
+          mkdir build
+          chmod 777 build
+          chmod +x ./building/build-nextapp-image.sh  # Ensure script is executable
+          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push
+        shell: bash
