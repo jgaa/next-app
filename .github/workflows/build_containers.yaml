@@ -1,4 +1,4 @@
-name: Build and Push NextApp Docker Image
+name: Build and Push NextApp Docker Images
 
 on:
   push:
@@ -25,10 +25,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.MY_PAT }}
 
-      - name: Run the Build Script
+      - name: Prepare build directory
         run: |
           mkdir build
           chmod 777 build
+        shell: bash
+
+      - name: Build and push nextappd image
+        run: |
           chmod +x ./building/build-nextapp-image.sh  # Ensure script is executable
           BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push
+        shell: bash
+
+      - name: Build and push signupd image
+        run: |
+          chmod +x ./building/build-signup-image.sh  # Ensure script is executable
+          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-signup-image.sh --scripted --strip --push
         shell: bash
