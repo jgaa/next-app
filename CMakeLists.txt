@@ -77,10 +77,7 @@ if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP)
     set(USE_LOGFAULT ON)
     add_subdirectory(dependencies/yahat-cpp)
     include_directories(${NEXTAPP_ROOT}/dependencies/yahat-cpp/include)
-endif()
 
-if (NEXTAPP_WITH_BACKEND)
-    message("Building backend server")
     set(MYSQLPOOL_EMBEDDED ON CACHE INTERNAL "")
     #set(LOGFAULT_ROOT ${NEXTAPP_ROOT}/dependencies/logfault CACHE INTERNAL "")
     set(MYSQLPOOL_LOGGER logfault CACHE INTERNAL "")
@@ -96,6 +93,11 @@ if (NEXTAPP_WITH_BACKEND)
     set(MYSQLPOOL_WITH_EXAMPLES OFF CACHE INTERNAL "")
     add_subdirectory(dependencies/mysqlpool-cpp)
     include_directories(${NEXTAPP_ROOT}/dependencies/mysqlpool-cpp/include)
+
+endif()
+
+if (NEXTAPP_WITH_BACKEND)
+    message("Building backend server")
 
     set(USE_SYSTEM_TZ_DB ON CACHE INTERNAL "")
     set(BUILD_TZ_LIB ON CACHE INTERNAL "")
