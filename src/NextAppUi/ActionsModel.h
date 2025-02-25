@@ -14,6 +14,11 @@
 
 #include "nextapp.qpb.h"
 
+#ifdef SORT_DEFAULT
+// Thank you Microsoft. I feel so productive today!
+#  undef SORT_DEFAULT
+#endif
+
 // A query to the database gives us the uuid. The action itself is lazily fetched from the cache.
 struct ActionData {
     ActionData() = default;
