@@ -36,6 +36,7 @@ using namespace std;
 
 ostream& operator << (ostream&o, const ServerComm::Status& v) {
     static constexpr auto names = to_array<string_view>({
+        "MANUAL_OFFLINE",
         "OFFLINE",
         "READY_TO_CONNECT",
         "CONNECTING",
@@ -124,6 +125,9 @@ ServerComm::ServerComm()
             }, [this](const nextapp::pb::Status& status) {
                 if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
                     LOG_ERROR << "Ping failed: " << status.message();
+                    if (status_ != Status::MANUAL_OFFLINE) {
+                        setStatus(Status::ERROR);
+                    }
                     setStatus(Status::ERROR);
                 } else {
                     housekeeping();
@@ -182,6 +186,11 @@ ServerComm::~ServerComm()
 void ServerComm::start()
 {
     LOG_DEBUG_N << "starting server-comm.";
+
+    if (!canConnect()) {
+        LOG_WARN << "We can't connect to nextappd at this time.";
+        return;
+    }
 
     ScopedExit log{[] {
         LOG_DEBUG << "exiting ServerComm::start()";
@@ -279,7 +288,11 @@ void ServerComm::toggleConnect()
 {
     if (connected()) {
         stop();
+        setStatus(Status::MANUAL_OFFLINE);
     } else {
+        if (status() == Status::MANUAL_OFFLINE) {
+            setStatus(Status::OFFLINE);
+        }
         start();
     }
 }
@@ -957,16 +970,9 @@ void ServerComm::errorOccurred(const QGrpcStatus &status)
     LOG_ERROR_N << "Connection to gRPC server failed: " << status.message();
 
     emit errorRecieved(tr("Connection to gRPC server failed: %1").arg(status.message()));
-
-// #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-//     if (status.code() == QGrpcStatus::StatusCode::Cancelled) {
-// #else
-//     if (status.code() == QtGrpc::StatusCode::Cancelled) {
-// #endif
-//         setStatus(Status::OFFLINE);
-//         return;
-//     }
-    setStatus(Status::ERROR);
+    if (status_ != Status::MANUAL_OFFLINE) {
+        setStatus(Status::ERROR);
+    }
     scheduleReconnect();
 }
 
@@ -1317,7 +1323,9 @@ QCoro::Task<void> ServerComm::startNextappSession()
         addMessage(tr("Connected and authenticated with the server."));
     } else {
 failed:
-        setStatus(Status::ERROR);
+        if (status_ != Status::MANUAL_OFFLINE) {
+            setStatus(Status::ERROR);
+        }
 
         LOG_ERROR_N << "Failed to start new session: " << res.message();
         if (res.error() == nextapp::pb::ErrorGadget::Error::DEVICE_DISABLED) {
@@ -1669,6 +1677,11 @@ void ServerComm::onReachabilityChanged(QNetworkInformation::Reachability reachab
 
 bool ServerComm::shouldReconnect() const noexcept
 {
+    if (!canConnect()) {
+        LOG_TRACE_N << "Cannot connect now.";
+        return false;
+    }
+
     const auto level = QSettings{}.value("server/reconnect_level", 0).toInt();
     const auto reqire = static_cast<ReconnectLevel>(level);
 
@@ -2022,3 +2035,20 @@ bool ServerComm::isTemporaryError(nextapp::pb::ErrorGadget::Error error) {
 
     return false;
 }
+
+bool ServerComm::canConnect() const noexcept
+{
+    // If the user manually took us offline, we must stay offline until they change their mind.
+    if (status() == MANUAL_OFFLINE) {
+        LOG_DEBUG_N << "Cannot connect because we are manually offline.";
+        return false;
+    }
+
+    if (signup_status_ != SignupStatus::SIGNUP_OK) {
+        LOG_DEBUG_N << "Cannot connect because we are not (fully) signed up.";
+        return false;
+    }
+
+    return true;
+}
+

@@ -63,6 +63,7 @@ class ServerComm : public QObject
 {
 public:
     enum Status {
+        MANUAL_OFFLINE,
         OFFLINE,
         READY_TO_CONNECT,
         CONNECTING,
@@ -350,7 +351,7 @@ private:
     void callRpc_(callT&& call, doneT && done, const GrpcCallOptions& opts, Args... args) {
 
         auto exec = [this, call=std::move(call), done=std::move(done), opts, args...]() {
-            if (!opts.ignore_offline && (status_ == Status::OFFLINE || status_ == Status::ERROR)) {
+            if (!opts.ignore_offline && (status_ <= Status::OFFLINE || status_ == Status::ERROR)) {
                 LOG_ERROR << "ServerComm::callRpc_ Called when status is " << status_;
                 return;
             }
@@ -572,6 +573,7 @@ private:
 
 
     bool shouldReconnect() const noexcept;
+    bool canConnect() const noexcept;
 
     QCoro::Task<void> startNextappSession();
     QCoro::Task<bool> getDataVersions();
