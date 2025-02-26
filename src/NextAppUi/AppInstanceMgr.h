@@ -26,15 +26,12 @@ public:
     void close();
 
 private:
+    static QString getKey();
     // TODO: We should probably use a hash aagainst the server we use
     //       to support multiple servers on the same device.
-#ifdef _DEBUG
-    const QString SHARED_MEMORY_KEY = "NextApp_InstanceTracker_dbg";
-#else
-    const QString SHARED_MEMORY_KEY = "NextApp_InstanceTracker";
-#endif
+
 #ifndef __ANDROID__
-    QSharedMemory shared_memory_{SHARED_MEMORY_KEY};
+    QSharedMemory shared_memory_{getKey()};
 #endif
     QString name_{"singleton"};
     bool closed_{true};

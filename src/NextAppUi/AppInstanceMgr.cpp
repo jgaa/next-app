@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QThread>
 #include <QSettings>
+#include <QGuiApplication>
 
 #include "AppInstanceMgr.h"
 
@@ -101,4 +102,15 @@ void AppInstanceMgr::close()
         closed_ = true;
     }
 #endif // __ANDROID__
+}
+
+QString AppInstanceMgr::getKey()
+{
+    QString key = "nextapp";
+    if (auto* app = qobject_cast<QGuiApplication*>(QGuiApplication::instance())) {
+        key = app->applicationName();
+    }
+
+    auto full_key = QString{"InstanceTracker_"} + key;
+    return full_key;
 }
