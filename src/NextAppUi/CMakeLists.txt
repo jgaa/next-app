@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.2.1 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.2.2 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_UI_VERSION=\"${appNextAppUi_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
