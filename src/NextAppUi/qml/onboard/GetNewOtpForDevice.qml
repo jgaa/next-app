@@ -45,18 +45,6 @@ Dialog {
 
         Label {
             Layout.alignment: Qt.AlignLeft
-            text: qsTr("One Time Password\nType it in as one 8 digit number")
-        }
-
-        TextField{
-            id: otp
-            readOnly: true
-            text: model.otp
-            inputMask: "9999 9999"
-        }
-
-        Label {
-            Layout.alignment: Qt.AlignLeft
             text: qsTr("The email address to use")
         }
 
@@ -64,6 +52,18 @@ Dialog {
             id: email
             readOnly: true
             text: model.email
+        }
+
+        Label {
+            Layout.alignment: Qt.AlignLeft
+            text: qsTr("One Time Password")
+        }
+
+        TextField{
+            id: otp
+            readOnly: true
+            text: model.otp
+            inputMask: "9999 9999"
         }
     }
 }

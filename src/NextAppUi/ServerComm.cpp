@@ -275,7 +275,6 @@ void ServerComm::stop()
 
 QString ServerComm::version()
 {
-    //emit errorRecieved({});
     return server_version_;
 }
 
@@ -1351,7 +1350,7 @@ failed:
     assert(res.hasServerInfo());
     if (res.hasServerInfo()) {
         const auto& se = res.serverInfo();
-        server_version_ = se.properties().kv()["server-version"];
+            server_version_ = se.properties().kv()["version"];
         LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
     } else {
         LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
@@ -2051,7 +2050,7 @@ bool ServerComm::canConnect() const noexcept
         return false;
     }
 
-    if (signup_status_ != SignupStatus::SIGNUP_OK) {
+    if (signup_status_ != SignupStatus::SIGNUP_OK && signup_status_ != SignupStatus::SIGNUP_SUCCESS) {
         LOG_DEBUG_N << "Cannot connect because we are not (fully) signed up.";
         return false;
     }

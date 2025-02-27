@@ -22,6 +22,15 @@ ColumnLayout  {
         property string deviceName: ""
     }
 
+    Connections {
+        target: NaComm
+        function onSignupStatusChanged() {
+            if (NaComm.signupStatus === NaComm.SIGNUP_SUCCESS) {
+                root.nextClicked();
+            }
+        }
+    }
+
     GridLayout {
         columns: NaCore.isMobile ? 1 : 2
         Layout.margins: 20
@@ -49,7 +58,13 @@ ColumnLayout  {
         TextField {
             id: otp
             Layout.fillWidth: true
-            //color: MaterialDesignStyling.onSurface
+
+            property string textWithoutSpaces: otp.text.replace(/\s+/g, "")
+
+            onTextChanged: {
+                textWithoutSpaces = otp.text.replace(/\s+/g, "");
+                //console.log("Updated textWithoutSpaces:", textWithoutSpaces);
+            }
         }
 
         Label {
@@ -115,12 +130,12 @@ ColumnLayout  {
         Button {
             id: createCtl
             text: qsTr("Add Device")
-            enabled: otp.text.length == 8
+            enabled: otp.textWithoutSpaces.length == 8
             visible: NaComm.signupStatus !== NaComm.SIGNUP_SUCCESS
             onClicked: {
                 loadingIndicator.visible = true;
                 createCtl.enabled = false
-                NaComm.addDeviceWithOtp(otp.text, email.text, deviceName.text)
+                NaComm.addDeviceWithOtp(otp.textWithoutSpaces, email.text, deviceName.text)
             }
         }
 

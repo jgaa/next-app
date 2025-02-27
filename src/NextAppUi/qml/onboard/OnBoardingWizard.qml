@@ -98,7 +98,7 @@ Window  {
             ScrollView {
                 Layout.leftMargin: 20
                 Layout.rightMargin: 20
-                Layout.preferredHeight: 200
+                Layout.preferredHeight: 130
                 Layout.fillWidth: true
 
                 Text {
