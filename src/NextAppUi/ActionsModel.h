@@ -240,6 +240,7 @@ public:
     Q_INVOKABLE void batchChangeCategory(const QString& category, const QStringList& actions);
     Q_INVOKABLE void batchChangePriority(int priority, const QStringList& actions);
     Q_INVOKABLE void batchChangeDifficulty(int difficulty, const QStringList& actions);
+    Q_INVOKABLE void batchDelete(const QStringList& actions);
 
    //QCoro::Task<void> fetch(nextapp::pb::GetActionsReq& filter);
     //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);

@@ -160,6 +160,12 @@ Rectangle {
                                 setDifficultyDlg.open()
                             }
                         }
+                        MenuItem {
+                            text: qsTr("Delete")
+                            onTriggered: {
+                                deleteDlg.open()
+                            }
+                        }
                     }
                 }
 
@@ -430,6 +436,23 @@ Rectangle {
                 NaActionsModel.batchChangeDifficulty(diff, actions.selectedIds)
                 setDifficultyDlg.close()
             }
+        }
+    }
+
+    Dialog {
+        id: deleteDlg
+        title: qsTr("Delete Actions")
+        width: 300
+        height: 200
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        Text {
+            text: qsTr("Are you sure you want to delete the selected actions?\nThis action cannot be undone.")
+            wrapMode: Text.WordWrap
+            clip: true
+        }
+
+        onAccepted: {
+            NaActionsModel.batchDelete(actions.selectedIds)
         }
     }
 

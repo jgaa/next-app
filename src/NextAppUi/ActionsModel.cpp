@@ -1062,6 +1062,13 @@ void ActionsModel::batchChangeDifficulty(int difficulty, const QStringList &acti
     batchUpdateActions(req, actions);
 }
 
+void ActionsModel::batchDelete(const QStringList &actions)
+{
+    for(const auto& id: actions) {
+        deleteAction(id);
+    }
+}
+
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
     return valid_ ? actions_.size() : 0;

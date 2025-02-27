@@ -1755,11 +1755,18 @@ QCoro::Task<bool> ServerComm::save(QueuedRequest &qr)
 QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteRequest)
 {
     ++executing_request_count_;
-    assert(executing_request_count_ == 1);
+    //assert(executing_request_count_ == 1);
+
+    ScopedExit check_for_more{[this] {
+        if (queued_requests_count_ > 0) {
+            LOG_DEBUG_N << "There are more queued requests. Scheduling execution.";
+            QTimer::singleShot(0, this, &ServerComm::retryRequests);
+        }
+    }};
 
     ScopedExit decr{[this] {
         --executing_request_count_;
-        assert(executing_request_count_ == 0);
+        assert(executing_request_count_ >= 0);
     }};
 
     GrpcCallOptions options;
@@ -1896,7 +1903,7 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
  */
 QCoro::Task<void> ServerComm::retryRequests()
 {
-    // Only enter once as a time.
+    // Only enter once at a time.
     if (retrying_requests_) {
         co_return;
     }

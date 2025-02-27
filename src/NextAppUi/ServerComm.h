@@ -543,7 +543,7 @@ private:
         bool delete_req = false;
 
         if (QSettings{}.value("server/resend_requests", true).toBool()) {
-            LOG_INFO << "Queuing request: " << qr.uuid.toString()
+            LOG_DEBUG << "Queuing request: " << qr.uuid.toString()
                      << " type: " << static_cast<int>(rq)
                      << " name: " << boost::typeindex::type_id<reqT>().pretty_name();
 
@@ -558,11 +558,11 @@ private:
                 co_return true;
             }
 
-            // We saved it, so it must be deleted if successfuly executed
-            delete_req = true;
+            co_await retryRequests();
+            co_return true;
+        } else {
+            co_return co_await execute(qr, false);
         }
-
-        co_return co_await execute(qr, delete_req);
     }
 
     QCoro::Task<bool> save(QueuedRequest& qr);
