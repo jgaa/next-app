@@ -33,32 +33,25 @@ Rectangle {
             Layout.margins: 6
 
             StyledButton {
+                property int mode: // 0  Nothing selected  1 start 2 continue 3 pause
+                    workSessionList.selectedItem !== "" ? (workSessionList.selectedIsActive ? 3 : workSessionList.selectedIsStarted ? 2 : 1) : 0
+                property var currenText: [qsTr("Start"), qsTr("Start"), qsTr("Resume"), qsTr("Pause")];
                 implicitHeight: 22 // Adjust as needed
-                text: qsTr("Pause")
-                enabled: workSessionList.selectedItem !== "" && workSessionList.selectedIsActive
+                text: currenText[mode]
+                enabled: mode > 0
 
                 onClicked: {
-                    NaWorkSessionsModel.pause(workSessionList.selectedItem)
-                }
-            }
-
-            StyledButton {
-                implicitHeight: 22 // Adjust as needed
-                text: qsTr("To the Top")
-                enabled: workSessionList.selectedItem !== ""
-
-                onClicked: {
-                    NaWorkSessionsModel.touch(workSessionList.selectedItem)
-                }
-            }
-
-            StyledButton {
-                implicitHeight: 22 // Adjust as needed
-                text: workSessionList.selectedIsStarted ? qsTr("Resume") : qsTr("Start")
-                enabled: workSessionList.selectedItem !== "" && !workSessionList.selectedIsActive
-
-                onClicked: {
-                    NaWorkSessionsModel.resume(workSessionList.selectedItem)
+                    console.log("WorkSessionView/Start/Continue/Pause clicked mode=", mode)
+                    switch(mode) {
+                    case 0:
+                        break;
+                    case 1:
+                    case 2:
+                        NaWorkSessionsModel.resume(workSessionList.selectedItem)
+                        break;
+                    case 3:
+                        NaWorkSessionsModel.pause(workSessionList.selectedItem)
+                    }
                 }
             }
 
@@ -79,6 +72,16 @@ Rectangle {
 
                 onClicked: {
                     NaWorkSessionsModel.finishAction(workSessionList.selectedItem)
+                }
+            }
+
+            StyledButton {
+                implicitHeight: 22 // Adjust as needed
+                text: qsTr("To the Top")
+                enabled: workSessionList.selectedItem !== ""
+
+                onClicked: {
+                    NaWorkSessionsModel.touch(workSessionList.selectedItem)
                 }
             }
 

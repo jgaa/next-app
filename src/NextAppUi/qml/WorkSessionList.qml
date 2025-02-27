@@ -25,7 +25,7 @@ Rectangle {
                 selectedIsStarted = false
             } else {
                 selectedIsActive = tableView.model.isActive(selectedItem)
-                //selectedIsStarted = tableView.isStarted(selectedItem)
+                selectedIsStarted = tableView.model.isStarted(selectedItem)
             }
         }
     }
