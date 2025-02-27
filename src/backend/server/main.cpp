@@ -16,8 +16,11 @@
 
 #include <iostream>
 #include <filesystem>
+#include <csignal>
+
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
+#include <boost/stacktrace.hpp>
 
 #include "nextapp/config.h"
 #include "nextapp/logging.h"
@@ -45,6 +48,18 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
     }
 
     return logfault::LogLevel::INFO;
+}
+
+// crash handlers
+void signal_handler(int signum) {
+    cerr << "Signal (" << signum << ") received:\n";
+    cerr << boost::stacktrace::stacktrace() << "\n";
+    exit(signum);  // Exit with the signal number
+}
+
+void setup_signal_handlers() {
+    signal(SIGABRT, signal_handler);  // Catches assertion failures
+    signal(SIGSEGV, signal_handler);  // Catches segmentation faults
 }
 
 template <typename T>
@@ -87,6 +102,8 @@ int main(int argc, char* argv[]) {
         cout << "Locales in Linux are fundamentally broken. Never worked. Never will. Overriding the current mess with LC_ALL=C" << endl;
         setenv("LC_ALL", "C", 1);
     }
+
+    setup_signal_handlers();
 
     Config config;
     Server::BootstrapOptions bootstrap_opts;

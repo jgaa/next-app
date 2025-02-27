@@ -7,9 +7,18 @@ set(NEXTAPP_BACKEND ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(NEXTAPP_LIBS = ${BOOST_LIBRARIES} ZLIB Threads::Threads)
 
-add_library(boost INTERFACE IMPORTED)
-set_property(TARGET boost PROPERTY
-    INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
+     system
+     context
+     chrono
+     json
+     program_options
+     stacktrace_basic
+     )
+
+#add_library(boost INTERFACE IMPORTED)
+# set_property(TARGET boost PROPERTY
+#     INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
 
 add_subdirectory(lib)
 add_subdirectory(server)
