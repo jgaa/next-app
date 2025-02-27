@@ -9,7 +9,7 @@ import Nextapp.Models
 
 Rectangle {
     id: root
-    property var colwidths: [140, 120, 80, 80]
+    property var colwidths: [120, 60, 60, 60]
     property alias model: tableView.model
     property string selectedItem: ""
     property bool selectedIsActive: false
@@ -130,16 +130,6 @@ Rectangle {
                         color: MaterialDesignStyling.onSurface
                         Layout.fillHeight: true
                     }
-
-                    // Rectangle {
-                    //     Layout.preferredHeight: delegate.height - 5
-                    //     Layout.preferredWidth: delegate.height - 5
-
-                    //     anchors.centerIn: notesIcon
-                    //     visible: notesIcon.visible
-                    //     radius: 100
-                    //     color: MaterialDesignStyling.primary
-                    // }
 
                     Text {
                         id: notesIcon

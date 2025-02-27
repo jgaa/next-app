@@ -134,8 +134,6 @@ ApplicationWindow {
                     currentIndex: sidebar.currentMainItem
 
                     DaysInYear {
-                        // Layout.fillWidth: true
-                        // Layout.fillHeight: true
                     }
 
                     SplitView {
@@ -198,9 +196,10 @@ ApplicationWindow {
                         }
 
                         CurrentWorkSessionsView {
+                            id: currentWorkSessionsCtl
                             SplitView.fillWidth: true
-                            SplitView.fillHeight: false
-                            SplitView.preferredHeight: 220
+                            SplitView.preferredHeight: Math.max(currentWorkSessionsCtl.minHeight,
+                                                                root.height / 6)
                         }
                     } // ColumnLayout for tree views
 
@@ -219,11 +218,12 @@ ApplicationWindow {
                 SplitView.minimumWidth: 150
                 SplitView.fillHeight: true
                 Layout.maximumWidth: dayPlan.implicitWidth
+                visible: sidebar.currentMainItem === 1 && sidebar.currentTabIndex === 0
 
                 CalendarView {
                     id: dayPlan
                     Layout.fillHeight: true
-                    visible: sidebar.currentMainItem !== 2
+                    //visible: sidebar.currentMainItem !== 2
                     mode: CalendarModel.CM_DAY
                     days: 1
                     primaryForActionList: true

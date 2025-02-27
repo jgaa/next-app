@@ -10,27 +10,35 @@ import Nextapp.Models
 Rectangle {
     id: root
     color: MaterialDesignStyling.surfaceContainer
-    Layout.fillWidth: true
     enabled: NaComm.connected
     opacity: NaComm.connected ? 1.0 : 0.5
+    property alias minHeight: buttonsCtl.implicitHeight
 
     RowLayout {
         anchors.fill: parent
         id: rowCtl
 
         WorkSessionList {
-            Layout.preferredWidth: 800
-            Layout.minimumWidth: 300
+            //Layout.preferredWidth: 800
+            //Layout.minimumWidth: 300
+            Layout.fillWidth: true
             id: workSessionList
             model: NaWorkSessionsModel
         }
 
         // Right buttons
         ColumnLayout {
+            id: buttonsCtl
             Layout.fillHeight: true
-            Layout.preferredWidth: 220
-            Layout.minimumWidth: 200
+            Layout.preferredWidth: implicitWidth
+            //Layout.minimumWidth: 200
             Layout.margins: 6
+            // readonly property int maxButtonWidth: Math.max(
+            //         startButton.implicitWidth,
+            //         doneButton.implicitWidth,
+            //         actionCompletedButton.implicitWidth,
+            //         toTheTopButton.implicitWidth
+            //     )
 
             StyledButton {
                 property int mode: // 0  Nothing selected  1 start 2 continue 3 pause
@@ -88,11 +96,6 @@ Rectangle {
             Item {
                 Layout.fillHeight: true
             }
-        }
-
-        Item {
-            Layout.fillHeight: true
-            Layout.fillWidth: true
         }
     }
 
