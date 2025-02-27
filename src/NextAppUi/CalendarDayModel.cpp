@@ -477,7 +477,7 @@ QObject *CalendarDayModel::Pool::get(QObject *parent)
 {
     if (end_ >= pool_.size()) {
         if (!component_factory_) {
-            component_factory_.emplace(&NextAppCore::engine(), QUrl(path_));
+            component_factory_.emplace(&NextAppCore::instance()->engine(), QUrl(path_));
         }
 
         QVariantMap properties;

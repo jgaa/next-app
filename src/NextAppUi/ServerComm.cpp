@@ -178,8 +178,7 @@ ServerComm::ServerComm()
 ServerComm::~ServerComm()
 {
     LOG_TRACE_N << "ServerComm destructor. last_seen_update_id_=" << last_seen_update_id_;
-    QSettings{}.setValue(lastSeenUpdateIdKey(), last_seen_update_id_);
-    QSettings{}.setValue(lastSeenServerInstance(), static_cast<qulonglong>(last_seen_server_instance_));
+    close();
     instance_ = {};
 }
 
@@ -262,14 +261,26 @@ void ServerComm::stop()
         setStatus(Status::OFFLINE);
     }
 
-    LOG_DEBUG_N << "Purging " << grpc_queue_.size() << " pending gRPC calls";
-    while(!grpc_queue_.empty()) {
-        grpc_queue_.pop();
-    }
     emit connectedChanged();
     if (updates_) {
         updates_->cancel();
         updates_.reset();
+    }
+}
+
+void ServerComm::close()
+{
+    if (!closed_) {
+        closed_ = true;
+        LOG_DEBUG_N << "Closing down ServerComm...";
+        ping_timer_.stop();
+        stop();
+        client_.reset();
+        signup_client_.reset();
+        LOG_DEBUG_N << "Done closing down ServerComm.";
+
+        QSettings{}.setValue(lastSeenUpdateIdKey(), last_seen_update_id_);
+        QSettings{}.setValue(lastSeenServerInstance(), static_cast<qulonglong>(last_seen_server_instance_));
     }
 }
 
@@ -1006,10 +1017,6 @@ void ServerComm::onGrpcReady()
     reconnect_after_seconds_ = 0;
     setStatus(Status::ONLINE);
     emit versionChanged();
-    for(; !grpc_queue_.empty(); grpc_queue_.pop()) {
-        grpc_queue_.front()();
-    }
-
     NextAppCore::instance()->setOnline(true);
 }
 

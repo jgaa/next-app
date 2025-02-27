@@ -13,6 +13,10 @@
 #include "ReviewModel.h"
 #include "DevicesModel.h"
 
+#ifdef LINUX_BUILD
+#include <QDBusConnection>
+#endif
+
 class CalendarModel;
 
 class NextAppCore : public QObject
@@ -41,7 +45,8 @@ public:
 
     Q_ENUM(State)
 
-    NextAppCore();
+    NextAppCore(QQmlApplicationEngine& engine);
+    ~NextAppCore() override;
 
     static QString qtVersion() {
         return QT_VERSION_STR;
@@ -106,7 +111,7 @@ public:
         return instance_;
     }
 
-    static QQmlApplicationEngine& engine();
+    QQmlApplicationEngine& engine();
 
     int width() const noexcept;
     int height() const noexcept;
@@ -151,7 +156,6 @@ private:
     void resetTomorrowTimer();
 
     static NextAppCore *instance_;
-    QGuiApplication *app_{qApp};
     State state_{State::STARTING_UP};
     std::unique_ptr<DbStore> db_;
     std::unique_ptr<QQmlComponent> sync_popup_component_;
@@ -168,4 +172,8 @@ private:
     double volume_{};
     std::map<QString, QVariant> properties_;
     std::optional<QDate> today_;
+#ifdef LINUX_BUILD
+    std::unique_ptr<QDBusConnection> dbus_connection_;
+#endif
+    QQmlApplicationEngine *engine_{};
 };

@@ -141,6 +141,26 @@ QCoro::Task<bool> DbStore::init() {
     co_return true;
 }
 
+void DbStore::close()
+{
+    LOG_DEBUG_N << "Closing the database";
+    QMetaObject::invokeMethod(this, [&]() {
+        if (db_ && db_->isOpen()) {
+            db_->close();
+            db_.reset();
+        }
+    });
+    // We need to waut for the worker thread to finish
+    if constexpr (use_worker_thread) {
+        LOG_DEBUG_N << "Waiting for the DB worker thread to finish";
+        if (thread_ && thread_->isRunning()) {
+            thread_->quit();
+            thread_->wait();
+        }
+    }
+    LOG_DEBUG_N << "Database closed";
+}
+
 QCoro::Task<bool> DbStore::clear()
 {
     LOG_INFO_N << "Clearing the database. All data will be deleted.";

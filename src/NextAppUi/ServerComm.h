@@ -160,6 +160,7 @@ public:
 
     void start();
     void stop();
+    void close();
 
     [[nodiscard]] QString version();
     [[nodiscard]] bool connected() const noexcept;
@@ -409,10 +410,6 @@ private:
             );
         };
 
-        if (opts.enable_queue && !connected()) {
-            grpc_queue_.emplace(std::move(exec));
-            return;
-        }
         exec();
     }
 
@@ -586,8 +583,6 @@ private:
     std::unique_ptr<signup::pb::SignUp::Client> signup_client_;
     nextapp::pb::ServerInfo server_info_;
     QString server_version_{"Unknown"};
-    std::queue<std::function<void()>> grpc_queue_;
-    //bool grpc_is_ready_ = false;
     Status status_{Status::OFFLINE};
     static ServerComm *instance_;
     std::shared_ptr<QGrpcServerStream> updates_;
@@ -609,4 +604,5 @@ private:
     bool retrying_requests_{false};
     uint last_seen_update_id_{0};
     uint64_t last_seen_server_instance_;
+    bool closed_{false};
 };

@@ -187,7 +187,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    QSettings settings;
+    QSettings settings{};
     bool delete_db_if_exists = false;
     {
         if (parser.isSet("signup") || settings.value("server/deleted", false).toBool()) {
@@ -277,8 +277,11 @@ int main(int argc, char *argv[])
     // nextapp::pb::Nextapp::Client cli{&app};
     // auto info = cli.GetServerInfo({});
 
+    LOG_TRACE_N << "Constructing QMLApplicatioonEngine...";
+    QQmlApplicationEngine engine;
+
     LOG_TRACE_N << "Constructing static models...";
-    NextAppCore core;
+    NextAppCore core(engine);
     ServerComm comms;
     ActionCategoriesModel ac_model;
     ActionInfoCache ai_cache;
@@ -287,9 +290,6 @@ int main(int argc, char *argv[])
     GreenDaysModel green_days;
     DayColorModel day_colors;
     WorkSessionsModel work_sessions;
-
-    LOG_TRACE_N << "Constructing QMLApplicatioonEngine...";
-    auto& engine = NextAppCore::engine();
 
     if (delete_db_if_exists) {
         LOG_WARN << "Deleting the current database if it exists!";

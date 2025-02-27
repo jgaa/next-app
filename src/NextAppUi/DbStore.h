@@ -138,6 +138,7 @@ public:
     }
 
     QCoro::Task<bool> init();
+    void close();
 
     // Re-create the database. Deletes all the data.
     QCoro::Task<bool> clear();

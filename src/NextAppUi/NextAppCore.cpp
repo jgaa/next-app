@@ -31,7 +31,9 @@ QDate getDefaultDate(time_t when) {
 
 NextAppCore *NextAppCore::instance_;
 
-NextAppCore::NextAppCore() {
+NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
+    : engine_{&engine}
+{
     assert(instance_ == nullptr);
     instance_ = this;
     drag_enabled_ = !isMobile();
@@ -41,7 +43,7 @@ NextAppCore::NextAppCore() {
     width_ = 350;
     height_ = 750;
 #else
-    connect(app_, &QGuiApplication::primaryScreenChanged, [this](QScreen *screen) {
+    connect(qApp, &QGuiApplication::primaryScreenChanged, [this](QScreen *screen) {
         emit widthChanged();
         emit heightChanged();
     });
@@ -64,10 +66,10 @@ NextAppCore::NextAppCore() {
     });
 
 #ifdef LINUX_BUILD
-    QDBusConnection systemBus = QDBusConnection::systemBus();
-    if (systemBus.isConnected()) {
+    dbus_connection_ = make_unique<QDBusConnection>(QDBusConnection::systemBus());
+    if (dbus_connection_->isConnected()) {
         LOG_DEBUG << "Connected to the D-Bus system bus";
-        if (!systemBus.connect(
+        if (!dbus_connection_->connect(
                 "org.freedesktop.login1",                   // Service name
                 "/org/freedesktop/login1",                  // Object path
                 "org.freedesktop.login1.Manager",           // Interface name
@@ -130,6 +132,29 @@ NextAppCore::NextAppCore() {
     });
 
     resetTomorrowTimer();
+}
+
+NextAppCore::~NextAppCore()
+{
+#ifdef LINUX_BUILD
+    LOG_DEBUG_N << "Disconnecting from D-Bus";
+    if (dbus_connection_) {
+        dbus_connection_->disconnect(
+            "org.freedesktop.login1",                   // Service name
+            "/org/freedesktop/login1",                  // Object path
+            "org.freedesktop.login1.Manager",           // Interface name
+            "PrepareForSleep",                          // Signal name
+            this,
+            SLOT(handlePrepareForSleep(bool)));
+        dbus_connection_.reset();
+    }
+    LOG_DEBUG_N << "Done disconnecting from D-Bus";
+#endif
+
+    if (db_) {
+        db_->close();
+        db_.reset();
+    }
 }
 
 
@@ -333,8 +358,8 @@ QCoro::Task<void> NextAppCore::modelsAreCreated()
 
 QQmlApplicationEngine &NextAppCore::engine()
 {
-    static QQmlApplicationEngine engine_;
-    return engine_;
+    assert(engine_);
+    return *engine_;
 }
 
 int NextAppCore::width() const noexcept
@@ -342,7 +367,7 @@ int NextAppCore::width() const noexcept
     if (width_ > 0) {
         return width_;
     }
-    return app_->primaryScreen()->geometry().width();
+    return qApp->primaryScreen()->geometry().width();
 }
 
 int NextAppCore::height() const noexcept
@@ -350,7 +375,7 @@ int NextAppCore::height() const noexcept
     if (height_ > 0) {
         return height_;
     }
-    return app_->primaryScreen()->geometry().height();
+    return qApp->primaryScreen()->geometry().height();
 }
 
 void NextAppCore::setDragEnabled(bool drag_enabled) {
