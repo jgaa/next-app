@@ -447,6 +447,12 @@ ORDER BY
     };
 
     remaining_ = cache_.size();
+    if (remaining_ == 0) {
+        setState(State::DONE);
+        LOG_INFO << tr("There there is nothing to review yet...");
+        co_return;
+    }
+
     setState(State::READY);
     first();
     updateProgress();

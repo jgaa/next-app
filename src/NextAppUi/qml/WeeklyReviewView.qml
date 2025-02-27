@@ -163,7 +163,8 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 color: "white"
-                enabled: root.enabled && (actions.model.state == ReviewModel.State.READY || actions.model.state == ReviewModel.State.DONE)
+                //enabled: root.enabled && (actions.model.state == ReviewModel.State.READY || actions.model.state == ReviewModel.State.DONE)
+                enabled: false
 
                 // TODO: Synchronize data with the left view
 
