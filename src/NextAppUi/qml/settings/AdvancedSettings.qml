@@ -138,8 +138,65 @@ Item {
             checked: settings.value("server/resend_requests") === "true"
         }
 
+        Item{}
+
+        CheckBox {
+            id: expertMode
+            text: qsTr("Expert mode")
+        }
+
+        Label {
+            visible: expertMode.checked
+            text: qsTr("Danger\nZone")
+            color: "red"
+        }
+
+        Button {
+            text: qsTr("Factory Reset")
+            visible: expertMode.checked
+            onClicked: {
+               resetDialog.open()
+            }
+        }
+
         Item {
             Layout.fillHeight: true
+        }
+    }
+
+    Dialog {
+        id: resetDialog
+        title: qsTr("Factory Reset")
+        standardButtons: Dialog.Yes | Dialog.No
+        width: 400
+        height: 300
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            // ScrollView to allow scrolling long messages
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                TextArea {
+                    id: errorMessage
+                    text: qsTr("Are you sure you want to reset NextApp?\nThis will open the Signup wizard next time you start NextApp. Your current local configuration and settings will be lost. You will have to re-add this device using an One Time Password (OTP) from another device, or sign up for a new account.")
+                    wrapMode: TextArea.Wrap
+                    readOnly: true
+                    selectByMouse: true  // Allow selecting text for copying
+                    background: Rectangle {
+                        color: "transparent"  // Make it blend with the dialog
+                    }
+                }
+            }
+        }
+
+
+        onAccepted: {
+            settings.setValue("onboarding", false);
+            Qt.callLater(Qt.quit)
         }
     }
 }
