@@ -135,6 +135,8 @@ public:
         return state_;
     }
 
+    QObject * openQmlComponent(const QUrl& resourcePath);
+
 public slots:
     void handlePrepareForSleep(bool sleep);
 
@@ -158,7 +160,7 @@ private:
     static NextAppCore *instance_;
     State state_{State::STARTING_UP};
     std::unique_ptr<DbStore> db_;
-    std::unique_ptr<QQmlComponent> sync_popup_component_;
+    //std::unique_ptr<QQmlComponent> sync_popup_component_;
     QObject* sync_popup_{} ;
 
     int height_{0};

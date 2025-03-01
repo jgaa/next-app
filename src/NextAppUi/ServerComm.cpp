@@ -1329,20 +1329,27 @@ QCoro::Task<void> ServerComm::startNextappSession()
         addMessage(tr("Connected and authenticated with the server."));
     } else {
 failed:
+        bool retry = true;
         if (status_ != Status::MANUAL_OFFLINE) {
             setStatus(Status::ERROR);
         }
 
         LOG_ERROR_N << "Failed to start new session: " << res.message();
-        if (res.error() == nextapp::pb::ErrorGadget::Error::DEVICE_DISABLED) {
+        if (res.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
+            addMessage(tr("*** The server does not recognize this device. You should re-run the signup process, select 'Add Device' and use a One Time Password (OTP) fom another devive to autorize it."));
+            NextAppCore::instance()->openQmlComponent(QUrl(QStringLiteral("qrc:/qt/qml/NextAppUi/qml/components/UnrecognizedDeviceErrorDlg.qml")));
+            retry = false;
+        } else if (res.error() == nextapp::pb::ErrorGadget::Error::DEVICE_DISABLED) {
             addMessage(tr("*** This device has been disabled ***\nYou must enable it again from another device before it can be used."));
-        } else {
-            addMessage(tr("Failed to establish a new session with the server:\n") + res.message());
+            retry = false;
         }
 
         stop();
         close_popup = false;
-        scheduleReconnect();
+
+        if (retry) {
+            scheduleReconnect();
+        }
         co_return;
     }
 

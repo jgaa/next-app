@@ -389,23 +389,11 @@ void NextAppCore::setDragEnabled(bool drag_enabled) {
 
 void NextAppCore::showSyncPopup(bool visible)
 {
-    if (visible && !sync_popup_component_) {
-        sync_popup_component_ = make_unique<QQmlComponent>(&engine(), QUrl(QStringLiteral("qrc:/qt/qml/NextAppUi/qml/SynchPopup.qml")));
-
-        if (sync_popup_component_->isError()) {
-            LOG_WARN_N << "Failed to create popup:";
-            for(const auto& err : sync_popup_component_->errors()) {
-                LOG_WARN_N << "  " << err.toString();
-            }
+    if (visible && !sync_popup_) {
+        sync_popup_ = openQmlComponent(QUrl(QStringLiteral("qrc:/qt/qml/NextAppUi/qml/SynchPopup.qml")));
+        if (!sync_popup_) {
             return;
         }
-
-        sync_popup_ = sync_popup_component_->create();
-
-        if (sync_popup_ == nullptr) {
-            LOG_WARN_N << "Failed to create popup: " << sync_popup_component_->errorString();
-            return;
-        };
     }
 
     assert(sync_popup_ != nullptr);
@@ -417,6 +405,38 @@ void NextAppCore::showSyncPopup(bool visible)
             sync_popup_->setProperty("visible", visible);
         }
     }
+}
+
+QObject *NextAppCore::openQmlComponent(const QUrl &resourcePath)
+{
+    QQmlComponent qcomponent(&engine(), resourcePath);
+
+    if (qcomponent.isError()) {
+        LOG_WARN_N << "Failed to create QML component: " << resourcePath.toString();
+        for(const auto& err : qcomponent.errors()) {
+            LOG_WARN_N << "  " << err.toString();
+        }
+        return {};
+    }
+
+    if (auto item = qcomponent.create()) {
+        auto * root_object = engine().rootObjects().first();
+        assert(root_object);
+
+        if (QQuickWindow *window = qobject_cast<QQuickWindow*>(root_object)) {
+            //auto name = item->metaObject()->className();
+            if (QQuickItem *qitem = qobject_cast<QQuickItem*>(item)) {
+                qitem->setParentItem(window->contentItem());  // Attach to main window
+                qitem->setProperty("visible", true);
+            }
+        }
+        return item;
+    }
+
+    LOG_WARN_N << "Failed to create QML component ["
+               << resourcePath.toString()
+               << "]: " << qcomponent.errorString();
+    return {};
 }
 
 void NextAppCore::handlePrepareForSleep(bool sleep)

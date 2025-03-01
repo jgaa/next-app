@@ -255,6 +255,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/MainTree.qml
         qml/MyMenu.qml # x
         qml/MyMenuBar.qml # x
+        qml/NoInstance.qml
         qml/ReportsView.qml
         qml/ResizeButton.qml # x
         qml/SelectedIndicatorBar.qml
@@ -296,6 +297,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/components/PrioritySelector.qml
         qml/components/TimeAndDurationInput.qml
         qml/components/TimeInput.qml
+        qml/components/UnrecognizedDeviceErrorDlg.qml
         qml/components/WhenSelector.qml
         qml/greendays/DayDialog.qml
         qml/greendays/DaysInYear.qml
@@ -435,7 +437,6 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
-        QML_FILES qml/NoInstance.qml
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
