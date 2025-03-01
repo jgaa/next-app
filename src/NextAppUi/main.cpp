@@ -251,6 +251,7 @@ int main(int argc, char *argv[])
 
 
         LOG_INFO << app_name << ' ' << NEXTAPP_UI_VERSION << " starting up.";
+        LOG_DEBUG << "Configuration from '" << settings.fileName() << "'";
 
 #ifdef USE_ANDROID_UI
         if (style.empty()) {

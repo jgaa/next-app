@@ -191,7 +191,7 @@ check_cxx_source_compiles("
 include(FetchContent)
 
 # If std::format is not available, fallback to fmtlib
-if(NOT HAS_STD_FORMAT OR ANDROID)
+if(NOT HAS_STD_FORMAT OR ANDROID OR APPLE)
    message(STATUS "std::format not available, using fmtlib...")
     message(STATUS "std::format maybe not available (hard to tell sometimes!), enabeling fmtlib...")
     FetchContent_Declare(
