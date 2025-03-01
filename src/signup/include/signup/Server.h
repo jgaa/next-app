@@ -121,7 +121,8 @@ public:
     std::string getEmailHash(std::string_view email) const;
 
     boost::asio::awaitable<std::optional<boost::uuids::uuid>> getRegionFromUserEmail(std::string_view email);
-    boost::asio::awaitable<std::optional<boost::uuids::uuid>> getInstanceFromUserEmail(std::string_view email);
+    boost::asio::awaitable<std::optional<Server::AssignedInstance>> getInstanceFromUserEmail(std::string_view email);
+    std::optional<Server::AssignedInstance> getInstanceFromUuid(const boost::uuids::uuid& uuid);
 
     auto& db() {
         assert(db_.has_value());

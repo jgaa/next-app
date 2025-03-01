@@ -770,7 +770,7 @@ boost::asio::awaitable<std::optional<boost::uuids::uuid> > Server::getRegionFrom
     co_return toUuid(res.rows().front()[0].as_string());
 }
 
-boost::asio::awaitable<std::optional<boost::uuids::uuid>> Server::getInstanceFromUserEmail(std::string_view email) {
+boost::asio::awaitable<std::optional<Server::AssignedInstance>> Server::getInstanceFromUserEmail(std::string_view email) {
     auto hash = getEmailHash(email);;
 
     auto conn = co_await db().getConnection();
@@ -779,7 +779,26 @@ boost::asio::awaitable<std::optional<boost::uuids::uuid>> Server::getInstanceFro
         co_return std::nullopt;
     }
 
-    co_return toUuid(res.rows().front()[0].as_string());
+    co_return getInstanceFromUuid(toUuid(res.rows().front()[0].as_string()));
+}
+
+std::optional<Server::AssignedInstance> Server::getInstanceFromUuid(const boost::uuids::uuid &uuid)
+{
+    if (auto cluster = cluster_.load()) {
+        // Find the instance
+        for(const auto& [_, region] : cluster->regions) {
+            for(const auto& [_, instance] : region.instances) {
+                if (instance->uuid == uuid) {
+                    return AssignedInstance{
+                        .region = region.uuid,
+                        .instance = instance->uuid,
+                        .pub_url = instance->pub_url,
+                    };
+                }
+            }
+        }
+    }
+    return {};
 }
 
 boost::asio::awaitable<bool> Server::loadCluster(bool checkClusterWhenLoaded) {

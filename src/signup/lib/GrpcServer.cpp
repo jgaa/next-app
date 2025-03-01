@@ -152,8 +152,7 @@ GrpcServer::GrpcServer(Server &server)
                 response->set_uuid(dresp.deviceid());
                 response->set_cert(dresp.cert());
                 assert(!assigned_instance.pub_url.empty());
-                string pub_url = assigned_instance.pub_url;
-                response->set_serverurl(pub_url);
+                response->set_serverurl(assigned_instance.pub_url);
                 response->set_cacert(dresp.cacert());
                 assert(!response->cacert().empty());
             } else {
@@ -198,12 +197,12 @@ GrpcServer::GrpcServer(Server &server)
             }
 
             // TODO: Deduce the tenant from the email and see if we have a connection to the tenants nextapp instance.
-            auto instance = co_await owner_.server().getInstanceFromUserEmail(req->otpauth().email());
+            const auto instance = co_await owner_.server().getInstanceFromUserEmail(req->otpauth().email());
             if (!instance) {
                 throw server_err{nextapp::pb::Error::GENERIC_ERROR, "Failed to lookup instance from email"};
             }
 
-            auto conn = owner_.getInstance(*instance);
+            auto conn = owner_.getInstance(instance->instance);
             if (!conn) {
                 throw server_err{nextapp::pb::Error::TEMPORATY_FAILURE, "No connection for your instance."};
             }
@@ -229,7 +228,7 @@ GrpcServer::GrpcServer(Server &server)
 
                 response->set_uuid(dresp.deviceid());
                 response->set_cert(dresp.cert());
-                response->set_serverurl(owner_.server().config().cluster.nextapp_public_url);
+                response->set_serverurl(instance->pub_url);
                 response->set_cacert(dresp.cacert());
                 assert(!response->cacert().empty());
             } else {
