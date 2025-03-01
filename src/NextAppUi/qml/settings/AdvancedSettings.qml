@@ -34,32 +34,6 @@ Item {
         rowSpacing: 4
         columns: 2
 
-        Label {
-            visible: !NaCore.isMobile
-            text: qsTr("Instances")
-        }
-
-        RowLayout {
-            visible: !NaCore.isMobile
-
-            Slider {
-                id: instances
-                Layout.fillWidth: true
-                visible: !NaCore.isMobile
-                from: 1
-                to: 10
-                stepSize: 1
-                snapMode: Slider.SnapAlways
-                value: parseInt(settings.value("client/maxInstances"))
-            }
-
-            Text {
-                property string singleton: qsTr("Singleton")
-                Layout.preferredWidth: textMetrics.boundingRect(text).width + 10 // Add some padding
-                text: instances.value == 1 ? singleton : instances.value.toFixed(0)
-            }
-        }
-
         Label { text: qsTr("Logfile")}
         RowLayout {
             DlgInputField {
@@ -143,6 +117,33 @@ Item {
         CheckBox {
             id: expertMode
             text: qsTr("Expert mode")
+        }
+
+        Label {
+            visible: instancesCtl.visible
+            text: qsTr("Instances")
+        }
+
+        RowLayout {
+            id: instancesCtl
+            visible: !NaCore.isMobile && expertMode.checked
+
+            Slider {
+                id: instances
+                Layout.fillWidth: true
+                visible: !NaCore.isMobile
+                from: 1
+                to: 10
+                stepSize: 1
+                snapMode: Slider.SnapAlways
+                value: parseInt(settings.value("client/maxInstances"))
+            }
+
+            Text {
+                property string singleton: qsTr("Singleton")
+                Layout.preferredWidth: textMetrics.boundingRect(text).width + 10 // Add some padding
+                text: instances.value == 1 ? singleton : instances.value.toFixed(0)
+            }
         }
 
         Label {

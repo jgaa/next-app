@@ -188,13 +188,16 @@ int main(int argc, char *argv[])
     }
 
     QSettings settings{};
+    const bool onboarded = settings.value("onboarding", false).toBool();
+
     bool delete_db_if_exists = false;
     {
-        if (parser.isSet("signup") || settings.value("server/deleted", false).toBool()) {
+        if (!onboarded || parser.isSet("signup") || settings.value("server/deleted", false).toBool()) {
             LOG_INFO << "Running the signup work-flow";
             settings.setValue("onboarding", false);
             settings.remove("device");
             settings.remove("server");
+            settings.remove("windowGeometry");
             delete_db_if_exists = true;
             settings.sync();
         }

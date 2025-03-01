@@ -64,6 +64,7 @@ GrpcServer::GrpcServer(Server &server)
 
         // Get an instance to use
         const auto assigned_instance = co_await owner_.server().assignInstance(toUuid(req->region().uuid()));
+        assert(!assigned_instance.pub_url.empty());
 
         // Get the RPC connection to that instance
         auto conn = owner_.getInstance(assigned_instance.instance);
@@ -150,7 +151,9 @@ GrpcServer::GrpcServer(Server &server)
 
                 response->set_uuid(dresp.deviceid());
                 response->set_cert(dresp.cert());
-                response->set_serverurl(assigned_instance.pub_url);
+                assert(!assigned_instance.pub_url.empty());
+                string pub_url = assigned_instance.pub_url;
+                response->set_serverurl(pub_url);
                 response->set_cacert(dresp.cacert());
                 assert(!response->cacert().empty());
             } else {
