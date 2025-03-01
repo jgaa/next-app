@@ -380,7 +380,6 @@ Rectangle {
                             id: dueLabel
                             color: MaterialDesignStyling.onSurfaceVariant
                             text: due
-                            visible: text !== qsTr("Today")
                         }
 
                         Item {

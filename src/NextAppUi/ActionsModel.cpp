@@ -1132,9 +1132,6 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case HasWorkSessionRole:
         return worked_on_.contains(toQuid(action.id_proto()));
     case ListNameRole:
-        if (MainTreeModel::instance()->selected() == action.node()) {
-            return {};
-        }
         return MainTreeModel::instance()->nodeNameFromUuid(action.node(), true);
     case CategoryRole:
         return action.category();
