@@ -231,13 +231,13 @@ pushd ${artifacts_dir}
 docker buildx build --tag ${target_image} --load . || die "Failed to make target: ${target_image}"
 
 if [ "$push" = true ] ; then
-    docker push ${target_image}
+    docker push ${target_image} || die "Failed to push target: ${target_image}"
 
     if [[ -n "${version// /}" ]]; then
         vtag=${REGISTRY}/${project}:${version}
         echo "Tagging and pushing: ${vtag}"
         docker tag ${target_image} ${vtag}
-        docker push ${vtag}
+        docker push ${vtag} || die "Failed to push target: ${vtag}"
     fi
 fi
 
