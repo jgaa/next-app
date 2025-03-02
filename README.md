@@ -1,4 +1,3 @@
-[![CI](https://github.com/jgaa/next-app/actions/workflows/ci.yaml/badge.svg)](https://github.com/jgaa/next-app/actions/workflows/ci.yaml)
 [![Build NextApp Docker Images](https://github.com/jgaa/next-app/actions/workflows/build_containers.yaml/badge.svg?branch=main)](https://github.com/jgaa/next-app/actions/workflows/build_containers.yaml)
 
 # next-app
