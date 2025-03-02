@@ -477,7 +477,7 @@ private:
         std::unique_ptr<QGrpcCallReply>(rpcT::*call)(const reqT& req, const QGrpcCallOptions &options),
         const GrpcCallOptions &options = {}) {
 
-        QPromise<nextapp::pb::Status> promise;
+        QPromise<replyT> promise;
         auto future = promise.future();
 
         auto qopts = options.qopts;
