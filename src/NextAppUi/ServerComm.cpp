@@ -10,6 +10,9 @@
 #include <QSslCertificate>
 #include <QNetworkInformation>
 #include <QProtobufSerializer>
+#include <qcorocore.h>
+#include <qcorothread.h>
+
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #   include <QSslConfiguration>
@@ -832,7 +835,7 @@ void ServerComm::signup(const QString &name, const QString &email,
     signupOrAdd(name, email, company, deviceName, {}, region);
 }
 
-void ServerComm::signupOrAdd(const QString &name,
+QCoro::Task<void> ServerComm::signupOrAdd(const QString &name,
                              const QString &email,
                              const QString &company,
                              const QString& deviceName,
@@ -846,17 +849,16 @@ void ServerComm::signupOrAdd(const QString &name,
 
     setMessage(tr("Creating client TLS cert..."));
 
-    QString key, csr;
-
-    try {
-        tie(csr, key) = createCsr();
-        LOG_DEBUG << "Have created CSR: " << csr.size() << " bytes";
-    } catch (const exception& ex) {
-        LOG_ERROR << "Failed to create CSR: " << ex.what();
+    auto csr_result = co_await createCsrAsync();
+    if (!csr_result) {
+        LOG_ERROR << "Failed to create CSR";
         signup_status_ = SignupStatus::SIGNUP_ERROR;
         emit signupStatusChanged();
-        return;
+        co_return;
     }
+
+    const QString& csr = csr_result->first;
+    const QString& key = csr_result->second;
 
     common::Device dev;
     dev.setUuid(deviceUuid().toString(QUuid::WithoutBraces));
@@ -870,6 +872,8 @@ void ServerComm::signupOrAdd(const QString &name,
     dev.setProductVersion(QSysInfo::productVersion());
     dev.setArch(QSysInfo::currentCpuArchitecture());
     dev.setPrettyName(QSysInfo::prettyProductName());
+
+    setMessage(tr("Sending request to the signup service..."));
 
     auto finish = [this, key](const signup::pb::Reply& su) {
         LOG_DEBUG << "Received signup response from server ";
@@ -905,8 +909,6 @@ void ServerComm::signupOrAdd(const QString &name,
         emit signupStatusChanged();
     };
 
-    addMessage(tr("Contacting the sign-up server..."));
-
     if (!otp.isEmpty()) {
         signup::pb::CreateNewDeviceRequest add_device_req;
         common::OtpAuth otp_auth;
@@ -915,9 +917,8 @@ void ServerComm::signupOrAdd(const QString &name,
         add_device_req.setOtpAuth(otp_auth);
         add_device_req.setDevice(dev);
 
-        callRpc<signup::pb::Reply>([this, add_device_req, key]() {
-            return signup_client_->CreateNewDevice(add_device_req);
-        }, std::move(finish), GrpcCallOptions{false, false, true});
+        auto res = co_await rpcSignup(add_device_req, &signup::pb::SignUp::Client::CreateNewDevice);
+        finish(res);
     } else {
          signup::pb::SignUpRequest signup_req;
         signup_req.setUserName(name);
@@ -937,9 +938,8 @@ void ServerComm::signupOrAdd(const QString &name,
 
         signup_req.setDevice(dev);
 
-        callRpc<signup::pb::Reply>([this, signup_req, key]() {
-            return signup_client_->SignUp(signup_req);
-        }, std::move(finish), GrpcCallOptions{false, false, true});
+        auto res = co_await rpcSignup(signup_req, &signup::pb::SignUp::Client::SignUp);
+        finish(res);
     }
 }
 
@@ -2072,3 +2072,21 @@ bool ServerComm::canConnect() const noexcept
     return true;
 }
 
+
+QCoro::Task<std::optional<std::pair<QString, QString>>> ServerComm::createCsrAsync()
+{
+    std::optional<std::pair<QString, QString>> result;
+    std::unique_ptr<QThread> thread(QThread::create([&]() {
+        QString csr, key;
+        try {
+            std::tie(csr, key) = createCsr();
+            result = std::make_pair(csr, key);
+        } catch (const std::exception& e) {
+            LOG_ERROR_N << "Failed to create CSR: " << e.what();
+        }
+    }));
+    thread->start();
+
+    co_await qCoro(thread.get()).waitForFinished();
+    co_return result;
+}

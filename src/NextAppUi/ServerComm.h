@@ -20,6 +20,7 @@
 #include "qcorotask.h"
 #include "qcorofuture.h"
 
+
 #include "logging.h"
 #include "util.h"
 #include "GrpcIncomingStream.h"
@@ -316,7 +317,7 @@ private:
     void setDefaulValuesInUserSettings();
     void scheduleReconnect();
     void connectToSignupServer();
-    void signupOrAdd(const QString &name,
+    QCoro::Task<void> signupOrAdd(const QString &name,
                      const QString &email,
                      const QString &company,
                      const QString& deviceName,
@@ -443,6 +444,39 @@ private:
         std::unique_ptr<QGrpcCallReply>(::nextapp::pb::Nextapp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
         const GrpcCallOptions &options = {}) {
 
+        co_return co_await rpc_<reqT, replyT>(client_, std::forward<reqT>(request), std::forward<decltype(call)>(call), options);
+    }
+
+    template <ProtoMessage reqT, ProtoMessage replyT = signup::pb::Reply>
+    QCoro::Task<replyT> rpcSignup(
+        reqT request,
+        std::unique_ptr<QGrpcCallReply>(::signup::pb::SignUp::Client::*call)(const reqT& req, const QGrpcCallOptions &options),
+        const GrpcCallOptions &options = {}) {
+
+        co_return co_await rpc_<reqT, replyT, signup::pb::ErrorGadget::Error>(signup_client_, std::forward<reqT>(request), std::forward<decltype(call)>(call), options);
+    }
+
+    // template <ProtoMessage reqT, ProtoMessage replyT = nextapp::pb::Status, typename rpcT = ::nextapp::pb::Nextapp::Client>
+    // QCoro::Task<replyT> rpc(
+    //     reqT request,
+    //     std::unique_ptr<QGrpcCallReply>(rpcT::*call)(const reqT& req, const QGrpcCallOptions &options),
+    //     const GrpcCallOptions &options = {}) {
+
+    //     if constexpr (std::is_same_v<::nextapp::pb::Nextapp::Client, rpcT>) {
+    //         co_return co_await rpc_<reqT, replyT, rpcT>(client_, request, call, options);
+    //     } else if constexpr (std::is_same_v<::signup::pb::SignUp::Client, rpcT>) {
+    //         co_return co_await rpc_<reqT, replyT, rpcT>(signup_client_, request, call, options);
+    //     }
+
+    //     throw std::runtime_error("Invalid rpcT");
+    // }
+
+    template <ProtoMessage reqT, ProtoMessage replyT = nextapp::pb::Status, typename ErrorT = nextapp::pb::ErrorGadget::Error, typename rpcT = ::nextapp::pb::Nextapp::Client, typename rpcProxyT>
+    QCoro::Task<replyT> rpc_(rpcProxyT& client,
+        reqT request,
+        std::unique_ptr<QGrpcCallReply>(rpcT::*call)(const reqT& req, const QGrpcCallOptions &options),
+        const GrpcCallOptions &options = {}) {
+
         QPromise<nextapp::pb::Status> promise;
         auto future = promise.future();
 
@@ -458,14 +492,14 @@ private:
 // #endif
         }
 
-        auto handle = (client_.get()->*call)(request, options.qopts);
+        auto handle = (client.get()->*call)(request, options.qopts);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
         auto ptr = handle.get();
         if (!ptr) {
             LOG_ERROR_N << "handle returned null. Unable to initiate RPC call.";
             if constexpr (std::is_same_v<nextapp::pb::Status, replyT>) {
                 nextapp::pb::Status err;
-                err.setError(nextapp::pb::ErrorGadget::Error::GENERIC_ERROR);
+                err.setError(ErrorT::GENERIC_ERROR);
                 err.setMessage("Unable to initiate RPC call");
                 co_return err;
             } else {
@@ -478,7 +512,7 @@ private:
                 LOG_ERROR <<  "RPC failed: " << toString(status);
                 errorOccurred(status);
                 replyT rval;
-                rval.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
+                rval.setError(ErrorT::CLIENT_GRPC_ERROR);
                 rval.setMessage(status.message());
                 promise.start();
                 promise.addResult(std::move(rval));
@@ -507,7 +541,7 @@ private:
             }
 
             replyT errval;
-            errval.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
+            errval.setError(ErrorT::CLIENT_GRPC_ERROR);
             errval.setMessage("Failed to read RPC response in client");
             promise.start();
             promise.addResult(std::move(errval));
@@ -577,6 +611,7 @@ private:
     QCoro::Task<bool> getGlobalSetings();
 
     std::pair<QString, QString> createCsr();
+    QCoro::Task<std::optional<std::pair<QString, QString>>> createCsrAsync();
     QString toString(const QGrpcStatus& ex);
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;

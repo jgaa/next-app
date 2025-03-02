@@ -13,6 +13,7 @@ enum Error {
   EMAIL_ALREADY_EXISTS = 5;
   MISSING_EMAIL = 6;
   UNAUTHORIZED = 7;
+  CLIENT_GRPC_ERROR = 8;
 }
 
 message Region {
