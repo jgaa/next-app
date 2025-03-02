@@ -835,11 +835,11 @@ void ServerComm::signup(const QString &name, const QString &email,
     signupOrAdd(name, email, company, deviceName, {}, region);
 }
 
-QCoro::Task<void> ServerComm::signupOrAdd(const QString &name,
-                             const QString &email,
-                             const QString &company,
-                             const QString& deviceName,
-                             const QString &otp,
+QCoro::Task<void> ServerComm::signupOrAdd(QString name,
+                             QString email,
+                             QString company,
+                             QString deviceName,
+                             QString otp,
                              int region)
 {
     // Create CSR

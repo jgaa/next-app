@@ -317,11 +317,11 @@ private:
     void setDefaulValuesInUserSettings();
     void scheduleReconnect();
     void connectToSignupServer();
-    QCoro::Task<void> signupOrAdd(const QString &name,
-                     const QString &email,
-                     const QString &company,
-                     const QString& deviceName,
-                     const QString &otp,
+    QCoro::Task<void> signupOrAdd(QString name,
+                     QString email,
+                     QString company,
+                     QString deviceName,
+                     QString otp,
                      int region);
 
     void clearMessages();
