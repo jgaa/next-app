@@ -64,7 +64,7 @@ build_bldimage() {
     pushd docker
     echo Buiding build-image
     #docker build -f Dockerfile.build -t ${build_image} . || die
-    docker buildx build --file Dockerfile.build --tag ${build_image} . || die
+    docker buildx build --file Dockerfile.build --tag ${build_image} --load . || die
     popd
 }
 
