@@ -228,7 +228,7 @@ fi
 
 pushd ${artifacts_dir}
 
-docker buildx build --tag ${target_image} . || die "Failed to make target: ${target_image}"
+docker buildx build --tag ${target_image} --load . || die "Failed to make target: ${target_image}"
 
 if [ "$push" = true ] ; then
     docker push ${target_image}
