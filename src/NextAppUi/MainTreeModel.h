@@ -129,6 +129,7 @@ signals:
     void useRootChanged();
     void selectedChanged();
     void stateChanged();
+    void nodeDeleted();
 
 public:
     QString nodeName(const QModelIndex& index) const;

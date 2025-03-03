@@ -284,6 +284,7 @@ private:
     void actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
     void refreshVisibleItems();
     void batchUpdateActions(nextapp::pb::UpdateActionsReq& req, const QStringList& actions);
+    void cacheReloaded();
 
     //QList<nextapp::pb::ActionInfo> actions_;
     std::deque<ActionData> actions_;

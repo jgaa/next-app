@@ -1,4 +1,5 @@
 #include "ActionInfoCache.h"
+#include "MainTreeModel.h"
 #include "ServerComm.h"
 #include "util.h"
 
@@ -234,6 +235,14 @@ ActionInfoCache::ActionInfoCache(QObject *parent)
     // if (ServerComm::instance().connected()) {
     //     synch();
     // }
+
+    connect(MainTreeModel::instance(), &MainTreeModel::nodeDeleted, [this]() -> QCoro::Task<void> {
+        LOG_TRACE << "Node was deleted. Will re-load actions cache.";
+        clear();
+        emit cacheReloaded();
+        co_await loadFromCache();
+        emit cacheReloaded();
+    });
 }
 
 

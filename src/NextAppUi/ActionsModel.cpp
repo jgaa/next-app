@@ -253,6 +253,7 @@ ActionsModel::ActionsModel(QObject *parent)
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ActionsModel::actionChanged);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ActionsModel::actionDeleted);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionAdded, this, &ActionsModel::actionAdded);
+    connect(ActionInfoCache::instance(), &ActionInfoCache::cacheReloaded, this, &ActionsModel::cacheReloaded);
 
     connect(ActionsOnCurrentCalendar::instance(), &ActionsOnCurrentCalendar::modelReset, this, [this] {
         if (valid_) {
@@ -1755,6 +1756,11 @@ void ActionsModel::batchUpdateActions(nextapp::pb::UpdateActionsReq &req, const 
     req.setActions(uuids);
 
     ServerComm::instance().updateActions(req);
+}
+
+void ActionsModel::cacheReloaded()
+{
+    fetchIf(true);
 }
 
 QStringList ActionsModel::mimeTypes() const

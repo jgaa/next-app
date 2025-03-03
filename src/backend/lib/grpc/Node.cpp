@@ -15,7 +15,9 @@ struct ToNode {
     static void assign(const boost::mysql::row_view& row, pb::Node& node, const RequestCtx& rctx) {
         node.set_uuid(pb_adapt(row.at(ID).as_string()));
         node.set_user(pb_adapt(row.at(USER).as_string()));
-        node.set_name(pb_adapt(row.at(NAME).as_string()));
+        if (row.at(NAME).is_string()) {
+            node.set_name(pb_adapt(row.at(NAME).as_string()));
+        }
         node.set_version(row.at(VERSION).as_int64());
         const auto kind = row.at(KIND).as_int64();
         if (pb::Node::Kind_IsValid(kind)) {

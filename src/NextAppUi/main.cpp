@@ -287,9 +287,9 @@ int main(int argc, char *argv[])
     LOG_TRACE_N << "Constructing static models...";
     NextAppCore core(engine);
     ServerComm comms;
+    MainTreeModel main_tree;
     ActionCategoriesModel ac_model;
     ActionInfoCache ai_cache;
-    MainTreeModel main_tree;
     ActionsModel actions_model;
     GreenDaysModel green_days;
     DayColorModel day_colors;
@@ -308,9 +308,9 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance<LogModel>("Nextapp.Models", 1, 0, "NaLogModel", &log_handler);
     qmlRegisterSingletonInstance<NextAppCore>("Nextapp.Models", 1, 0, "NaCore", &core);
     qmlRegisterSingletonInstance<ServerComm>("Nextapp.Models", 1, 0, "NaComm", &comms);
+    qmlRegisterSingletonInstance<MainTreeModel>("Nextapp.Models", 1, 0, "NaMainTreeModel", &main_tree);
     qmlRegisterSingletonInstance<ActionCategoriesModel>("Nextapp.Models", 1, 0, "NaAcModel", &ac_model);
     qmlRegisterSingletonInstance<ActionInfoCache>("Nextapp.Models", 1, 0, "NaAiCache", &ai_cache);
-    qmlRegisterSingletonInstance<MainTreeModel>("Nextapp.Models", 1, 0, "NaMainTreeModel", &main_tree);
     qmlRegisterSingletonInstance<ActionsModel>("Nextapp.Models", 1, 0, "NaActionsModel", &actions_model);
     qmlRegisterSingletonInstance<DayColorModel>("Nextapp.Models", 1, 0, "NaDayColorModel", &day_colors);
     qmlRegisterSingletonInstance<GreenDaysModel>("Nextapp.Models", 1, 0, "NaGreenDaysModel", &green_days);

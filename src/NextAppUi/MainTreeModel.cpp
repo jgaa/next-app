@@ -485,14 +485,8 @@ added:
             }
 
             co_await save(node);
-
-            beginRemoveRows(parent_ix, cix.row(), cix.row());
-            parent->children().removeAt(cix.row());
-            endRemoveRows();
-
-            if (cix.row() == 0 && parent == &root_) {
-                emit useRootChanged();
-            }
+            co_await doLoadLocally();
+            emit nodeDeleted();
         }
         break;
     }

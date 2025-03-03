@@ -62,6 +62,7 @@ signals:
     void actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
     void actionChanged(const QUuid &uuid);
     void stateChanged();
+    void cacheReloaded();
 
 public:
     // ServerSynchedCahce overrides
