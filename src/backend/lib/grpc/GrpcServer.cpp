@@ -372,6 +372,39 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
     }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::ListCurrentSessions(::grpc::CallbackServerContext *ctx,
+                                                                         const pb::Empty *req,
+                                                                         pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            auto sessions = co_await owner_.sessionManager().listSessions();
+
+            auto fetch = [&](const std::string& query, const std::string& uuid) -> boost::asio::awaitable<string> {
+                auto res = co_await rctx.dbh->exec(query, rctx.uctx->dbOptions(), uuid);
+                if (!res.rows().empty()) {
+                    co_return res.rows().front().front().as_string();
+                }
+
+                co_return ""s;
+            };
+
+            // Fill inn the missing parts
+            for(auto& us : *sessions.mutable_sessions()) {
+                us.set_tenantname(fetch("SELECT name FROM tenant WHERE id=?", us.tenantid().uuid()));
+                us.set_useremail(fetch("SELECT email FROM user WHERE id=?", us.userid().uuid()));
+
+                for(auto& s : *us.mutable_sessions()) {
+                    s.set_devicename(fetch("SELECT name FROM device WHERE id=?", s.deviceid().uuid()));
+                }
+            }
+
+            auto *session_list = reply->mutable_usersessions();
+            *session_list = std::move(sessions);
+            co_return;
+        }, __func__, true);
+}
+
 GrpcServer::GrpcServer(Server &server)
     : server_{server}, sessionManager_{server}
 {

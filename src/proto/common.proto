@@ -27,4 +27,8 @@ message Uuid {
     string uuid = 1;
 }
 
+message Time {
+    uint64 unixTime = 1;
+}
+
 message Empty {}

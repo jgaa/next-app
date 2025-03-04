@@ -32,6 +32,43 @@ SessionManager::SessionManager(Server &server)
     startNextTimer();
 }
 
+boost::asio::awaitable<pb::UserSessions> SessionManager::listSessions()
+{
+    pb::UserSessions us;
+    lock_guard lock{mutex_};
+    for(const auto& [_, ux] : users_) {
+        auto *u = us.add_sessions();
+        assert(u);
+        u->mutable_userid()->set_uuid(ux->userUuid());
+        u->mutable_tenantid()->set_uuid(ux->tenantUuid());
+        u->set_publishmessageid(ux->currentPublishId());
+        u->set_kind(ux->isAdmin() ? pb::User_Kind::User_Kind_SUPER : pb::User_Kind::User_Kind_REGULAR);
+
+        for(const auto& s : ux->sessions()) {
+            auto *session = u->add_sessions();
+            assert(session);
+            session->mutable_deviceid()->set_uuid(to_string(s->deviceId()));
+            session->mutable_sessionid()->set_uuid(to_string(s->sessionId()));
+            session->set_durationinseconds(
+                std::chrono::duration_cast<std::chrono::seconds>(s->currentDuration()).count());
+            session->set_lastseensecsago(
+                std::chrono::duration_cast<std::chrono::seconds>(s->durationSinceLastAccess()).count());
+
+            if (auto d = ux->getDevice(s->deviceId()); d.has_value()) {
+                for(auto ix = 0u; ix < d->last_request_id.size(); ++ix) {
+                    if (auto lri = d->last_request_id.get(ix)) {
+                        session->add_lastreqids(*lri);
+                    } else {
+                        session->add_lastreqids(-1);
+                    }
+                }
+            }
+        };
+    }
+
+    co_return us;
+}
+
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone, bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions)
     : user_uuid_{userUuid},
     tenant_uuid_{tenantUuid},

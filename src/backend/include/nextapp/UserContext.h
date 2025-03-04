@@ -153,6 +153,10 @@ public:
             return std::chrono::steady_clock::now() - created_;
         }
 
+        auto durationSinceLastAccess() const {
+            return std::chrono::steady_clock::now() - last_access_.load();
+        }
+
         auto createdTime() const {
             return created_;
         }
@@ -216,6 +220,10 @@ public:
         return kind_;
     }
 
+    auto currentPublishId() const {
+        return publish_message_id_;
+    }
+
     void addSession(std::shared_ptr<Session> session) {
         sessions_.push_back(std::move(session));
     }
@@ -241,6 +249,18 @@ public:
     // boost::asio::awaitable<void> setLastReqId(const boost::uuids::uuid& deviceId, uint instanceId, Device::value_t value);
     // boost::asio::awaitable<void> resetLastReqId(const boost::uuids::uuid& deviceId, uint instanceId);
 
+    const auto& sessions() const {
+        return sessions_;
+    }
+
+    std::optional<Device> getDevice(boost::uuids::uuid uuid) const {
+        std::lock_guard lock(instance_mutex_);
+        if (auto it = devices_.find(uuid); it != devices_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
 private:
     static boost::uuids::uuid newUuid();
     void validateInstanceId(uint instanceId);
@@ -256,8 +276,8 @@ private:
     std::vector<std::shared_ptr<Session>> sessions_; // NB: Circular reference.
     std::vector<std::weak_ptr<Publisher>> publishers_;
     std::map<boost::uuids::uuid, Device> devices_;
-    std::shared_mutex mutex_;
-    std::mutex instance_mutex_;
+    mutable std::shared_mutex mutex_;
+    mutable std::mutex instance_mutex_;
 };
 
 
@@ -278,6 +298,8 @@ public:
     void setUserSettings(const boost::uuids::uuid& userUuid, pb::UserGlobalSettings settings);
 
     void shutdown();
+
+    boost::asio::awaitable<pb::UserSessions> listSessions();
 
 private:
     void removeSession_(const boost::uuids::uuid& sessionId);

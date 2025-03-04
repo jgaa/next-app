@@ -810,6 +810,43 @@ message Hello {
     uint32 lastPublishId = 4; // Last puiblished message-id to the user
 }
 
+// Debug info about the user-sessions on the server
+message UserSession {
+
+    message Session {
+        common.Uuid sessionId = 1;
+        common.Uuid deviceId = 2;
+        uint32 durationInSeconds = 4;
+        uint32 lastSeenSecsAgo = 5;
+        repeated uint32 lastReqIds = 6; // One for each instance of the devie
+        string deviceName = 7;
+    }
+
+    message Publisher {
+        common.Uuid uuid = 1;
+        bool active = 2;
+    }
+
+    message Device {
+        repeated int32 lastRequestId = 1;
+    }
+
+    common.Uuid userId = 1;
+    string userEmail = 2;
+    common.Uuid tenantId = 3;
+    string tenantName = 4;
+    uint32 publishMessageId = 5;
+    User.Kind kind = 6;
+
+    repeated Session sessions = 12;
+    repeated Publisher publishers = 13;
+    repeated Device devices = 14;
+}
+
+message UserSessions {
+    repeated UserSession sessions = 1;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -847,6 +884,7 @@ message Status {
         TimeBlocks timeBlocks = 35;
         Devices devices = 36;
         Device device = 37;
+        UserSessions userSessions = 38;
     }
 }
 
@@ -916,5 +954,6 @@ service Nextapp {
     rpc GetNewWork(GetNewReq) returns (stream Status) {}
     rpc GetNewTimeBlocks(GetNewReq) returns (stream Status) {}
     rpc ResetPlayback(ResetPlaybackReq) returns (Status) {}
+    rpc ListCurrentSessions(Empty) returns (Status) {}
 
 }
