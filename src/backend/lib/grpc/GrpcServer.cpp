@@ -391,11 +391,11 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
             // Fill inn the missing parts
             for(auto& us : *sessions.mutable_sessions()) {
-                us.set_tenantname(fetch("SELECT name FROM tenant WHERE id=?", us.tenantid().uuid()));
-                us.set_useremail(fetch("SELECT email FROM user WHERE id=?", us.userid().uuid()));
+                us.set_tenantname(co_await fetch("SELECT name FROM tenant WHERE id=?", us.tenantid().uuid()));
+                us.set_useremail(co_await fetch("SELECT email FROM user WHERE id=?", us.userid().uuid()));
 
                 for(auto& s : *us.mutable_sessions()) {
-                    s.set_devicename(fetch("SELECT name FROM device WHERE id=?", s.deviceid().uuid()));
+                    s.set_devicename(co_await fetch("SELECT name FROM device WHERE id=?", s.deviceid().uuid()));
                 }
             }
 
