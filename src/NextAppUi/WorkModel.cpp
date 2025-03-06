@@ -280,128 +280,128 @@ QCoro::Task<void> WorkModel::fetchIf()
     co_return;
 }
 
-nextapp::pb::WorkSession WorkModel::getSession(const QString &sessionId)
-{
-    if (!sessionId.isEmpty()) {
-        if (auto session = lookup(toQuid(sessionId))) {
-            LOG_DEBUG_N << "Returning session " << sessionId << " from cache";
-            return *session;
-        }
-    }
+// nextapp::pb::WorkSession WorkModel::getSession(const QString &sessionId)
+// {
+//     if (!sessionId.isEmpty()) {
+//         if (auto session = lookup(toQuid(sessionId))) {
+//             LOG_DEBUG_N << "Returning session " << sessionId << " from cache";
+//             return *session;
+//         }
+//     }
 
-    return {};
-}
+//     return {};
+// }
 
-nextapp::pb::WorkSession WorkModel::createSession(const QString &actionId, const QString& name)
-{
-    nextapp::pb::WorkSession session;
+// nextapp::pb::WorkSession WorkModel::createSession(const QString &actionId, const QString& name)
+// {
+//     nextapp::pb::WorkSession session;
 
-    session.setAction(actionId);
-    session.setStart((time({}) / (60 * 5)) * (60 * 5));
-    session.setEnd(session.start() + (60 * 60));
-    session.setState(nextapp::pb::WorkSession::State::DONE);
-    session.setName(name);
+//     session.setAction(actionId);
+//     session.setStart((time({}) / (60 * 5)) * (60 * 5));
+//     session.setEnd(session.start() + (60 * 60));
+//     session.setState(nextapp::pb::WorkSession::State::DONE);
+//     session.setName(name);
 
-    return session;
-}
+//     return session;
+// }
 
-bool WorkModel::update(const nextapp::pb::WorkSession &session)
-{
-    if (session.action().isEmpty()) {
-        LOG_ERROR << "Cannot update a work-session without an action";
-        return false;
-    }
+// bool WorkModel::update(const nextapp::pb::WorkSession &session)
+// {
+//     if (session.action().isEmpty()) {
+//         LOG_ERROR << "Cannot update a work-session without an action";
+//         return false;
+//     }
 
-    if (session.id_proto().isEmpty()) {
-        // This is a new session
-        ServerComm::instance().addWork(session);
-        return true;
-    }
+//     if (session.id_proto().isEmpty()) {
+//         // This is a new session
+//         ServerComm::instance().addWork(session);
+//         return true;
+//     }
 
-    nextapp::pb::AddWorkEventReq req;
-    req.setWorkSessionId(session.id_proto());
+//     nextapp::pb::AddWorkEventReq req;
+//     req.setWorkSessionId(session.id_proto());
 
-    // Deduce changes
-    auto curr = lookup(toQuid(session.id_proto()));
-    if (!curr) {
-        LOG_ERROR << "Cannot update a work-session that I don't know about";
-        return false;
-    }
+//     // Deduce changes
+//     auto curr = lookup(toQuid(session.id_proto()));
+//     if (!curr) {
+//         LOG_ERROR << "Cannot update a work-session that I don't know about";
+//         return false;
+//     }
 
-    nextapp::pb::WorkEvent ev;
-    ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
+//     nextapp::pb::WorkEvent ev;
+//     ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
 
-    if (curr->start() != session.start()) {
-        ev.setStart(session.start());
-    }
+//     if (curr->start() != session.start()) {
+//         ev.setStart(session.start());
+//     }
 
-    if (session.paused() != curr->paused()) {
-        ev.setPaused(session.paused());
-    }
+//     if (session.paused() != curr->paused()) {
+//         ev.setPaused(session.paused());
+//     }
 
-    if (session.name() != curr->name()) {
-        ev.setName(session.name());
-    }
+//     if (session.name() != curr->name()) {
+//         ev.setName(session.name());
+//     }
 
-    if (session.notes() != curr->notes()) {
-        ev.setNotes(session.notes());
-    }
+//     if (session.notes() != curr->notes()) {
+//         ev.setNotes(session.notes());
+//     }
 
-    if (session.hasEnd() && curr->hasEnd()) {
-        // Just correct it. Ending an active session is handled below
-        assert(curr->state() == nextapp::pb::WorkSession::State::DONE);
-        ev.setEnd(session.end());
-    }
+//     if (session.hasEnd() && curr->hasEnd()) {
+//         // Just correct it. Ending an active session is handled below
+//         assert(curr->state() == nextapp::pb::WorkSession::State::DONE);
+//         ev.setEnd(session.end());
+//     }
 
-    {
-        auto events = req.events();
-        events.push_back(ev);
-        req.setEvents(events);
-    }
-    //req.events().push_back(ev);
-    ev = {};
+//     {
+//         auto events = req.events();
+//         events.push_back(ev);
+//         req.setEvents(events);
+//     }
+//     //req.events().push_back(ev);
+//     ev = {};
 
-    if (session.state() != curr->state() && curr->state() != nextapp::pb::WorkSession::State::DONE) {
+//     if (session.state() != curr->state() && curr->state() != nextapp::pb::WorkSession::State::DONE) {
 
-        switch(session.state()) {
-        case nextapp::pb::WorkSession::State::ACTIVE:
-            assert(!curr->hasEnd());
-            assert(!session.hasEnd());
-            ServerComm::instance().resumeWork(session.id_proto());
-            break;
-        case nextapp::pb::WorkSession::State::PAUSED:
-            assert(!curr->hasEnd());
-            assert(!session.hasEnd());
-            ServerComm::instance().pauseWork(session.id_proto());
-            break;
-        case nextapp::pb::WorkSession::State::DONE:
-            // Stop the session if the user changes the state to DONE but did not set an end time.
-            if (!session.hasEnd()) {
-                ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::STOP);
-                auto events = req.events();
-                events.push_back(ev);
-                req.setEvents(events);
-                //req.events().push_back(ev);
-                ev = {};
-            }
-            break;
-        default:
-            ; // ignore. Setting end-time will set the session state to DONE
-        }
+//         switch(session.state()) {
+//         case nextapp::pb::WorkSession::State::ACTIVE:
+//             assert(!curr->hasEnd());
+//             assert(!session.hasEnd());
+//             ServerComm::instance().resumeWork(session.id_proto());
+//             break;
+//         case nextapp::pb::WorkSession::State::PAUSED:
+//             assert(!curr->hasEnd());
+//             assert(!session.hasEnd());
+//             ServerComm::instance().pauseWork(session.id_proto());
+//             break;
+//         case nextapp::pb::WorkSession::State::DONE:
+//             // Stop the session if the user changes the state to DONE but did not set an end time.
+//             if (!session.hasEnd()) {
+//                 ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::STOP);
+//                 auto events = req.events();
+//                 events.push_back(ev);
+//                 req.setEvents(events);
+//                 //req.events().push_back(ev);
+//                 ev = {};
+//             }
+//             break;
+//         default:
+//             ; // ignore. Setting end-time will set the session state to DONE
+//         }
 
-        // Stop the session if the user set a stop date but left the state as ACTIVE or PAUSED
-        if (session.hasEnd() && session.state() != nextapp::pb::WorkSession::State::DONE) {
-            assert(!curr->hasEnd());
-            ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::STOP);
-            ev.setEnd(session.end());
-            auto events = req.events();
-            events.push_back(ev);
-            req.setEvents(events);
-            //req.events().push_back(ev);
-            ev = {};
-        }
-    }
+//         // Stop the session if the user set a stop date but left the state as ACTIVE or PAUSED
+//         if (session.hasEnd() && session.state() != nextapp::pb::WorkSession::State::DONE) {
+//             assert(!curr->hasEnd());
+//             ev.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::STOP);
+//             ev.setEnd(session.end());
+//             auto events = req.events();
+//             events.push_back(ev);
+//             req.setEvents(events);
+//             //req.events().push_back(ev);
+//             ev = {};
+//         }
+//     }
 
-    ServerComm::instance().sendWorkEvents(req);
-    return true;
-}
+//     ServerComm::instance().sendWorkEvents(req);
+//     return true;
+// }

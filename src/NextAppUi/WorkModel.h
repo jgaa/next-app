@@ -85,9 +85,9 @@ public:
     Q_INVOKABLE void setDebug(bool enable) { enable_debug_ = enable;}
     Q_INVOKABLE void setSorting(Sorting sorting);
 
-    Q_INVOKABLE nextapp::pb::WorkSession getSession(const QString& sessionId);
-    Q_INVOKABLE nextapp::pb::WorkSession createSession(const QString& actionId, const QString& name);
-    Q_INVOKABLE bool update(const nextapp::pb::WorkSession& session);
+    // Q_INVOKABLE nextapp::pb::WorkSession getSession(const QString& sessionId);
+    // Q_INVOKABLE nextapp::pb::WorkSession createSession(const QString& actionId, const QString& name);
+    // Q_INVOKABLE bool update(const nextapp::pb::WorkSession& session);
 
     explicit WorkModel(QObject *parent = nullptr);
 

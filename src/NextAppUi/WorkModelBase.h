@@ -104,6 +104,9 @@ public:
     WorkModelBase(QObject *parent);
 
     Q_INVOKABLE bool sessionExists(const QString& sessionId);
+    Q_INVOKABLE nextapp::pb::WorkSession getSession(const QString& sessionId);
+    Q_INVOKABLE nextapp::pb::WorkSession createSession(const QString& actionId, const QString& name);
+    Q_INVOKABLE bool update(const nextapp::pb::WorkSession& session);
 
     const nextapp::pb::WorkSession *lookup(const QUuid& id) const;
 

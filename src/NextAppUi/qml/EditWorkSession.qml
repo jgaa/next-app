@@ -129,6 +129,7 @@ Dialog {
 
         DlgInputField {
             id: to
+            enabled: ws.state === NextappPb.WorkSession.State.DONE
             Layout.preferredWidth: root.controlsPreferredWidth
 
             onChanged: {
@@ -172,6 +173,7 @@ Dialog {
             }
         }
 
+        Item{}
         Label {
             id: errors
             Layout.alignment: Qt.AlignLeft
