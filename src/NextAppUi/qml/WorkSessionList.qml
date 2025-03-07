@@ -86,6 +86,7 @@ Rectangle {
                 required property string uuid
                 required property string icon
                 required property bool active
+                required property string action
                 required property var index
                 property bool selected : root.selectedItem == uuid
 
@@ -152,6 +153,7 @@ Rectangle {
                                 somethingChanged()
                                 break;
                             case Qt.RightButton:
+                                contextMenu.actionid = action
                                 contextMenu.uuid = uuid
                                 contextMenu.name = display
                                 contextMenu.popup();
@@ -168,6 +170,7 @@ Rectangle {
                     }
 
                     onLongPressed: (eventPoint, button) => {
+                        contextMenu.actionid = action
                         contextMenu.uuid = uuid
                         contextMenu.name = display
                         contextMenu.popup();
@@ -215,11 +218,12 @@ Rectangle {
 
     MyMenu {
         id: contextMenu
+        property string actionid
         property string uuid
         property string name
 
         Action {
-            text: qsTr("Edit")
+            text: qsTr("Edit session")
             icon.source: "../icons/fontawsome/pen-to-square.svg"
             onTriggered: {
                 openWorkSessionDlg(contextMenu.uuid)
@@ -227,11 +231,19 @@ Rectangle {
         }
         Action {
             icon.source: "../icons/fontawsome/trash-can.svg"
-            text: qsTr("Delete")
+            text: qsTr("Delete session")
             onTriggered: {
                 confirmDelete.uuid = contextMenu.uuid
                 confirmDelete.name = contextMenu.name
                 confirmDelete.open()
+            }
+        }
+        MenuSeparator {}
+        Action {
+            text: qsTr("Edit action")
+            //icon.source: "../icons/fontawsome/play.svg"
+            onTriggered: {
+                openActionDlg(contextMenu.actionid)
             }
         }
     }
@@ -241,6 +253,13 @@ Rectangle {
             title: qsTr("Edit Work Session"),
             ws: tableView.model.getSession(uuid),
             model: tableView.model
+        });
+    }
+
+    function openActionDlg(uuid) {
+        openDialog("EditActionDlg.qml", {
+            title: qsTr("Edit Action"),
+            aprx: NaActionsModel.getAction(uuid)
         });
     }
 }

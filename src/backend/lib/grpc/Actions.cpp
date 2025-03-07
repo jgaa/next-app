@@ -74,12 +74,12 @@ struct ToAction {
     }
 
     static string_view updateStatementBindingStr() {
-        static const auto cols = filteredCols({ColType::CORE, ColType::REMAINING}, true);
+        static const string cols = filteredCols({ColType::CORE, ColType::REMAINING}, true);
         return cols;
     }
 
-    static string insertCols() {
-        auto cols = filteredCols({ColType::IDS, ColType::CORE, ColType::REMAINING});
+    static string_view insertCols() {
+        static const string cols = filteredCols({ColType::IDS, ColType::CORE, ColType::REMAINING});
         return cols;
     }
 
@@ -624,7 +624,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
             }
             sanitize(new_action);
 
-            const auto sql = format("UPDATE action SET {} WHERE id=? AND user=? ",
+            const string sql = format("UPDATE action SET {} WHERE id=? AND user=? ",
                               ToAction::updateStatementBindingStr());
             const auto args = ToAction::prepareBindingArgs<false>(new_action, *rctx.uctx, uuid, cuser);
             auto res = co_await rctx.dbh->exec(sql, dbopts, args);

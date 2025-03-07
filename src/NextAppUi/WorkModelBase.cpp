@@ -117,6 +117,8 @@ QVariant WorkModelBase::data(const QModelIndex &index, int role) const
         goto name;
     case StartedRole:
         return session.session->start() > 0;
+    case ActionRole:
+        return session.session->action();
     }
     return {};
 }
@@ -166,6 +168,7 @@ QHash<int, QByteArray> WorkModelBase::roleNames() const
     roles[DurationRole] = "duration";
     roles[NameRole] = "name";
     roles[StartedRole] = "started";
+    roles[ActionRole] = "action";
 
     return roles;
 }
