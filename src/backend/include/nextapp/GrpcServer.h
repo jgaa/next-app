@@ -190,20 +190,40 @@ public:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
         template <typename ReqT, typename ReplyT, typename FnT>
         ::grpc::ServerUnaryReactor*
-        unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn, std::string_view name = {}, bool allowNewSession = false) noexcept {
+        unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn, std::string_view name = {},
+                     bool allowNewSession = false,
+                     bool restrictedToAdmin = false) noexcept {
             assert(ctx);
             assert(reply);
 
             auto* reactor = ctx->DefaultReactor();
 
             boost::asio::co_spawn(owner_.server().ctx(),
-                                  [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name]
+                                  [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name, restrictedToAdmin]
                                   () mutable -> boost::asio::awaitable<void> {
                     try {
                         LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
                         RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx, allowNewSession)};
                         rctx.session().touch();
+
+                        if (restrictedToAdmin) {
+                            if (!rctx.uctx->isAdmin()) {
+                                LOG_WARN << "Request [" << name << "] Restricted to admin. User "
+                                         << rctx.uctx->userUuid() <<  " is not an admin.";
+                                if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
+                                    reply->Clear();
+                                    reply->set_error(nextapp::pb::Error::PERMISSION_DENIED);
+                                    reply->set_message("Permission denied.");
+                                    reactor->Finish(::grpc::Status::OK);
+                                    co_return;
+                                } else {
+                                    assert(false && "admin requests must use pb::Status reply type!");
+                                    reactor->Finish(::grpc::Status::CANCELLED);
+                                    co_return;
+                                }
+                            }
+                        }
 
                         // We only provide reply-protection for standard rpc calls returning a Status object.
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {

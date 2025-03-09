@@ -638,6 +638,6 @@ private:
     int queued_requests_count_{0};
     bool retrying_requests_{false};
     uint last_seen_update_id_{0};
-    uint64_t last_seen_server_instance_;
+    uint64_t last_seen_server_instance_{};
     bool closed_{false};
 };

@@ -49,12 +49,7 @@ struct ToDevice {
             hello->set_sessionid(to_string(rctx.session().sessionId()));
             hello->set_serverid(Server::instance().serverId());
             hello->set_serverinstancetag(Server::instance().instanceTag());
-            const auto last_req_id = co_await rctx.uctx->getLastReqId(rctx.session().deviceId(),
-                                                                      GrpcServer::getInstanceId(ctx),
-                                                                      /*lookupInDbOnly*/ false);
-            if (last_req_id.has_value()) {
-                hello->set_lastpublishid(*last_req_id);
-            }
+            hello->set_lastpublishid(rctx.uctx->currentPublishId());
         };
 
         co_return;
@@ -319,7 +314,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         } else {
             throw server_err{pb::Error::NOT_FOUND, "Device not found"};
         }
-    });
+    }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteDevice(::grpc::CallbackServerContext *ctx,
@@ -354,7 +349,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         } else {
             throw server_err{pb::Error::NOT_FOUND, "Device not found"};
         }
-    });
+    }, __func__);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::ResetPlayback(::grpc::CallbackServerContext *ctx,
@@ -402,7 +397,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             auto *session_list = reply->mutable_usersessions();
             *session_list = std::move(sessions);
             co_return;
-        }, __func__, true);
+        }, __func__, true /* allow new session */, true /* admin only */);
 }
 
 GrpcServer::GrpcServer(Server &server)

@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string_view>
+#include <fstream>
 #include "ServerComm.h"
 #include "logging.h"
 
@@ -73,7 +74,57 @@ auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind k
     return req;
 }
 
-} // anon nssu.signUpResponse()
+filesystem::path getDataDir() {
+    return NextAppCore::instance()->db().dataDir();
+}
+
+filesystem::path getServerReqIdPath() {
+    return getDataDir() / "svrreqid.dat";
+}
+
+void saveValuesToFile(uint32_t lastSeenUpdateId, uint64_t lastSeenServerInstance, string_view why) {
+    const auto path = getServerReqIdPath();
+    LOG_TRACE_N << "Saving lastSeenUpdateId=" << lastSeenUpdateId
+                << ", lastSeenServerInstance=" << lastSeenServerInstance
+                << " because " << why << " to " << path;
+
+    const auto tmp = path.string() + ".tmp";
+    std::ofstream file(tmp, std::ios::binary);
+    if (file.is_open()) {
+        file.write(reinterpret_cast<const char*>(&lastSeenUpdateId), sizeof(lastSeenUpdateId));
+        file.write(reinterpret_cast<const char*>(&lastSeenServerInstance), sizeof(lastSeenServerInstance));
+        file.close();
+
+        // Rename the temporary file to the final file
+        try {
+            std::filesystem::rename(tmp, path);
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Failed to rename " << tmp << " to " << path << ": " << e.what();
+        }
+    } else {
+        LOG_ERROR << "Failed to open " << tmp << " for writing.";
+    }
+}
+
+bool loadValuesFromFile(uint32_t& lastSeenUpdateId, uint64_t& lastSeenServerInstance) {
+    const auto path = getServerReqIdPath();
+    std::ifstream file(path, std::ios::binary);
+    if (file.is_open()) {
+        file.read(reinterpret_cast<char*>(&lastSeenUpdateId), sizeof(lastSeenUpdateId));
+        file.read(reinterpret_cast<char*>(&lastSeenServerInstance), sizeof(lastSeenServerInstance));
+        file.close();
+        LOG_TRACE_N << "Loaded lastSeenUpdateId=" << lastSeenUpdateId
+                    << ", lastSeenServerInstance=" << lastSeenServerInstance
+                    << " from " << path;
+        return true;
+    } else {
+        // Handle error: unable to open file
+        LOG_DEBUG_N << "Failed to open '" << path << "' for reading.";
+    }
+    return false;
+}
+
+} // anon ns
 
 
 ServerComm *ServerComm::instance_;
@@ -84,8 +135,6 @@ ServerComm::ServerComm()
 
     nextapp::pb::Nextapp::Client xx;
     instance_ = this;
-    last_seen_update_id_ = QSettings{}.value(lastSeenUpdateIdKey(), 0u).toUInt();
-    last_seen_server_instance_ = QSettings{}.value(lastSeenServerInstance(), 0u).toULongLong();
 
     QSettings settings;
     device_uuid_ = QUuid{settings.value("device/uuid", QString()).toString()};
@@ -189,6 +238,10 @@ void ServerComm::start()
 {
     LOG_DEBUG_N << "starting server-comm.";
 
+    if (!last_seen_update_id_) {
+        loadValuesFromFile(last_seen_update_id_, last_seen_server_instance_);
+    }
+
     if (!canConnect()) {
         LOG_WARN << "We can't connect to nextappd at this time.";
         return;
@@ -281,9 +334,7 @@ void ServerComm::close()
         client_.reset();
         signup_client_.reset();
         LOG_DEBUG_N << "Done closing down ServerComm.";
-
-        QSettings{}.setValue(lastSeenUpdateIdKey(), last_seen_update_id_);
-        QSettings{}.setValue(lastSeenServerInstance(), static_cast<qulonglong>(last_seen_server_instance_));
+        saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "closing up shop");
     }
 }
 
@@ -1038,9 +1089,20 @@ void ServerComm::onUpdateMessage()
                 LOG_WARN_N << "Received out of order update #" << msgid
                            << ". I expected messageid #" << (last_seen_update_id_ + 1);
 
-                // TODO: Reconnect?
+                last_seen_update_id_ = msgid;
+                saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "out of order update");
+                // We need to sync.
+                // Execute later
+                QTimer::singleShot(0, [this] {
+                    LOG_INFO_N << "Requesting full sync...";
+                    stop();
+                    start();
+                });
+                setStatus(Status::ERROR);
+                return;
             };
             last_seen_update_id_ = msgid;
+            saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "normal update");
 
             if (msg->hasUserGlobalSettings()) {
                 const auto& new_settings = msg->userGlobalSettings();
@@ -1321,6 +1383,8 @@ QCoro::Task<void> ServerComm::startNextappSession()
                 LOG_TRACE_N << "Servers update id is " << res.hello().lastPublishId()
                             << " (was " << last_seen_update_id_ << ")";
             }
+
+            saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "server hello");
         } else {
             LOG_ERROR <<  "Server did not send a Hello message!";
             goto failed;

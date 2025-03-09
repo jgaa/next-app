@@ -135,22 +135,49 @@ void UserContext::removePublisher(const boost::uuids::uuid &uuid)
 
 void UserContext::publish(std::shared_ptr<pb::Update> &update)
 {
+    shared_lock lock{mutex_};
+    update->set_messageid(++publish_message_id_);
     LOG_TRACE_N << "Publishing "
                 << pb::Update::Operation_Name(update->op())
                 << " update to " << publishers_.size() << " subscribers, Json: "
                 << toJsonForLog(*update);
 
-    shared_lock lock{mutex_};
-    update->set_messageid(++publish_message_id_);
+    //purgeExpiredPublishers();
+
     for(auto& weak_pub: publishers_) {
         if (auto pub = weak_pub.lock()) {
             LOG_TRACE_N << "Publish #" << update->messageid()
                         << " to " << pub->uuid();
             pub->publish(update);
         } else {
-            LOG_WARN_N << "Failed to get a pointer to a publisher ";
+            LOG_WARN_N << "Failed to get a pointer to a publisher."
+                       << " for user " << userUuid();
         }
     }
+}
+
+void UserContext::purgeExpiredPublishers()
+{
+    // Remove expired weak_ptrs
+    auto num_purged = 0u;
+    publishers_.erase(
+        std::remove_if(
+            publishers_.begin(), publishers_.end(),
+            [&](const std::weak_ptr<Publisher>& weak_pub) {
+                if (weak_pub.expired()) {
+                    ++num_purged;
+                    return true;
+                }
+                return false;
+            }
+            ),
+        publishers_.end()
+        );
+
+    if (num_purged > 0) {
+        LOG_DEBUG_N << "Purged " << num_purged << " expired publishers"
+                                                  " for user " << userUuid();
+    };
 }
 
 boost::asio::awaitable<bool>

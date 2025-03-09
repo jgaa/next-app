@@ -155,6 +155,10 @@ public:
         db_was_initialized_ = false;
     }
 
+    std::filesystem::path dataDir() const noexcept {
+        return data_dir_.toStdString();
+    }
+
 signals:
     // Emitted from the main thread to query the database.
     void doQuery(const QString& sql, const param_t *params, QPromise<rval_t> *promise);

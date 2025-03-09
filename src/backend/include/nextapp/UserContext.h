@@ -209,6 +209,7 @@ public:
     }
 
     const pb::UserGlobalSettings& settings() const noexcept {
+        std::shared_lock lock(mutex_);
         return settings_;
     }
 
@@ -221,15 +222,19 @@ public:
     }
 
     auto currentPublishId() const {
+        std::shared_lock lock(mutex_);
         return publish_message_id_;
     }
 
     void addSession(std::shared_ptr<Session> session) {
+        std::shared_lock lock(mutex_);
         sessions_.push_back(std::move(session));
     }
 
     void removeSession(const boost::uuids::uuid& sessionId) {
+        std::shared_lock lock(mutex_);
         std::erase_if(sessions_, [&sessionId](const auto& s) { return s->sessionId() == sessionId; });
+        purgeExpiredPublishers();
     }
 
     void setSettings(pb::UserGlobalSettings settings) {
@@ -265,6 +270,7 @@ private:
     static boost::uuids::uuid newUuid();
     void validateInstanceId(uint instanceId);
     boost::asio::awaitable<void> saveLastReqIds(const boost::uuids::uuid& deviceId);
+    void purgeExpiredPublishers();
 
     std::string user_uuid_;
     std::string tenant_uuid_;
