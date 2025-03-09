@@ -4,8 +4,8 @@
 #include <QQmlEngine>
 #include <QQmlApplicationEngine>
 #include <QGuiApplication>
-#include <QAudioOutput>
-#include <QMediaPlayer>
+// #include <QAudioOutput>
+// #include <QMediaPlayer>
 
 #include "DbStore.h"
 #include "WorkModel.h"
@@ -160,14 +160,13 @@ private:
     static NextAppCore *instance_;
     State state_{State::STARTING_UP};
     std::unique_ptr<DbStore> db_;
-    //std::unique_ptr<QQmlComponent> sync_popup_component_;
     QObject* sync_popup_{} ;
 
     int height_{0};
     int width_{0};
     bool drag_enabled_{};
-    std::optional<QAudioOutput> audio_output_;
-    std::optional<QMediaPlayer> audio_player_;
+    // std::optional<QAudioOutput> audio_output_;
+    // std::optional<QMediaPlayer> audio_player_;
     QTimer audio_play_delay_;
     QTimer tomorrow_timer_;
     QString sound_file_;

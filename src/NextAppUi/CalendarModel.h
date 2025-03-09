@@ -3,8 +3,8 @@
 #include <QObject>
 #include <QQmlEngine>
 #include <QTimer>
-#include <QAudioOutput>
-#include <QMediaPlayer>
+// #include <QAudioOutput>
+// #include <QMediaPlayer>
 
 #include "CalendarCache.h"
 #include "CalendarDayModel.h"
@@ -117,8 +117,8 @@ private:
     QList<std::shared_ptr<nextapp::pb::CalendarEvent>> all_events_;
     std::unordered_map<const QObject *, std::unique_ptr<CalendarDayModel>> day_models_;
     std::unique_ptr<QTimer> minute_timer_;
-    QAudioOutput audio_output_;
-    QMediaPlayer player_;
+    // QAudioOutput audio_output_;
+    // QMediaPlayer player_;
     QTimer next_audio_event_;
     const nextapp::pb::CalendarEvent *audio_event_{};
     AudioEventType audio_event_type_{AudioEventType::AE_PRE};

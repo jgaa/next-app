@@ -46,7 +46,7 @@ if(USE_STATIC_QT)
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Charts Svg Test Grpc Concurrent Test Multimedia Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Charts Svg Test Grpc Concurrent Test Sql)
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")
@@ -63,30 +63,29 @@ qt_policy(
 qt_standard_project_setup()
 
 if(USE_STATIC_QT)
-    set(FFMPEG_MEDIAPLUGIN_LIB "${CMAKE_PREFIX_PATH}/plugins/multimedia/libffmpegmediaplugin.a")
-    find_package(FFMPEG REQUIRED)
-    message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
+    # find_package(FFMPEG REQUIRED)
+    # message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
 
-    # There is some tiems a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
-    if("optimized" IN_LIST FFMPEG_LIBRARIES)
-        set(OPTIMIZED_FFMPEG_LIBRARIES "")
-        set(NEXT_IS_OPTIMIZED FALSE)
+    # # There is some tiems a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
+    # if("optimized" IN_LIST FFMPEG_LIBRARIES)
+    #     set(OPTIMIZED_FFMPEG_LIBRARIES "")
+    #     set(NEXT_IS_OPTIMIZED FALSE)
 
-        foreach(item IN LISTS FFMPEG_LIBRARIES)
-            if(item STREQUAL "optimized")
-                set(NEXT_IS_OPTIMIZED TRUE)
-            elseif(item STREQUAL "debug")
-                set(NEXT_IS_OPTIMIZED FALSE)
-            else()
-                if(NEXT_IS_OPTIMIZED)
-                    list(APPEND OPTIMIZED_FFMPEG_LIBRARIES "${item}")
-                endif()
-            endif()
-        endforeach()
-    else()
-        # If "optimized" is not found, use FFMPEG_LIBRARIES directly
-        set(OPTIMIZED_FFMPEG_LIBRARIES "${FFMPEG_LIBRARIES}")
-    endif()
+    #     foreach(item IN LISTS FFMPEG_LIBRARIES)
+    #         if(item STREQUAL "optimized")
+    #             set(NEXT_IS_OPTIMIZED TRUE)
+    #         elseif(item STREQUAL "debug")
+    #             set(NEXT_IS_OPTIMIZED FALSE)
+    #         else()
+    #             if(NEXT_IS_OPTIMIZED)
+    #                 list(APPEND OPTIMIZED_FFMPEG_LIBRARIES "${item}")
+    #             endif()
+    #         endif()
+    #     endforeach()
+    # else()
+    #     # If "optimized" is not found, use FFMPEG_LIBRARIES directly
+    #     set(OPTIMIZED_FFMPEG_LIBRARIES "${FFMPEG_LIBRARIES}")
+    # endif()
 
     # Print the optimized libraries for verification
     message(STATUS "Optimized Libraries: ${OPTIMIZED_FFMPEG_LIBRARIES}")
@@ -491,13 +490,11 @@ if(USE_STATIC_QT)
     qt_import_plugins(${PROJECT_NAME}
     #qt6_import_qt_plugins(${PROJECT_NAME}
         PLUGINS
-            ffmpegmediaplugin
             qxcb
             # Other plugins as required
         STATIC
     )
     target_compile_definitions(${PROJECT_NAME} PRIVATE
-        QT_MULTIMEDIA_PLUGIN=ffmpeg
         QT_QPA_STATIC
         )
 endif()
@@ -519,14 +516,8 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Grpc
         Qt6::Concurrent
         Qt6::Test
-        Qt6::Multimedia
         Qt6::Sql
         $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
-        #Qt6::QJpegPlugin
-        # QT insists on linking FFMPEG_MEDIAPLUGIN_LIB after the ffmpeg libraries it depends on,
-        # which don't work with static linking. So we have to add it manually before it's dependencies.
-        $<$<BOOL:${USE_STATIC_QT}>:${FFMPEG_MEDIAPLUGIN_LIB}>
-        $<$<BOOL:${USE_STATIC_QT}>:${OPTIMIZED_FFMPEG_LIBRARIES}>
         $<$<BOOL:${USE_STATIC_QT}>:dl>
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}

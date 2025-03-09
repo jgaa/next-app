@@ -298,27 +298,27 @@ QString NextAppCore::toTime(time_t when)
 
 void NextAppCore::playSound(double volume, const QString &soundFile)
 {
-    if (!audio_output_) {
-        audio_output_.emplace();
-    }
-    if (!audio_player_) {
-        audio_player_.emplace();
-    }
+    // if (!audio_output_) {
+    //     audio_output_.emplace();
+    // }
+    // if (!audio_player_) {
+    //     audio_player_.emplace();
+    // }
 
-    audio_output_->setVolume(volume);
-    audio_player_->setAudioOutput(&audio_output_.value());
+    // audio_output_->setVolume(volume);
+    // audio_player_->setAudioOutput(&audio_output_.value());
 
-    // QUrl don't support QStringView
-    QString file = soundFile;
-    if (file.isEmpty()) {
-        file = "qrc:/qt/qml/NextAppUi/sounds/387351__cosmicembers__simple-ding.wav";
-    }
+    // // QUrl don't support QStringView
+    // QString file = soundFile;
+    // if (file.isEmpty()) {
+    //     file = "qrc:/qt/qml/NextAppUi/sounds/387351__cosmicembers__simple-ding.wav";
+    // }
 
-    audio_player_->setSource(QUrl(file));
+    // audio_player_->setSource(QUrl(file));
 
-    LOG_DEBUG_N << "Playing sound " << file
-                << " at volume " << volume;
-    audio_player_->play();
+    // LOG_DEBUG_N << "Playing sound " << file
+    //             << " at volume " << volume;
+    // audio_player_->play();
 }
 
 void NextAppCore::playSoundDelayed(int delayMs, double volume, const QString &soundFile)
