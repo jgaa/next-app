@@ -1,5 +1,5 @@
 # Use a base image with a compatible Linux distribution
-FROM ubuntu:24.04
+FROM debian:bookworm-slim
 
 # Set environment variables
 ENV QT_VERSION=6.8.2
@@ -33,7 +33,6 @@ RUN apt-get update && apt-get install -y \
     libharfbuzz-dev \
     libhunspell-dev \
     libjpeg-dev \
-    libjpeg-turbo8-dev \
     libpng-dev \
     libsm-dev \
     libsqlite3-dev \
@@ -111,14 +110,10 @@ RUN ./configure -prefix ${QT_INSTALL_DIR} -static -release -opensource -confirm-
     -nomake examples -nomake tests -openssl-linked -opengl desktop -sql-sqlite \
     -skip qtwebengine -skip qtmultimedia -skip qtsensors -skip qtconnectivity -skip qtnetworkauth \
     -vcpkg --feature-protobufquick --feature-qtprotobufgen -feature-xcb -qt-libpng -qt-libjpeg \
-    -skip qtspeech -skip qt5compat -skip qtquick3dphysics -skip qtremoteobjects -skip qthttpserver
-
-# Build and install Qt
-RUN cmake --build . --parallel
-RUN cmake --install .
-
-# Clean up to reduce image size
-#RUN rm -rf ${QT_DIR}/qt
+    -skip qtspeech -skip qt5compat -skip qtquick3dphysics -skip qtremoteobjects -skip qthttpserver \
+    && cmake --build . --parallel \
+    && cmake --install . \
+    && rm -rf ${QT_DIR}/qt
 
 # Create a non-root user
 RUN useradd -m -s /bin/bash build && \
