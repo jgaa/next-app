@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.2.5)
+    set(NEXTAPP_VERSION 0.2.6)
 endif()
 
 project(next-app
