@@ -653,13 +653,11 @@ void CalendarModel::onAudioEvent()
                 break;
         }
 
+        const auto volume = settings.value("alarms/calendarEvent.volume", 0.4).toDouble();
         LOG_DEBUG_N << "Playing audio: " << audio_file << " of type " << audio_event_type_ << " at volume "
-                    << settings.value("alarms/calendarEvent.volume", 0.4).toDouble();
+                    << volume;
 
-        // audio_output_.setVolume(settings.value("alarms/calendarEvent.volume", 0.4).toDouble());
-        // player_.setAudioOutput(&audio_output_);
-        // player_.setSource(QUrl(audio_file));
-        // player_.play();
+        NextAppCore::instance()->playSound(volume, audio_file);
     } else {
         LOG_DEBUG_N << "Called, but there is no event to play audio for.";
     }

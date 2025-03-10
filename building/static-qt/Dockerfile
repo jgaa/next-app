@@ -20,6 +20,9 @@ RUN apt-get update && apt-get install -y \
     libicu-dev \
     file \
     dpkg-dev \
+    libasound2-dev \
+    libpulse-dev \
+    libsndfile1-dev \
     libbz2-dev \
     libcups2-dev \
     libcupsfilters-dev \
@@ -83,15 +86,11 @@ RUN git clone https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT} && \
 
 # Install necessary Qt dependencies using vcpkg
 WORKDIR ${VCPKG_ROOT}
-RUN ./vcpkg install protobuf grpc openssl
-
-#    boost-system boost-context boost-coroutine boost-filesystem \
-#    boost-asio boost-chrono boost-date-time boost-log boost-regex boost-json \
-#    boost-url boost-uuid boost-mysql boost-charconv boost-program-options boost-functional
-
+RUN ./vcpkg install protobuf grpc openssl && \
+    rm -rf $VCPKG_ROOT/buildtrees $VCPKG_ROOT/downloads
 RUN mkdir -p /tmp/boost &&\
     curl -sL https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 &&\
-    cd /tmp/boost && ./bootstrap.sh && ./b2 -d0 link=static threading=multi --with-program_options --with-system --with-date_time --with-coroutine --with-context --with-chrono --with-regex --with-json --with-url --with-regex --with-url --with-charconv --with-stacktrace install &&\
+    cd /tmp/boost && ./bootstrap.sh && ./b2 -d0 link=static threading=multi --with-program_options --with-system install &&\
     cd / &&\
     rm -rf /tmp/boost
 

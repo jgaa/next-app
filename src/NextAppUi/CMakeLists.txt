@@ -189,6 +189,16 @@ check_cxx_source_compiles("
 
 include(FetchContent)
 
+# Fetch the MiniAudio GitHub repository
+FetchContent_Declare(
+    MiniAudio
+    GIT_REPOSITORY https://github.com/mackron/miniaudio.git
+    GIT_TAG master  # You can change this to a specific commit or release tag
+)
+
+# Make the repository available
+FetchContent_MakeAvailable(MiniAudio)
+
 # If std::format is not available, fallback to fmtlib
 if(NOT HAS_STD_FORMAT OR ANDROID OR APPLE)
    message(STATUS "std::format not available, using fmtlib...")
@@ -420,6 +430,8 @@ qt_add_qml_module(${PROJECT_NAME}
         ServerComm.cpp
         ServerComm.h
         ServerSynchedCahce.h
+        SoundPlayer.cpp
+        SoundPlayer.h
         TimeBoxActionsModel.cpp
         TimeBoxActionsModel.h
         WeeklyWorkReportModel.cpp
@@ -521,6 +533,7 @@ target_link_libraries(${PROJECT_NAME}
         $<$<BOOL:${USE_STATIC_QT}>:dl>
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}
+        miniaudio
 )
 
 
