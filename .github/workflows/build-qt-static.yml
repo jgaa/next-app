@@ -1,0 +1,29 @@
+name: Build and Push Qt Static Container
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest  # Uses a GitHub-hosted runner
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.MY_PAT }}
+
+      - name: Build the Docker Image
+        run: |
+          cd building/static-qt
+          docker build -t ghcr.io/jgaa/qt-static:latest .
+        shell: bash
+
+      - name: Push the Image
+        run: |
+          docker push ghcr.io/jgaa/qt-static:latest
