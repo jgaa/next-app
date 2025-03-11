@@ -6,6 +6,7 @@
 #include <QThread>
 
 #include "logging.h"
+#include "util.h"
 
 namespace {
 
@@ -46,11 +47,15 @@ void SoundPlayer::playSoundAsync(QString resourcePath, double volume)
 
     QByteArray soundData(reinterpret_cast<const char*>(resource.data()), resource.size());
 
-    ma_decoder decoder;
+    ma_decoder decoder{};
     if (ma_decoder_init_memory(soundData.constData(), soundData.size(), nullptr, &decoder) != MA_SUCCESS) {
         LOG_WARN_N << "Failed to initialize decoder for" << resourcePath;
         return;
     }
+
+    ScopedExit onExit([&decoder](){
+        ma_decoder_uninit(&decoder);
+    });
 
     ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
     deviceConfig.playback.format = decoder.outputFormat;
@@ -59,12 +64,16 @@ void SoundPlayer::playSoundAsync(QString resourcePath, double volume)
     deviceConfig.dataCallback = audioCallback;
     deviceConfig.pUserData = &decoder;
 
-    ma_device device;
+    ma_device device{};
     if (ma_device_init(nullptr, &deviceConfig, &device) != MA_SUCCESS) {
         LOG_WARN_N << "Failed to initialize audio device";
         ma_decoder_uninit(&decoder);
         return;
     }
+
+    ScopedExit onExit2([&device]() {
+        ma_device_uninit(&device);
+    });
 
     // Set volume (convert 0-100% to 0.0-1.0)
     ma_device_set_master_volume(&device, static_cast<float>(volume));
@@ -75,8 +84,4 @@ void SoundPlayer::playSoundAsync(QString resourcePath, double volume)
     while (ma_device_is_started(&device)) {
         QThread::msleep(50);
     }
-
-    // Cleanup
-    ma_device_uninit(&device);
-    ma_decoder_uninit(&decoder);
 }
