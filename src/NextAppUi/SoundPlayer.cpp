@@ -81,7 +81,9 @@ void SoundPlayer::playSoundAsync(QString resourcePath, double volume)
     ma_device_start(&device);
 
     // Wait for playback to finish
+    LOG_TRACE_N << "Playing sound:" << resourcePath;
     while (ma_device_is_started(&device)) {
         QThread::msleep(50);
     }
+    LOG_TRACE_N << "Sound playback finished:" << resourcePath;
 }
