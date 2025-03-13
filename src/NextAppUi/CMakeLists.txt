@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.2.7 LANGUAGES CXX)
+project(appNextAppUi VERSION 0.2.8 LANGUAGES CXX)
 add_definitions(-DNEXTAPP_UI_VERSION=\"${appNextAppUi_VERSION}\")
 
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
@@ -56,11 +56,13 @@ else ()
     set (PROTOBUF_QML_DEPENDENCY Qt::ProtobufQuick)
 endif()
 
-qt_policy(
-    SET QTP0001 NEW
-)
-
 qt_standard_project_setup()
+
+qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0002 NEW)
+qt_policy(SET QTP0003 NEW)
+qt_policy(SET QTP0004 NEW)
+
 
 if(USE_STATIC_QT)
     # find_package(FFMPEG REQUIRED)
