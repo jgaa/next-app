@@ -27,7 +27,7 @@ echo '{ \
   ] \
 }' > CMakePresets.json
 
-cmake /next-app/src/NextAppUi  -DCMAKE_PREFIX_PATH=/opt/qt-static   -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DUSE_STATIC_QT=ON -DQT_QMAKE_EXECUTABLE:FILEPATH=/opt/qt-static/bin/qmake -DVCPKG_TARGET_TRIPLET=x64-linux && cmake --build . -j
+cmake /next-app/src/NextAppUi  -DCMAKE_PREFIX_PATH=/opt/qt-static   -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DUSE_STATIC_QT=ON -DQT_QMAKE_EXECUTABLE:FILEPATH=/opt/qt-static/bin/qmake -DVCPKG_TARGET_TRIPLET=x64-linux && cmake --build . -j1
 
 cp -v bin/nextapp /target/
 
