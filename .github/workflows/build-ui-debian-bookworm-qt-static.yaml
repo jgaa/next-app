@@ -22,6 +22,7 @@ jobs:
 
       - name: Run build script in Docker container
         run: |
+          export BUILD_IMAGE=ghcr.io/jgaa/qt-static:latest
           cd building/static-qt
           bash build-nextapp.sh
 
