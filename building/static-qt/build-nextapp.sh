@@ -22,7 +22,7 @@ time docker run --rm \
     -v "$(pwd)"/../../:/next-app:ro \
     -v "$(pwd)"/target:/target \
     --name qt-static-build-nextapp \
-    -it "${BUILD_IMAGE}" \
+    -i "${BUILD_IMAGE}" \
     bash /next-app/building/static-qt/build-from-local-src.sh || error_exit "Docker run failed."
 
 echo "✅ Done!"
