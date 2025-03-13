@@ -12,6 +12,9 @@ error_exit() {
 if [ -z "${BUILD_IMAGE+x}" ]; then
     BUILD_IMAGE="qt-static"
     time docker build -t "${BUILD_IMAGE}" . || error_exit "Docker build failed."
+else
+    echo "Using pre-built image: ${BUILD_IMAGE}"
+    docker pull "${BUILD_IMAGE}" || error_exit "Failed to pull Docker image."
 fi
 
 # Ensure target directory exists and set permissions
