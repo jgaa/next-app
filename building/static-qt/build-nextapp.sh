@@ -1,6 +1,9 @@
 #!/usr/bin/bash
 set -o pipefail  # Ensure errors in pipelines cause failure
 
+# Set default number of cores to the system's core count (nproc)
+NUM_CORES=${1:-$(nproc)}
+
 # Function to print error message and exit
 error_exit() {
     echo "❌ ERROR: $1" >&2
@@ -26,6 +29,6 @@ time docker run --rm \
     -v "$(pwd)"/target:/target \
     --name qt-static-build-nextapp \
     -i "${BUILD_IMAGE}" \
-    bash /next-app/building/static-qt/build-from-local-src.sh || error_exit "Docker run failed."
+    bash /next-app/building/static-qt/build-from-local-src.sh ${NUM_CORES} || error_exit "Docker run failed."
 
 echo "✅ Done!"

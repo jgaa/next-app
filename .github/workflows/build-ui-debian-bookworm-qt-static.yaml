@@ -31,13 +31,13 @@ jobs:
         run: |
           export BUILD_IMAGE=ghcr.io/jgaa/qt-static:latest
           cd building/static-qt
-          bash build-nextapp.sh
+          bash build-nextapp.sh 1
 
       - name: Upload nextapp artifact (valid for 3 days)
         uses: actions/upload-artifact@v4
         with:
           name: nextapp
-          path: target/nextapp
+          path: building/static-qt/target/nextapp
           retention-days: 3
 
   release:
