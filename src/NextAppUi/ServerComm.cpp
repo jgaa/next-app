@@ -225,6 +225,7 @@ ServerComm::ServerComm()
 
     LOG_DEBUG << "Ping interval is " << ping_timer_interval_sec_ << " seconds";
     ping_timer_.start(ping_timer_interval_sec_ * 1000);
+    updateVisualStatus();
 }
 
 ServerComm::~ServerComm()
@@ -842,6 +843,7 @@ void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;
         status_ = status;
+        updateVisualStatus();
         emit statusChanged();
 
         if (status == Status::ONLINE || Status::OFFLINE || Status::ERROR) {
@@ -2153,4 +2155,21 @@ QCoro::Task<std::optional<std::pair<QString, QString>>> ServerComm::createCsrAsy
 
     co_await qCoro(thread.get()).waitForFinished();
     co_return result;
+}
+
+void ServerComm::updateVisualStatus()
+{
+    static const array<QString, 7> names = {
+                                            tr("Disconnected"),
+                                            tr("Offline"),
+                                            tr("Readying"),
+                                            tr("Connecting"),
+                                            tr("Sync"),
+                                            tr("Online"),
+                                            tr("Error")};
+
+    static const array<QString, 7> colors = {"gray", "orange", "gold", "yellow", "blue", "green", "red"};
+
+    status_text_ = names.at(static_cast<int>(status_));
+    status_color_ = colors.at(static_cast<int>(status_));
 }

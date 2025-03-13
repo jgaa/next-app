@@ -233,11 +233,11 @@ Rectangle {
                     font.family: ce.faSolidName
                     font.styleName: ce.faSolidStyle
                     font.pixelSize: 18
-                    color: NaComm.connected ? "green" : "lightgray"
+                    color: NaComm.statusColor
                 }
                 Text {
                     //leftPadding: 5
-                    text: NaComm.connected ? qsTr("Online") : qsTr("Offline")
+                    text: NaComm.statusText
                     color: Colors.text
                 }
             }

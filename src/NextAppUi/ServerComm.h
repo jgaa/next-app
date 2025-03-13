@@ -102,6 +102,8 @@ private:
     Q_PROPERTY(QString defaultServerAddress READ getDefaultServerAddress CONSTANT)
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
     Q_PROPERTY(bool status READ status NOTIFY statusChanged)
+    Q_PROPERTY(QString statusText MEMBER status_text_ NOTIFY statusChanged)
+    Q_PROPERTY(QString statusColor MEMBER status_color_ NOTIFY statusChanged)
     Q_PROPERTY(QString version READ version NOTIFY versionChanged)
     Q_PROPERTY(nextapp::pb::UserGlobalSettings globalSettings
                 READ getGlobalSettings
@@ -609,16 +611,18 @@ private:
     QCoro::Task<void> startNextappSession();
     QCoro::Task<bool> getDataVersions();
     QCoro::Task<bool> getGlobalSetings();
-
     std::pair<QString, QString> createCsr();
     QCoro::Task<std::optional<std::pair<QString, QString>>> createCsrAsync();
     QString toString(const QGrpcStatus& ex);
+    void updateVisualStatus();
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     std::unique_ptr<signup::pb::SignUp::Client> signup_client_;
     nextapp::pb::ServerInfo server_info_;
     QString server_version_{"Unknown"};
     Status status_{Status::OFFLINE};
+    QString status_text_;
+    QString status_color_;
     static ServerComm *instance_;
     std::shared_ptr<QGrpcServerStream> updates_;
     QString current_server_address_;
