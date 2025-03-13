@@ -1,0 +1,62 @@
+name: Build and Release NextApp for Debian Bookworm (Static Qt)
+
+on:
+  push:
+    branches:
+      - main
+      - devel
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build NextApp in Docker (Static Qt)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+
+      - name: Run build script in Docker container
+        run: |
+          cd building/static-qt
+          bash build-nextapp.sh
+
+      - name: Upload nextapp artifact (valid for 3 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextapp
+          path: target/nextapp
+          retention-days: 3
+
+  release:
+    name: Create and Upload Release Tarball
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nextapp
+          path: target/
+
+      - name: Get release version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Create compressed tarball
+        run: |
+          tar -czvf nextappUI-debian-static-${{ env.VERSION }}.tar.gz -C target nextapp
+
+      - name: Upload release artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          files: nextappUI-debian-static-${{ env.VERSION }}.tar.gz

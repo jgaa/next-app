@@ -3,12 +3,13 @@
 # Start the build-container as
 #  docker run --rm -v {$HOME}/src/next-app/:/next-app:ro -v `pwd`/target:/target --name qt-static-build-nextapp -it qt-static bash /next-app/building/static-qt/build-from-local-src.sh
 
+
 cd
 rm -rf build
 mkdir build
 cd build
 
-RUN echo '{ \
+echo '{ \
   "version": 3, \
   "cmakeMinimumRequired": { "major": 3, "minor": 19 }, \
   "configurePresets": [ \

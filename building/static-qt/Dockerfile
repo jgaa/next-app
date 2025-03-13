@@ -120,5 +120,8 @@ RUN useradd -m -s /bin/bash build && \
 USER build
 WORKDIR /home/build
 
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
 # Default command
 CMD ["/bin/bash"]
