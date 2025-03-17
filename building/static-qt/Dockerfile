@@ -1,5 +1,5 @@
 # Use a base image with a compatible Linux distribution
-FROM debian:bookworm-slim
+FROM ubuntu:22.04
 
 # Set environment variables
 ENV QT_VERSION=6.8.2
@@ -74,45 +74,64 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     python3 \
     python3-pip \
-    wget \
-    curl \
-    zip unzip tar wget \
+    zip \
+    unzip \
+    tar \
     zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
+    lsb-release \
+    flatpak \
+    flatpak-builder \
+    sudo && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set up Flatpak
+RUN flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && \
+    flatpak --noninteractive install flathub org.freedesktop.Platform//23.08 && \
+    flatpak --noninteractive install flathub org.freedesktop.Sdk//23.08
 
 # Install vcpkg
 RUN git clone https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT} && \
-    ${VCPKG_ROOT}/bootstrap-vcpkg.sh
-
-# Install necessary Qt dependencies using vcpkg
-WORKDIR ${VCPKG_ROOT}
-RUN ./vcpkg install protobuf grpc openssl && \
+    ${VCPKG_ROOT}/bootstrap-vcpkg.sh && \
+    cd ${VCPKG_ROOT} && \
+    ./vcpkg install protobuf grpc openssl && \
     rm -rf $VCPKG_ROOT/buildtrees $VCPKG_ROOT/downloads
-RUN mkdir -p /tmp/boost &&\
-    curl -sL https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 &&\
-    cd /tmp/boost && ./bootstrap.sh && ./b2 -d0 link=static threading=multi --with-program_options --with-system install &&\
-    cd / &&\
+
+# Install Boost
+RUN mkdir -p /tmp/boost && \
+    curl -sL https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 && \
+    cd /tmp/boost && \
+    ./bootstrap.sh && \
+    ./b2 -d0 link=static threading=multi --with-program_options --with-system install && \
+    cd / && \
     rm -rf /tmp/boost
 
-# Create directory for Qt installation
-RUN mkdir -p ${QT_DIR}
-
-# Clone Qt source code with minimal history
-RUN git clone --depth=1 --branch ${QT_VERSION} git://code.qt.io/qt/qt5.git ${QT_DIR}/qt
-
-# Initialize the repository and synchronize submodules
-WORKDIR ${QT_DIR}/qt
-RUN ./init-repository --module-subset=default,-qtwebengine
-
-# Configure Qt (excluding multimedia)
-RUN ./configure -prefix ${QT_INSTALL_DIR} -static -release -opensource -confirm-license -no-pch \
+# Build and install Qt
+RUN mkdir -p ${QT_DIR} && \
+    git clone --depth=1 --branch ${QT_VERSION} git://code.qt.io/qt/qt5.git ${QT_DIR}/qt && \
+    cd ${QT_DIR}/qt && \
+    ./init-repository --module-subset=default,-qtwebengine && \
+    ./configure -prefix ${QT_INSTALL_DIR} -static -release -opensource -confirm-license -no-pch \
     -nomake examples -nomake tests -openssl-linked -opengl desktop -sql-sqlite \
     -skip qtwebengine -skip qtmultimedia -skip qtsensors -skip qtconnectivity -skip qtnetworkauth \
     -vcpkg --feature-protobufquick --feature-qtprotobufgen -feature-xcb -qt-libpng -qt-libjpeg \
-    -skip qtspeech -skip qt5compat -skip qtquick3dphysics -skip qtremoteobjects -skip qthttpserver \
-    && cmake --build . --parallel \
-    && cmake --install . \
-    && rm -rf ${QT_DIR}/qt
+    -skip qtspeech -skip qt5compat -skip qtquick3dphysics -skip qtremoteobjects -skip qthttpserver && \
+    cmake --build . --parallel && \
+    cmake --install . && \
+    cd / && \
+    rm -rf ${QT_DIR}
+
+# RUN mkdir -p ${QT_DIR} && \
+#     git clone --depth=1 --branch ${QT_VERSION} git://code.qt.io/qt/qt5.git ${QT_DIR}/qt && \
+#     cd ${QT_DIR}/qt && \
+#     ./init-repository --module-subset=default,-qtwebengine && \
+#     ./configure -prefix ${QT_INSTALL_DIR} -static -release -opensource -confirm-license -no-pch \
+#     -nomake examples -nomake tests -openssl-linked -opengl desktop -sql-sqlite \
+#     -skip qtwebengine -skip qtmultimedia -skip qtsensors -skip qtconnectivity -skip qtnetworkauth \
+#     -vcpkg --feature-protobufquick --feature-qtprotobufgen -feature-xcb -qt-libpng -qt-libjpeg \
+#     -skip qtspeech -skip qt5compat -skip qtquick3dphysics -skip qtremoteobjects -skip qthttpserver \
+#     && cmake --build . --parallel \
+#     && cmake --install . \
+#     && cd / && rm -rf ${QT_DIR}/qt
 
 # Create a non-root user
 RUN useradd -m -s /bin/bash build && \

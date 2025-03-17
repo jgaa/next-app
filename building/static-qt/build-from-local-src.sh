@@ -40,4 +40,24 @@ cmake /next-app/src/NextAppUi \
 # Copy the built executable to the target directory
 cp -v bin/nextapp /target/
 
+# echo "Copying libraries..."
+#
+# set -e
+#
+# TARGET="bin/nextapp"
+# DEST="/target/libs"
+#
+# mkdir -p "$DEST"
+#
+# # Parse ldd output, extracting the "3rd" column which is typically the real library path.
+# # ldd lines generally look like: "libSomething.so.1 => /usr/lib/libSomething.so.1 (0x...)"
+# # The 3rd field is usually the library path or "(0x...)" if it doesn't exist.
+# # We only copy if there's an actual file at that path.
+# for lib in $(ldd "$TARGET" | awk '{print $3}' | sort -u); do
+#     # Filter out anything that is not a real file (e.g. "(0x...)" or empty)
+#     if [ -f "$lib" ]; then
+#         cp -vu "$lib" "$DEST"
+#     fi
+# done
+
 echo "Done!"

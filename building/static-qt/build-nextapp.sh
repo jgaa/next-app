@@ -1,6 +1,10 @@
 #!/usr/bin/bash
 set -o pipefail  # Ensure errors in pipelines cause failure
 
+TARGET_DIR="${TARGET_DIR:-$(pwd)/target}"
+
+echo "TARGET_DIR: ${TARGET_DIR}"
+
 # Set default number of cores to the system's core count (nproc)
 NUM_CORES=${1:-$(nproc)}
 
@@ -21,14 +25,17 @@ else
 fi
 
 # Ensure target directory exists and set permissions
-chmod 0777 target || error_exit "Failed to set permissions on 'target' directory."
+mkdir -p "${TARGET_DIR}"
+chmod 0777 "${TARGET_DIR}" || error_exit "Failed to set permissions on 'target' directory."
 
 # Run the Docker container
 time docker run --rm \
+    --cap-add SYS_ADMIN --cap-add=NET_ADMIN --privileged \
+    --security-opt apparmor=unconfined  --device /dev/fuse \
     -v "$(pwd)"/../../:/next-app:ro \
-    -v "$(pwd)"/target:/target \
+    -v "${TARGET_DIR}":/target \
     --name qt-static-build-nextapp \
     -i "${BUILD_IMAGE}" \
-    bash /next-app/building/static-qt/build-from-local-src.sh ${NUM_CORES} || error_exit "Docker run failed."
+    bash -c "bash /next-app/building/static-qt/build-from-local-src.sh ${NUM_CORES} && /next-app/building/static-qt/create_flatpak.sh" || error_exit "Docker run failed."
 
 echo "✅ Done!"
