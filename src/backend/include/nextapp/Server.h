@@ -23,9 +23,7 @@ class GrpcServer;
 
 class Server {
 public:
-    static constexpr uint latest_version = 16;
-    static constexpr auto system_tenant = "a5e7bafc-9cba-11ee-a971-978657e51f0c";
-    static constexpr auto system_user = "dd2068f6-9cbb-11ee-bfc9-f78040cadf6b";
+    static constexpr uint latest_version = 17;
 
     struct BootstrapOptions {
         bool drop_old_db = false;
@@ -114,6 +112,9 @@ public:
 
     boost::uuids::uuid getAdminUserId();
 
+    /*! Make a hash for the password, using the server-id as seed */
+    std::string hashPassword(std::string_view passwd);
+
 
 private:
     void handleSignals();
@@ -124,6 +125,10 @@ private:
     boost::asio::awaitable<void> upgradeDbTables(uint version);
     boost::asio::awaitable<void> loadCertAuthority();
     boost::asio::awaitable<void> startGrpcService();
+    boost::asio::awaitable<void> resetMetricsPassword(jgaa::mysqlpool::Mysqlpool::Handle& handle);
+    boost::asio::awaitable<void> loadConfig();
+    boost::asio::awaitable<void> loadServerId();
+
     void createCa();
     void createServerCert();
 
@@ -141,6 +146,7 @@ private:
     static Server *instance_;
     const time_t instance_tag_{time({})};
     std::string server_id_;
+    std::string metrics_auth_hash_;
 };
 
 template <ProtoMessage T>

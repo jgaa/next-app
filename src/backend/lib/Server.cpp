@@ -3,6 +3,7 @@
 #include <format>
 #include <span>
 #include <ranges>
+#include <fcntl.h>
 
 #include <boost/asio/co_spawn.hpp>
 #include <boost/mysql/diagnostics.hpp>
@@ -16,6 +17,7 @@
 #include "nextapp/Server.h"
 #include "nextapp/GrpcServer.h"
 #include "nextapp/logging.h"
+#include "nextapp/util.h"
 
 using namespace std;
 using namespace jgaa;
@@ -84,14 +86,10 @@ void Server::run()
                 throw std::runtime_error("Database version is wrong");
             }
 
-            auto res = co_await db().exec("SELECT serverid from nextapp where id=1");
-            if (res.has_value() && !res.rows().empty()) {
-                server_id_ = res.rows().front().front().as_string();
-                LOG_INFO << "The server-id for this deployment is " << server_id_;
-            }
-
+            co_await loadServerId();
             co_await loadCertAuthority();
             co_await startGrpcService();
+            co_await loadConfig();
         }, boost::asio::use_future).get();
     } catch (const std::exception& ex) {
         LOG_ERROR << "Caught exception during initialization: " << ex.what();
@@ -104,8 +102,19 @@ void Server::run()
     } else {
         LOG_INFO << "Starting HTTP server (metrics).";
         http_server_.emplace(config().http, [this](const yahat::AuthReq& ar) {
-            // TODO: Add actual authentication!
-            return yahat::Auth{"admin", true};
+            if (ar.req.target == "/metrics" && ar.req.type == yahat::Request::Type::GET) {
+                // Need authentication here
+                const auto lower = toLower(ar.auth_header);
+                if (lower.starts_with("basic ")) {
+                    const auto base64 = ar.auth_header.substr(6);
+                    const auto hash = hashPassword(base64);
+                    if (hash == metrics_auth_hash_) {
+                        LOG_TRACE << "Metrics request " << ar.req.uuid << " authenticated";
+                        return yahat::Auth{"metrics", true};
+                    }
+                }
+            }
+            return yahat::Auth{"", false};
         }, metrics_.metrics(), "nextapp "s + NEXTAPP_VERSION);
 
         http_server_->start();
@@ -287,6 +296,13 @@ boost::uuids::uuid Server::getAdminUserId()
     return uuid;
 }
 
+string Server::hashPassword(std::string_view passwd)
+{
+    assert(!server_id_.empty());
+    const auto base = format("{}:{}", server_id_, passwd);
+    return sha256(base, true);
+}
+
 void Server::initCtx(size_t numThreads)
 {
     io_threads_.reserve(numThreads);
@@ -401,8 +417,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               name VARCHAR(128) NOT NULL,
               kind ENUM('super', 'regular') NOT NULL DEFAULT 'regular',
               descr TEXT,
-              active TINYINT(1) NOT NULL DEFAULT 1),
-              system_tenant TINYINT(1))",
+              active TINYINT(1) NOT NULL DEFAULT 1,
+              system_tenant TINYINT(1)))",
 
         R"(CREATE TABLE user (
               id UUID not NULL default UUID() PRIMARY KEY,
@@ -411,7 +427,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'regular',
               descr TEXT,
               active TINYINT(1) NOT NULL DEFAULT 1,
-              system_user TINYINT(1)
+              system_user TINYINT(1),
         FOREIGN KEY(tenant) REFERENCES tenant(id)))",
 
         R"(CREATE TABLE node (
@@ -1012,6 +1028,16 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v17_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE TABLE IF NOT EXISTS config (
+            name VARCHAR(128) NOT NULL PRIMARY KEY,
+            value TEXT NOT NULL))",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -1028,7 +1054,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v13_upgrade,
         v14_upgrade,
         v15_upgrade,
-        v16_upgrade
+        v16_upgrade,
+        v17_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
@@ -1068,7 +1095,6 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
                 co_await handle.exec("UPDATE tenant SET system_tenant=1 WHERE kind='super'");
                 co_await handle.exec("UPDATE user SET system_user=1 WHERE kind='super'");
             }
-
 
             co_await handle.exec("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
             co_await trx.commit();
@@ -1115,6 +1141,61 @@ boost::asio::awaitable<void> Server::startGrpcService()
     grpc_service_ = make_shared<grpc::GrpcServer>(*this);
     grpc_service_->start();
     co_return;
+}
+
+boost::asio::awaitable<void> Server::resetMetricsPassword(jgaa::mysqlpool::Mysqlpool::Handle& handle)
+{
+    const auto passwd = getRandomStr(32);
+    const auto auth = format("metrics:{}", passwd);
+    const auto http_basic_auth = Base64Encode(auth);
+    const auto hash = hashPassword(http_basic_auth);
+
+    auto res = co_await handle.exec("INSERT INTO config (name, value) VALUES ('metric_auth_hash', ?) ON DUPLICATE KEY UPDATE value = ?", hash, hash);
+    if (!res.affected_rows()) {
+        LOG_ERROR << "Failed to insert metric_auth_hash into config table";
+        co_return;
+    }
+
+    // Write the password to a file in users home directory
+    const auto path = filesystem::path(getEnv("HOME", "/var/lib/nextapp")) / "nextapp_metrics_password.txt";
+    auto content = format("user: metrics\npasswd: {}", passwd);
+
+    if (auto fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR); fd != -1) {
+        write(fd, content.c_str(), content.size());
+        close(fd);
+        LOG_INFO << "Metrics password saved to " << path;
+    } else {
+        LOG_ERROR << "Failed to write metrics password to " << path;
+    }
+}
+
+boost::asio::awaitable<void> Server::loadConfig()
+{
+    for(auto i = 0u; i < 2; ++i) {
+        auto res = co_await db().exec("SELECT value FROM config WHERE name='metric_auth_hash'");
+        if (!res.rows().empty()) {
+            metrics_auth_hash_ = res.rows().at(0).at(0).as_string();
+        } else {
+            if (i == 0) {
+                auto conn = co_await db().getConnection();
+                co_await resetMetricsPassword(conn);
+            } else {
+                LOG_WARN_N << "No metrics password found in config table, even after I tried to reset it.";
+            }
+        }
+    }
+    co_return;
+}
+
+boost::asio::awaitable<void> Server::loadServerId()
+{
+    auto res = co_await db().exec("SELECT serverid from nextapp where id=1");
+    if (res.has_value() && !res.rows().empty()) {
+        server_id_ = res.rows().front().front().as_string();
+        LOG_INFO << "The server-id for this deployment is " << server_id_;
+    } else {
+        LOG_WARN << "No server-id found in nextapp table";
+    }
 }
 
 void Server::handleSignals()
