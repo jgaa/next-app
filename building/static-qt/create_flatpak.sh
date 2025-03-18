@@ -145,7 +145,12 @@ cat << EOF > eu.lastviking.NextApp.json
   "finish-args": [
     "--share=network",
     "--socket=x11",
-    "--device=dri"
+    "--socket=wayland",
+    "--device=dri",
+    "--share=ipc",
+    "--socket=session-bus",
+    "--socket=system-bus",
+    "--socket=pulseaudio"
   ],
 
   "modules": [
