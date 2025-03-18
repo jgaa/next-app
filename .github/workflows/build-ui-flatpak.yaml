@@ -1,4 +1,4 @@
-name: Build and Release NextApp for Debian Bookworm (Static Qt)
+name: Build and Release NextApp Flatpak (Static Qt)
 
 on:
   push:
@@ -40,6 +40,13 @@ jobs:
           path: building/static-qt/target/nextapp
           retention-days: 3
 
+      - name: Upload NextApp.flatpak artifact (valid for 3 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: NextApp.flatpak
+          path: building/static-qt/target/NextApp.flatpak
+          retention-days: 3
+
   release:
     name: Create and Upload Release Tarball
     needs: build
@@ -50,21 +57,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download build artifact
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: nextapp
+          path: target/
+
+      - name: Download NextApp.flatpak artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: NextApp.flatpak
           path: target/
 
       - name: Get release version
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
-      - name: Create compressed tarball
+      - name: Create compressed tarball for nextapp
         run: |
           tar -czvf nextappUI-debian-static-${{ env.VERSION }}.tar.gz -C target nextapp
 
-      - name: Upload release artifact
+      - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
-          files: nextappUI-debian-static-${{ env.VERSION }}.tar.gz
+          files: |
+            nextappUI-debian-static-${{ env.VERSION }}.tar.gz
+            target/NextApp.flatpak
