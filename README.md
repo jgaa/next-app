@@ -1,4 +1,6 @@
-[![Build NextApp Docker Images](https://github.com/jgaa/next-app/actions/workflows/build_containers.yaml/badge.svg?branch=main)](https://github.com/jgaa/next-app/actions/workflows/build_containers.yaml)
+Build status
+- [![Build NextApp Docker Images](https://github.com/jgaa/next-app/actions/workflows/build_containers.yaml/badge.svg?branch=main)](https://github.com/jgaa/next-app/actions/workflows/build_containers.yaml)
+- [![Build and Release NextApp Flatpak (Static Qt)](https://github.com/jgaa/next-app/actions/workflows/build-ui-flatpak.yaml/badge.svg)](https://github.com/jgaa/next-app/actions/workflows/build-ui-flatpak.yaml)
 
 # next-app
 GTD native application for desktop and mobile.
