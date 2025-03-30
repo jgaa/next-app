@@ -42,11 +42,6 @@ jobs:
           export SYM_ARTIFACTS_DIR=`pwd`/artifacts
           REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push
         shell: bash
-
-      - name: Copy nextapp symbols files to artifacts folder
-        run: |
-          mkdir -p artifacts
-          cp -v build/artifacts/bin/*.sym artifacts/
       
       - name: Upload symbol files
         uses: actions/upload-artifact@v4
