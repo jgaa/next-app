@@ -26,6 +26,7 @@ image_tag=$project
 build_image="${project}bld:latest"
 scriptname=`basename "$0"`
 version=v`grep " set(NEXTAPP_VERSION" CMakeLists.txt | xargs | cut -f 2 -d ' ' | cut -f1 -d')'`
+git_hash=`git rev-parse --short HEAD`
 
 if [ -z ${BUILD_DIR+x} ]; then
     BUILD_DIR="${HOME}/${project}-build-image"
@@ -38,7 +39,7 @@ usage() {
   echo "Builds ${project} to a container image"
   echo "Options:"
   echo "  --debug       Compile with debugging enabled"
-  echo "  --strip       Strip the binary (makes backtraces less useful)"
+  echo "  --strip       Strip the binary"
   echo "  --clean       Perform a full, new build."
   echo "  --logbt       Use logbt to get a stack-trace if the app segfaults"
   echo "                /proc/sys/kernel/core_pattern must be '/tmp/logbt-coredumps/core.%p.%E'"
@@ -201,7 +202,6 @@ docker run                                                           \
     --rm ${docker_run_args}                                          \
     -u $UID                                                          \
     --name "${project}-build"                                        \
-    -e DO_STRIP=${strip}                                             \
     -e BUILD_DEB=${build_deb}                                        \
     -e BUILD_DIR=/build                                              \
     -e BUILD_TYPE="${cmake_build_type}"                              \
@@ -212,6 +212,17 @@ docker run                                                           \
     /src/docker/build-${project}.sh                                  \
     || die
 
+bin_source="${artifacts_dir}/bin/${project}"
+symbols_target="${artifacts_dir}/bin/${project}-${version}-${git_hash}.sym"
+echo "==================================================="
+echo "Making symbolks file ${symbols_target} from ${bin_source}"
+echo "==================================================="
+objcopy --only-keep-debug "${bin_source}" "${symbols_target}" || die "Failed to make symbols file"
+
+if [ "$strip" = true ] ; then
+    echo "Stripping ${bin_source}"
+    strip ${bin_source} || die "Failed to strip ${bin_source}"
+fi
 
 target_image="${REGISTRY}/${TARGET}"
 echo "==================================================="

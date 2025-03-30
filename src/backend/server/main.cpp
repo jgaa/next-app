@@ -34,6 +34,8 @@ using nextapp::logging::LogEvent;
 
 namespace {
 
+string symbol_maps;
+
 optional<logfault::LogLevel> toLogLevel(string_view name) {
     if (name.empty() || name == "off" || name == "false") {
         return {};
@@ -51,8 +53,9 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
 }
 
 // crash handlers
-void signal_handler(int signum) {
+__attribute__((noinline)) void signal_handler(int signum) {
     cerr << "Signal (" << signum << ") received:\n";
+    cerr << "Symbol map(s): " << symbol_maps << "\n";
     cerr << boost::stacktrace::stacktrace() << "\n";
     exit(signum);  // Exit with the signal number
 }
@@ -274,7 +277,9 @@ int main(int argc, char* argv[]) {
                       << "Boost " << BOOST_LIB_VERSION << endl
                       << "Platform " << BOOST_PLATFORM << endl
                       << "Compiler " << BOOST_COMPILER << endl
-                      << "Build date " << __DATE__ << endl;
+                      << "Build date " << __DATE__ << endl
+                      << "Branch " << GIT_BRANCH << endl
+                      << "Commit " << GIT_COMMIT_ID << endl;
             return -3;
         }
 
@@ -365,6 +370,17 @@ int main(int argc, char* argv[]) {
     }
 
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";
+
+    {
+        std::ifstream maps("/proc/self/maps");
+        std::string line;
+        while (std::getline(maps, line)) {
+            if (line.find(appname) != std::string::npos && line.find(" 00000000 ") != std::string::npos) {
+                LOG_INFO << "Binary mapping: " << line;
+                symbol_maps += line + '\n';
+            }
+        }
+    }
 
     try {
         Server server{config};
