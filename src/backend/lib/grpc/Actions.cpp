@@ -764,13 +764,9 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
 
                 auto res = co_await rctx.dbh->exec(sql, dbopts, args);
                 assert(res.has_value());
-                if (res.affected_rows() == 1) {
-                    auto& publish = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
-                    auto* action = publish.mutable_action();
-                    co_await owner_.getAction(*action, uuid.uuid(), rctx);
-                } else {
-                    throw server_err(pb::Error::GENERIC_ERROR, format("Action with id={} was not updated.", uuid.uuid()));
-                }
+                auto& publish = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+                auto* action = publish.mutable_action();
+                co_await owner_.getAction(*action, uuid.uuid(), rctx);
             }
 
             co_await trx.commit();
