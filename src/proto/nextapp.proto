@@ -619,6 +619,28 @@ message DeviceUpdateReq {
     optional bool enabled = 3;
 }
 
+message Notification {
+    enum SenderType {
+        ADMIN = 0;
+        SYSTEM = 1;
+        TENANT = 2;
+        USER = 3;
+    }
+
+    uint64 id = 1;
+    common.Time when = 2;
+    string message = 3;
+    SenderType senderType = 4;
+    string senderId = 5;
+    optional common.Uuid toUser = 6;
+    optional common.Uuid toTenant = 7;
+    common.Uuid uuid = 8;
+}
+
+message Notifications {
+    repeated Notification notifications = 1;
+}
+
 // Versions of various smaller data sets the user must check on startup.
 message DataVersionsInfo {
     uint64 actionCategoryVersion = 1;
@@ -649,6 +671,7 @@ message Update {
         CalendarEvents calendarEvents = 19;
         ActionCategory actionCategory = 20;
         Device device = 21;
+        Notification notification = 22;
     }
 }
 
@@ -885,6 +908,7 @@ message Status {
         Devices devices = 36;
         Device device = 37;
         UserSessions userSessions = 38;
+        Notifications notifications = 39;
     }
 }
 
@@ -952,6 +976,7 @@ service Nextapp {
     rpc GetNewNodes(GetNewReq) returns (stream Status) {}
     rpc GetNewActions(GetNewReq) returns (stream Status) {}
     rpc GetNewWork(GetNewReq) returns (stream Status) {}
+    rpc GetNewNotifications(GetNewReq) returns (stream Status) {}
     rpc GetNewTimeBlocks(GetNewReq) returns (stream Status) {}
     rpc ResetPlayback(ResetPlaybackReq) returns (Status) {}
     rpc ListCurrentSessions(Empty) returns (Status) {}

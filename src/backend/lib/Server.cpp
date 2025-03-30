@@ -1038,6 +1038,28 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v18_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE TABLE notifications (
+            id INT NOT NULL AUTO_INCREMENT,
+            when TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            message TEXT NOT NULL,
+            sender_type ENUM('admin','system','tenant','user') NOT NULL,
+            sender_id VARCHAR(128) NULL,
+            to_tenant UUID DEFAULT NULL,
+            to_user UUID  DEFAULT NULL,
+            uuid UUID NOT NULL DEFAULT UUID(),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_uuid (uuid),
+        KEY idx_to_tenant_user (to_tenant, to_user),
+        CONSTRAINT fk_notifications_tenant FOREIGN KEY (to_tenant) REFERENCES tenant(id) ON DELETE CASCADE,
+        CONSTRAINT fk_notifications_user   FOREIGN KEY (to_user) REFERENCES user(id) ON DELETE CASCADE))",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
