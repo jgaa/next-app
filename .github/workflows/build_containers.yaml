@@ -43,7 +43,7 @@ jobs:
           REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push
         shell: bash
       
-      - name: Upload symbol files
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
