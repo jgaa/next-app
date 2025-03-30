@@ -17,12 +17,6 @@ cmake -DNEXTAPP_WITH_UI=OFF -DNEXTAPP_WITH_BACKEND=ON -DNEXTAPP_WITH_SIGNUP=OFF 
 
 make -j `nproc` || die "Build failed"
 
-if ${DO_STRIP} ; then
-    echo "Stripping binary"
-    strip bin/*
-#    strip /usr/local/lib/libboost*
-fi
-
 cp -v bin/* /artifacts/bin
 #cp -rv /usr/local/lib/libboost* /artifacts/lib
 

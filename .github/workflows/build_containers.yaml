@@ -32,12 +32,15 @@ jobs:
         run: |
           mkdir build
           chmod 777 build
+          mkdir -p artifacts          
         shell: bash
 
       - name: Build and push nextappd image
         run: |
           chmod +x ./building/build-nextapp-image.sh  # Ensure script is executable
-          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push
+          export BUILD_DIR=`pwd`/build/nextapp
+          export SYM_ARTIFACTS_DIR=`pwd`/artifacts
+          REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push
         shell: bash
 
       - name: Copy nextapp symbols files to artifacts folder
@@ -48,8 +51,8 @@ jobs:
       - name: Upload symbol files
         uses: actions/upload-artifact@v4
         with:
-          name: symbol-files
-          path: artifacts/*.sym
+          name: build-artifacts
+          path: artifacts/*
 
       - name: Build and push signupd image
         run: |

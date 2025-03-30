@@ -215,9 +215,14 @@ docker run                                                           \
 bin_source="${artifacts_dir}/bin/${project}"
 symbols_target="${artifacts_dir}/bin/${project}-${version}-${git_hash}.sym"
 echo "==================================================="
-echo "Making symbolks file ${symbols_target} from ${bin_source}"
+echo "Making symbols file ${symbols_target} from ${bin_source}"
 echo "==================================================="
 objcopy --only-keep-debug "${bin_source}" "${symbols_target}" || die "Failed to make symbols file"
+
+if [ -n "${SYM_ARTIFACTS_DIR// /}" ]; then
+    echo "Copying symbols file to ${SYM_ARTIFACTS_DIR}"
+    cp -v "${symbols_target}" "${SYM_ARTIFACTS_DIR}"
+fi
 
 if [ "$strip" = true ] ; then
     echo "Stripping ${bin_source}"
