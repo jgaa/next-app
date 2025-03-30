@@ -37,11 +37,23 @@ jobs:
       - name: Build and push nextappd image
         run: |
           chmod +x ./building/build-nextapp-image.sh  # Ensure script is executable
-          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --push
+          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push
         shell: bash
+
+      - name: Copy nextapp symbols files to artifacts folder
+        run: |
+          mkdir -p artifacts
+          cp -v build/artifacts/bin/*.sym artifacts/
+      
+      - name: Upload symbol files
+        uses: actions/upload-artifact@v3
+        with:
+          name: symbol-files
+          path: artifacts/*.sym
+          retention-days: 7
 
       - name: Build and push signupd image
         run: |
           chmod +x ./building/build-signup-image.sh  # Ensure script is executable
-          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-signup-image.sh --scripted --push
+          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-signup-image.sh --scripted --strip --push
         shell: bash
