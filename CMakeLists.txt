@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.2.9)
+    set(NEXTAPP_VERSION 0.2.10)
 endif()
 
 project(next-app
@@ -24,6 +24,14 @@ option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" OFF)
 option(NEXTAPP_WITH_UI "Include the UI project in the build" ON)
 option(NEXTAPP_WITH_BACKEND "Include the backend server project in the build" ${IS_LINUX})
 option(NEXTAPP_WITH_SIGNUP "Include the signup server project in the build" ${IS_LINUX})
+option(NEXTAPP_USE_VALGRIND "Add support to use valgrind to run tests" OFF)
+
+if (BOOST_USE_VALGRIND)
+    set(BOOST_USE_VALGRIND ON CACHE INTERNAL "")
+    set(BOOST_ASIO_DISABLE_HANDLER_ALLOC_HOOKS ON CACHE INTERNAL "")
+    add_definitions(-DBOOST_USE_VALGRIND)
+    add_definitions(-DBOOST_ASIO_DISABLE_HANDLER_ALLOC_HOOKS)
+endif()
 
 if (NEXTAPP_BOOST_USE_STATIC_LIBS)
     message("Using static boost libraries")
