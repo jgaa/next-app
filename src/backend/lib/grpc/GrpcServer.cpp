@@ -180,6 +180,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
             {
                 scoped_lock lock{mutex_};
+                state_ = State::READY;
                 updates_.pop();
             }
 
@@ -219,6 +220,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             }
 
             StartWrite(updates_.front().get());
+            state_ = State::WAITING_ON_WRITE;
 
             if (auto session = session_.lock()) {
                 session->touch();
