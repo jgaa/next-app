@@ -46,11 +46,10 @@ jobs:
           cp -v build/artifacts/bin/*.sym artifacts/
       
       - name: Upload symbol files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: symbol-files
           path: artifacts/*.sym
-          retention-days: 7
 
       - name: Build and push signupd image
         run: |
