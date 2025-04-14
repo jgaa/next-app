@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.22)
 
 if (NOT DEFINED NEXTAPP_VERSION)
     set(NEXTAPP_VERSION 0.3.0) # MajorVersion.MinorVersion.PatchVersion
