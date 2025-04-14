@@ -31,8 +31,8 @@ EOF
 
 # Run CMake and build with the specified or default core count
 cmake /next-app \
-  -CNEXTAPP_WITH_BACKEND=OFF \
-  -CNEXTAPP_WITH_SIGNUP=OFF \
+  -DNEXTAPP_WITH_BACKEND=OFF \
+  -DNEXTAPP_WITH_SIGNUP=OFF \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PREFIX_PATH=/opt/qt-static \
   -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
