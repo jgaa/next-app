@@ -75,11 +75,11 @@ jobs:
 
       - name: Create compressed tarball for nextapp
         run: |
-          tar -czvf nextappUI-debian-static-${{ env.VERSION }}.tar.gz -C target nextapp
+          tar -czvf nextapp-ubuntu-${{ env.VERSION }}.tar.gz -C target nextapp
 
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            nextappUI-debian-static-${{ env.VERSION }}.tar.gz
+            nextappUI-ubuntu-static-${{ env.VERSION }}.tar.gz
             target/NextApp.flatpak

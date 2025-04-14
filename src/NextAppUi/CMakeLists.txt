@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.2.10 LANGUAGES CXX)
+project(appNextAppUi
+    VERSION ${NEXTAPP_VERSION}
+    LANGUAGES CXX)
+
 add_definitions(-DNEXTAPP_UI_VERSION=\"${appNextAppUi_VERSION}\")
 
-set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+#set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 set(SERVER_ADDRESS "https://signup.ws.dev.next-app.org:10322" CACHE STRING "Default address to signup server")
@@ -40,9 +43,7 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-#set(QT6_IS_SHARED_LIBS_BUILD OFF)
 if(USE_STATIC_QT)
-    # Use target_compile_definitions instead of add_definitions for modern CMake
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
 
@@ -65,33 +66,6 @@ qt_policy(SET QTP0004 NEW)
 
 
 if(USE_STATIC_QT)
-    # find_package(FFMPEG REQUIRED)
-    # message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
-
-    # # There is some tiems a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
-    # if("optimized" IN_LIST FFMPEG_LIBRARIES)
-    #     set(OPTIMIZED_FFMPEG_LIBRARIES "")
-    #     set(NEXT_IS_OPTIMIZED FALSE)
-
-    #     foreach(item IN LISTS FFMPEG_LIBRARIES)
-    #         if(item STREQUAL "optimized")
-    #             set(NEXT_IS_OPTIMIZED TRUE)
-    #         elseif(item STREQUAL "debug")
-    #             set(NEXT_IS_OPTIMIZED FALSE)
-    #         else()
-    #             if(NEXT_IS_OPTIMIZED)
-    #                 list(APPEND OPTIMIZED_FFMPEG_LIBRARIES "${item}")
-    #             endif()
-    #         endif()
-    #     endforeach()
-    # else()
-    #     # If "optimized" is not found, use FFMPEG_LIBRARIES directly
-    #     set(OPTIMIZED_FFMPEG_LIBRARIES "${FFMPEG_LIBRARIES}")
-    # endif()
-
-    # Print the optimized libraries for verification
-    message(STATUS "Optimized Libraries: ${OPTIMIZED_FFMPEG_LIBRARIES}")
-
     set(Boost_USE_STATIC_LIBS ON)
     set(OPENSSL_USE_STATIC_LIBS TRUE)
     set(BUILD_SHARED_LIBS OFF)
@@ -216,9 +190,7 @@ if(NOT HAS_STD_FORMAT OR ANDROID OR APPLE)
 endif()
 
 if (NOT ANDROID)
-    find_package(Boost CONFIG REQUIRED)
-    #find_package(OpenSSL CONFIG REQUIRED)
-
+    find_package(Boost ${USE_BOOST_VERSION} CONFIG REQUIRED)
     find_package(OpenSSL CONFIG QUIET)
     if(NOT OpenSSL_FOUND)
         find_package(OpenSSL REQUIRED)
@@ -226,7 +198,10 @@ if (NOT ANDROID)
 
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
-    target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_87_0)
+    set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_87_0"
+        CACHE STRING
+        "Boost location if set manually (required for Android/ QT Creator)")
+    target_include_directories(${PROJECT_NAME} PRIVATE ${NEXTAPP_BOOST_ROOT})
 
     FetchContent_Declare(
         android_openssl
@@ -540,6 +515,9 @@ target_link_libraries(${PROJECT_NAME}
 
 
 if(ANDROID)
+    set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
+
     target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
     include(GNUInstallDirs)
     install(TARGETS ${PROJECT_NAME}

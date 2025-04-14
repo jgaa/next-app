@@ -7,7 +7,7 @@ set(NEXTAPP_BACKEND ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(NEXTAPP_LIBS = ${BOOST_LIBRARIES} ZLIB Threads::Threads)
 
-find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
      system
      context
      chrono
