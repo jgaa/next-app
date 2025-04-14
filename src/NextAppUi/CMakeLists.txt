@@ -46,7 +46,7 @@ if(USE_STATIC_QT)
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Charts Svg Test Grpc Concurrent Test Sql)
+find_package(Qt6 6.8.2 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Charts Svg Test Grpc Concurrent Test Sql)
 
 if(Qt6Core_VERSION VERSION_LESS "6.8.0")
     message("Using an old QT version. 6.8 is required for the current grpc plugin")

@@ -1,0 +1,50 @@
+{
+  "name": "nextapp",
+  "version-string": "0.0.1",
+  "dependencies": [
+    "boost-circular-buffer",
+    "boost-type-index",
+    "boost-multi-index",
+    "boost-uuid",
+    "openssl",
+    "grpc",
+    "protobuf",
+    "pcre2",
+    "double-conversion",
+    "libpng",
+    "libjpeg-turbo",
+    "brotli",
+    "sqlite3",
+    {
+      "name": "qtbase",
+      "version>=": "6.8.2",
+      "features": [
+        "concurrent",
+        "testlib",
+        "sql",
+        "dnslookup",
+        "network",
+        "openssl",
+        "sql-sqlite"
+      ]
+    },
+    {
+      "name": "qtdeclarative",
+      "version>=": "6.8.2"
+    },
+    {
+      "name": "qtcharts",
+      "version>=": "6.8.2"
+    },
+    {
+      "name": "qtsvg",
+      "version>=": "6.8.2"
+    },
+    {
+      "name": "qtgrpc",
+      "version>=": "6.8.2"
+    }
+  ],
+
+  "builtin-baseline": "670f6dddaafc59c5dfe0587a130d59a35c48ea38"
+}
