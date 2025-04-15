@@ -1041,20 +1041,31 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     static constexpr auto v18_upgrade = to_array<string_view>({
         "SET FOREIGN_KEY_CHECKS=0",
 
-        R"(CREATE TABLE notifications (
+        R"(CREATE OR REPLACE TABLE notification (
             id INT NOT NULL AUTO_INCREMENT,
-            when TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
+            valid_to TIMESTAMP NULL DEFAULT NULL,
             message TEXT NOT NULL,
             sender_type ENUM('admin','system','tenant','user') NOT NULL,
             sender_id VARCHAR(128) NULL,
             to_tenant UUID DEFAULT NULL,
             to_user UUID  DEFAULT NULL,
             uuid UUID NOT NULL DEFAULT UUID(),
+            kind ENUM('info', 'warning', 'error', 'upgrade', 'outage', 'promotion', 'deleted') NOT NULL DEFAULT 'info',
+            data TEXT DEFAULT NULL, -- depends on context; for example the latest version of the app
         PRIMARY KEY (id),
         UNIQUE KEY uniq_uuid (uuid),
         KEY idx_to_tenant_user (to_tenant, to_user),
-        CONSTRAINT fk_notifications_tenant FOREIGN KEY (to_tenant) REFERENCES tenant(id) ON DELETE CASCADE,
-        CONSTRAINT fk_notifications_user   FOREIGN KEY (to_user) REFERENCES user(id) ON DELETE CASCADE))",
+        KEY idx_to_tenant_user_ts (updated, to_tenant, to_user),
+        CONSTRAINT fk_notification_tenant FOREIGN KEY (to_tenant) REFERENCES tenant(id) ON DELETE CASCADE,
+        CONSTRAINT fk_notification_user   FOREIGN KEY (to_user) REFERENCES user(id) ON DELETE CASCADE))",
+        R"(CREATE TRIGGER updated_notification_timestamp
+            BEFORE UPDATE ON notification
+            FOR EACH ROW
+            BEGIN
+                SET NEW.updated = UTC_TIMESTAMP(6);
+            END)",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
@@ -1077,7 +1088,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v14_upgrade,
         v15_upgrade,
         v16_upgrade,
-        v17_upgrade
+        v17_upgrade,
+        v18_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

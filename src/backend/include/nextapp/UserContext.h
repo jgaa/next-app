@@ -138,6 +138,10 @@ public:
             return *user_;
         }
 
+        auto userPtr() const noexcept {
+            return user_;
+        }
+
         void touch();
 
         std::chrono::steady_clock::time_point touched() const;
@@ -306,6 +310,8 @@ public:
     void shutdown();
 
     boost::asio::awaitable<pb::UserSessions> listSessions();
+
+    boost::asio::awaitable<void> publishNotification(const nextapp::pb::Notification& notification);
 
 private:
     void removeSession_(const boost::uuids::uuid& sessionId);

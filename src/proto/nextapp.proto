@@ -627,18 +627,36 @@ message Notification {
         USER = 3;
     }
 
+    enum Kind {
+        INFO = 0;
+        WARNING = 1;
+        ERROR = 2;
+        UPGRADE = 3;
+        OUTAGE = 4;
+        PROMOTION = 5;
+        DELETED = 6;
+    }
+
     uint64 id = 1;
-    common.Time when = 2;
-    string message = 3;
-    SenderType senderType = 4;
-    string senderId = 5;
-    optional common.Uuid toUser = 6;
-    optional common.Uuid toTenant = 7;
-    common.Uuid uuid = 8;
+    common.Time createdTime = 2;
+    optional common.Time validTo = 3;
+    string message = 4;
+    SenderType senderType = 5;
+    string senderId = 6;
+    optional common.Uuid toUser = 7;
+    optional common.Uuid toTenant = 8;
+    common.Uuid uuid = 9;
+    Kind kind = 10;
+    string data = 11; // Depends on context
+    uint64 updated = 12; // time_t as ms;
 }
 
 message Notifications {
     repeated Notification notifications = 1;
+}
+
+message DeleteNotificationReq {
+    common.Uuid uuid = 1;
 }
 
 // Versions of various smaller data sets the user must check on startup.
@@ -671,7 +689,7 @@ message Update {
         CalendarEvents calendarEvents = 19;
         ActionCategory actionCategory = 20;
         Device device = 21;
-        Notification notification = 22;
+        Notifications notifications = 22;
     }
 }
 
@@ -830,7 +848,8 @@ message Hello {
     string sessionId = 1;
     string serverId = 2;
     uint64 serverInstanceTag = 3; // Used to detect server restarts
-    uint32 lastPublishId = 4; // Last puiblished message-id to the user
+    uint32 lastPublishId = 4; // Last published message-id to the user
+    uint64 lastNotification = 5; // Last notification update timestamp visible to the user
 }
 
 // Debug info about the user-sessions on the server
@@ -980,5 +999,6 @@ service Nextapp {
     rpc GetNewTimeBlocks(GetNewReq) returns (stream Status) {}
     rpc ResetPlayback(ResetPlaybackReq) returns (Status) {}
     rpc ListCurrentSessions(Empty) returns (Status) {}
-
+    rpc AddNotification(Notification) returns (Status) {}
+    rpc DeleteNotification(DeleteNotificationReq) returns (Status) {}
 }

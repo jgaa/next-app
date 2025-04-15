@@ -49,6 +49,12 @@ struct ServerOptions {
      *  see for example rpc UpdateActions
      */
     size_t max_batch_updates = 100;
+
+    /*! Number of milliseconds to wait between publishing each notification for mass notifications
+     *
+     * This is to prevent the server from spending all it's resources on the notifications.
+     */
+    unsigned notification_delay_ms = 5;
 };
 
 struct Config {

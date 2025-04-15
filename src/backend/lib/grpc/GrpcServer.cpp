@@ -402,6 +402,78 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         }, __func__, true /* allow new session */, true /* admin only */);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteNotification(::grpc::CallbackServerContext *ctx,
+                                                                        const pb::DeleteNotificationReq *req,
+                                                                        pb::Status *reply)
+{
+    return {};
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::AddNotification(::grpc::CallbackServerContext *ctx,
+                                                                     const pb::Notification *req,
+                                                                     pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+            assert(req);
+            auto notification = *req;
+            if (!notification.has_uuid()) {
+                notification.mutable_uuid()->set_uuid(newUuidStr());
+            }
+            if (notification.kind() == pb::Notification::Kind::Notification_Kind_DELETED) {
+                throw server_err{pb::Error::INVALID_ACTION, "Invalid notification kind"};
+            }
+
+            // Save to db
+            optional<string> valid_to;
+            if (notification.has_validto()) {
+                valid_to = toAnsiTime(notification.validto().unixtime(), rctx.uctx->tz());
+            }
+            optional<string> user_id;
+            if (notification.has_touser()) {
+                user_id = notification.touser().uuid();
+            }
+            optional<string> tenant_id;
+            if (notification.has_totenant()) {
+                tenant_id = notification.totenant().uuid();
+            }
+
+            const string sender_type = toLower(pb::Notification::Kind_Name(notification.kind()));
+            const string kind = toLower(pb::Notification::Kind_Name(notification.kind()));
+
+            auto trx = co_await rctx.dbh->transaction();
+
+            auto res = co_await rctx.dbh->exec(R"(INSERT INTO notification
+                (valid_to, message, sender_type, sender_id, to_tenant, to_user, uuid, kind, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?))",
+                rctx.uctx->dbOptions(),
+                valid_to,
+                notification.message(),
+                sender_type,
+                notification.senderid(),
+                tenant_id,
+                user_id,
+                notification.uuid().uuid(),
+                kind,
+                notification.data());
+
+            // Get the id and updated_time
+            assert(res.last_insert_id() > 0);
+
+            notification.set_id(res.last_insert_id());
+            enum Cols { UPDATED };
+            auto updated_res = co_await rctx.dbh->exec("SELECT updated FROM notification WHERE id=?",
+                                                        rctx.uctx->dbOptions(), notification.id());
+            notification.set_updated(toMsTimestamp(updated_res.rows().front().at(UPDATED).as_datetime(), rctx.uctx->tz()));
+            co_await trx.commit();
+
+            co_await owner_.sessionManager().publishNotification(notification);
+
+            co_return;
+        }, __func__, true /* allow new session */, true /* admin only */);
+}
+
 GrpcServer::GrpcServer(Server &server)
     : server_{server}, sessionManager_{server}
 {
@@ -535,4 +607,11 @@ uint GrpcServer::getInstanceId(::grpc::CallbackServerContext *ctx)
 }
 
 
+boost::asio::awaitable<uint64_t> GrpcServer::getLastRelevantNotificationUpdateTs(boost::uuids::uuid userId)
+{
+
+}
+
+
 } // ns
+

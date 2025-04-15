@@ -69,6 +69,90 @@ boost::asio::awaitable<pb::UserSessions> SessionManager::listSessions()
     co_return us;
 }
 
+boost::asio::awaitable<void> SessionManager::publishNotification(const pb::Notification &notification)
+{
+    // Create notification message
+    auto msg = make_shared<pb::Update>();
+    msg->set_op(pb::Update::Operation::Update_Operation_ADDED);
+    auto * n = msg->mutable_notifications();
+    n->add_notifications()->CopyFrom(notification);
+
+    auto publish = [&](auto& user) -> boost::asio::awaitable<void> {
+        // See if the user is in the cache
+        shared_ptr<UserContext> u;
+
+        {
+            lock_guard lock{mutex_};
+            if (auto it = users_.find(toUuid(notification.touser().uuid())); it != users_.end()) {
+                u = it->second;
+            }
+        }
+
+        if (u) {
+            LOG_DEBUG_N << "Publishing notification #" << notification.id() << " to user " << u->userUuid();
+            u->publish(msg);
+        } else {
+            LOG_TRACE_N << "User " << notification.touser().uuid() << " not found in cache";
+        };
+        co_return;
+    };
+
+    if (notification.has_touser()) {
+        co_await publish(notification.touser());
+        co_return;
+    }
+
+    if (notification.has_totenant()) {
+
+        vector<boost::uuids::uuid> users;
+
+        {
+            // TODO: Add indexing on tenant
+            auto res = co_await server_.db().exec("SELECT id FROM user WHERE tenant=?", notification.totenant().uuid());
+
+            users.reserve(res.rows().size());
+            // Build a vector with user uuids
+            for(const auto& row : res.rows()) {
+                users.push_back(toUuid(row.front().as_string()));
+            }
+        }
+
+        for(const auto& u : users) {
+            co_await publish(u);
+        }
+
+        co_return;
+    }
+
+    // Publish to all users we have sessions for
+    // Use the sessions instead of user_ to avoid overhead for offline users.
+    set<shared_ptr<UserContext>> users;
+    {
+        unique_lock lock{mutex_};
+        for(const auto& [_, ses] : sessions_) {
+            users.emplace(ses->userPtr());
+        }
+    }
+
+    auto executor = co_await boost::asio::this_coro::executor;
+    boost::asio::steady_timer timer(executor);
+    const auto ms = server_.config().options.notification_delay_ms;
+
+    for(auto& u: users) {
+        LOG_DEBUG_N << "Publishing mass-notification #" << notification.id() << " to user " << u->userUuid();
+        u->publish(msg);
+
+        // co_await on a asio timer for a short period of time
+        // to avoid server overload.
+        if (ms) {
+            timer.expires_after(std::chrono::milliseconds(ms));
+            co_await timer.async_wait(boost::asio::use_awaitable);
+        }
+    }
+
+    co_return;
+}
+
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone, bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions)
     : user_uuid_{userUuid},
     tenant_uuid_{tenantUuid},

@@ -184,6 +184,8 @@ public:
         ::grpc::ServerUnaryReactor *ResetPlayback(::grpc::CallbackServerContext *, const pb::ResetPlaybackReq *, pb::Status *) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* ListTenants(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::ListTenantsReq *req) override;
         ::grpc::ServerUnaryReactor *ListCurrentSessions(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *AddNotification(::grpc::CallbackServerContext *, const pb::Notification *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *DeleteNotification(::grpc::CallbackServerContext *, const pb::DeleteNotificationReq *, pb::Status *) override;
 
 
     private:
@@ -423,6 +425,8 @@ done:
     // The matching actions are inserted in events.
     boost::asio::awaitable<void> fetchActionsForCalendar(pb::CalendarEvents& events, RequestCtx& rctx, const time_t& day);
     boost::asio::awaitable<void> getGlobalSettings(pb::UserGlobalSettings& settings, RequestCtx& rctx);
+
+    boost::asio::awaitable<uint64_t> getLastRelevantNotificationUpdateTs(boost::uuids::uuid userId);
 
     void handleSession(::grpc::CallbackServerContext *ctx);
 
