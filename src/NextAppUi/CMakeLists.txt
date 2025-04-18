@@ -47,15 +47,26 @@ if(USE_STATIC_QT)
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
 
-find_package(Qt6 6.8.2 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Charts Svg Test Grpc Concurrent Test Sql)
+find_package(gRPC CONFIG REQUIRED)
+find_package(Protobuf REQUIRED)
 
-if(Qt6Core_VERSION VERSION_LESS "6.8.0")
-    message("Using an old QT version. 6.8 is required for the current grpc plugin")
-    find_package(Qt6 REQUIRED CONFIG COMPONENTS Protobuf)
-else ()
-    find_package(Qt6 REQUIRED CONFIG COMPONENTS ProtobufQuick)
-    set (PROTOBUF_QML_DEPENDENCY Qt::ProtobufQuick)
-endif()
+find_package(Qt6 REQUIRED COMPONENTS
+    Core
+    Gui
+    Quick
+    QuickControls2
+    Charts
+    Svg
+    Test
+    Concurrent
+    Test
+    Sql
+    Protobuf
+    ProtobufQuick
+    Grpc
+    ProtobufQtCoreTypes
+    ProtobufWellKnownTypes
+)
 
 qt_standard_project_setup()
 
@@ -105,25 +116,37 @@ set (protofile_nextapp "${CMAKE_CURRENT_SOURCE_DIR}/../proto/nextapp.proto")
 set (protofile_signup "${CMAKE_CURRENT_SOURCE_DIR}/../proto/signup.proto")
 set (protofile_common "${CMAKE_CURRENT_SOURCE_DIR}/../proto/common.proto")
 
-qt_add_protobuf(NextappProtoMessageLib
+add_library(qt_grpc STATIC)
+
+qt_add_protobuf(na_proto_lib
     QML
     QML_URI nextapp.pb
     PROTO_FILES
         ${protofile_nextapp}
         ${protofile_signup}
         ${protofile_common}
+    PROTO_INCLUDES
+        $<TARGET_PROPERTY:Qt6::ProtobufQtCoreTypes,QT_PROTO_INCLUDES>
 )
 
-qt_add_grpc(NextappGrpcClient CLIENT
+target_link_libraries(na_proto_lib
+  PRIVATE
+    Qt6::ProtobufWellKnownTypes
+    Qt6::ProtobufWellKnownTypesPrivate
+)
+
+qt_add_grpc(na_grpc_lib CLIENT
     PROTO_FILES ${protofile_nextapp} ${protofile_signup}
 )
 
-target_link_libraries(NextappGrpcClient
+target_link_libraries(na_grpc_lib
     PRIVATE
-        NextappProtoMessageLib
+        na_proto_lib
         Qt6::Core
         Qt6::Protobuf
-        ${PROTOBUF_QML_DEPENDENCY}
+        Qt6::ProtobufQuick
+        Qt6::ProtobufQtCoreTypes
+        Qt6::Grpc
         Qt6::Grpc
 )
 
@@ -473,7 +496,7 @@ else ()
     set(OPEN_SSL_DEPS OpenSSL::SSL OpenSSL::Crypto)
 endif()
 
-add_dependencies(${PROJECT_NAME} logfault NextappGrpcClient NextappProtoMessageLib ${OPENSSL_TARGET} ${FMT_TARGET})
+add_dependencies(${PROJECT_NAME} logfault na_grpc_lib ${OPENSSL_TARGET} ${FMT_TARGET})
 
 if(USE_STATIC_QT)
     qt_import_plugins(${PROJECT_NAME}
@@ -490,8 +513,7 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        NextappGrpcClient
-        NextappProtoMessageLib
+        na_grpc_lib
         QCoro6::Core
         QCoro6::Qml
         QCoro6::Quick
@@ -506,6 +528,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Concurrent
         Qt6::Test
         Qt6::Sql
+        gRPC::grpc++
         $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
         $<$<BOOL:${USE_STATIC_QT}>:dl>
         ${OPEN_SSL_DEPS}
