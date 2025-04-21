@@ -1,8 +1,9 @@
 syntax = "proto3";
 
+package nextapp.pb;
+
 import "common.proto";
 
-package nextapp.pb;
 
 enum Error {
     OK = 0;
@@ -640,15 +641,16 @@ message Notification {
     uint64 id = 1;
     common.Time createdTime = 2;
     optional common.Time validTo = 3;
-    string message = 4;
-    SenderType senderType = 5;
-    string senderId = 6;
-    optional common.Uuid toUser = 7;
-    optional common.Uuid toTenant = 8;
-    common.Uuid uuid = 9;
-    Kind kind = 10;
-    string data = 11; // Depends on context
-    uint64 updated = 12; // time_t as ms;
+    string subject = 4;
+    string message = 5;
+    SenderType senderType = 6;
+    string senderId = 7;
+    optional common.Uuid toUser = 8;
+    optional common.Uuid toTenant = 9;
+    common.Uuid uuid = 10;
+    Kind kind = 11;
+    string data = 12; // Depends on context
+    uint64 updated = 13; // time_t as ms;
 }
 
 message Notifications {
@@ -656,12 +658,16 @@ message Notifications {
 }
 
 message DeleteNotificationReq {
-    common.Uuid uuid = 1;
+    oneof what {
+        uint32 id = 1;
+        common.Uuid uuid = 2;
+    }
 }
 
 // Versions of various smaller data sets the user must check on startup.
 message DataVersionsInfo {
     uint64 actionCategoryVersion = 1;
+    uint64 lastKnownNotification = 2;
 }
 
 message Update {
@@ -999,6 +1005,6 @@ service Nextapp {
     rpc GetNewTimeBlocks(GetNewReq) returns (stream Status) {}
     rpc ResetPlayback(ResetPlaybackReq) returns (Status) {}
     rpc ListCurrentSessions(Empty) returns (Status) {}
-    rpc AddNotification(Notification) returns (Status) {}
+    rpc SendNotification(Notification) returns (Status) {}
     rpc DeleteNotification(DeleteNotificationReq) returns (Status) {}
 }

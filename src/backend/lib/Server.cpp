@@ -1046,7 +1046,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             created_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
             valid_to TIMESTAMP NULL DEFAULT NULL,
-            message TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            message TEXT NULL,
             sender_type ENUM('admin','system','tenant','user') NOT NULL,
             sender_id VARCHAR(128) NULL,
             to_tenant UUID DEFAULT NULL,
@@ -1066,6 +1067,15 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             BEGIN
                 SET NEW.updated = UTC_TIMESTAMP(6);
             END)",
+
+        // We don't store each read notification, just the id of the last read notification for each user.
+        R"(CREATE OR REPLACE TABLE notification_last_read (
+            notification_id INT NOT NULL,
+            user UUID NOT NULL,
+            PRIMARY KEY (notification_id, user),
+            KEY idx_user_notificatiion (user, notification_id),
+            FOREIGN KEY(notification_id) REFERENCES notification(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
