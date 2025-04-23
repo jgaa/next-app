@@ -35,6 +35,7 @@
 #include "WorkCache.h"
 #include "CalendarCache.h"
 #include "AppInstanceMgr.h"
+#include "NotificationsModel.h"
 
 using namespace std;
 
@@ -817,6 +818,11 @@ std::shared_ptr<GrpcIncomingStream> ServerComm::synchTimeBlocks(const nextapp::p
     return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewTimeBlocks);
 }
 
+std::shared_ptr<GrpcIncomingStream> ServerComm::synchNotifications(const nextapp::pb::GetNewReq &req)
+{
+    return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewNotifications);
+}
+
 QCoro::Task<nextapp::pb::Status> ServerComm::fetchDevices()
 {
     co_return co_await rpc({}, &nextapp::pb::Nextapp::Client::GetDevices);
@@ -1505,6 +1511,14 @@ failed:
             req.setInstanceId(AppInstanceMgr::instance()->instanceId());
             co_await rpc(req, &nextapp::pb::Nextapp::Client::ResetPlayback);
         }
+
+        addMessage(tr("Fetching notifications"));
+        LOG_DEBUG_N << "Fetching notifications...";
+        if (!co_await NotificationsModel::instance()->synch(full_sync)) {
+            LOG_WARN_N << "Failed to get notifications.";
+            goto failed;
+        }
+
     } else {
         LOG_INFO << "Omitting server-sync as the local cache is up to date.";
         // Omit this if we are just reconnecting?
@@ -1537,6 +1551,11 @@ failed:
 
         if (!co_await CalendarCache::instance()->loadLocally(full_sync)) {
             LOG_WARN_N << "Failed to get time-blocks for the calendar.";
+            goto failed;
+        }
+
+        if (!co_await NotificationsModel::instance()->loadLocally()) {
+            LOG_WARN_N << "Failed to get notifications.";
             goto failed;
         }
     }

@@ -12,6 +12,7 @@
 #include "WeeklyWorkReportModel.h"
 #include "ReviewModel.h"
 #include "DevicesModel.h"
+//#include "NotificationsModel.h"
 
 #ifdef LINUX_BUILD
 #include <QDBusConnection>

@@ -256,6 +256,7 @@ public:
     QCoro::Task<nextapp::pb::Status> getActionCategories(const nextapp::pb::Empty& req);
     std::shared_ptr<GrpcIncomingStream> synchWorkSessions(const nextapp::pb::GetNewReq& req);
     std::shared_ptr<GrpcIncomingStream> synchTimeBlocks(const nextapp::pb::GetNewReq& req);
+    std::shared_ptr<GrpcIncomingStream> synchNotifications(const nextapp::pb::GetNewReq& req);
 
     QCoro::Task<nextapp::pb::Status> fetchDevices();
     QCoro::Task<nextapp::pb::Status> enableDevice(const QString &deviceId, bool enabled);

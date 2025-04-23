@@ -494,7 +494,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
             ORDER BY updated)", ToNotification::fields);
         co_await  rctx.dbh->start_exec(sql,
-          uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz()), cuser, rctx.uctx->tenantUuid());
+          uctx->dbOptions(), toMsDateTime(req->since(), uctx->tz()), cuser, rctx.uctx->tenantUuid());
 
         nextapp::pb::Status reply;
 
@@ -505,7 +505,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
         auto flush = [&]() -> boost::asio::awaitable<void> {
           reply.set_error(::nextapp::pb::Error::OK);
-          assert(reply.has_completeactions());
+          assert(reply.has_notifications());
           ++batch_num;
           reply.set_message(format("Fetched {} notifications in batch {}", reply.notifications().notifications_size(), batch_num));
           co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
@@ -529,7 +529,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
           for(const auto& row : rows) {
               auto * n = notifications->add_notifications();
               assert(n);
-              ToNotification::assign(row, *n, *rctx.uctx);
+              ToNotification::assign(row, *n, rctx.uctx->tz());
               ++total_rows;
               // Do we need to flush?
               if (++num_rows_in_batch >= batch_size) {
@@ -560,7 +560,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 notification.mutable_uuid()->set_uuid(newUuidStr());
             }
             if (notification.kind() == pb::Notification::Kind::Notification_Kind_DELETED) {
-                throw server_err{pb::Error::INVALID_ACTION, "Invalid notification kind"};
+                throw server_err{pb::Error::INVALID_ARGUMENT, "Invalid notification kind (deleted)"};
             }
 
             // Save to db

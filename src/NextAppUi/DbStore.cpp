@@ -463,6 +463,15 @@ bool DbStore::updateSchema(uint version)
             data BLOB NOT NULL)
         )",
 
+        R"(CREATE TABLE IF NOT EXISTS "notification" (
+            id INTEGER PRIMARY KEY,
+            uuid VARCHAR(32) NOT NULL,
+            time INTEGER NOT NULL,
+            kind INTEGER NOT NULL,
+            updated INTEGER NOT NULL,
+            data BLOB NOT NULL)
+        )",
+
     });
 
     static constexpr auto versions = to_array<span<const string_view>>({

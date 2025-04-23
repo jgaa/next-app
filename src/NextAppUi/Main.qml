@@ -41,8 +41,14 @@ ApplicationWindow {
             Action {
                 text: qsTr("Devices")
                 shortcut: StandardKey.ZoomIn
-                //onTriggered: { openDialog("onboard/GetNewOtpForDevice.qml") }
                 onTriggered: { openDialog("DevicesDlg.qml") }
+            }
+
+
+            Action {
+                text: qsTr("Notifications")
+                shortcut: StandardKey.ZoomIn
+                onTriggered: { openDialog("NotificationsView.qml") }
             }
 
             Action {

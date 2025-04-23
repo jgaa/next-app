@@ -448,6 +448,9 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
+        SOURCES NotificationsModel.h NotificationsModel.cpp
+        QML_FILES qml/NotificationsView.qml
+        SOURCES ModelInstances.h ModelInstances.cpp
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
