@@ -12,6 +12,10 @@ class NotificationsModel : public QAbstractTableModel
 {
     Q_OBJECT
     QML_ELEMENT
+
+    Q_PROPERTY(unsigned int lastRead MEMBER last_read_ WRITE setLastRead NOTIFY lastReadChanged)
+    Q_PROPERTY(bool unread READ unread NOTIFY unreadChanged)
+
 public:
     enum Roles {
         idRole = Qt::UserRole + 1,
@@ -51,6 +55,9 @@ public:
     }
     std::shared_ptr<GrpcIncomingStream> openServerStream(nextapp::pb::GetNewReq req) override;
     void clear() override;
+    QCoro::Task<qlonglong> getLastUpdate() override {
+        co_return last_update_seen_;
+    }
 
     // QAbstractItemModel interface
     int rowCount(const QModelIndex &parent) const override;
@@ -58,12 +65,21 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-
     static NotificationsModel *instance() noexcept;
+
+    uint64_t lastUpdateSeen() const noexcept { return last_update_seen_; }
+    void setLastRead(uint32_t last_read);
+    bool SetLastReadValue(uint32_t last_read);
+    void setLastUpdateSeen(uint64_t last_update_seen);
+    bool unread() const noexcept;
 
 signals:
     void stateChanged();
+    void lastReadChanged();
+    void unreadChanged();
 
 private:
     std::deque<nextapp::pb::Notification> notifications_;
+    uint32_t last_read_{0};
+    uint64_t last_update_seen_{0};
 };

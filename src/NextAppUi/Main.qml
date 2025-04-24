@@ -277,6 +277,30 @@ ApplicationWindow {
                         radius: 5
                     }
                 }
+
+                Item {
+                    Layout.preferredWidth: 10
+                }
+
+                CheckBoxWithFontIcon {
+                    id: notificationIcon
+                    uncheckedCode: "\uf024"
+                    checkedCode: "\uf024"
+                    useSolidForAll: true
+                    autoToggle: false
+                    property var model: ModelInstances.getNotificationsModel()
+                    isChecked: model.unread
+                    attentionAnimation: isChecked
+                    checkedColor: "red"
+
+                    onClicked: {
+                        openDialog("NotificationsView.qml")
+                    }
+                }
+
+                Item {
+                    Layout.preferredWidth: 10
+                }
             }
         }
     }

@@ -45,6 +45,7 @@ struct ToDevice {
 
     static void assign(const boost::mysql::row_view& row, pb::Notification &notification, const chrono::time_zone& tz) {
         notification.set_id(row[ID].as_int64());
+        notification.mutable_createdtime()->set_unixtime(toTimeT(row[CREATED_TIME].as_datetime(), tz));
         notification.set_updated(toMsTimestamp(row[UPDATED].as_datetime(), tz));
         if (!row[VALID_TO].is_null()) {
             notification.mutable_validto()->set_unixtime(toTimeT(row[VALID_TO].as_datetime(), tz));
@@ -86,6 +87,7 @@ struct ToDevice {
             hello->set_serverid(Server::instance().serverId());
             hello->set_serverinstancetag(Server::instance().instanceTag());
             hello->set_lastpublishid(rctx.uctx->currentPublishId());
+            hello->set_lastnotification(owner_.getLastNotificationUpdated());
         };
 
         co_return;
@@ -469,10 +471,63 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             auto deleted_n = co_await owner_.getNotification(rctx, notification_req);
             assert(deleted_n.kind() == pb::Notification::Kind::Notification_Kind_DELETED);
 
+            enum Cols { UPDATED };
+            auto updated_res = co_await rctx.dbh->exec("SELECT updated FROM notification WHERE id=?",
+                notification.id());
+            if (updated_res.has_value() && updated_res.rows().size() == 1) {
+                const auto when = toMsTimestamp(updated_res.rows().front().at(UPDATED).as_datetime(), rctx.uctx->tz());
+                owner_.setLastNotificationUpdated(when);
+            }
+
             co_await owner_.sessionManager().publishNotification(deleted_n);
 
             co_return;
         }, __func__, true /* allow new session */, true /* admin only */);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetLastReadNotification(::grpc::CallbackServerContext *ctx, const
+                                                                             pb::Empty *req,
+                                                                             pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            if (auto lrn = rctx.uctx->getLastReadNotification()) {
+                reply->set_lastreadnotificationid(*lrn);
+                co_return;
+            }
+
+            auto res = co_await rctx.dbh->exec(R"(SELECT notification_id FROM notification_last_read
+                WHERE user=?)", rctx.uctx->dbOptions(), rctx.uctx->userUuid());
+            enum Cols { NOTIFICATION_ID };
+
+            if (res.has_value() && !res.rows().empty()) {
+                auto id = res.rows().front().at(NOTIFICATION_ID).as_int64();
+                reply->set_lastreadnotificationid(static_cast<uint32_t>(id));
+            } else {
+                reply->set_lastreadnotificationid(0);
+            }
+
+            rctx.uctx->setLastReadNotification(reply->lastreadnotificationid());
+
+            co_return;
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetLastReadNotification(::grpc::CallbackServerContext *ctx,
+                                                                             const pb::SetReadNotificationReq *req,
+                                                                             pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            // TODO: Cache the last read notification in the user context
+
+            co_await rctx.dbh->exec(R"(INSERT INTO notification_last_read
+                (user, notification_id) VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE notification_id=?)",
+                rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->notificationid(), req->notificationid());
+
+            co_return;
+        }, __func__);
 }
 
 ::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::GetNewNotifications(::grpc::CallbackServerContext *ctx,
@@ -492,6 +547,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         const auto sql = format(R"(SELECT {}
             FROM notification WHERE updated > ?
             AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
+            AND (valid_to IS NULL OR valid_to > NOW()))
             ORDER BY updated)", ToNotification::fields);
         co_await  rctx.dbh->start_exec(sql,
           uctx->dbOptions(), toMsDateTime(req->since(), uctx->tz()), cuser, rctx.uctx->tenantUuid());
@@ -601,12 +657,14 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             assert(res.last_insert_id() > 0);
 
             notification.set_id(res.last_insert_id());
-            enum Cols { UPDATED };
-            auto updated_res = co_await rctx.dbh->exec("SELECT updated FROM notification WHERE id=?",
+            enum Cols { UPDATED, CREATED_TIME };
+            auto updated_res = co_await rctx.dbh->exec("SELECT updated, created_time FROM notification WHERE id=?",
                                                         rctx.uctx->dbOptions(), notification.id());
             notification.set_updated(toMsTimestamp(updated_res.rows().front().at(UPDATED).as_datetime(), rctx.uctx->tz()));
+            notification.mutable_createdtime()->set_unixtime(toTimeT(updated_res.rows().front().at(CREATED_TIME).as_datetime(), rctx.uctx->tz()));
             co_await trx.commit();
 
+            owner_.setLastNotificationUpdated(notification.updated());
             co_await owner_.sessionManager().publishNotification(notification);
 
             reply->set_uuid(notification.uuid().uuid());
@@ -652,6 +710,7 @@ void GrpcServer::start() {
     // Load the certificate and key for the gRPC server.
     boost::asio::co_spawn(server_.ctx(), [&]() -> boost::asio::awaitable<void> {
         co_await loadCert();
+        co_await initNotifications();
     }, boost::asio::use_future).get();
 
     ::grpc::ServerBuilder builder;
@@ -774,12 +833,35 @@ uint GrpcServer::getInstanceId(::grpc::CallbackServerContext *ctx)
     return 1;
 }
 
-
-boost::asio::awaitable<uint64_t> GrpcServer::getLastRelevantNotificationUpdateTs(boost::uuids::uuid userId)
+boost::asio::awaitable<void> GrpcServer::initNotifications()
 {
+    jgaa::mysqlpool::Options opt;
+    opt.time_zone = "UTC";
+    auto res = co_await server_.db().exec("SELECT MAX(updated) FROM notification", opt);
+    enum Cols { UPDATED };
+    uint64_t when{};
+    if (!res.rows().empty()) {
+        const auto *utc_zone = chrono::get_tzdb().locate_zone("UTC");
+        assert(utc_zone);
+        if (utc_zone) {
+            when = toMsTimestamp(res.rows().front().at(UPDATED).as_datetime(), *utc_zone);
+        } else {
+            auto dt = res.rows().front().at(UPDATED).as_datetime();
+            LOG_WARN_N << "Could not find UTC timezone. Manually converting the notification update ts.";
+            when = std::chrono::duration_cast<std::chrono::milliseconds>(dt.as_time_point().time_since_epoch()).count();
+            when += std::chrono::duration_cast<std::chrono::milliseconds>(chrono::microseconds{dt.microsecond()}).count();
+        }
+    }
 
+    if (when) {
+        setLastNotificationUpdated(when);
+    }
 }
 
+void GrpcServer::setLastNotificationUpdated(uint64_t lastNotificationUpdated) noexcept {
+    atomicSetIfGreater(last_notification_udated_, lastNotificationUpdated);
+    LOG_TRACE_N << "Last notification updated set to " << lastNotificationUpdated;
+}
 
 
 } // ns

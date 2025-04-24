@@ -74,7 +74,17 @@ QCoro::Task<void> NotificationsModel::pocessUpdate(const std::shared_ptr<nextapp
 
         co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
         loadFromCache();
+
+        const auto& last_update = std::ranges::max_element(items, [](const auto& lhs, const auto& rhs) {
+            return lhs.updated() < rhs.updated();
+        });
+
+        if (last_update_seen_ < last_update->updated()) {
+            setLastUpdateSeen(last_update->updated());
+        }
     }
+
+    co_return;
 }
 
 QCoro::Task<bool> NotificationsModel::save(const QProtobufMessage &item)
@@ -104,13 +114,14 @@ QCoro::Task<bool> NotificationsModel::loadFromCache()
     clear();
 
     auto& db = NextAppCore::instance()->db();
-    static const QString query = "SELECT id, data FROM notification ORDER BY id";
+    static const QString query = "SELECT id, data FROM notification ORDER BY id DESC";
     enum Cols {
         ID = 0,
         DATA,
     };
     auto res = co_await db.query(query);
     if (res) {
+        auto now = QDateTime::currentDateTime();
         decltype (notifications_) notifications;
         const auto& rows = res.value().rows;
         for (const auto& row : rows) {
@@ -120,6 +131,15 @@ QCoro::Task<bool> NotificationsModel::loadFromCache()
                 LOG_ERROR_N << "Failed to parse notification #" << row.at(ID).toUInt();
                 continue;
             }
+
+            if (notification.hasValidTo()) {
+                const auto until = QDateTime::fromSecsSinceEpoch(notification.validTo().unixTime());
+                if (until < now) {
+                    LOG_TRACE_N << "Notification #" << notification.id_proto() << " is expired";
+                    continue;
+                }
+            }
+
             notifications.emplace_back(notification);
         }
         if (!notifications.empty()) {
@@ -128,6 +148,7 @@ QCoro::Task<bool> NotificationsModel::loadFromCache()
             endInsertRows();
         }
     }
+    emit unreadChanged();
     co_return true;
 }
 
@@ -229,10 +250,51 @@ NotificationsModel *NotificationsModel::instance() noexcept
     return &nm;
 }
 
+void NotificationsModel::setLastRead(uint32_t last_read) {
+    if (last_read_ < last_read) {
+        SetLastReadValue(last_read);
+        ServerComm::instance().setLastReadNotification(last_read_);
+    }
+}
+
+bool NotificationsModel::SetLastReadValue(uint32_t last_read)
+{
+    if (last_read_ != last_read) {
+        last_read_ = last_read;
+        QSettings{}.setValue("notificatins/last_read", last_read_);
+        emit lastReadChanged();
+        emit unreadChanged();
+        LOG_TRACE_N << "Last read set to " << last_read_;
+        return true;
+    }
+
+    return false;
+}
+
+void NotificationsModel::setLastUpdateSeen(uint64_t last_update_seen) {
+    last_update_seen_ = last_update_seen;
+    QSettings{}.setValue("notificatins/last_seen", static_cast<qlonglong>(last_update_seen_));
+    LOG_TRACE_N << "Last update seen set to " << last_update_seen_;
+}
+
+bool NotificationsModel::unread() const noexcept
+{
+    if (notifications_.empty()) {
+        return false;
+    }
+
+    const auto& last_notification = notifications_.front();
+    return last_notification.id_proto() > last_read_;
+}
+
 NotificationsModel::NotificationsModel() {
     connect(&ServerComm::instance(), &ServerComm::onUpdate, this,
             [this](const std::shared_ptr<nextapp::pb::Update>& update) {
                 onUpdate(update);
             });
+
+    QSettings s;
+    last_read_ = s.value("notificatins/last_read", 0).toUInt();
+    last_update_seen_ = s.value("notificatins/last_seen", 0).toULongLong();
 }
 

@@ -187,6 +187,8 @@ public:
         ::grpc::ServerUnaryReactor *SendNotification(::grpc::CallbackServerContext *, const pb::Notification *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *DeleteNotification(::grpc::CallbackServerContext *, const pb::DeleteNotificationReq *, pb::Status *) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewNotifications(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
+        ::grpc::ServerUnaryReactor *GetLastReadNotification(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *SetLastReadNotification(::grpc::CallbackServerContext *, const pb::SetReadNotificationReq *, pb::Status *) override;
 
 
     private:
@@ -432,8 +434,6 @@ done:
     // NB: Does not enforce access control!
     boost::asio::awaitable<nextapp::pb::Notification> getNotification(RequestCtx& rctx, notificatation_req_t req);
 
-    boost::asio::awaitable<uint64_t> getLastRelevantNotificationUpdateTs(boost::uuids::uuid userId);
-
     void handleSession(::grpc::CallbackServerContext *ctx);
 
     SessionManager& sessionManager() {
@@ -443,7 +443,14 @@ done:
     std::shared_ptr<UserContext::Session> session(::grpc::ServerContextBase& ctx);
     static uint getInstanceId(::grpc::CallbackServerContext *ctx);
 
+    uint64_t getLastNotificationUpdated() const noexcept {
+        return last_notification_udated_.load(std::memory_order_relaxed);
+    }
+
+    void setLastNotificationUpdated(uint64_t lastNotificationUpdated) noexcept;
+
 private:
+
     // The Server instance where we get objects in the application, like config and database
     Server& server_;
 
@@ -455,6 +462,7 @@ private:
 
     boost::asio::awaitable<void> loadCert();
     boost::asio::awaitable<bool> isReplay(::grpc::CallbackServerContext *ctx, RequestCtx& rctx);
+    boost::asio::awaitable<void> initNotifications();
 
     SessionManager sessionManager_;
 
@@ -467,6 +475,7 @@ private:
     std::map<boost::uuids::uuid, std::weak_ptr<Publisher>> publishers_;
     mutable std::mutex mutex_;
     std::atomic_bool active_{false};
+    std::atomic_uint64_t last_notification_udated_{0};
     CertData cert_;
 };
 

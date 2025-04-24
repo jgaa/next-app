@@ -20,6 +20,8 @@ Rectangle
     property bool useSolidForAll: false
     property bool autoToggle: true
     property string bgColor: "transparent"
+    property bool attentionAnimation: false
+
     width: childrenRect.width
     height: childrenRect.height
     color: bgColor
@@ -48,7 +50,6 @@ Rectangle
             id: label
             visible: text !== ""
             color: checkBox.textColor
-            //font.family: "Lato"
             font.pixelSize: 12
             Layout.alignment: Qt.AlignBottom
         }
@@ -79,6 +80,26 @@ Rectangle
         id: ce
     }
 
-    // FontLoader { id: fonts.normal; source: "../fonts/Font Awesome 6 Free-Regular-400.otf" }
-    // FontLoader { id: fonts.solid; source: "../fonts/Font Awesome 6 Free-Solid-900.otf" }
+    // Add inside the Rectangle scope (top-level component)
+    SequentialAnimation on scale {
+        running: checkBox.attentionAnimation
+        loops: Animation.Infinite
+        alwaysRunToEnd: false
+
+        NumberAnimation {
+            target: icon
+            property: "scale"
+            to: 1.3
+            duration: 150
+            easing.type: Easing.InOutQuad
+        }
+        NumberAnimation {
+            target: icon
+            property: "scale"
+            to: 1.0
+            duration: 150
+            easing.type: Easing.InOutQuad
+        }
+    }
+
 }

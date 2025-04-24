@@ -261,6 +261,8 @@ public:
     QCoro::Task<nextapp::pb::Status> fetchDevices();
     QCoro::Task<nextapp::pb::Status> enableDevice(const QString &deviceId, bool enabled);
     QCoro::Task<nextapp::pb::Status> deleteDevice(const QString &deviceId);
+    QCoro::Task<void> setLastReadNotification(uint32_t id);
+    QCoro::Task<void> updateLastReadNotification();
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

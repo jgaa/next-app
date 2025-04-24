@@ -895,6 +895,10 @@ message UserSessions {
     repeated UserSession sessions = 1;
 }
 
+message SetReadNotificationReq {
+    uint32 notificationId = 1;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -934,6 +938,7 @@ message Status {
         Device device = 37;
         UserSessions userSessions = 38;
         Notifications notifications = 39;
+        uint32 lastReadNotificationId = 40;
     }
 }
 
@@ -1007,4 +1012,6 @@ service Nextapp {
     rpc ListCurrentSessions(Empty) returns (Status) {}
     rpc SendNotification(Notification) returns (Status) {}
     rpc DeleteNotification(DeleteNotificationReq) returns (Status) {}
+    rpc GetLastReadNotification(Empty) returns (Status) {}
+    rpc SetLastReadNotification(SetReadNotificationReq) returns (Status) {}
 }

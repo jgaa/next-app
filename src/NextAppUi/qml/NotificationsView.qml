@@ -21,14 +21,22 @@ Dialog {
         anchors.fill: parent
         model: ModelInstances.getNotificationsModel()
         property int selectedRow: -1
+        clip: true
+
         delegate: Rectangle {
             required property int index
             required property int id
             required property string subject
             required property string message
-            required property int createdTime
+            required property string createdTime
             required property int kind
+            property bool unread: id > listView.model.lastRead
             property var kinds: [qsTr("Info"), qsTr("Warning"), qsTr("Error"), qsTr("Upgrade"), qsTr("Outage"), qsTr("Promotion"), "deleted"]
+            border.color: unread ? MaterialDesignStyling.primaryContainer :  MaterialDesignStyling.outlineVariant
+            border.width: 1
+            radius: 5
+            Layout.topMargin: 5
+            Layout.bottomMargin: 5
 
             width: listView.width
             height: contentCtl.implicitHeight
@@ -38,6 +46,9 @@ Dialog {
                 acceptedButtons: Qt.LeftButton
                 onSingleTapped: {
                     listView.selectedRow = index;
+                    if (id > listView.model.lastRead) {
+                        listView.model.lastRead = id;
+                    }
                 }
             }
 
@@ -58,7 +69,7 @@ Dialog {
                         Label {
                             Layout.preferredWidth: 20
                             text: "#" + id
-                            color: MaterialDesignStyling.onSurfaceVariant
+                            color: unread ? MaterialDesignStyling.primary : MaterialDesignStyling.onSurfaceVariant
                         }
 
                         Item {
@@ -68,7 +79,7 @@ Dialog {
                         // Title
                         Text {
                             font.bold: true
-                            color: MaterialDesignStyling.onSurface
+                            color: unread ? MaterialDesignStyling.primary : MaterialDesignStyling.onSurface
                             text: subject
                         }
                     }

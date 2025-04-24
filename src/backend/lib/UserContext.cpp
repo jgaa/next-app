@@ -374,6 +374,15 @@ void UserContext::saveReplayStateForDevice(const boost::uuids::uuid &deviceId)
     }, boost::asio::detached);
 }
 
+void UserContext::setLastReadNotification(uint32_t id) noexcept {
+    int id_int = static_cast<int>(id);
+    if (id_int < 0) {
+        LOG_WARN_N << "Invalid last read notification ID: " << id;
+        return;
+    }
+    atomicSetIfGreater(last_read_notification_id_, id_int);
+}
+
 boost::asio::awaitable<void> UserContext::saveLastReqIds(const boost::uuids::uuid& deviceId) {
     try {
         Device::values_t values;
