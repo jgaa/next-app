@@ -521,10 +521,15 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             // TODO: Cache the last read notification in the user context
 
+            const auto id = req->notificationid();
+
             co_await rctx.dbh->exec(R"(INSERT INTO notification_last_read
                 (user, notification_id) VALUES (?, ?)
                 ON DUPLICATE KEY UPDATE notification_id=?)",
-                rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->notificationid(), req->notificationid());
+                rctx.uctx->dbOptions(), rctx.uctx->userUuid(), id, id);
+
+            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+            update.set_lastreadnotificationid(id);
 
             co_return;
         }, __func__);
@@ -547,7 +552,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         const auto sql = format(R"(SELECT {}
             FROM notification WHERE updated > ?
             AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
-            AND (valid_to IS NULL OR valid_to > NOW()))
+            AND (valid_to IS NULL OR valid_to > NOW())
             ORDER BY updated)", ToNotification::fields);
         co_await  rctx.dbh->start_exec(sql,
           uctx->dbOptions(), toMsDateTime(req->since(), uctx->tz()), cuser, rctx.uctx->tenantUuid());

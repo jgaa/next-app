@@ -82,6 +82,8 @@ QCoro::Task<void> NotificationsModel::pocessUpdate(const std::shared_ptr<nextapp
         if (last_update_seen_ < last_update->updated()) {
             setLastUpdateSeen(last_update->updated());
         }
+    } else if (update->hasLastReadNotificationId()) {
+        SetLastReadValue(update->lastReadNotificationId());
     }
 
     co_return;

@@ -696,6 +696,7 @@ message Update {
         ActionCategory actionCategory = 20;
         Device device = 21;
         Notifications notifications = 22;
+        uint32 lastReadNotificationId = 23;
     }
 }
 

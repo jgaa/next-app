@@ -91,7 +91,6 @@ ApplicationWindow {
                 visible: isChecked
 
                 onClicked: {
-                    //openWindow("NotificationsView.qml")
                     Common.openDialog("qrc:/qt/qml/NextAppUi/qml/NotificationsView.qml", appWindow, {});
                 }
             }

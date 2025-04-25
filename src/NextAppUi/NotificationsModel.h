@@ -45,7 +45,7 @@ public:
         return status.hasNotifications();
     }
     bool isRelevant(const nextapp::pb::Update& update) const noexcept override {
-        return update.hasNotifications();
+        return update.hasNotifications() || update.hasLastReadNotificationId();
     }
     QList<nextapp::pb::Notification> getItems(const nextapp::pb::Status& status) override{
         return status.notifications().notifications();
