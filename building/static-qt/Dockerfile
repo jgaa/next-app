@@ -2,7 +2,7 @@
 FROM ubuntu:22.04
 
 # Set environment variables
-ENV QT_VERSION=6.8.2
+ENV QT_VERSION=6.8.3
 ENV QT_DIR=/opt/qt-build
 ENV QT_INSTALL_DIR=/opt/qt-static
 ENV VCPKG_ROOT=/opt/vcpkg
