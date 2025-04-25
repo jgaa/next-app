@@ -1,0 +1,14 @@
+{
+  "name": "nextapp",
+  "version-string": "0.0.1",
+  "dependencies": [
+    "boost-circular-buffer",
+    "boost-type-index",
+    "boost-multi-index",
+    "boost-uuid",
+    "openssl",
+    "grpc",
+    "protobuf"
+  ],
+  "builtin-baseline": "670f6dddaafc59c5dfe0587a130d59a35c48ea38"
+}

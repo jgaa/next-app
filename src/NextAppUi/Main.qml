@@ -41,8 +41,14 @@ ApplicationWindow {
             Action {
                 text: qsTr("Devices")
                 shortcut: StandardKey.ZoomIn
-                //onTriggered: { openDialog("onboard/GetNewOtpForDevice.qml") }
                 onTriggered: { openDialog("DevicesDlg.qml") }
+            }
+
+
+            Action {
+                text: qsTr("Notifications")
+                shortcut: StandardKey.ZoomIn
+                onTriggered: { openDialog("NotificationsView.qml") }
             }
 
             Action {
@@ -270,6 +276,30 @@ ApplicationWindow {
                         color: NaLogModel.message.length > 1 ? "white" : "transparent"
                         radius: 5
                     }
+                }
+
+                Item {
+                    Layout.preferredWidth: 10
+                }
+
+                CheckBoxWithFontIcon {
+                    id: notificationIcon
+                    uncheckedCode: "\uf024"
+                    checkedCode: "\uf024"
+                    useSolidForAll: true
+                    autoToggle: false
+                    property var model: ModelInstances.getNotificationsModel()
+                    isChecked: model.unread
+                    attentionAnimation: isChecked
+                    checkedColor: "red"
+
+                    onClicked: {
+                        openDialog("NotificationsView.qml")
+                    }
+                }
+
+                Item {
+                    Layout.preferredWidth: 10
                 }
             }
         }

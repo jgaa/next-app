@@ -183,6 +183,8 @@ int main(int argc, char* argv[]) {
              "Maximum page size for paginated results")
             ("max-batch-updates", po::value(&config.options.max_batch_updates)->default_value(config.options.max_batch_updates),
              "The max number of items that can be updated in a batch")
+            ("notification-delay-ms", po::value(&config.options.notification_delay_ms)->default_value(config.options.notification_delay_ms),
+             "Number of milliseconds to wait between publishing each notification for mass notifications")
             ;
 
         po::options_description metrics("Metrics");

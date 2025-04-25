@@ -9,7 +9,7 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
-find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
     system
     program_options
     date_time

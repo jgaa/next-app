@@ -35,6 +35,7 @@
 #include "WorkCache.h"
 #include "CalendarCache.h"
 #include "AppInstanceMgr.h"
+#include "NotificationsModel.h"
 
 using namespace std;
 
@@ -817,6 +818,11 @@ std::shared_ptr<GrpcIncomingStream> ServerComm::synchTimeBlocks(const nextapp::p
     return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewTimeBlocks);
 }
 
+std::shared_ptr<GrpcIncomingStream> ServerComm::synchNotifications(const nextapp::pb::GetNewReq &req)
+{
+    return rpcOpenReadStream(req, &nextapp::pb::Nextapp::Client::GetNewNotifications);
+}
+
 QCoro::Task<nextapp::pb::Status> ServerComm::fetchDevices()
 {
     co_return co_await rpc({}, &nextapp::pb::Nextapp::Client::GetDevices);
@@ -837,6 +843,26 @@ QCoro::Task<nextapp::pb::Status> ServerComm::deleteDevice(const QString &deviceI
     req.setUuid(deviceId);
 
     co_return co_await rpc(req, &nextapp::pb::Nextapp::Client::DeleteDevice);
+}
+
+QCoro::Task<void> ServerComm::setLastReadNotification(uint32_t id)
+{
+    nextapp::pb::SetReadNotificationReq req;
+    req.setNotificationId(id);
+
+    co_await rpc(req, &nextapp::pb::Nextapp::Client::SetLastReadNotification);
+}
+
+QCoro::Task<void> ServerComm::updateLastReadNotification()
+{
+    nextapp::pb::Empty req;
+    auto reply = co_await rpc(req, &nextapp::pb::Nextapp::Client::GetLastReadNotification);
+    if (reply.error() == nextapp::pb::ErrorGadget::Error::OK && reply.hasLastReadNotificationId()) {
+        auto id = reply.lastReadNotificationId();
+        NotificationsModel::instance()->SetLastReadValue(id);
+    } else {
+        LOG_WARN_N << "Failed to get last-read notification: " << reply.message();
+    }
 }
 
 void ServerComm::setStatus(Status status) {
@@ -1366,6 +1392,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
     };
 
     bool needs_sync = false;
+    uint64_t new_last_notification_update{0};
     auto res = co_await rpc(nextapp::pb::Empty{},
                             &nextapp::pb::Nextapp::Client::Hello,
                             options);
@@ -1387,6 +1414,13 @@ QCoro::Task<void> ServerComm::startNextappSession()
             }
 
             saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "server hello");
+
+            if (res.hello().lastNotification() < NotificationsModel::instance()->lastUpdateSeen()) {
+                new_last_notification_update = NotificationsModel::instance()->lastUpdateSeen();
+                LOG_TRACE_N << "Server notification id is " << new_last_notification_update
+                            << " (was " << NotificationsModel::instance()->lastUpdateSeen() << ")";
+            }
+
         } else {
             LOG_ERROR <<  "Server did not send a Hello message!";
             goto failed;
@@ -1505,6 +1539,14 @@ failed:
             req.setInstanceId(AppInstanceMgr::instance()->instanceId());
             co_await rpc(req, &nextapp::pb::Nextapp::Client::ResetPlayback);
         }
+
+        addMessage(tr("Fetching notifications"));
+        LOG_DEBUG_N << "Fetching notifications...";
+        if (!co_await NotificationsModel::instance()->synch(full_sync)) {
+            LOG_WARN_N << "Failed to get notifications.";
+            goto failed;
+        }
+
     } else {
         LOG_INFO << "Omitting server-sync as the local cache is up to date.";
         // Omit this if we are just reconnecting?
@@ -1539,6 +1581,28 @@ failed:
             LOG_WARN_N << "Failed to get time-blocks for the calendar.";
             goto failed;
         }
+
+        if (new_last_notification_update) {
+            LOG_DEBUG_N << "Fetching notifications...";
+            if (!co_await NotificationsModel::instance()->synch(false)) {
+                LOG_WARN_N << "Failed to get notifications.";
+                goto failed;
+
+                co_await updateLastReadNotification();
+            } else {
+                LOG_WARN_N << "Failed to get last-read notification id.";
+                goto failed;
+            }
+        } else {
+            if (!co_await NotificationsModel::instance()->loadLocally()) {
+                LOG_WARN_N << "Failed to load notifications locally";
+                goto failed;
+            }
+        }
+    }
+
+    if (new_last_notification_update) {
+        NotificationsModel::instance()->setLastUpdateSeen(new_last_notification_update);
     }
 
     onGrpcReady();

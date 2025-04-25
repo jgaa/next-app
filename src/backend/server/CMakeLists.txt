@@ -9,7 +9,16 @@ add_executable(${PROJECT_NAME}
     main.cpp
     )
 
+target_compile_options(${PROJECT_NAME} PRIVATE -g)
+target_link_options(${PROJECT_NAME} PRIVATE -rdynamic)
+#target_compile_definitions(${PROJECT_NAME} PRIVATE BOOST_STACKTRACE_USE_ADDR2LINE)
+
 add_dependencies(${PROJECT_NAME} logfault)
+
+find_program(ADDR2LINE_EXECUTABLE addr2line)
+if(NOT ADDR2LINE_EXECUTABLE)
+    message(FATAL_ERROR "addr2line not found. Boost.Stacktrace may not be able to symbolize stack traces.")
+endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${NEXTAPP_DEPENDS}
@@ -39,7 +48,5 @@ set_target_properties(${PROJECT_NAME}
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-#target_compile_definitions(${PROJECT_NAME} PUBLIC -DBOOST_COROUTINES_NO_DEPRECATION_WARNING=1)
-#target_compile_definitions(${PROJECT_NAME} PUBLIC -DBOOST_COROUTINE_NO_DEPRECATION_WARNING=1)
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DAPP_VERSION=\"${NEXTAPP_VERSION}\")
 target_compile_definitions(${PROJECT_NAME} PRIVATE ${VALDGRIND_ARGS})

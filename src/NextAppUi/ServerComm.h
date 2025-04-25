@@ -256,10 +256,13 @@ public:
     QCoro::Task<nextapp::pb::Status> getActionCategories(const nextapp::pb::Empty& req);
     std::shared_ptr<GrpcIncomingStream> synchWorkSessions(const nextapp::pb::GetNewReq& req);
     std::shared_ptr<GrpcIncomingStream> synchTimeBlocks(const nextapp::pb::GetNewReq& req);
+    std::shared_ptr<GrpcIncomingStream> synchNotifications(const nextapp::pb::GetNewReq& req);
 
     QCoro::Task<nextapp::pb::Status> fetchDevices();
     QCoro::Task<nextapp::pb::Status> enableDevice(const QString &deviceId, bool enabled);
     QCoro::Task<nextapp::pb::Status> deleteDevice(const QString &deviceId);
+    QCoro::Task<void> setLastReadNotification(uint32_t id);
+    QCoro::Task<void> updateLastReadNotification();
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

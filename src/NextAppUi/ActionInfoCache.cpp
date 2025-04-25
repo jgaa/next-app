@@ -216,25 +216,10 @@ ActionInfoCache::ActionInfoCache(QObject *parent)
     assert(!instance_);
     instance_ = this;
 
-    // connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
-    //     //setOnline(ServerComm::instance().connected());
-    //     if (ServerComm::instance().connected()) {
-    //         synch();
-    //     } else {
-    //         setState(State::LOCAL);
-    //     }
-    // });
-
-    // connect(&ServerComm::instance(), &ServerComm::receivedActions, this, &ActionInfoCache::receivedActions);
-    // connect(&ServerComm::instance(), &ServerComm::receivedAction, this, &ActionInfoCache::receivedAction);
     connect(&ServerComm::instance(), &ServerComm::onUpdate, this,
             [this](const std::shared_ptr<nextapp::pb::Update>& update) {
         onUpdate(update);
     });
-
-    // if (ServerComm::instance().connected()) {
-    //     synch();
-    // }
 
     connect(MainTreeModel::instance(), &MainTreeModel::nodeDeleted, [this]() -> QCoro::Task<void> {
         LOG_TRACE << "Node was deleted. Will re-load actions cache.";

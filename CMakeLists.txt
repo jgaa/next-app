@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.22)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.2.10)
+    set(NEXTAPP_VERSION 0.4.1) # MajorVersion.MinorVersion.PatchVersion
 endif()
 
 project(next-app
@@ -19,8 +19,12 @@ else ()
     set(IS_LINUX OFF)
 endif()
 
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+
 option(NEXTAPP_WITH_TESTS "Enable Tests" OFF)
-option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" OFF)
+option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" ON)
 option(NEXTAPP_WITH_UI "Include the UI project in the build" ON)
 option(NEXTAPP_WITH_BACKEND "Include the backend server project in the build" ${IS_LINUX})
 option(NEXTAPP_WITH_SIGNUP "Include the signup server project in the build" ${IS_LINUX})
@@ -82,7 +86,6 @@ message(STATUS "Git branch: ${GIT_BRANCH}")
 add_compile_definitions(GIT_BRANCH="${GIT_BRANCH}")
 
 find_package(Threads REQUIRED)
-find_package(ZLIB REQUIRED)
 if (NOT ANDROID)
     find_package(OpenSSL REQUIRED)
 endif()
@@ -96,6 +99,8 @@ add_subdirectory(dependencies/logfault)
 include_directories(${NEXTAPP_ROOT}/dependencies/logfault/include)
 
 if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP)
+    find_package(ZLIB REQUIRED)
+
     add_subdirectory(src/proto)
     add_subdirectory(src/common)
 

@@ -91,16 +91,22 @@ public:
         co_return false;
     }
 
+    virtual QCoro::Task<qlonglong> getLastUpdate()
+    {
+        auto& db = NextAppCore::instance()->db();
+        static const QString query = QString::fromStdString(::nextapp::format("SELECT MAX(updated) FROM {}", itemName()));
+        const auto last_updated = co_await db.queryOne<qlonglong>(query);
+        if (last_updated) {
+            co_return last_updated.value();
+        }
+        co_return 0;
+    }
+
     QCoro::Task<bool> synchFromServer()
     {
-        static const QString version_query = QString::fromStdString(::nextapp::format("SELECT MAX(updated) FROM {}", itemName()));
-        // Get a stream of updates from servercomm.
-        auto& db = NextAppCore::instance()->db();
-        const auto last_updated = co_await db.queryOne<qlonglong>(version_query);
-
         nextapp::pb::GetNewReq req;
-        if (last_updated) {
-            req.setSince(last_updated.value());
+        if (auto last_updated = co_await getLastUpdate(); last_updated > 0) {
+            req.setSince(last_updated);
         }
 
         auto stream = openServerStream(req);

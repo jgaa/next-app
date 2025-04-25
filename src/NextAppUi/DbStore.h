@@ -89,6 +89,10 @@ public:
         co_return co_await runQueryInWorker(sql, params);
     }
 
+    QCoro::Task<qrval_t> query(const QString &sql, QList<QVariant> params) {
+        co_return co_await runQueryInWorker(sql, std::move(params));
+    }
+
 
     /*! Process a batch of data-records in the database-thread.
      *

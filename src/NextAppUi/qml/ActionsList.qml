@@ -61,25 +61,25 @@ Rectangle {
                     selectedItems.push(uuid);
                     mySelectedItemsChanged();
                 }
-                console.log("[toggle] The list currently contains: ")
-                for(let i = 0; i < selectedItems.length; i++) {
-                    console.log(" - " + selectedItems[i])
-                }
+                // console.log("[toggle] The list currently contains: ")
+                // for(let i = 0; i < selectedItems.length; i++) {
+                //     console.log(" - " + selectedItems[i])
+                // }
                 hasSelection = selectedItems.length > 0
             }
 
             function toggleUuid(uuid) {
-                console.log("ActionsList: Toggling selection for " + uuid)
+                //console.log("ActionsList: Toggling selection for " + uuid)
                 if (selectedItems.includes(uuid)) {
                     selectedItems.splice(selectedItems.indexOf(uuid), 1); // Remove it
                 } else {
                     selectedItems.push(uuid); // Add it
                 }
                 mySelectedItemsChanged();
-                console.log("[toggle] The list currently contains: ")
-                for(let i = 0; i < selectedItems.length; i++) {
-                    console.log(" - " + selectedItems[i])
-                }
+                // console.log("[toggle] The list currently contains: ")
+                // for(let i = 0; i < selectedItems.length; i++) {
+                //     console.log(" - " + selectedItems[i])
+                // }
                 hasSelection = selectedItems.length > 0
             }
 
@@ -90,11 +90,11 @@ Rectangle {
             }
 
             function isSelected(uuid) {
-                console.log("ActionsList: Checking if " + uuid + " is selected")
-                console.log("The list currently contains: ")
-                for(let i = 0; i < selectedItems.length; i++) {
-                    console.log(" - " + selectedItems[i])
-                }
+                //console.log("ActionsList: Checking if " + uuid + " is selected")
+                // console.log("The list currently contains: ")
+                // for(let i = 0; i < selectedItems.length; i++) {
+                //     console.log(" - " + selectedItems[i])
+                // }
                 return selectedItems.includes(uuid);
             }
 

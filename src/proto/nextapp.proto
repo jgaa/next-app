@@ -1,8 +1,9 @@
 syntax = "proto3";
 
+package nextapp.pb;
+
 import "common.proto";
 
-package nextapp.pb;
 
 enum Error {
     OK = 0;
@@ -619,9 +620,54 @@ message DeviceUpdateReq {
     optional bool enabled = 3;
 }
 
+message Notification {
+    enum SenderType {
+        ADMIN = 0;
+        SYSTEM = 1;
+        TENANT = 2;
+        USER = 3;
+    }
+
+    enum Kind {
+        INFO = 0;
+        WARNING = 1;
+        ERROR = 2;
+        UPGRADE = 3;
+        OUTAGE = 4;
+        PROMOTION = 5;
+        DELETED = 6;
+    }
+
+    uint64 id = 1;
+    common.Time createdTime = 2;
+    optional common.Time validTo = 3;
+    string subject = 4;
+    string message = 5;
+    SenderType senderType = 6;
+    string senderId = 7;
+    optional common.Uuid toUser = 8;
+    optional common.Uuid toTenant = 9;
+    common.Uuid uuid = 10;
+    Kind kind = 11;
+    string data = 12; // Depends on context
+    uint64 updated = 13; // time_t as ms;
+}
+
+message Notifications {
+    repeated Notification notifications = 1;
+}
+
+message DeleteNotificationReq {
+    oneof what {
+        uint32 id = 1;
+        common.Uuid uuid = 2;
+    }
+}
+
 // Versions of various smaller data sets the user must check on startup.
 message DataVersionsInfo {
     uint64 actionCategoryVersion = 1;
+    uint64 lastKnownNotification = 2;
 }
 
 message Update {
@@ -649,6 +695,8 @@ message Update {
         CalendarEvents calendarEvents = 19;
         ActionCategory actionCategory = 20;
         Device device = 21;
+        Notifications notifications = 22;
+        uint32 lastReadNotificationId = 23;
     }
 }
 
@@ -807,7 +855,8 @@ message Hello {
     string sessionId = 1;
     string serverId = 2;
     uint64 serverInstanceTag = 3; // Used to detect server restarts
-    uint32 lastPublishId = 4; // Last puiblished message-id to the user
+    uint32 lastPublishId = 4; // Last published message-id to the user
+    uint64 lastNotification = 5; // Last notification update timestamp visible to the user
 }
 
 // Debug info about the user-sessions on the server
@@ -845,6 +894,10 @@ message UserSession {
 
 message UserSessions {
     repeated UserSession sessions = 1;
+}
+
+message SetReadNotificationReq {
+    uint32 notificationId = 1;
 }
 
 message Status {
@@ -885,6 +938,8 @@ message Status {
         Devices devices = 36;
         Device device = 37;
         UserSessions userSessions = 38;
+        Notifications notifications = 39;
+        uint32 lastReadNotificationId = 40;
     }
 }
 
@@ -952,8 +1007,12 @@ service Nextapp {
     rpc GetNewNodes(GetNewReq) returns (stream Status) {}
     rpc GetNewActions(GetNewReq) returns (stream Status) {}
     rpc GetNewWork(GetNewReq) returns (stream Status) {}
+    rpc GetNewNotifications(GetNewReq) returns (stream Status) {}
     rpc GetNewTimeBlocks(GetNewReq) returns (stream Status) {}
     rpc ResetPlayback(ResetPlaybackReq) returns (Status) {}
     rpc ListCurrentSessions(Empty) returns (Status) {}
-
+    rpc SendNotification(Notification) returns (Status) {}
+    rpc DeleteNotification(DeleteNotificationReq) returns (Status) {}
+    rpc GetLastReadNotification(Empty) returns (Status) {}
+    rpc SetLastReadNotification(SetReadNotificationReq) returns (Status) {}
 }

@@ -87,6 +87,13 @@ private:
 template <class T, class V>
 concept range_of = std::ranges::range<T> && std::is_same_v<V, std::ranges::range_value_t<T>>;
 
+template <typename V, typename T>
+concept AtomicLike =
+    requires(V v, T t) {
+        { v.load(std::memory_order_relaxed) } -> std::convertible_to<T>;
+        { v.compare_exchange_weak(t, t, std::memory_order_relaxed, std::memory_order_relaxed) } -> std::same_as<bool>;
+    };
+
 template <range_of<char> T>
 auto pb_adapt(const T& v) {
     if constexpr (protobuf_version >= 4021050) {
@@ -249,6 +256,23 @@ std::string formatDuration(const T& elapsed) {
     result += std::format("{:02}s", seconds); // Always include seconds
 
     return result;
+}
+
+/*! Atomic set if greater
+ *
+ *  Set the value of v to new_value if v < new_value
+ */
+template <typename T, typename V>
+requires AtomicLike<V, T>
+static void atomicSetIfGreater(V& v, T new_value) noexcept {
+    T current = v.load(std::memory_order_relaxed);
+    while (current < new_value &&
+           !v.compare_exchange_weak(
+               current, new_value,
+               std::memory_order_relaxed,  // success
+               std::memory_order_relaxed   // failure
+               )) {
+    }
 }
 
 

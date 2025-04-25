@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(appNextAppUi VERSION 0.2.10 LANGUAGES CXX)
+project(appNextAppUi
+    VERSION ${NEXTAPP_VERSION}
+    LANGUAGES CXX)
+
 add_definitions(-DNEXTAPP_UI_VERSION=\"${appNextAppUi_VERSION}\")
 
-set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+#set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 set(SERVER_ADDRESS "https://signup.ws.dev.next-app.org:10322" CACHE STRING "Default address to signup server")
@@ -40,21 +43,30 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-#set(QT6_IS_SHARED_LIBS_BUILD OFF)
 if(USE_STATIC_QT)
-    # Use target_compile_definitions instead of add_definitions for modern CMake
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Charts Svg Test Grpc Concurrent Test Sql)
+find_package(gRPC CONFIG REQUIRED)
+find_package(Protobuf REQUIRED)
 
-if(Qt6Core_VERSION VERSION_LESS "6.8.0")
-    message("Using an old QT version. 6.8 is required for the current grpc plugin")
-    find_package(Qt6 REQUIRED CONFIG COMPONENTS Protobuf)
-else ()
-    find_package(Qt6 REQUIRED CONFIG COMPONENTS ProtobufQuick)
-    set (PROTOBUF_QML_DEPENDENCY Qt::ProtobufQuick)
-endif()
+find_package(Qt6 REQUIRED COMPONENTS
+    Core
+    Gui
+    Quick
+    QuickControls2
+    Charts
+    Svg
+    Test
+    Concurrent
+    Test
+    Sql
+    Protobuf
+    ProtobufQuick
+    Grpc
+    ProtobufQtCoreTypes
+    ProtobufWellKnownTypes
+)
 
 qt_standard_project_setup()
 
@@ -65,33 +77,6 @@ qt_policy(SET QTP0004 NEW)
 
 
 if(USE_STATIC_QT)
-    # find_package(FFMPEG REQUIRED)
-    # message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
-
-    # # There is some tiems a problem with the list, linking fails with:  error: no such file or directory: '$<1:optimized'
-    # if("optimized" IN_LIST FFMPEG_LIBRARIES)
-    #     set(OPTIMIZED_FFMPEG_LIBRARIES "")
-    #     set(NEXT_IS_OPTIMIZED FALSE)
-
-    #     foreach(item IN LISTS FFMPEG_LIBRARIES)
-    #         if(item STREQUAL "optimized")
-    #             set(NEXT_IS_OPTIMIZED TRUE)
-    #         elseif(item STREQUAL "debug")
-    #             set(NEXT_IS_OPTIMIZED FALSE)
-    #         else()
-    #             if(NEXT_IS_OPTIMIZED)
-    #                 list(APPEND OPTIMIZED_FFMPEG_LIBRARIES "${item}")
-    #             endif()
-    #         endif()
-    #     endforeach()
-    # else()
-    #     # If "optimized" is not found, use FFMPEG_LIBRARIES directly
-    #     set(OPTIMIZED_FFMPEG_LIBRARIES "${FFMPEG_LIBRARIES}")
-    # endif()
-
-    # Print the optimized libraries for verification
-    message(STATUS "Optimized Libraries: ${OPTIMIZED_FFMPEG_LIBRARIES}")
-
     set(Boost_USE_STATIC_LIBS ON)
     set(OPENSSL_USE_STATIC_LIBS TRUE)
     set(BUILD_SHARED_LIBS OFF)
@@ -131,25 +116,37 @@ set (protofile_nextapp "${CMAKE_CURRENT_SOURCE_DIR}/../proto/nextapp.proto")
 set (protofile_signup "${CMAKE_CURRENT_SOURCE_DIR}/../proto/signup.proto")
 set (protofile_common "${CMAKE_CURRENT_SOURCE_DIR}/../proto/common.proto")
 
-qt_add_protobuf(NextappProtoMessageLib
+add_library(qt_grpc STATIC)
+
+qt_add_protobuf(na_proto_lib
     QML
     QML_URI nextapp.pb
     PROTO_FILES
         ${protofile_nextapp}
         ${protofile_signup}
         ${protofile_common}
+    PROTO_INCLUDES
+        $<TARGET_PROPERTY:Qt6::ProtobufQtCoreTypes,QT_PROTO_INCLUDES>
 )
 
-qt_add_grpc(NextappGrpcClient CLIENT
+target_link_libraries(na_proto_lib
+  PRIVATE
+    Qt6::ProtobufWellKnownTypes
+    Qt6::ProtobufWellKnownTypesPrivate
+)
+
+qt_add_grpc(na_grpc_lib CLIENT
     PROTO_FILES ${protofile_nextapp} ${protofile_signup}
 )
 
-target_link_libraries(NextappGrpcClient
+target_link_libraries(na_grpc_lib
     PRIVATE
-        NextappProtoMessageLib
+        na_proto_lib
         Qt6::Core
         Qt6::Protobuf
-        ${PROTOBUF_QML_DEPENDENCY}
+        Qt6::ProtobufQuick
+        Qt6::ProtobufQtCoreTypes
+        Qt6::Grpc
         Qt6::Grpc
 )
 
@@ -216,9 +213,7 @@ if(NOT HAS_STD_FORMAT OR ANDROID OR APPLE)
 endif()
 
 if (NOT ANDROID)
-    find_package(Boost CONFIG REQUIRED)
-    #find_package(OpenSSL CONFIG REQUIRED)
-
+    find_package(Boost ${USE_BOOST_VERSION} CONFIG REQUIRED)
     find_package(OpenSSL CONFIG QUIET)
     if(NOT OpenSSL_FOUND)
         find_package(OpenSSL REQUIRED)
@@ -226,7 +221,10 @@ if (NOT ANDROID)
 
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
-    target_include_directories(${PROJECT_NAME} PRIVATE /opt/boost/boost_1_87_0)
+    set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_87_0"
+        CACHE STRING
+        "Boost location if set manually (required for Android/ QT Creator)")
+    target_include_directories(${PROJECT_NAME} PRIVATE ${NEXTAPP_BOOST_ROOT})
 
     FetchContent_Declare(
         android_openssl
@@ -362,6 +360,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/trash-can.svg
+        icons/fontawsome/flag.svg
         icons/filter.svg
         icons/generic_file.svg
         icons/globe.svg
@@ -450,6 +449,9 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
+        SOURCES NotificationsModel.h NotificationsModel.cpp
+        QML_FILES qml/NotificationsView.qml
+        SOURCES ModelInstances.h ModelInstances.cpp
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
@@ -498,7 +500,7 @@ else ()
     set(OPEN_SSL_DEPS OpenSSL::SSL OpenSSL::Crypto)
 endif()
 
-add_dependencies(${PROJECT_NAME} logfault NextappGrpcClient NextappProtoMessageLib ${OPENSSL_TARGET} ${FMT_TARGET})
+add_dependencies(${PROJECT_NAME} logfault na_grpc_lib ${OPENSSL_TARGET} ${FMT_TARGET})
 
 if(USE_STATIC_QT)
     qt_import_plugins(${PROJECT_NAME}
@@ -515,8 +517,7 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        NextappGrpcClient
-        NextappProtoMessageLib
+        na_grpc_lib
         QCoro6::Core
         QCoro6::Qml
         QCoro6::Quick
@@ -531,6 +532,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Concurrent
         Qt6::Test
         Qt6::Sql
+        gRPC::grpc++
         $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
         $<$<BOOL:${USE_STATIC_QT}>:dl>
         ${OPEN_SSL_DEPS}
@@ -540,6 +542,9 @@ target_link_libraries(${PROJECT_NAME}
 
 
 if(ANDROID)
+    set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
+
     target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
     include(GNUInstallDirs)
     install(TARGETS ${PROJECT_NAME}

@@ -138,6 +138,10 @@ public:
             return *user_;
         }
 
+        auto userPtr() const noexcept {
+            return user_;
+        }
+
         void touch();
 
         std::chrono::steady_clock::time_point touched() const;
@@ -266,6 +270,16 @@ public:
         return std::nullopt;
     }
 
+    std::optional<uint32_t> getLastReadNotification() const noexcept {
+        if (auto lrn = last_read_notification_id_.load(); lrn > 0) {
+            return static_cast<uint32_t>(lrn);
+        }
+        return {};
+    }
+
+    void setLastReadNotification(uint32_t id) noexcept;
+
+
 private:
     static boost::uuids::uuid newUuid();
     void validateInstanceId(uint instanceId);
@@ -282,6 +296,7 @@ private:
     std::vector<std::shared_ptr<Session>> sessions_; // NB: Circular reference.
     std::vector<std::weak_ptr<Publisher>> publishers_;
     std::map<boost::uuids::uuid, Device> devices_;
+    std::atomic_int32_t last_read_notification_id_{-1};
     mutable std::shared_mutex mutex_;
     mutable std::mutex instance_mutex_;
 };
@@ -306,6 +321,8 @@ public:
     void shutdown();
 
     boost::asio::awaitable<pb::UserSessions> listSessions();
+
+    boost::asio::awaitable<void> publishNotification(const nextapp::pb::Notification& notification);
 
 private:
     void removeSession_(const boost::uuids::uuid& sessionId);
