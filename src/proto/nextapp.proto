@@ -270,6 +270,15 @@ message Nodes {
     repeated Node nodes = 1; // Nodes in random order
 }
 
+// A template for creating nodes in bulk
+// The root-node has no name and one or more valid children.
+message NodeTemplate {
+    string name = 1;
+    string descr = 2;
+    Node.Kind kind = 3;
+    repeated NodeTemplate children = 4;
+}
+
 enum ActionStatus {
     ACTIVE  = 0;
     DONE    = 1;
@@ -680,6 +689,10 @@ message Update {
         MOVED = 4;      // The thing moved
     }
 
+    enum Reload {
+        NODES = 0;
+    }
+
     Operation op = 2;
     uint32 messageId = 3; // An incremental id for the message. Resets to 1 when teh server starts.
 
@@ -697,6 +710,7 @@ message Update {
         Device device = 21;
         Notifications notifications = 22;
         uint32 lastReadNotificationId = 23;
+        Reload reload = 24;
     }
 }
 
@@ -1001,7 +1015,6 @@ service Nextapp {
     rpc UpdateActionCategory(ActionCategory) returns (Status) {}
     rpc DeleteActionCategory(DeleteActionCategoryReq) returns (Status) {}
     rpc GetDataVersions(Empty) returns (Status) {}
-
     rpc GetNewDays(GetNewReq) returns (stream Status) {}
     rpc GetNewDayColorDefinitions(GetNewReq) returns (Status) {}
     rpc GetNewNodes(GetNewReq) returns (stream Status) {}
@@ -1015,4 +1028,5 @@ service Nextapp {
     rpc DeleteNotification(DeleteNotificationReq) returns (Status) {}
     rpc GetLastReadNotification(Empty) returns (Status) {}
     rpc SetLastReadNotification(SetReadNotificationReq) returns (Status) {}
+    rpc CreateNodesFromTemplate(NodeTemplate) returns (Status) {}
 }

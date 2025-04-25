@@ -452,6 +452,7 @@ qt_add_qml_module(${PROJECT_NAME}
         SOURCES NotificationsModel.h NotificationsModel.cpp
         QML_FILES qml/NotificationsView.qml
         SOURCES ModelInstances.h ModelInstances.cpp
+        SOURCES UseCaseTemplates.h UseCaseTemplates.cpp
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)

@@ -189,6 +189,7 @@ public:
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewNotifications(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
         ::grpc::ServerUnaryReactor *GetLastReadNotification(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *SetLastReadNotification(::grpc::CallbackServerContext *, const pb::SetReadNotificationReq *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *CreateNodesFromTemplate(::grpc::CallbackServerContext *, const pb::NodeTemplate *, pb::Status *) override;
 
 
     private:
@@ -463,6 +464,7 @@ private:
     boost::asio::awaitable<void> loadCert();
     boost::asio::awaitable<bool> isReplay(::grpc::CallbackServerContext *ctx, RequestCtx& rctx);
     boost::asio::awaitable<void> initNotifications();
+    boost::asio::awaitable<void> addNodes(const std::string& parent_id, const pb::NodeTemplate& t, RequestCtx& rctx);
 
     SessionManager sessionManager_;
 
