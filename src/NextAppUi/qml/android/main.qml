@@ -72,8 +72,28 @@ ApplicationWindow {
             }
 
             Label {
+                id: nextappLabel
                 text: qsTr("NextApp")
                 Layout.alignment: Qt.AlignCenter
+                visible: !notificationIcon.visible
+            }
+
+            CheckBoxWithFontIcon {
+                id: notificationIcon
+                uncheckedCode: "\uf024"
+                checkedCode: "\uf024"
+                useSolidForAll: true
+                autoToggle: false
+                property var model: ModelInstances.getNotificationsModel()
+                isChecked: model.unread
+                attentionAnimation: isChecked
+                checkedColor: "red"
+                visible: isChecked
+
+                onClicked: {
+                    //openWindow("NotificationsView.qml")
+                    Common.openDialog("qrc:/qt/qml/NextAppUi/qml/NotificationsView.qml", appWindow, {});
+                }
             }
 
             Text {

@@ -222,6 +222,15 @@ Rectangle {
             RoundButton {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillWidth: true
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/flag.svg"
+                checkable: false
+                text: qsTr("Notifications")
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/NotificationsView.qml", appWindow, {});
+            }
+
+            RoundButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/file-lines.svg"
                 checkable: false
                 text: qsTr("Application log")

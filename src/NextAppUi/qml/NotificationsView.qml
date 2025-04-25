@@ -8,8 +8,8 @@ import Nextapp.Models
 Dialog {
     x: NaCore.isMobile ? 0 : (parent.width - width) / 3
     y: NaCore.isMobile ? 0 : (parent.height - height) / 3
-    width: Math.min(parent.width, 800)
-    height: Math.min(parent.height - 10, 600)
+    width: NaCore.isMobile ? parent.width : Math.min(parent.width, 800)
+    height: NaCore.isMobile ? parent.height : Math.min(parent.height - 10, 600)
     title: qsTr("Notifications")
 
     standardButtons: Dialog.Close

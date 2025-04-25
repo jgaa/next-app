@@ -360,6 +360,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/trash-can.svg
+        icons/fontawsome/flag.svg
         icons/filter.svg
         icons/generic_file.svg
         icons/globe.svg
