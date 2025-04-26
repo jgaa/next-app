@@ -3,6 +3,8 @@
 # Set default number of cores to the system's core count (nproc)
 NUM_CORES=${1:-$(nproc)}
 
+git config --global --add safe.directory /next-app
+
 cd
 rm -rf build
 mkdir build

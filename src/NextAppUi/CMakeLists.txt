@@ -18,8 +18,13 @@ if (NEXTAPP_WITH_TREE_MODEL_TESTING)
 endif()
 
 option(USE_STATIC_QT "Build with static Qt libraries" OFF)
+option(UI_USE_STATIC_BOOST "Build with static Boost libraries" ON)
 option(WITH_TESTS "Enable Tests" ON)
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
+
+if (UI_USE_STATIC_BOOST)
+    add_definitions(-DUSE_STATIC_BOOST)
+endif()
 
 if (NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL)
     add_definitions(-DUSE_GRPC_STREAMING_FLOW_CONTROL)
@@ -75,12 +80,11 @@ qt_policy(SET QTP0002 NEW)
 qt_policy(SET QTP0003 NEW)
 qt_policy(SET QTP0004 NEW)
 
-
 if(USE_STATIC_QT)
-    set(Boost_USE_STATIC_LIBS ON)
-    set(OPENSSL_USE_STATIC_LIBS TRUE)
+    #set(Boost_USE_STATIC_LIBS ON)
+    #set(OPENSSL_USE_STATIC_LIBS TRUE)
     set(BUILD_SHARED_LIBS OFF)
-    set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib .so .dll)
+    #set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib .so .dll)
     find_package(Threads REQUIRED)
 endif()
 
@@ -129,11 +133,36 @@ qt_add_protobuf(na_proto_lib
         $<TARGET_PROPERTY:Qt6::ProtobufQtCoreTypes,QT_PROTO_INCLUDES>
 )
 
-target_link_libraries(na_proto_lib
-  PRIVATE
-    Qt6::ProtobufWellKnownTypes
-    Qt6::ProtobufWellKnownTypesPrivate
-)
+if(USE_STATIC_QT)
+    ## Stalins workaround for static Qt. This works, but will break soon enough
+    ## target_include_directories(na_proto_lib
+    ##   PRIVATE
+    ##     /opt/qt-static/include/QtProtobufWellKnownTypes/6.8.3
+    ## )
+    ## pull the INTERFACE include‐dirs (public + private) out of the Qt target
+
+    # This work-around for not linking to the Qt6::ProtobufWellKnownTypesPrivate target
+    # is needed if you use static Qt libraries and well known protobuf types or `optional`
+    # types in your proto files. Otherwise the generated code will not compile.
+    # (Took me a few hours to figure this out)
+    get_target_property(_wkt_inc_dirs
+       Qt6::ProtobufWellKnownTypesPrivate
+       INTERFACE_INCLUDE_DIRECTORIES
+    )
+
+    message(STATUS "WKT include dirs: ${_wkt_inc_dirs}")
+
+    target_include_directories(na_proto_lib
+        PRIVATE
+          ${_wkt_inc_dirs}
+    )
+else()
+  target_link_libraries(na_proto_lib
+    PRIVATE
+      Qt6::ProtobufWellKnownTypes
+      Qt6::ProtobufWellKnownTypesPrivate
+  )
+endif()
 
 qt_add_grpc(na_grpc_lib CLIENT
     PROTO_FILES ${protofile_nextapp} ${protofile_signup}
@@ -221,7 +250,8 @@ if (NOT ANDROID)
 
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
-    set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_87_0"
+    # TODO: Get the header only libraries we use from the system or download them
+    set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_88_0"
         CACHE STRING
         "Boost location if set manually (required for Android/ QT Creator)")
     target_include_directories(${PROJECT_NAME} PRIVATE ${NEXTAPP_BOOST_ROOT})

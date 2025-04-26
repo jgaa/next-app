@@ -477,6 +477,7 @@ QString ActionsModel::toName(nextapp::pb::ActionKindGadget::ActionKind kind)
         return tr("On Hold");
     }
     assert(false);
+    return {};
 }
 
 QString ActionsModel::formatWhen(time_t from, time_t to, nextapp::pb::ActionDueKindGadget::ActionDueKind dt)
