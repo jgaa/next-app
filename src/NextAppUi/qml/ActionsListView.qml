@@ -433,6 +433,9 @@ Rectangle {
             Layout.fillWidth: true
 
             onDifficultyChanged: (diff) => {
+                if (!setDifficultyDlg.visible) {
+                    return
+                }
                 NaActionsModel.batchChangeDifficulty(diff, actions.selectedIds)
                 setDifficultyDlg.close()
             }
