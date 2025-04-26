@@ -10,6 +10,7 @@ ColumnLayout  {
     id: root
     anchors.fill: parent
     spacing: 20
+    property bool newUser: false
     signal nextClicked()
 
 
@@ -35,6 +36,38 @@ ColumnLayout  {
         }
     }
 
+    ColumnLayout {
+        Layout.fillWidth: true
+        Layout.alignment: Qt.AlignHCenter
+        Layout.margins: 20
+        visible: root.newUser
+
+        Label {
+            text: qsTr("Create lists from template")
+            color: "white"
+            font.bold: true
+        }
+
+        ComboBox {
+            model: UseCaseTemplates.getTemplateNames()
+            id: useCaseCombo
+            Layout.fillWidth: true
+            //Layout.preferredHeight: 40
+            background: Rectangle {
+                color: "white"
+            }
+        }
+
+        Text {
+            id: useCaseDescription
+            Layout.fillWidth: true
+            text: UseCaseTemplates.getDescription(useCaseCombo.currentIndex)
+            wrapMode: Text.WordWrap
+            antialiasing: true
+            color: "white"
+        }
+    }
+
     RowLayout {
         spacing: 20
         Layout.fillWidth: true
@@ -45,8 +78,9 @@ ColumnLayout  {
 
         Button {
             id: nextBtn
-            text: qsTr("Start using Nextapp!")
+            text: useCaseCombo.currentIndex > 0 ? qsTr("Create lists from template and start using Nextapp!") : qsTr("Start using Nextapp!")
             onClicked: {
+                UseCaseTemplates.createFromTemplate(useCaseCombo.currentIndex)
                 nextClicked()
             }
         }

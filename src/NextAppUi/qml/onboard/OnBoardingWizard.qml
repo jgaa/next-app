@@ -10,6 +10,7 @@ Window  {
     width: Math.min(600, NaCore.width, Screen.width)
     height: Math.min(800, NaCore.height, Screen.height)
     visible: true
+    property bool isNewUser: false
     signal onboardingDone()
 
     Rectangle {
@@ -49,7 +50,10 @@ Window  {
                 Component {
                     id: addDevicePage1
                     AddDevicePage {
-                        onNextClicked: stackView.push(onboardingPage5)
+                        onNextClicked: {
+                            root.isNewUser = false
+                            stackView.push(onboardingPage5)
+                        }
                         onBackClicked: stackView.pop()
                     }
                 }
@@ -74,7 +78,10 @@ Window  {
                 Component {
                     id: onboardingPage4
                     OnboardingAccount {
-                        onNextClicked: stackView.push(onboardingPage5)
+                        onNextClicked: {
+                            root.isNewUser = true
+                            stackView.push(onboardingPage5)
+                        }
                         onBackClicked: stackView.pop()
                     }
                 }
@@ -82,6 +89,8 @@ Window  {
                 Component {
                     id: onboardingPage5
                     OnboardingReady {
+                        id: lastPageContent
+                        newUser: root.isNewUser
                         onNextClicked: {
                             onboardingDone()
                             // Switch to the main UI

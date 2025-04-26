@@ -102,6 +102,57 @@ struct ToNode {
         });
 }  // CreateNode
 
+boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, const pb::NodeTemplate &t, RequestCtx& rctx)
+{
+    const auto& cuser = rctx.uctx->userUuid();
+
+    string id;
+    if (!t.name().empty()) {
+        id = newUuidStr();
+        const auto kind = static_cast<int>(t.kind());
+        auto res = co_await rctx.dbh->exec(R"(INSERT INTO node (id, user, name, kind, descr, parent)
+                        VALUES(?, ?, ?, ?, ?, ?))", rctx.uctx->dbOptions(),
+                                           id,
+                                           cuser,
+                                           t.name(),
+                                           kind,
+                                           t.descr(),
+                                           toStringOrNull(parent_id));
+
+        if (!res.affected_rows()) {
+            throw server_err{pb::Error::DATABASE_UPDATE_FAILED, "Failed to insert node from template"};
+        }
+    } else {
+        // Only the root-node is without name.
+        assert(parent_id.empty());
+    }
+
+    for (const auto& child : t.children()) {
+        co_await addNodes(id, child, rctx);
+    }
+}
+
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateNodesFromTemplate(::grpc::CallbackServerContext *ctx,
+                                                                             const pb::NodeTemplate *req,
+                                                                             pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto uctx = rctx.uctx;
+            const auto& cuser = uctx->userUuid();
+            auto dbopts = uctx->dbOptions();
+            auto trx = co_await rctx.dbh->transaction();
+
+            co_await owner_.addNodes({}, *req, rctx);
+            co_await trx.commit();
+            auto& publish = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
+            publish.set_reload(pb::Update::Reload::Update_Reload_NODES);
+
+            co_return;
+        });
+}
+
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateNode(::grpc::CallbackServerContext *ctx, const pb::Node *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,

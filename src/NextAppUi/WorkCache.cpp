@@ -372,7 +372,7 @@ void WorkCache::updateSessionsDurations()
     }
 
     if (changed) {
-        LOG_DEBUG_N << "Active duration changed. Emitting signal.";
+        LOG_TRACE_N << "Active duration changed. Emitting signal.";
         emit activeDurationChanged(changes);
     }
 }
@@ -524,7 +524,7 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
     outcome.paused= orig_paused != work.paused() / 60;
     outcome.name = orig_name != work.name();
 
-    LOG_DEBUG << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
+    LOG_TRACE << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
               << work.duration()
               << " outcome.duration= " << outcome.duration;
 

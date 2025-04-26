@@ -865,6 +865,11 @@ QCoro::Task<void> ServerComm::updateLastReadNotification()
     }
 }
 
+QCoro::Task<void> ServerComm::createNodesFromTemplate(nextapp::pb::NodeTemplate root)
+{
+    co_await rpc(root, &nextapp::pb::Nextapp::Client::CreateNodesFromTemplate);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;
@@ -1148,15 +1153,6 @@ void ServerComm::onUpdateMessage()
                     }
                 }
             }
-            // if (msg->hasDayColor()) {
-            //     LOG_DEBUG << "Day color is " << msg->dayColor().color();
-            //     QUuid color;
-            //     if (!msg->dayColor().color().isEmpty()) {
-            //         color = QUuid{msg->dayColor().color()};
-            //     }
-            //     const auto& date = msg->dayColor().date();
-            //     emit dayColorChanged(date.year(), date.month(), date.mday(), color);
-            // }
 
             if (msg->hasDevice()) {
                 const auto& dev = msg->device();
@@ -1177,6 +1173,15 @@ void ServerComm::onUpdateMessage()
                         return;
                     }
                 };
+            }
+
+            if (msg->hasReload()) {
+                const auto what = msg->reload();
+                switch(what) {
+                case nextapp::pb::Update::Reload::NODES:
+                    LOG_DEBUG << "Received reload-nodes update";
+                    MainTreeModel::instance()->doSynch(true);
+                }
             }
 
             emit onUpdate(std::move(msg));
