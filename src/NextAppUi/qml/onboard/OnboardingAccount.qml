@@ -102,6 +102,7 @@ ColumnLayout  {
         }
 
         Label {
+            visible: region.visible
             text: qsTr("Region")
             color: MaterialDesignStyling.onSurfaceVariant
         }
@@ -110,11 +111,19 @@ ColumnLayout  {
             id: region
             Layout.fillWidth: true
             model: NaComm.getRegionsForSignup()
-            currentIndex: -1
+            visible: model.length > 1
             displayText: currentIndex === -1 ? qsTr("Select Region") : currentText
 
             onCurrentIndexChanged: {
                 validate()
+            }
+
+            Component.onCompleted: {
+               // if there’s exactly one region, pick it,
+               // otherwise leave it un-selected so the user must choose.
+               currentIndex = model.length > 1
+                              ? -1
+                              : 0
             }
         }
     }
