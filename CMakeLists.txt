@@ -13,21 +13,46 @@ project(next-app
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(IS_LINUX ON)
-else ()
-    set(IS_LINUX OFF)
-endif()
-
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
 
+# Linux
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(LINUX_BUILD ON)
+  message(STATUS "Linux build")
+endif()
+
+# Windows
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  set(WINDOWS_BUILD ON)
+  message(STATUS "Windows build")
+endif()
+
+# Android
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(ANDROID_BUILD ON)
+  message(STATUS "Android build")
+endif()
+
+# Apple platforms (macOS vs. iOS)
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  # CMAKE_OSX_SYSROOT will be something like "macosx", "iphoneos", or "iphonesimulator"
+  if (CMAKE_OSX_SYSROOT MATCHES "^(iphoneos|iphonesimulator)")
+    set(IOS_BUILD ON)
+    message(STATUS "iOS build")
+  else()
+    set(MACOS_BUILD ON)
+    message(STATUS "macOS build")
+  endif()
+endif()
+
+
 option(NEXTAPP_WITH_TESTS "Enable Tests" OFF)
 option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" ON)
 option(NEXTAPP_WITH_UI "Include the UI project in the build" ON)
-option(NEXTAPP_WITH_BACKEND "Include the backend server project in the build" ${IS_LINUX})
-option(NEXTAPP_WITH_SIGNUP "Include the signup server project in the build" ${IS_LINUX})
+option(NEXTAPP_WITH_BACKEND "Include the backend server project in the build" ${LINUX_BUILD})
+option(NEXTAPP_WITH_SIGNUP "Include the signup server project in the build" ${LINUX_BUILD})
 option(NEXTAPP_USE_VALGRIND "Add support to use valgrind to run tests" OFF)
 
 if (BOOST_USE_VALGRIND)

@@ -52,8 +52,10 @@ if(USE_STATIC_QT)
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
 
-find_package(gRPC CONFIG REQUIRED)
-find_package(Protobuf REQUIRED)
+if (LINUX_BUILD OR WINDOWS_BUILD)
+  find_package(gRPC CONFIG REQUIRED)
+  find_package(Protobuf REQUIRED)
+endif()
 
 find_package(Qt6 REQUIRED COMPONENTS
     Core
@@ -183,11 +185,6 @@ qt_add_executable(${PROJECT_NAME}
     main.cpp
     logging.h
 )
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_compile_definitions(${PROJECT_NAME} PRIVATE LINUX_BUILD)
-    set (LINUX_BUILD ON)
-endif()
 
 if(ANDROID)
     set(ANDROID_MIN_SDK_VERSION 31)  # Android 12
@@ -548,6 +545,7 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
+        na_proto_lib
         na_grpc_lib
         QCoro6::Core
         QCoro6::Qml
@@ -563,7 +561,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Concurrent
         Qt6::Test
         Qt6::Sql
-        gRPC::grpc++
+        $<$<OR:$<BOOL:${WINDOWS_BUILD}>,$<BOOL:${LINUX_BUILD}>>:gRPC::grpc++>
         $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
         $<$<BOOL:${USE_STATIC_QT}>:dl>
         ${OPEN_SSL_DEPS}
