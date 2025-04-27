@@ -845,7 +845,7 @@ boost::asio::awaitable<void> GrpcServer::initNotifications()
     auto res = co_await server_.db().exec("SELECT MAX(updated) FROM notification", opt);
     enum Cols { UPDATED };
     uint64_t when{};
-    if (!res.rows().empty()) {
+    if (!res.rows().empty() && res.rows().front().at(UPDATED).is_datetime()) {
         const auto *utc_zone = chrono::get_tzdb().locate_zone("UTC");
         assert(utc_zone);
         if (utc_zone) {
