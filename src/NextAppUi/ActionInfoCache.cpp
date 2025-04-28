@@ -13,15 +13,18 @@ using namespace nextapp;
 namespace {
 
 static const QString insert_query = R"(INSERT INTO action
-        (id, node, origin, priority, status, favorite, name, descr, created_date,
+        (id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date,
         due_kind, start_time, due_by_time, due_timezone, completed_time,
         time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after,
-        kind, category, version, updated) VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        kind, category, time_spent, version, updated) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
         node = EXCLUDED.node,
         origin = EXCLUDED.origin,
         priority = EXCLUDED.priority,
+        dyn_importance = EXCLUDED.dyn_importance,
+        dyn_urgency = EXCLUDED.dyn_urgency,
+        dyn_score = EXCLUDED.dyn_score,
         status = EXCLUDED.status,
         favorite = EXCLUDED.favorite,
         name = EXCLUDED.name,
@@ -40,6 +43,7 @@ static const QString insert_query = R"(INSERT INTO action
         repeat_after = EXCLUDED.repeat_after,
         kind = EXCLUDED.kind,
         category = EXCLUDED.category,
+        time_spent = EXCLUDED.time_spent,
         version = EXCLUDED.version,
         updated = EXCLUDED.updated)";
 
@@ -53,7 +57,27 @@ QList<QVariant> getParams(const pb::Action& action) {
     } else {
         params.append(QString{});
     }
-    params.append(static_cast<quint32>(action.priority()));
+
+    if (action.dynamicPriority().hasPriority()) {
+        params << static_cast<quint32>(action.dynamicPriority().priority());
+    } else {
+        params << QVariant{};
+    }
+
+    if (action.dynamicPriority().hasUrgencyImportance()) {
+        params << static_cast<quint32>(action.dynamicPriority().urgencyImportance().importance());
+        params << static_cast<quint32>(action.dynamicPriority().urgencyImportance().urgency());
+    } else {
+        params << QVariant{};
+        params << QVariant{};
+    }
+
+    if (action.dynamicPriority().hasScore()) {
+        params << static_cast<qlonglong>(action.dynamicPriority().score());
+    } else {
+        params << QVariant{};
+    }
+
     params.append(static_cast<quint32>(action.status()));
     params.append(action.favorite());
     params.append(action.name());
@@ -100,6 +124,7 @@ QList<QVariant> getParams(const pb::Action& action) {
     params.append(static_cast<quint32>(action.repeatAfter()));
     params.append(static_cast<quint32>(action.kind()));
     params.append(action.category());
+    params << static_cast<quint32>(action.timeSpent());
     params.append(static_cast<quint32>(action.version()));
     params.append(static_cast<qlonglong>(action.updated()));
 
@@ -113,7 +138,7 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     if (action.hasOrigin()) {
         ai.setOrigin(action.origin());
     }
-    ai.setPriority(action.priority());
+    ai.setDynamicPriority(action.dynamicPriority());
     ai.setStatus(action.status());
     ai.setFavorite(action.favorite());
     ai.setName(action.name());
@@ -163,8 +188,8 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
         changed = true;
     }
 
-    if (existing.priority() != action.priority()) {
-        existing.setPriority(action.priority());
+    if (existing.dynamicPriority() != action.dynamicPriority()) {
+        existing.setDynamicPriority(action.dynamicPriority());
         changed = true;
     }
 
@@ -257,17 +282,20 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
     DbStore::param_t params;
     params << action_uuid.toString(QUuid::WithoutBraces);
 
-    QString query = "SELECT id, node, origin, priority, status, favorite, name, created_date, "
+    QString query = "SELECT id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, created_date, "
                     " due_kind, start_time, due_by_time, due_timezone, completed_time, "
                     " time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, "
                     " descr,"
-                    " kind, version, category FROM action where id=?";
+                    " kind, version, category, time_spent FROM action where id=?";
 
     enum Cols {
         ID,
         NODE,
         ORIGIN,
         PRIORITY,
+        DYN_IMPORTANCE,
+        DYN_URGENCY,
+        DYN_SCORE,
         STATUS,
         FAVORITE,
         NAME,
@@ -286,7 +314,8 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         DESCR,
         KIND,
         VERSION,
-        CATEGORY
+        CATEGORY,
+        TIME_SPENT
     };
 
     auto rval = co_await db.legacyQuery(query, &params);
@@ -302,7 +331,25 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         item->setId_proto(id);
         item->setNode(row[NODE].toString());
         item->setOrigin(row[ORIGIN].toString());
-        item->setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
+
+        {
+            nextapp::pb::Priority p;
+            if (row[PRIORITY].isValid()) {
+                p.setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
+            }
+            if (row[DYN_IMPORTANCE].isValid() && row[DYN_URGENCY].isValid()) {
+                nextapp::pb::UrgencyImportance ui;
+                ui.setImportance(row[DYN_IMPORTANCE].toInt());
+                ui.setUrgency(row[DYN_URGENCY].toInt());
+                p.setUrgencyImportance(ui);
+            }
+            if (row[DYN_SCORE].isValid()) {
+                p.setScore(row[DYN_SCORE].toInt());
+            }
+
+            item->setDynamicPriority(p);
+        }
+
         item->setStatus(static_cast<nextapp::pb::ActionStatusGadget::ActionStatus>(row[STATUS].toInt()));
         item->setFavorite(row[FAVORITE].toBool());
         item->setName(row[NAME].toString());
@@ -334,6 +381,9 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         item->setVersion(row[VERSION].toUInt());
         item->setCategory(row[CATEGORY].toString());
 
+        if (row[TIME_SPENT].isValid()) {
+            item->setTimeSpent(row[TIME_SPENT].toInt());
+        }
 
         nextapp::pb::Due due;
         due.setKind(static_cast<nextapp::pb:: ActionDueKindGadget::ActionDueKind >(row[DUE_KIND].toInt()));
@@ -432,7 +482,7 @@ QCoro::Task<bool> ActionInfoCache::loadFromCache()
 QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
 {
     auto& db = NextAppCore::instance()->db();
-    QString query = "SELECT id, node, origin, priority, status, favorite, name, created_date, "
+    QString query = "SELECT id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, created_date, "
                           " due_kind, start_time, due_by_time, due_timezone, completed_time, "
                           " kind, version, category FROM action";
 
@@ -445,6 +495,9 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
         NODE,
         ORIGIN,
         PRIORITY,
+        DYN_IMPORTANCE,
+        DYN_URGENCY,
+        DYN_SCORE,
         STATUS,
         FAVORITE,
         NAME,
@@ -474,7 +527,23 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
             item.setId_proto(id);
             item.setNode(row[NODE].toString());
             item.setOrigin(row[ORIGIN].toString());
-            item.setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
+            {
+                nextapp::pb::Priority p;
+                if (row[PRIORITY].isValid()) {
+                    p.setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
+                }
+                if (row[DYN_IMPORTANCE].isValid() && row[DYN_URGENCY].isValid()) {
+                    nextapp::pb::UrgencyImportance ui;
+                    ui.setImportance(row[DYN_IMPORTANCE].toInt());
+                    ui.setUrgency(row[DYN_URGENCY].toInt());
+                    p.setUrgencyImportance(ui);
+                }
+                if (row[DYN_SCORE].isValid()) {
+                    p.setScore(row[DYN_SCORE].toInt());
+                }
+
+                item.setDynamicPriority(p);
+            }
             item.setStatus(static_cast<nextapp::pb::ActionStatusGadget::ActionStatus>(row[STATUS].toInt()));
             item.setFavorite(row[FAVORITE].toBool());
             item.setName(row[NAME].toString());

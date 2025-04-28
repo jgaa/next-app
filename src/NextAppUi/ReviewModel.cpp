@@ -173,8 +173,35 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
         return action.name();
     case UuidRole:
         return action.id_proto();
+    case PriorityKindRole:
+        if (action.dynamicPriority().hasPriority()) {
+            return PriorityKind::PkPriority;
+        }
+        if (action.dynamicPriority().hasUrgencyImportance()) {
+            return PriorityKind::PkDynamic;
+        }
+        assert(false);
+        return {};
     case PriorityRole:
-        return static_cast<int>(action.priority());
+        if (action.dynamicPriority().hasPriority()) {
+            return static_cast<int>(action.dynamicPriority().priority());
+        }
+        return {};
+    case ImportanceRole:
+        if (action.dynamicPriority().hasUrgencyImportance()) {
+            return static_cast<int>(action.dynamicPriority().urgencyImportance().importance());
+        }
+        return {};
+    case UrgencyRole:
+        if (action.dynamicPriority().hasUrgencyImportance()) {
+            return static_cast<int>(action.dynamicPriority().urgencyImportance().urgency());
+        }
+        return {};
+    case ScoreRole:
+        if (action.dynamicPriority().hasScore()) {
+            return static_cast<int>(action.dynamicPriority().score());
+        }
+        return {};
     case StatusRole:
         if (item.deleted()) {
             return static_cast<uint>(nextapp::pb::ActionStatusGadget::ActionStatus::DELETED);

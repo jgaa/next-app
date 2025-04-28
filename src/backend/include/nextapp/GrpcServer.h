@@ -424,6 +424,7 @@ done:
     boost::asio::awaitable<std::optional<pb::WorkSession> > fetchActiveWorkSession(RequestCtx& rctx);
     boost::asio::awaitable<void> endWorkSessionForAction(const std::string_view& actionId, RequestCtx& rctx);
     boost::asio::awaitable<std::optional<pb::CompleteDay>> fetchDay(const nextapp::pb::Date& date, RequestCtx& rctx);
+    boost::asio::awaitable<void> updateTimeSpentInAction(const std::string& uuid, RequestCtx& rctx);
 
     // Fetch actions that start and are due on given day, and is of due_kind 'datetime'.
     // The matching actions are inserted in events.

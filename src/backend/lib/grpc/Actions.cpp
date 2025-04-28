@@ -31,8 +31,8 @@ struct ToActionCategory {
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, UPDATED, CREATED_DATE, ORIGIN, PRIORITY, STATUS, FAVORITE, NAME, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
-        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER// remaining
+        ID, NODE, USER, VERSION, UPDATED, CREATED_DATE, ORIGIN, PRIORITY, URGENCY, IMPORTANCE, STATUS, FAVORITE, NAME, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
+        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER, TIME_SPENT // remaining
     };
 
     enum class ColType {
@@ -85,9 +85,22 @@ struct ToAction {
 
     template <bool argsFirst = true, typename ...Args>
     static auto prepareBindingArgs(const pb::Action& action, const UserContext& uctx, Args... args) {
+        optional<string> priority;
+        optional<int32_t> urgency, importance;
+
+        if (action.dynamicpriority().has_urgencyimportance()) {
+            urgency = action.dynamicpriority().urgencyimportance().urgency();
+            importance = action.dynamicpriority().urgencyimportance().importance();
+        }
+        if (action.dynamicpriority().has_priority()) {
+            priority = pb::ActionPriority_Name(action.dynamicpriority().priority());
+        }
+
         auto bargs = make_tuple(
             toStringOrNull(action.origin()),
-            pb::ActionPriority_Name(action.priority()),
+            priority,
+            urgency,
+            importance,
             pb::ActionStatus_Name(action.status()),
             action.favorite(),
             action.name(),
@@ -104,9 +117,10 @@ struct ToAction {
             action.timeestimate(),
             pb::ActionDifficulty_Name(action.difficulty()),
             pb::Action::RepeatKind_Name(action.repeatkind()),
-            pb::Action::RepeatUnit_Name(action.repeatunits()),
-            pb::Action::RepeatWhen_Name(action.repeatwhen()),
-            action.repeatafter()
+            toStringOrNull(pb::Action::RepeatUnit_Name(action.repeatunits())),
+            toStringOrNull(pb::Action::RepeatWhen_Name(action.repeatwhen())),
+            action.repeatafter(),
+            action.time_spent()
             );
 
         if constexpr (sizeof...(Args) > 0) {
@@ -148,12 +162,25 @@ struct ToAction {
         }
 
         {
-            pb::ActionPriority pri;
-            const auto name = toUpper(row.at(PRIORITY).as_string());
-            if (pb::ActionPriority_Parse(name, &pri)) {
-                obj.set_priority(pri);
-            } else {
-                LOG_WARN_N << "Invalid ActionPriority: " << name;
+            if (row.at(URGENCY).is_int64() && row.at(IMPORTANCE).is_int64()) {
+                auto *ui = obj.mutable_dynamicpriority()->mutable_urgencyimportance();
+                assert(ui);
+                if (ui) {
+                    ui->set_urgency(row.at(URGENCY).as_int64());
+                    ui->set_importance(row.at(IMPORTANCE).as_int64());
+                }
+            } else if (row.at(PRIORITY).is_string()) {
+                auto *d = obj.mutable_dynamicpriority();
+                assert(d);
+                if (d) {
+                    pb::ActionPriority pri;
+                    const auto name = toUpper(row.at(PRIORITY).as_string());
+                    if (pb::ActionPriority_Parse(name, &pri)) {
+                        d->set_priority(pri);
+                    } else {
+                        LOG_WARN_N << "Invalid ActionPriority: " << name;
+                    }
+                }
             }
         }
 
@@ -233,7 +260,7 @@ struct ToAction {
                     LOG_WARN_N << "Invalid RepeatKind: " << name;
                 }
             }
-            {
+            if (row.at(REPEAT_UNIT).is_string()) {
                 pb::Action::RepeatUnit ru;
                 const auto name = toUpper(row.at(REPEAT_UNIT).as_string());
                 if (pb::Action::RepeatUnit_Parse(name, &ru)) {
@@ -242,7 +269,7 @@ struct ToAction {
                     LOG_WARN_N << "Invalid RepeatUnit: " << name;
                 }
             }
-            {
+            if (row.at(REPEAT_WHEN).is_string()) {
                 pb::Action::RepeatWhen rw;
                 const auto name = toUpper(row.at(REPEAT_WHEN).as_string());
                 if (pb::Action::RepeatWhen_Parse(name, &rw)) {
@@ -251,13 +278,19 @@ struct ToAction {
                     LOG_WARN_N << "Invalid RepeatWhen: " << name;
                 }
             }
-            obj.set_repeatafter(row.at(REPEAT_AFTER).as_int64());
+            if (row.at(REPEAT_AFTER).is_int64()) {
+                obj.set_repeatafter(row.at(REPEAT_AFTER).as_int64());
+            }
             obj.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
+
+            if (row.at(TIME_SPENT).is_int64()) {
+                obj.set_time_spent(row.at(TIME_SPENT).as_int64());
+            }
         }
     }
 
 private:
-    static constexpr array<pair<string_view, ColType>, 26> cols_ = {{
+    static constexpr array<pair<string_view, ColType>, 27> cols_ = {{
         make_pair("id", ColType::IDS),
         make_pair("node", ColType::IDS),
         make_pair("user", ColType::IDS),
@@ -266,6 +299,8 @@ private:
         make_pair("created_date", ColType::READ_ONLY),
         make_pair("origin", ColType::CORE),
         make_pair("priority", ColType::CORE),
+        make_pair("dyn_urgency", ColType::CORE),
+        make_pair("dyn_importance", ColType::CORE),
         make_pair("status", ColType::CORE),
         make_pair("favorite", ColType::CORE),
         make_pair("name", ColType::CORE),
@@ -281,7 +316,8 @@ private:
         make_pair("repeat_kind", ColType::REMAINING),
         make_pair("repeat_unit", ColType::REMAINING),
         make_pair("repeat_when", ColType::REMAINING),
-        make_pair("repeat_after", ColType::REMAINING)
+        make_pair("repeat_after", ColType::REMAINING),
+        make_pair("time_spent", ColType::REMAINING)
     }};
 
     static std::string filteredCols(std::initializer_list<ColType> ct, bool update = false) {

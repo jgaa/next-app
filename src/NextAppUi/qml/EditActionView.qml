@@ -47,7 +47,17 @@ ColumnLayout {
         status.currentIndex = root.action.status
         name.text = root.action.name = action.name
         descr.text = root.action.descr
-        priority.currentIndex = root.action.priority
+        //priority.currentIndex = root.action.priority
+
+        if (root.action.dynamicPriority.hasPriority) {
+            priority.mode = 0
+            priority.priority = root.action.dynamicPriority.priority
+        } else if (root.action.dynamicPriority.hasUrgencyImportance) {
+            priority.mode = 1
+            priority.urgency = root.action.dynamicPriority.urgency
+            priority.importance = root.action.dynamicPriority.importance
+        }
+
         createdDateCtl.text = Common.formatPbDate(root.action.createdDate)
         timeEstimateCtl.text = Common.minutesToText(root.action.timeEstimate)
         difficultyCtl.currentIndex = root.action.difficulty
@@ -92,7 +102,15 @@ ColumnLayout {
         root.action.status = status.currentIndex
         root.action.name = name.text;
         root.action.descr = descr.text
-        root.action.priority = priority.currentIndex
+        //root.action.priority = priority.currentIndex
+
+        if (priority.mode === 0) {
+            root.action.dynamicPriority.priority = priority.priority
+        } else if (priority.mode === 1) {
+            root.action.dynamicPriority.urgency = priority.urgency
+            root.action.dynamicPriority.importance = priority.importance
+        }
+
         root.action.due = whenCtl.due
         root.action.timeEstimate = Common.textToMinutes(timeEstimateCtl.text)
         root.action.difficulty = difficultyCtl.currentIndex
@@ -376,7 +394,7 @@ ColumnLayout {
                 }
 
                 Label {
-                    Layout.alignment: Qt.AlignLeft
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     color: Colors.disabledText
                     text: qsTr("Priority")
                 }

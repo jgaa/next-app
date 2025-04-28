@@ -316,7 +316,9 @@ void ActionsModel::deleteAction(const QString &uuid)
 nextapp::pb::Action ActionsModel::newAction()
 {
     nextapp::pb::Action action;
-    action.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
+    nextapp::pb::Priority p;
+    p.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
+    action.setDynamicPriority(p);
     return action;
 }
 
@@ -1101,8 +1103,35 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return action.name();
     case UuidRole:
         return action.id_proto();
+    case PriorityKindRole:
+        if (action.dynamicPriority().hasPriority()) {
+            return PriorityKind::PkPriority;
+        }
+        if (action.dynamicPriority().hasUrgencyImportance()) {
+            return PriorityKind::PkDynamic;
+        }
+        assert(false);
+        return {};
     case PriorityRole:
-        return static_cast<int>(action.priority());
+        if (action.dynamicPriority().hasPriority()) {
+            return static_cast<int>(action.dynamicPriority().priority());
+        }
+        return {};
+    case ImportanceRole:
+        if (action.dynamicPriority().hasUrgencyImportance()) {
+            return static_cast<int>(action.dynamicPriority().urgencyImportance().importance());
+        }
+        return {};
+    case UrgencyRole:
+        if (action.dynamicPriority().hasUrgencyImportance()) {
+            return static_cast<int>(action.dynamicPriority().urgencyImportance().urgency());
+        }
+        return {};
+    case ScoreRole:
+        if (action.dynamicPriority().hasScore()) {
+            return static_cast<int>(action.dynamicPriority().score());
+        }
+        return {};
     case StatusRole:
         return static_cast<uint>(action.status());
     case NodeRole:
@@ -1806,7 +1835,9 @@ ActionPrx::ActionPrx(QString actionUuid)
 ActionPrx::ActionPrx()
     : state_{State::VALID}
 {
-    action_.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
+    nextapp::pb::Priority p;
+    p.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
+    action_.setDynamicPriority(p);
     action_.setDifficulty(nextapp::pb::ActionDifficultyGadget::ActionDifficulty::NORMAL);
 }
 

@@ -135,7 +135,11 @@ class ActionsModel : public QAbstractListModel
     enum Roles {
         NameRole = Qt::UserRole + 1,
         UuidRole,
+        PriorityKindRole,
         PriorityRole,
+        ImportanceRole,
+        UrgencyRole,
+        ScoreRole,
         StatusRole,
         NodeRole,
         CreatedDateRole,
@@ -172,6 +176,11 @@ class ActionsModel : public QAbstractListModel
     };
 
 public:
+    enum PriorityKind {
+        PkPriority, // Traditinal priority
+        PkDynamic, // Urhency and importance
+    };
+
     enum FetchWhat {
         FW_ACTIVE,
         FW_TODAY,
@@ -206,6 +215,7 @@ public:
 
     Q_ENUM(FetchWhat)
     Q_ENUM(Sorting)
+    Q_ENUM(PriorityKind)
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
     Q_PROPERTY(FetchWhat mode READ mode WRITE setMode NOTIFY modeChanged)
