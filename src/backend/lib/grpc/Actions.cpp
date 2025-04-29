@@ -120,7 +120,7 @@ struct ToAction {
             toStringOrNull(pb::Action::RepeatUnit_Name(action.repeatunits())),
             toStringOrNull(pb::Action::RepeatWhen_Name(action.repeatwhen())),
             action.repeatafter(),
-            action.time_spent()
+            action.timespent()
             );
 
         if constexpr (sizeof...(Args) > 0) {
@@ -284,7 +284,7 @@ struct ToAction {
             obj.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
 
             if (row.at(TIME_SPENT).is_int64()) {
-                obj.set_time_spent(row.at(TIME_SPENT).as_int64());
+                obj.set_timespent(row.at(TIME_SPENT).as_int64());
             }
         }
     }

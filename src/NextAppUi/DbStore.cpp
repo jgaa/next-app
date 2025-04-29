@@ -407,6 +407,7 @@ bool DbStore::updateSchema(uint version)
             "version" INTEGER NOT NULL,
             "updated" INTEGER NOT NULL,
             "time_spent" INT NULL,
+            "score" FLOAT NULL,
             PRIMARY KEY("id")
         ))",
 

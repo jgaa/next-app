@@ -305,6 +305,15 @@ void ActionsModel::addAction(const nextapp::pb::Action &action)
 
 void ActionsModel::updateAction(const nextapp::pb::Action &action)
 {
+    const auto& p = action.dynamicPriority();
+    if (p.hasPriority()) {
+        auto pri = p.priority();
+    }
+    if (p.hasUrgencyImportance()) {
+        auto& ui = p.urgencyImportance();
+        auto urgency = ui.urgency();
+        auto importance = ui.importance();
+    }
     ServerComm::instance().updateAction(action);
 }
 
@@ -1073,6 +1082,14 @@ void ActionsModel::batchDelete(const QStringList &actions)
     }
 }
 
+pb::UrgencyImportance ActionsModel::setUrgencyImportance(double urgency, double importance)
+{
+    pb::UrgencyImportance ui;
+    ui.setUrgency(urgency);
+    ui.setImportance(importance);
+    return ui;
+}
+
 int ActionsModel::rowCount(const QModelIndex &parent) const
 {
     return valid_ ? actions_.size() : 0;
@@ -1172,7 +1189,12 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return ActionsOnCurrentCalendar::instance()->contains(data.uuid);
     case WorkedOnTodayRole:
         return ActionsWorkedOnTodayCache::instance()->contains(data.uuid);
+    case ScoreColorRole: {
+        const QColor c = ActionInfoCache::getScoreColor(action.score());
+        return c.name();
+        }
     }
+
     return {};
 }
 
@@ -1237,6 +1259,11 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[ReviewedRole] = "reviewed";
     roles[OnCalendarRole] = "onCalendar";
     roles[WorkedOnTodayRole] = "workedOnToday";
+    roles[ImportanceRole] = "importance";
+    roles[UrgencyRole] = "urgency";
+    roles[ScoreRole] = "score";
+    roles[PriorityKindRole] = "priorityKind";
+    roles[ScoreColorRole] = "scoreColor";
     return roles;
 }
 
@@ -1260,9 +1287,9 @@ bool ActionsModel::canFetchMore(const QModelIndex &parent) const
 QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 {
     static constexpr auto sorting = to_array<string_view>({
-        "a.due_by_time, a.priority, a.name",
-        "a.priority, a.start_time, a.name",
-        "a.priority, a.due_by_time, a.name",
+        "a.due_by_time, a.score DESC, a.name",
+        "a.score DESC, a.start_time, a.name",
+        "a.score DESC, a.due_by_time, a.name",
         "a.start_time, a.name",
         "a.due_by_time, a.name",
         "acat.name, a.name",
@@ -1582,6 +1609,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
         break;
     }
 
+    co_await ActionInfoCache::instance()->updateAllScores();
     auto& db = NextAppCore::instance()->db();
     auto result = co_await db.legacyQuery(QString::fromLatin1(sql), &params);
     if (result) {
@@ -1845,6 +1873,22 @@ QCoro::Task<void> ActionPrx::fetch()
 {
     if (auto a = co_await ActionInfoCache::instance()->getAction(uuid_)) {
         action_ = *a;
+
+        const auto& pri = action_.dynamicPriority();
+        if (pri.hasPriority()) {
+            const auto& p = pri.priority();
+            LOG_TRACE_N << "Action " << uuid_.toString() << " has priority " << static_cast<int>(p);
+        }
+        if (pri.hasUrgencyImportance()) {
+            const auto& ui = pri.urgencyImportance();
+            LOG_TRACE_N << "Action " << uuid_.toString() << " has urgency " << static_cast<int>(ui.urgency())
+                        << " and importance " << static_cast<int>(ui.importance());
+        }
+        if (pri.hasScore()) {
+            const auto score = pri.score();
+            LOG_TRACE_N << "Action " << uuid_.toString() << " has score " << static_cast<int>(score);
+        }
+
         emit actionChanged();
         setState(State::VALID);
     } else {

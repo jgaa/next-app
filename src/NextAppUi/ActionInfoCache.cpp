@@ -1,3 +1,9 @@
+#include <array>
+#include <optional>
+#include <ctime>
+#include <chrono>
+#include <algorithm>
+
 #include "ActionInfoCache.h"
 #include "MainTreeModel.h"
 #include "ServerComm.h"
@@ -16,8 +22,8 @@ static const QString insert_query = R"(INSERT INTO action
         (id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date,
         due_kind, start_time, due_by_time, due_timezone, completed_time,
         time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after,
-        kind, category, time_spent, version, updated) VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        kind, category, time_spent, version, updated, score) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
         node = EXCLUDED.node,
         origin = EXCLUDED.origin,
@@ -45,7 +51,8 @@ static const QString insert_query = R"(INSERT INTO action
         category = EXCLUDED.category,
         time_spent = EXCLUDED.time_spent,
         version = EXCLUDED.version,
-        updated = EXCLUDED.updated)";
+        updated = EXCLUDED.updated,
+        score = EXCLUDED.score)";
 
 QList<QVariant> getParams(const pb::Action& action) {
     QList<QVariant> params;
@@ -127,6 +134,7 @@ QList<QVariant> getParams(const pb::Action& action) {
     params << static_cast<quint32>(action.timeSpent());
     params.append(static_cast<quint32>(action.version()));
     params.append(static_cast<qlonglong>(action.updated()));
+    params << ActionInfoCache::getScore(action);
 
     return params;
 }
@@ -156,6 +164,8 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     ai.setCompletedTime(ai.completedTime());
     ai.setKind(action.kind());
     ai.setCategory(action.category());
+    ai.setTimeEstimate(action.timeEstimate());
+    ai.setTimeSpent(action.timeSpent());
     return ai;
 }
 
@@ -169,6 +179,7 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
     if (it == container.end()) {
         it = container.emplace(uuid, std::make_shared<nextapp::pb::ActionInfo>()).first;
         *it->second = toActionInfo(action);
+        it->second->setScore(ActionInfoCache::getScore(action));
         added = true;
     }
 
@@ -228,6 +239,14 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
         changed = true;
     }
 
+    {
+        const auto new_score = ActionInfoCache::getScore(action);
+        if (existing.score() != new_score) {
+            existing.setScore(new_score);
+            changed = true;
+        }
+    }
+
     return changed;
 }
 
@@ -255,6 +274,184 @@ ActionInfoCache::ActionInfoCache(QObject *parent)
     });
 }
 
+
+namespace  {
+
+constexpr double normalize(double x, double min, double max) noexcept {
+    if (x <= min) return 0.0;
+    if (x >= max) return 1.0;
+    return (x - min) / (max - min);
+}
+
+inline double due_urgency(const std::optional<std::time_t>& due,
+                          double horizon_hours = 72.0) noexcept
+{
+    if (!due) return 0.0;
+    using namespace std::chrono;
+    auto now_t = system_clock::to_time_t(system_clock::now());
+    double hours_left = double(std::difftime(*due, now_t)) / 3600.0;
+    if (hours_left <= 0.0) return 1.0;
+    return std::min(1.0, horizon_hours / hours_left);
+}
+
+// Threshold for penalizing long tasks (in hours)
+constexpr double kEstimateThreshold = 8.0;
+
+// Weights for: {priority, due, estimate, spent}
+constexpr std::array<double, 4> priority_weights    = { 0.5, 0.3, 0.1, 0.1 };
+// Weights for: {importance, urgency, due, estimate, spent}
+constexpr std::array<double, 5> eisenhower_weights  = { 0.35, 0.25, 0.3, 0.05, 0.05 };
+
+/// Compute score from a 0–7 integer priority + optional due date,
+/// optional time estimate, and optional time spent:
+/// S = w_p·p_norm + w_d·due_urgency + w_e·(1 - estimate_norm) + w_s·spent_norm
+inline double computeScore(int priority,
+                           const std::optional<std::time_t>& due = std::nullopt,
+                           const std::optional<double>& time_estimate = std::nullopt,
+                           const std::optional<double>& time_spent   = std::nullopt) noexcept
+{
+    double p = normalize(static_cast<double>(priority), 0.0, 7.0);
+    double d = due_urgency(due);
+    double est_norm = time_estimate ? normalize(*time_estimate, 0.0, kEstimateThreshold) : 0.0;
+    double e = 1.0 - est_norm; // penalize longer tasks
+    double s = 0.0;
+    if (time_estimate && time_spent) {
+        double comp = *time_spent / *time_estimate;
+        s = std::clamp(comp, 0.0, 1.0);
+    }
+    return priority_weights[0]*p
+           + priority_weights[1]*d
+           + priority_weights[2]*e
+           + priority_weights[3]*s;
+}
+
+/// Compute score from 0.0–10.0 importance & urgency + optional due date,
+/// optional time estimate, and optional time spent:
+/// S = w_i·i_norm + w_u·u_norm + w_d·due_urgency
+///   + w_e·(1 - estimate_norm) + w_s·spent_norm
+inline double computeScore(double importance,
+                           double urgency,
+                           const std::optional<std::time_t>& due = std::nullopt,
+                           const std::optional<double>& time_estimate = std::nullopt,
+                           const std::optional<double>& time_spent   = std::nullopt) noexcept
+{
+    double i = normalize(importance, 0.0, 10.0);
+    double u = normalize(urgency,    0.0, 10.0);
+    double d = due_urgency(due);
+    double est_norm = time_estimate ? normalize(*time_estimate, 0.0, kEstimateThreshold) : 0.0;
+    double e = 1.0 - est_norm;
+    double s = 0.0;
+    if (time_estimate && time_spent) {
+        double comp = *time_spent / *time_estimate;
+        s = std::clamp(comp, 0.0, 1.0);
+    }
+    return eisenhower_weights[0]*i
+           + eisenhower_weights[1]*u
+           + eisenhower_weights[2]*d
+           + eisenhower_weights[3]*e
+           + eisenhower_weights[4]*s;
+}
+
+template <typename T>
+double calculateScore(const T& action) {
+    optional<time_t> due_by;
+    optional<double> time_estimate;
+    optional<double> time_spent;
+
+    if (action.hasDue() && action.due().hasDue()) {
+        due_by = action.due().due();
+    }
+    if (action.timeEstimate() > 0) {
+        time_estimate = action.timeEstimate() * 60.0;
+    }
+    if (action.timeSpent() > 0) {
+        time_spent = action.timeSpent() * 60.0;
+    }
+
+
+    if (action.dynamicPriority().hasPriority()) {
+        const auto pri = 7 - static_cast<int>(action.dynamicPriority().priority());
+        return computeScore(pri, due_by, time_estimate, time_spent);
+    } else if (action.dynamicPriority().hasUrgencyImportance()) {
+        const auto ui = action.dynamicPriority().urgencyImportance();
+        return computeScore(ui.importance(), ui.urgency(), due_by, time_estimate, time_spent);
+    }
+
+    LOG_DEBUG <<  "Action " << action.id_proto() << ' ' << action.name()  << " has no priority or urgency.";
+    return 0;
+}
+
+} // ns
+
+
+float ActionInfoCache::getScore(const nextapp::pb::ActionInfo &action)
+{
+    return static_cast<float>(calculateScore(action));
+}
+
+float ActionInfoCache::getScore(const nextapp::pb::Action &action)
+{
+    return static_cast<float>(calculateScore(action));
+}
+
+QColor ActionInfoCache::getScoreColor(double score)
+{
+    using Stop = std::pair<double, std::array<int,3>>;
+    static constexpr std::array<Stop,5> stops = {{
+        { 0.0,  {173,216,230} }, // light blue
+        { 0.25, {  0,128,  0} }, // green
+        { 0.5,  {255,165,  0} }, // orange
+        { 0.75, {255,  0,  0} }, // red
+        { 1.0,  {128,  0,128} }  // purple
+    }};
+
+    double s = std::clamp(score, 0.0, 1.0);
+    // find first stop with position >= s
+    auto it = std::upper_bound(stops.begin(), stops.end(), s,
+                               [](double value, const Stop &stop){ return value < stop.first; });
+    if (it == stops.begin()) {
+        auto& rgb = stops.front().second;
+        return QColor(rgb[0], rgb[1], rgb[2]);
+    }
+    if (it == stops.end()) {
+        auto& rgb = stops.back().second;
+        return QColor(rgb[0], rgb[1], rgb[2]);
+    }
+    const auto& upper = *it;
+    const auto& lower = *(it - 1);
+    double range = upper.first - lower.first;
+    double t = (s - lower.first) / range;
+    int r = static_cast<int>(lower.second[0] + t * (upper.second[0] - lower.second[0]));
+    int g = static_cast<int>(lower.second[1] + t * (upper.second[1] - lower.second[1]));
+    int b = static_cast<int>(lower.second[2] + t * (upper.second[2] - lower.second[2]));
+    return QColor(r, g, b);
+}
+
+QCoro::Task<void> ActionInfoCache::updateAllScores()
+{
+    auto cache_copy = hot_cache_;
+
+    if (updating_scores_.exchange(true)) {
+        for (auto& [uuid, action] : cache_copy) {
+            if (action->status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
+                continue;
+            }
+            const auto new_score = getScore(*action);
+            constexpr float epsilon = 1e-6;
+            if (std::fabs(action->score() - new_score) < epsilon) {
+                continue;
+            }
+            action->setScore(getScore(*action));
+
+            // save to db
+            auto& db = NextAppCore::instance()->db();
+            co_await db.query("UPDATE action SET score=? WHERE id=?", new_score, action->id_proto());
+            //emit actionChanged(uuid);
+        }
+        //emit cacheReloaded();
+        updating_scores_.store(false);
+    }
+}
 
 QCoro::Task<std::shared_ptr<pb::ActionInfo> > ActionInfoCache::get(const QString &action_uuid, bool fetch)
 {
@@ -286,7 +483,7 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
                     " due_kind, start_time, due_by_time, due_timezone, completed_time, "
                     " time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, "
                     " descr,"
-                    " kind, version, category, time_spent FROM action where id=?";
+                    " kind, version, category, time_spent, score FROM action where id=?";
 
     enum Cols {
         ID,
@@ -315,7 +512,8 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         KIND,
         VERSION,
         CATEGORY,
-        TIME_SPENT
+        TIME_SPENT,
+        SCORE,
     };
 
     auto rval = co_await db.legacyQuery(query, &params);
@@ -334,16 +532,16 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
 
         {
             nextapp::pb::Priority p;
-            if (row[PRIORITY].isValid()) {
+            if (!row[PRIORITY].isNull()) {
                 p.setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
             }
-            if (row[DYN_IMPORTANCE].isValid() && row[DYN_URGENCY].isValid()) {
+            if (!row[DYN_IMPORTANCE].isNull() && !row[DYN_URGENCY].isNull()) {
                 nextapp::pb::UrgencyImportance ui;
                 ui.setImportance(row[DYN_IMPORTANCE].toInt());
                 ui.setUrgency(row[DYN_URGENCY].toInt());
                 p.setUrgencyImportance(ui);
             }
-            if (row[DYN_SCORE].isValid()) {
+            if (row[DYN_SCORE].isNull()) {
                 p.setScore(row[DYN_SCORE].toInt());
             }
 
@@ -355,25 +553,25 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         item->setName(row[NAME].toString());
         item->setCreatedDate(toDate(row[CREATED_DATE].toDate()));
         item->setCompletedTime(row[COMPLETED_TIME].toDateTime().toSecsSinceEpoch());
-        if (row[TIME_ESTIMATE].isValid()) {
-            item->setTimeEstimate(row[TIME_ESTIMATE].toLongLong());
+        if (!row[TIME_ESTIMATE].isNull()) {
+            item->setTimeEstimate(row[TIME_ESTIMATE].toUInt());
         }
-        if (row[DIFFICULTY].isValid()) {
+        if (!row[DIFFICULTY].isNull()) {
             item->setDifficulty(static_cast<nextapp::pb::ActionDifficultyGadget::ActionDifficulty>(row[DIFFICULTY].toInt()));
         }
-        if (row[REPEAT_KIND].isValid()) {
+        if (!row[REPEAT_KIND].isNull()) {
             item->setRepeatKind(static_cast<nextapp::pb::Action::RepeatKind>(row[REPEAT_KIND].toInt()));
         }
-        if (row[REPEAT_UNIT].isValid()) {
+        if (!row[REPEAT_UNIT].isNull()) {
             item->setRepeatUnits(static_cast<nextapp::pb::Action::RepeatUnit>(row[REPEAT_UNIT].toInt()));
         }
-        if (row[REPEAT_WHEN].isValid()) {
+        if (!row[REPEAT_WHEN].isNull()) {
             item->setRepeatWhen(static_cast<nextapp::pb::Action::RepeatWhen>(row[REPEAT_WHEN].toInt()));
         }
-        if (row[REPEAT_AFTER].isValid()) {
+        if (!row[REPEAT_AFTER].isNull()) {
             item->setRepeatAfter(row[REPEAT_AFTER].toInt());
         }
-        if (row[DESCR].isValid()) {
+        if (!row[DESCR].isNull()) {
             item->setDescr(row[DESCR].toString());
         }
 
@@ -381,7 +579,7 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         item->setVersion(row[VERSION].toUInt());
         item->setCategory(row[CATEGORY].toString());
 
-        if (row[TIME_SPENT].isValid()) {
+        if (!row[TIME_SPENT].isNull()) {
             item->setTimeSpent(row[TIME_SPENT].toInt());
         }
 
@@ -391,6 +589,10 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         due.setDue(row[DUE_BY_TIME].toDateTime().toSecsSinceEpoch());
         due.setTimezone(row[DUE_TIMEZONE].toString());
         item->setDue(due);
+
+        if (!row[SCORE].isNull()) {
+            item->setScore(row[SCORE].toDouble());
+        }
 
         co_return item;
     }
@@ -484,7 +686,7 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
     auto& db = NextAppCore::instance()->db();
     QString query = "SELECT id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, created_date, "
                           " due_kind, start_time, due_by_time, due_timezone, completed_time, "
-                          " kind, version, category FROM action";
+                          " kind, version, category, time_estimate, time_spent, score FROM action";
 
     if (id && !QUuid{*id}.isNull()) {
         query += " WHERE id = '" + *id + "'";
@@ -509,7 +711,10 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
         COMPLETED_TIME,
         KIND,
         VERSION,
-        CATEGORY
+        CATEGORY,
+        TIME_ESTIMATE,
+        TIME_SPENT,
+        SCORE
     };
 
     uint count = 0;
@@ -529,16 +734,21 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
             item.setOrigin(row[ORIGIN].toString());
             {
                 nextapp::pb::Priority p;
-                if (row[PRIORITY].isValid()) {
+                if (!row[PRIORITY].isNull()) {
                     p.setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
+                    assert(p.hasPriority());
+                    assert(!p.hasUrgencyImportance());
                 }
-                if (row[DYN_IMPORTANCE].isValid() && row[DYN_URGENCY].isValid()) {
+                if (!row[DYN_IMPORTANCE].isNull()
+                    && !row[DYN_URGENCY].isNull()) {
                     nextapp::pb::UrgencyImportance ui;
                     ui.setImportance(row[DYN_IMPORTANCE].toInt());
                     ui.setUrgency(row[DYN_URGENCY].toInt());
                     p.setUrgencyImportance(ui);
+                    assert(p.hasUrgencyImportance());
+                    assert(!p.hasPriority());
                 }
-                if (row[DYN_SCORE].isValid()) {
+                if (!row[DYN_SCORE].isNull()) {
                     p.setScore(row[DYN_SCORE].toInt());
                 }
 
@@ -561,6 +771,16 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
             due.setDue(row[DUE_BY_TIME].toDateTime().toSecsSinceEpoch());
             due.setTimezone(row[DUE_TIMEZONE].toString());
             item.setDue(due);
+
+            if (!row[TIME_ESTIMATE].isNull()) {
+                item.setTimeEstimate(row[TIME_ESTIMATE].toUInt());
+            }
+            if (!row[TIME_SPENT].isNull()) {
+                item.setTimeSpent(row[TIME_SPENT].toInt());
+            }
+            if (!row[SCORE].isNull()) {
+                item.setScore(row[SCORE].toDouble());
+            }
 
             hot_cache_[uuid] = std::make_shared<nextapp::pb::ActionInfo>(std::move(item));
             ++count;

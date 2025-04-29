@@ -370,6 +370,9 @@ message ActionInfo {
     ActionKind kind     = 12;
     int32 version       = 13;
     string category     = 14;
+    uint32 timeEstimate = 15; // minutes
+    int32 timeSpent = 16; // minutes
+    float score = 17; // Used to sort the actions
 }
 
 message Actions {
@@ -433,7 +436,7 @@ message Action {
     Due due = 9;
     uint64 completedTime = 11; // time_t
     string descr = 6;
-    uint64 timeEstimate = 12; // minutes
+    uint32 timeEstimate = 12; // minutes
     ActionDifficulty difficulty = 13;
     RepeatKind repeatKind = 14;
     RepeatUnit repeatUnits = 15;
@@ -443,8 +446,9 @@ message Action {
     ActionKind kind = 19;
     int32 version   = 20;
     string category = 21;
+    int32 timeSpent = 22; // minutes
     int64 updated = 23; // time_t as ms
-    int32 time_spent = 24; // minutes
+    float score = 24; // Used to sort the actions. Used locally in the client
 }
 
 // Allow updating multiple actions at once, without altering the other fields.

@@ -4,6 +4,7 @@
 #include <map>
 #include <set>
 
+#include <QColor>
 #include <QObject>
 #include <QQmlEngine>
 #include <QUuid>
@@ -55,6 +56,11 @@ public:
     bool online() const noexcept {
         return state() == State::VALID;
     }
+
+    static float getScore(const nextapp::pb::ActionInfo& action);
+    static float getScore(const nextapp::pb::Action& action);
+    static QColor getScoreColor(double score);
+    QCoro::Task<void> updateAllScores();
 
 signals:
     void actionDeleted(const QUuid &uuid);
@@ -123,4 +129,5 @@ private:
      * and one cold with the most recent items organized as a LRU cache.
      */
     std::map<QUuid, std::shared_ptr<nextapp::pb::ActionInfo>> hot_cache_;
+    std::atomic_bool updating_scores_{false};
 };
