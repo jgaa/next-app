@@ -1594,9 +1594,6 @@ failed:
                 goto failed;
 
                 co_await updateLastReadNotification();
-            } else {
-                LOG_WARN_N << "Failed to get last-read notification id.";
-                goto failed;
             }
         } else {
             if (!co_await NotificationsModel::instance()->loadLocally()) {

@@ -148,6 +148,7 @@ Rectangle {
                 required property bool reviewed
                 required property bool onCalendar
                 required property bool workedOnToday
+                required property string scoreColor
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -288,7 +289,7 @@ Rectangle {
                                 font.family: ce.faSolidName
                                 font.styleName: ce.faSolidStyle
                                 text: "\uf06d"
-                                color: root.priorityColors[priority]
+                                color: scoreColor //root.priorityColors[priority]
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }

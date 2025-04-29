@@ -342,12 +342,25 @@ message Due {
     string timezone          = 3; // Time zone for the user when Due was set
 }
 
+message UrgencyImportance {
+    float urgency = 1;
+    float importance = 2;
+}
+
+message Priority {
+    oneof what {
+        UrgencyImportance urgencyImportance = 1;
+        ActionPriority priority = 2;
+    }
+    optional int32 score = 3; // Used to sort the actions
+}
+
 // For communicating a list of actions
 message ActionInfo {
     string id           = 1;
     string node         = 2; // uuid
     optional string origin = 10; // uuid
-    ActionPriority priority = 3;
+    Priority dynamicPriority = 3;
     ActionStatus status = 4;
     bool favorite       = 8;
     string name         = 5;
@@ -357,6 +370,9 @@ message ActionInfo {
     ActionKind kind     = 12;
     int32 version       = 13;
     string category     = 14;
+    uint32 timeEstimate = 15; // minutes
+    int32 timeSpent = 16; // minutes
+    float score = 17; // Used to sort the actions
 }
 
 message Actions {
@@ -412,7 +428,7 @@ message Action {
     string id = 1;
     string node = 2; // uuid
     optional string origin = 10; // uuid
-    ActionPriority priority = 3;
+    Priority dynamicPriority  = 3;
     ActionStatus status = 4;
     bool favorite = 8;
     string name = 5;
@@ -420,7 +436,7 @@ message Action {
     Due due = 9;
     uint64 completedTime = 11; // time_t
     string descr = 6;
-    uint64 timeEstimate = 12; // minutes
+    uint32 timeEstimate = 12; // minutes
     ActionDifficulty difficulty = 13;
     RepeatKind repeatKind = 14;
     RepeatUnit repeatUnits = 15;
@@ -430,7 +446,9 @@ message Action {
     ActionKind kind = 19;
     int32 version   = 20;
     string category = 21;
+    int32 timeSpent = 22; // minutes
     int64 updated = 23; // time_t as ms
+    float score = 24; // Used to sort the actions. Used locally in the client
 }
 
 // Allow updating multiple actions at once, without altering the other fields.

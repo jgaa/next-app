@@ -24,6 +24,13 @@ class ReviewModel : public QAbstractListModel
     QML_ELEMENT
 
 public:
+    enum PriorityKind {
+        PkPriority, // Traditinal priority
+        PkDynamic, // Urhency and importance
+    };
+
+    Q_ENUM(PriorityKind)
+
     enum class State {
         PENDING,
         FETCHING,
@@ -37,7 +44,11 @@ public:
     enum Roles {
         NameRole = Qt::UserRole + 1,
         UuidRole,
+        PriorityKindRole,
         PriorityRole,
+        ImportanceRole,
+        UrgencyRole,
+        ScoreRole,
         StatusRole,
         NodeRole,
         CreatedDateRole,
@@ -52,7 +63,7 @@ public:
         HasWorkSessionRole,
         ListNameRole,
         CategoryRole,
-        ReviewedRole,
+        ReviewedRole, // dummy
         OnCalendarRole,
         WorkedOnTodayRole,
     };

@@ -35,6 +35,8 @@ ColumnLayout {
             favorite.isChecked = false
             category.uuid = ""
             repeatAfterCtl.value = 1
+            priority.mode = 0
+            priority.priority = 5
             completedTimeCtl.text = ""
             whenControl.due = NaActionsModel.createDue(0, 0)
             whenCtl.setWhenCurrentIndex(whenControl.due.kind)
@@ -44,10 +46,22 @@ ColumnLayout {
             })
             return
         }
+
+        console.log("EditActionDlg/assign action=", root.action)
+
         status.currentIndex = root.action.status
         name.text = root.action.name = action.name
         descr.text = root.action.descr
-        priority.currentIndex = root.action.priority
+
+        if (root.action.dynamicPriority.hasPriority) {
+            priority.mode = 0
+            priority.priority = root.action.dynamicPriority.priority
+        } else if (root.action.dynamicPriority.hasUrgencyImportance) {
+            priority.mode = 1
+            priority.urgency = root.action.dynamicPriority.urgencyImportance.urgency
+            priority.importance = root.action.dynamicPriority.urgencyImportance.importance
+        }
+
         createdDateCtl.text = Common.formatPbDate(root.action.createdDate)
         timeEstimateCtl.text = Common.minutesToText(root.action.timeEstimate)
         difficultyCtl.currentIndex = root.action.difficulty
@@ -92,7 +106,24 @@ ColumnLayout {
         root.action.status = status.currentIndex
         root.action.name = name.text;
         root.action.descr = descr.text
-        root.action.priority = priority.currentIndex
+        //root.action.priority = priority.currentIndex
+
+        if (priority.mode === 0) {
+            console.log("EditActionView: setting priority ", priority.priority)
+            root.action.dynamicPriority.priority = priority.priority
+        } else if (priority.mode === 1) {
+             console.log("EditActionView: setting urgency ", priority.urgency,
+                        " importance ", priority.importance)
+
+            root.action.dynamicPriority.urgencyImportance = NaActionsModel.setUrgencyImportance(
+                priority.urgency,
+                priority.importance)
+
+            // Don't work!
+            // root.action.dynamicPriority.urgencyImportance.urgency = priority.urgency
+            // root.action.dynamicPriority.urgencyImportance.importance = priority.importance
+        }
+
         root.action.due = whenCtl.due
         root.action.timeEstimate = Common.textToMinutes(timeEstimateCtl.text)
         root.action.difficulty = difficultyCtl.currentIndex
@@ -376,7 +407,7 @@ ColumnLayout {
                 }
 
                 Label {
-                    Layout.alignment: Qt.AlignLeft
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     color: Colors.disabledText
                     text: qsTr("Priority")
                 }

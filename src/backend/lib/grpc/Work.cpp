@@ -669,6 +669,7 @@ boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, 
     - It updates the work_session record with the end time.
     - It adds the events to the work_session `events column.
     - It sets the state to done
+    - It updates action.time_spent in action table
 */
 boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work,
                                                          RequestCtx& rctx,
@@ -691,6 +692,31 @@ boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work,
 
     auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
     *update.mutable_work() = work;
+
+    if (!work.action().empty()) {
+        co_await updateTimeSpentInAction(work.action(), rctx);
+    }
+}
+
+boost::asio::awaitable<void> GrpcServer::updateTimeSpentInAction(const std::string& uuid, RequestCtx &rctx)
+{
+    auto dbopts = rctx.uctx->dbOptions();
+    dbopts.reconnect_and_retry_query = false;
+
+    auto res = co_await rctx.dbh->exec(R"(UPDATE action AS a
+        SET a.time_spent = (
+            SELECT IFNULL(SUM(s.duration), 0)
+            FROM work_session AS s
+            WHERE s.action = a.action
+              AND s.state = 'done'
+        ))", dbopts, uuid);
+
+    if (res.affected_rows()) {
+        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+        co_await getAction(*update.mutable_action(), uuid, rctx);
+    }
+
+    co_return;
 }
 
 boost::asio::awaitable<void> GrpcServer::pauseWorkSession(pb::WorkSession &work, RequestCtx&  rctx)

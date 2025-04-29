@@ -480,6 +480,7 @@ qt_add_qml_module(${PROJECT_NAME}
         QML_FILES qml/NotificationsView.qml
         SOURCES ModelInstances.h ModelInstances.cpp
         SOURCES UseCaseTemplates.h UseCaseTemplates.cpp
+        QML_FILES qml/components/SliderTicks.qml
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)

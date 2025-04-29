@@ -135,7 +135,11 @@ class ActionsModel : public QAbstractListModel
     enum Roles {
         NameRole = Qt::UserRole + 1,
         UuidRole,
+        PriorityKindRole,
         PriorityRole,
+        ImportanceRole,
+        UrgencyRole,
+        ScoreRole,
         StatusRole,
         NodeRole,
         CreatedDateRole,
@@ -153,6 +157,7 @@ class ActionsModel : public QAbstractListModel
         ReviewedRole, // dummy
         OnCalendarRole,
         WorkedOnTodayRole,
+        ScoreColorRole
     };
 
     enum Shortcuts {
@@ -172,6 +177,11 @@ class ActionsModel : public QAbstractListModel
     };
 
 public:
+    enum PriorityKind {
+        PkPriority, // Traditinal priority
+        PkDynamic, // Urhency and importance
+    };
+
     enum FetchWhat {
         FW_ACTIVE,
         FW_TODAY,
@@ -206,6 +216,7 @@ public:
 
     Q_ENUM(FetchWhat)
     Q_ENUM(Sorting)
+    Q_ENUM(PriorityKind)
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
     Q_PROPERTY(FetchWhat mode READ mode WRITE setMode NOTIFY modeChanged)
@@ -241,6 +252,7 @@ public:
     Q_INVOKABLE void batchChangePriority(int priority, const QStringList& actions);
     Q_INVOKABLE void batchChangeDifficulty(int difficulty, const QStringList& actions);
     Q_INVOKABLE void batchDelete(const QStringList& actions);
+    static Q_INVOKABLE nextapp::pb::UrgencyImportance setUrgencyImportance(double urgency, double importance);
 
    //QCoro::Task<void> fetch(nextapp::pb::GetActionsReq& filter);
     //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);

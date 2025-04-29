@@ -1081,6 +1081,32 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     });
 
 
+    static constexpr auto v19_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(ALTER TABLE action
+            ADD COLUMN IF NOT EXISTS dyn_importance INT NULL,
+            ADD COLUMN IF NOT EXISTS dyn_urgency INT NULL,
+            ADD COLUMN IF NOT EXISTS time_spent INT NULL,
+            MODIFY COLUMN priority ENUM('pri_critical','pri_very_impornant','pri_higher','pri_high','pri_normal','pri_medium','pri_low','pri_insignificant') NULL
+        )",
+
+        "DELETE FROM work_session AS s WHERE s.action NOT IN (SELECT action FROM action)",
+
+        R"(UPDATE action AS a
+            LEFT JOIN (
+                SELECT s.action, SUM(s.duration) AS total_duration
+                FROM work_session AS s
+                WHERE s.state = 'done'
+                GROUP BY s.action
+            ) AS summary ON summary.action = a.id
+            SET a.time_spent = IFNULL(summary.total_duration, 0);
+            )",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -1099,7 +1125,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v15_upgrade,
         v16_upgrade,
         v17_upgrade,
-        v18_upgrade
+        v18_upgrade,
+        v19_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

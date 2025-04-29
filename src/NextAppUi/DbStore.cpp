@@ -383,7 +383,10 @@ bool DbStore::updateSchema(uint version)
             "node" VARCHAR(32) NOT NULL,
             "origin" VARCHAR(32),
             "category" VARCHAR(32),
-            "priority" INTEGER NOT NULL,
+            "priority" INTEGER NULL,
+            "dyn_importance" INT NULL,
+            "dyn_urgency" INT NULL,
+            "dyn_score" INT NULL,
             "status" INTEGER NOT NULL,
             "favorite" BOOLEAN NOT NULL,
             "name" VARCHAR(255) NOT NULL,
@@ -403,7 +406,9 @@ bool DbStore::updateSchema(uint version)
             "kind" INTEGER NOT NULL,
             "version" INTEGER NOT NULL,
             "updated" INTEGER NOT NULL,
-             PRIMARY KEY("id")
+            "time_spent" INT NULL,
+            "score" FLOAT NULL,
+            PRIMARY KEY("id")
         ))",
 
         "CREATE INDEX IF NOT EXISTS action_updated_ix ON action(updated)",
