@@ -109,10 +109,10 @@ RUN mkdir -p /tmp/boost && \
 RUN mkdir -p ${QT_DIR} && \
     git clone --depth=1 --branch ${QT_VERSION} git://code.qt.io/qt/qt5.git ${QT_DIR}/qt && \
     cd ${QT_DIR}/qt && \
-    ./init-repository --module-subset=default,-qtwebengine && \
+    ./init-repository --module-subset=default,-qtwebengine,-qtcharts && \
     ./configure -prefix ${QT_INSTALL_DIR} -static -release -opensource -confirm-license -no-pch \
     -nomake examples -nomake tests -openssl-linked -opengl desktop -sql-sqlite \
-    -skip qtwebengine -skip qtmultimedia -skip qtsensors -skip qtconnectivity -skip qtnetworkauth \
+    -skip qtwebengine -skip qtmultimedia -skip qtsensors -skip qtconnectivity -skip qtnetworkauth -skip qtcharts \
     -vcpkg --feature-protobufquick --feature-qtprotobufgen -feature-xcb -qt-libpng -qt-libjpeg \
     -skip qtspeech -skip qt5compat -skip qtquick3dphysics -skip qtremoteobjects -skip qthttpserver && \
     cmake --build . --parallel && \
