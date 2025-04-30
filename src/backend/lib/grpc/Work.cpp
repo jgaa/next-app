@@ -707,9 +707,9 @@ boost::asio::awaitable<void> GrpcServer::updateTimeSpentInAction(const std::stri
         SET a.time_spent = (
             SELECT IFNULL(SUM(s.duration), 0)
             FROM work_session AS s
-            WHERE s.action = a.action
+            WHERE s.action = a.id
               AND s.state = 'done'
-        ))", dbopts, uuid);
+        ) WHERE a.id=?)", dbopts, uuid);
 
     if (res.affected_rows()) {
         auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);

@@ -35,6 +35,15 @@ function formatPbTimeFromTimet(when) {
     return d.toLocaleString()
 }
 
+function formatDateFromSecondsSinceEpoc(when) {
+    if (when <3600)  {
+        return "---";
+    }
+
+    const d = new Date(when * 1000)
+    return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 // ChatGPT Convert minutes to text string
 function minutesToText(minutes) {
     // Calculate days, hours, and remaining minutes

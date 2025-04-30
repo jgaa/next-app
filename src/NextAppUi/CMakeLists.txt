@@ -62,7 +62,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Gui
     Quick
     QuickControls2
-    Charts
+    Graphs
     Svg
     Test
     Concurrent
@@ -177,7 +177,6 @@ target_link_libraries(na_grpc_lib
         Qt6::Protobuf
         Qt6::ProtobufQuick
         Qt6::ProtobufQtCoreTypes
-        Qt6::Grpc
         Qt6::Grpc
 )
 
@@ -481,6 +480,9 @@ qt_add_qml_module(${PROJECT_NAME}
         SOURCES ModelInstances.h ModelInstances.cpp
         SOURCES UseCaseTemplates.h UseCaseTemplates.cpp
         QML_FILES qml/components/SliderTicks.qml
+        QML_FILES qml/ActionStatisticsView.qml
+        SOURCES ActionStatsModel.h ActionStatsModel.cpp
+        QML_FILES qml/ActionStatsDlg.qml
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
@@ -555,7 +557,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Gui
         Qt6::Quick
         Qt6::QuickControls2
-        Qt6::Charts
+        Qt6::Graphs
         Qt6::Svg
         Qt6::Protobuf
         Qt6::Grpc

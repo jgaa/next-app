@@ -423,6 +423,14 @@ Rectangle {
             }
         }
         Action {
+            text: qsTr("Statistics")
+            onTriggered: {
+                Common.openDialog("ActionStatsDlg.qml", root, {
+                    model: ModelInstances.getActionStatsModel(contextMenu.uuid)
+                })
+            }
+        }
+        Action {
             text: qsTr("Start Work Session")
             icon.source: "../icons/fontawsome/clock.svg"
             onTriggered: {
