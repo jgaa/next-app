@@ -421,6 +421,17 @@ ColumnLayout {
                 Label {
                     Layout.alignment: Qt.AlignLeft
                     color: Colors.disabledText
+                    text: qsTr("Score")
+                }
+
+                Text {
+                    Layout.leftMargin: root.leftMarginForControls
+                    text: root.action.score
+                }
+
+                Label {
+                    Layout.alignment: Qt.AlignLeft
+                    color: Colors.disabledText
                     text: qsTr("Difficulty")
                 }
 

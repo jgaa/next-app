@@ -297,20 +297,21 @@ inline double due_urgency(const std::optional<std::time_t>& due,
 // Threshold for penalizing long tasks (in hours)
 constexpr double kEstimateThreshold = 8.0;
 
-// Weights for: {priority, due, estimate, spent}
-constexpr std::array<double, 4> priority_weights    = { 0.5, 0.3, 0.1, 0.1 };
+// Relative weights (excluding base priority): {due, estimate, spent}
+constexpr std::array<double, 3> priority_extra_weights = { 0.2, 0.1, 0.1 };
 // Weights for: {importance, urgency, due, estimate, spent}
-constexpr std::array<double, 5> eisenhower_weights  = { 0.35, 0.25, 0.3, 0.05, 0.05 };
+constexpr std::array<double, 5> eisenhower_weights      = { 0.35, 0.25, 0.3, 0.05, 0.05 };
 
 /// Compute score from a 0–7 integer priority + optional due date,
-/// optional time estimate, and optional time spent:
-/// S = w_p·p_norm + w_d·due_urgency + w_e·(1 - estimate_norm) + w_s·spent_norm
+/// optional time estimate, and optional time spent.
+/// Base score = p_norm. Additional urgency/estimate/spent contributions
+/// are scaled by (1 - p_norm) so that high-priority tasks remain high.
 inline double computeScore(int priority,
                            const std::optional<std::time_t>& due = std::nullopt,
                            const std::optional<double>& time_estimate = std::nullopt,
                            const std::optional<double>& time_spent   = std::nullopt) noexcept
 {
-    double p = normalize(static_cast<double>(priority), 0.0, 7.0);
+    double p = normalize(static_cast<double>(priority), 0.0, 7.0);  // base priority
     double d = due_urgency(due);
     double est_norm = time_estimate ? normalize(*time_estimate, 0.0, kEstimateThreshold) : 0.0;
     double e = 1.0 - est_norm; // penalize longer tasks
@@ -319,16 +320,15 @@ inline double computeScore(int priority,
         double comp = *time_spent / *time_estimate;
         s = std::clamp(comp, 0.0, 1.0);
     }
-    return priority_weights[0]*p
-           + priority_weights[1]*d
-           + priority_weights[2]*e
-           + priority_weights[3]*s;
+    double extra = priority_extra_weights[0]*d
+                   + priority_extra_weights[1]*e
+                   + priority_extra_weights[2]*s;
+    return p + (1.0 - p) * extra;
 }
 
 /// Compute score from 0.0–10.0 importance & urgency + optional due date,
 /// optional time estimate, and optional time spent:
-/// S = w_i·i_norm + w_u·u_norm + w_d·due_urgency
-///   + w_e·(1 - estimate_norm) + w_s·spent_norm
+/// S = w_i·i_norm + w_u·u_norm + w_d·d + w_e·(1-est_norm) + w_s·spent_norm
 inline double computeScore(double importance,
                            double urgency,
                            const std::optional<std::time_t>& due = std::nullopt,
@@ -350,6 +350,39 @@ inline double computeScore(double importance,
            + eisenhower_weights[2]*d
            + eisenhower_weights[3]*e
            + eisenhower_weights[4]*s;
+}
+
+/// Map a score [0.0,1.0] → a QColor along a gradient:
+/// light blue → green → orange → red → purple.
+inline QColor scoreToColor(double score) noexcept
+{
+    using Stop = std::pair<double, std::array<int,3>>;
+    static constexpr std::array<Stop,5> stops = {{
+        { 0.0,  {173,216,230} }, // light blue
+        { 0.61, {  0,128,  0} }, // green
+        { 0.80,  {255,165,  0} }, // orange
+        { 0.92, {255,  0,  0} }, // red
+        { 1.0,  {128,  0,128} }  // purple
+    }};
+
+    double s = std::clamp(score, 0.0, 1.0);
+    auto it = std::upper_bound(stops.begin(), stops.end(), s,
+                               [](double value, const Stop &stop){ return value < stop.first; });
+    if (it == stops.begin()) {
+        auto& rgb = stops.front().second;
+        return QColor(rgb[0], rgb[1], rgb[2]);
+    }
+    if (it == stops.end()) {
+        auto& rgb = stops.back().second;
+        return QColor(rgb[0], rgb[1], rgb[2]);
+    }
+    const auto& upper = *it;
+    const auto& lower = *(it - 1);
+    double t = (s - lower.first) / (upper.first - lower.first);
+    int r = static_cast<int>(lower.second[0] + t * (upper.second[0] - lower.second[0]));
+    int g = static_cast<int>(lower.second[1] + t * (upper.second[1] - lower.second[1]));
+    int b = static_cast<int>(lower.second[2] + t * (upper.second[2] - lower.second[2]));
+    return QColor(r, g, b);
 }
 
 template <typename T>
@@ -396,35 +429,7 @@ float ActionInfoCache::getScore(const nextapp::pb::Action &action)
 
 QColor ActionInfoCache::getScoreColor(double score)
 {
-    using Stop = std::pair<double, std::array<int,3>>;
-    static constexpr std::array<Stop,5> stops = {{
-        { 0.0,  {173,216,230} }, // light blue
-        { 0.25, {  0,128,  0} }, // green
-        { 0.5,  {255,165,  0} }, // orange
-        { 0.75, {255,  0,  0} }, // red
-        { 1.0,  {128,  0,128} }  // purple
-    }};
-
-    double s = std::clamp(score, 0.0, 1.0);
-    // find first stop with position >= s
-    auto it = std::upper_bound(stops.begin(), stops.end(), s,
-                               [](double value, const Stop &stop){ return value < stop.first; });
-    if (it == stops.begin()) {
-        auto& rgb = stops.front().second;
-        return QColor(rgb[0], rgb[1], rgb[2]);
-    }
-    if (it == stops.end()) {
-        auto& rgb = stops.back().second;
-        return QColor(rgb[0], rgb[1], rgb[2]);
-    }
-    const auto& upper = *it;
-    const auto& lower = *(it - 1);
-    double range = upper.first - lower.first;
-    double t = (s - lower.first) / range;
-    int r = static_cast<int>(lower.second[0] + t * (upper.second[0] - lower.second[0]));
-    int g = static_cast<int>(lower.second[1] + t * (upper.second[1] - lower.second[1]));
-    int b = static_cast<int>(lower.second[2] + t * (upper.second[2] - lower.second[2]));
-    return QColor(r, g, b);
+    return scoreToColor(score);
 }
 
 QCoro::Task<void> ActionInfoCache::updateAllScores()

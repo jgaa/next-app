@@ -1145,10 +1145,7 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         }
         return {};
     case ScoreRole:
-        if (action.dynamicPriority().hasScore()) {
-            return static_cast<int>(action.dynamicPriority().score());
-        }
-        return {};
+        return action.score();
     case StatusRole:
         return static_cast<uint>(action.status());
     case NodeRole:

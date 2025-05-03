@@ -149,6 +149,7 @@ Rectangle {
                 required property bool onCalendar
                 required property bool workedOnToday
                 required property string scoreColor
+                required property double score
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -403,6 +404,15 @@ Rectangle {
                             text: listName
                             visible: text !== ""
                         }
+
+                        // Label {
+                        //     color: MaterialDesignStyling.onSurfaceVariant
+                        //     text: "score"
+                        // }
+                        // Label {
+                        //     color: MaterialDesignStyling.outline
+                        //     text: score
+                        // }
                     }
                 }
                 }
