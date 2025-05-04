@@ -150,7 +150,8 @@ cat << EOF > eu.lastviking.NextApp.json
     "--share=ipc",
     "--socket=session-bus",
     "--socket=system-bus",
-    "--socket=pulseaudio"
+    "--socket=pulseaudio",
+    "--filesystem=home/NextApp:create"
   ],
 
   "modules": [
