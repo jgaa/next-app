@@ -221,11 +221,26 @@ int main(int argc, char *argv[])
         auto style = styles.at(settings.value("UI/style").toInt());
         auto scale = scales.at(settings.value("UI/scale").toInt());
 
+        if (!settings.contains("logging/path")) {
+            QDir baseDir(QDir::homePath());
+            const auto log_path = baseDir.filePath("NextApp/Logging/" + app_name + ".log");
+            settings.setValue("logging/path", log_path);
+
+            const auto abs_path = QFileInfo{log_path}.absolutePath();
+            QDir log_dir{abs_path};
+            if (!abs_path.isEmpty() && !log_dir.exists()) {
+                LOG_INFO << "Creating log directory: " << abs_path;
+                log_dir.mkpath(abs_path);
+            }
+        }
+
         if (const auto level = settings.value("logging/level", 0).toInt()) {
             if (auto path = settings.value("logging/path", "").toString().toStdString(); !path.empty()) {
                 const bool prune = settings.value("logging/prune", "").toString() == "true";
                 logfault::LogManager::Instance().AddHandler(
                     make_unique<logfault::StreamHandler>(path, static_cast<logfault::LogLevel>(level), prune));
+
+                LOG_INFO << "Logging to: " << path;
             }
         }
 
