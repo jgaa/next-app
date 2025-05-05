@@ -1,0 +1,14 @@
+{
+  "name": "qtstuff",
+  "dependencies": [
+    "boost-program-options",
+    "grpc",
+    "protobuf",
+    "brotli",
+    "zlib",
+    "libpng",
+    "openssl"
+  ],
+
+  "builtin-baseline": "760bfd0c8d7c89ec640aec4df89418b7c2745605"
+}

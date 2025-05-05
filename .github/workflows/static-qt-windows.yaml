@@ -1,0 +1,56 @@
+name: Build for Windows with Static Qt
+
+on:
+  push:
+    branches:
+      - windows-ga
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    defaults:
+        run:
+            shell: cmd
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          
+      - name: Install NSIS
+        run: choco install nsis -y
+      
+      - name: Set up environment variables
+        run: |
+      - name: Set up environment variables
+        run: |
+          echo BUILD_DIR=${{ github.workspace }}\build>>%GITHUB_ENV%
+          echo QT_TARGET_DIR=${{ github.workspace }}\qt-target>>%GITHUB_ENV%
+          echo VCPKG_ROOT=C:\vcpkg>>%GITHUB_ENV%
+          echo VCPKG_DEFAULT_TRIPLET=x64-windows-release>>%GITHUB_ENV%
+          echo CMAKE_GENERATOR_PLATFORM=x64>>%GITHUB_ENV%
+      
+
+      - name: Update vcpkg to the latest revision
+        run: |
+            echo Updating vcpkg in %VCPKG_ROOT% 
+            pushd "%VCPKG_ROOT%"
+            git fetch --unshallow || echo Already a full clone
+            git pull
+
+      - name: Build QT statically and build the app
+        run: |
+            building\static-qt-windows\build-nextapp.bat
+
+      - name: Upload artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: "${{ env.BUILD_DIR }}\\*.exe"
+          retention-days: 3
