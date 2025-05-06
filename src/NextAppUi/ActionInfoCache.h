@@ -122,6 +122,8 @@ private:
 
     // Fetches from db and adds to cache. Returns the item from the cache.
     QCoro::Task<bool> fetchFromDb(QUuid action_uuid);
+    QCoro::Task<bool> updateTags(const nextapp::pb::Action& action);
+    bool updateTagsDirect(const nextapp::pb::Action& action);
 
     static ActionInfoCache *instance_;
 

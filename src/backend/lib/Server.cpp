@@ -1106,6 +1106,14 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v20_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(ALTER TABLE action ADD COLUMN IF NOT EXISTS tags TEXT NULL)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
@@ -1127,6 +1135,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v17_upgrade,
         v18_upgrade,
         v19_upgrade,
+        v20_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

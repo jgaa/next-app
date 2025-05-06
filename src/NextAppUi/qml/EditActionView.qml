@@ -97,6 +97,8 @@ ColumnLayout {
             }
         }
 
+        tagsCtl.text = action.tags.join(" ")
+
         if (action.node === "") {
             throw "No node"
         }
@@ -132,6 +134,8 @@ ColumnLayout {
         root.action.favorite = favorite.isChecked
         root.action.category = category.uuid
 
+        root.action.tags = NaActionsModel.tagsToList(tagsCtl.text);
+
         if (grid.showRepeatSpecCtl) {
             root.action.repeatAfter = createIntFromList(repeatSpecCtl.model)
             // console.log("RepeatAfter bits: ", root.action.repeatAfter)
@@ -143,6 +147,7 @@ ColumnLayout {
             root.action.repeatAfter = 0
             root.action.repeatUnits = 0
         }
+
     }
 
     function commit() {
@@ -439,6 +444,17 @@ ColumnLayout {
                     id: difficultyCtl
                     Layout.leftMargin: root.leftMarginForControls
                     Layout.preferredWidth: root.controlsPreferredWidth
+                }
+
+                Label {
+                    Layout.alignment: Qt.AlignLeft
+                    color: Colors.disabledText
+                    text: qsTr("Tags")
+                }
+
+                DlgInputField {
+                    id: tagsCtl
+                    Layout.fillWidth: true
                 }
 
             } // Grid Layout

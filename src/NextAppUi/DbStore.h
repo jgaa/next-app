@@ -16,6 +16,8 @@
 #include "qcorotask.h"
 #include "qcorofuture.h"
 
+#include "nextapp.qpb.h"
+
 class DbStore : public QObject
 {
     Q_OBJECT
@@ -99,13 +101,14 @@ public:
      *  This is an optimization to avoid the overhead of sending
      *  each record individually to the database-thread.
      */
-    template <typename T, typename P, typename D, typename I> QCoro::Task<bool> queryBatch(
+    template <typename T, typename P, typename D, typename I, typename E = std::nullptr_t> QCoro::Task<bool> queryBatch(
         const QString& insertQurey,
         const QString& deleteQuery,
         const T& data,
         const P& getParams,
         const D& isDeleted,
-        const I& getId) {
+        const I& getId,
+        const E& perRowFn = nullptr) {
 
         auto promise = QSharedPointer<QPromise<bool>>::create();
         auto future = promise->future();
@@ -124,8 +127,13 @@ public:
                     continue;
                 };
 
-                bindParams(query, getParams(row));
+                if constexpr (!std::is_same_v<E, std::nullptr_t>) {
+                    if (!perRowFn(row)) {
+                        success = false;
+                    }
+                }
 
+                bindParams(query, getParams(row));
                 if (!batchQueryImpl(query)) {
                     success = false;
                 }
@@ -161,6 +169,13 @@ public:
 
     std::filesystem::path dataDir() const noexcept {
         return data_dir_.toStdString();
+    }
+
+    QSqlDatabase& db() {
+        if (!db_) {
+            throw std::runtime_error("Database not initialized");
+        }
+        return *db_;
     }
 
 signals:

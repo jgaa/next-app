@@ -4,13 +4,15 @@
 #include <chrono>
 #include <algorithm>
 
+#include <QCryptographicHash>
+#include <QProtobufSerializer>
+#include <QSqlQuery>
+#include <QSqlError>
+
 #include "ActionInfoCache.h"
 #include "MainTreeModel.h"
 #include "ServerComm.h"
 #include "util.h"
-
-#include <QProtobufSerializer>
-
 #include "logging.h"
 
 using namespace std;
@@ -18,12 +20,39 @@ using namespace nextapp;
 
 namespace {
 
+QByteArray computeTagsHash(QStringView tags) {
+    if (tags.isEmpty()) {
+        return {};
+    }
+    auto bytes = tags.toUtf8();
+    return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+}
+
+QString tagsToString(const QList<QString>& tags) {
+    QString rval;
+    for (const auto& tag : tags) {
+        if (!tags.isEmpty()) {
+            rval += ' ';
+        }
+        rval += tag;
+    }
+    return rval;
+}
+
+QByteArray computeTagsHash(const QList<QString>& tags) {
+    if (tags.isEmpty()) {
+        return {};
+    }
+    const auto str = tagsToString(tags);
+    return computeTagsHash(str);
+}
+
 static const QString insert_query = R"(INSERT INTO action
         (id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date,
         due_kind, start_time, due_by_time, due_timezone, completed_time,
         time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after,
-        kind, category, time_spent, version, updated, score) VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        kind, category, time_spent, version, updated, score, tags, tags_hash) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
         node = EXCLUDED.node,
         origin = EXCLUDED.origin,
@@ -52,7 +81,11 @@ static const QString insert_query = R"(INSERT INTO action
         time_spent = EXCLUDED.time_spent,
         version = EXCLUDED.version,
         updated = EXCLUDED.updated,
-        score = EXCLUDED.score)";
+        score = EXCLUDED.score,
+        tags = EXCLUDED.tags,
+        tags_hash = EXCLUDED.tags_hash
+        )";
+
 
 QList<QVariant> getParams(const pb::Action& action) {
     QList<QVariant> params;
@@ -135,6 +168,15 @@ QList<QVariant> getParams(const pb::Action& action) {
     params.append(static_cast<quint32>(action.version()));
     params.append(static_cast<qlonglong>(action.updated()));
     params << ActionInfoCache::getScore(action);
+
+    if (!action.tags().empty()) {
+        const QString tags = tagsToString(action.tags());
+        params << tags;
+        params << computeTagsHash(tags);
+    } else {
+        params << QVariant{};
+        params << QVariant{};
+    }
 
     return params;
 }
@@ -488,7 +530,7 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
                     " due_kind, start_time, due_by_time, due_timezone, completed_time, "
                     " time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, "
                     " descr,"
-                    " kind, version, category, time_spent, score FROM action where id=?";
+                    " kind, version, category, time_spent, score, tags FROM action where id=?";
 
     enum Cols {
         ID,
@@ -519,6 +561,7 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         CATEGORY,
         TIME_SPENT,
         SCORE,
+        TAGS
     };
 
     auto rval = co_await db.legacyQuery(query, &params);
@@ -599,6 +642,12 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
             item->setScore(row[SCORE].toDouble());
         }
 
+        if (!row[TAGS].isNull()) {
+            auto tags = row[TAGS].toString();
+            auto tags_list = tags.split(' ');
+            item->setTags(std::move(tags_list));
+        }
+
         co_return item;
     }
     co_return {};
@@ -645,8 +694,11 @@ QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &i
     auto getId = [](const auto& action) -> QString {
         return action.id_proto();
     };
+    auto perRowfn = [this](const auto& action) -> bool {
+        return updateTagsDirect(action);
+    };
 
-    co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
+    co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId, perRowfn);
 }
 
 QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
@@ -669,8 +721,9 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         co_return true; // TODO: Add proper error handling. Probably a full resynch if the action is in the db.
     }
 
-    params = getParams(action);
+    co_await updateTags(action);
 
+    params = getParams(action);
     const auto rval = co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update action: " << action.id_proto() << " " << action.name()
@@ -680,6 +733,111 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
 
     co_return true;
 }
+
+// Must be called before the action is updated with a new hash if is_full_sync() is false
+QCoro::Task<bool> ActionInfoCache::updateTags(const nextapp::pb::Action &action)
+{
+    auto& db = NextAppCore::instance()->db();
+
+    if (!action.tags().empty()) {
+        if (!isFullSync()) {
+            const auto hash_rval = co_await db.query("SELECT tags_hash FROM action WHERE id=?", action.id_proto());
+            if (hash_rval.has_value() && !hash_rval.value().rows.empty()) {
+                const auto& hash = hash_rval.value().rows.front()[0].toByteArray();
+                const auto new_hash = computeTagsHash(action.tags());
+                if (hash == new_hash) {
+                    co_return true;
+                }
+            }
+
+            co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+        }
+
+        QString sql = "INSERT INTO tags (action, tag) VALUES (?, ?)";
+        for(const auto& tag : action.tags()) {
+            const auto rval = co_await db.query(sql, action.id_proto(), tag);
+            if (!rval) {
+                LOG_ERROR_N << "Failed to update action tags: " << action.id_proto() << " " << action.name()
+                << " err=" << rval.error();
+                co_return false; // TODO: Add proper error handling. Probably a full resynch.
+            }
+        };
+
+        co_return true;
+    }
+
+    if (!isFullSync()) {
+        co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+    }
+
+    co_return true;
+}
+
+bool ActionInfoCache::updateTagsDirect(const nextapp::pb::Action& action)
+{
+    auto& db = NextAppCore::instance()->db();
+    QSqlDatabase& sqlDb = db.db();
+
+    QSqlQuery query(sqlDb);
+
+    if (!action.tags().empty()) {
+        if (!isFullSync()) {
+            // Compare tag hashes
+            query.prepare("SELECT tags_hash FROM action WHERE id = ?");
+            query.addBindValue(action.id_proto());
+
+            if (!query.exec()) {
+                LOG_ERROR_N << "Failed to read tag hash for action: " << query.lastError().text();
+                return false;
+            }
+
+            if (query.next()) {
+                const QByteArray oldHash = query.value(0).toByteArray();
+                const QByteArray newHash = computeTagsHash(action.tags());
+
+                if (oldHash == newHash) {
+                    return true; // No change in tags
+                }
+            }
+
+            // Delete existing tags
+            query.prepare("DELETE FROM tag WHERE action = ?");
+            query.addBindValue(action.id_proto());
+            if (!query.exec()) {
+                LOG_ERROR_N << "Failed to delete old tags: " << query.lastError().text();
+                return false;
+            }
+        }
+
+        // Insert new tags
+        query.prepare("INSERT INTO tag (action, tag) VALUES (?, ?)");
+        for (const auto& tag : action.tags()) {
+            query.addBindValue(action.id_proto());
+            query.addBindValue(tag);
+
+            if (!query.exec()) {
+                LOG_ERROR_N << "Failed to insert tag: " << tag << ", error: " << query.lastError().text();
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // If tags are empty and not full sync, delete old tags
+    if (!isFullSync()) {
+        query.prepare("DELETE FROM tag WHERE action = ?");
+        query.addBindValue(action.id_proto());
+        if (!query.exec()) {
+            LOG_ERROR_N << "Failed to delete tags for empty tag list: " << query.lastError().text();
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 
 QCoro::Task<bool> ActionInfoCache::loadFromCache()
 {

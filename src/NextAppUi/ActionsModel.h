@@ -253,6 +253,7 @@ public:
     Q_INVOKABLE void batchChangeDifficulty(int difficulty, const QStringList& actions);
     Q_INVOKABLE void batchDelete(const QStringList& actions);
     static Q_INVOKABLE nextapp::pb::UrgencyImportance setUrgencyImportance(double urgency, double importance);
+    static Q_INVOKABLE QStringList tagsToList(const QString& tags);
 
    //QCoro::Task<void> fetch(nextapp::pb::GetActionsReq& filter);
     //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);

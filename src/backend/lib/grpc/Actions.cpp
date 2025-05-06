@@ -32,7 +32,7 @@ struct ToActionCategory {
 struct ToAction {
     enum Cols {
         ID, NODE, USER, VERSION, UPDATED, CREATED_DATE, ORIGIN, PRIORITY, URGENCY, IMPORTANCE, STATUS, FAVORITE, NAME, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
-        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER, TIME_SPENT // remaining
+        DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER, TIME_SPENT, TAGS // remaining
     };
 
     enum class ColType {
@@ -96,6 +96,15 @@ struct ToAction {
             priority = pb::ActionPriority_Name(action.dynamicpriority().priority());
         }
 
+        string tags;
+        tags.reserve(120);
+        for(const auto& tag: action.tags()) {
+            if (!tags.empty()) {
+                tags += ' ';
+            }
+            tags += tag;
+        }
+
         auto bargs = make_tuple(
             toStringOrNull(action.origin()),
             priority,
@@ -120,7 +129,8 @@ struct ToAction {
             toStringOrNull(pb::Action::RepeatUnit_Name(action.repeatunits())),
             toStringOrNull(pb::Action::RepeatWhen_Name(action.repeatwhen())),
             action.repeatafter(),
-            action.timespent()
+            action.timespent(),
+            toStringOrNull(tags)
             );
 
         if constexpr (sizeof...(Args) > 0) {
@@ -286,11 +296,24 @@ struct ToAction {
             if (row.at(TIME_SPENT).is_int64()) {
                 obj.set_timespent(row.at(TIME_SPENT).as_int64());
             }
+
+            if (row.at(TAGS).is_string()) {
+                auto tags = pb_adapt(row.at(TAGS).as_string());
+                if (auto *tag = obj.mutable_tags()) {
+                    tag->Clear();
+                    for (auto part : tags | std::views::split(' ')) {
+                        const string t{part.begin(), part.end()};
+                        if (auto *tptr = tag->Add()) {
+                            *tptr = std::move(t);
+                        }
+                    }
+                }
+            }
         }
     }
 
 private:
-    static constexpr array<pair<string_view, ColType>, 27> cols_ = {{
+    static constexpr array<pair<string_view, ColType>, 28> cols_ = {{
         make_pair("id", ColType::IDS),
         make_pair("node", ColType::IDS),
         make_pair("user", ColType::IDS),
@@ -317,7 +340,8 @@ private:
         make_pair("repeat_unit", ColType::REMAINING),
         make_pair("repeat_when", ColType::REMAINING),
         make_pair("repeat_after", ColType::REMAINING),
-        make_pair("time_spent", ColType::REMAINING)
+        make_pair("time_spent", ColType::REMAINING),
+        make_pair("tags", ColType::REMAINING)
     }};
 
     static std::string filteredCols(std::initializer_list<ColType> ct, bool update = false) {

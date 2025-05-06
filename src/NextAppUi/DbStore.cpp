@@ -408,6 +408,8 @@ bool DbStore::updateSchema(uint version)
             "updated" INTEGER NOT NULL,
             "time_spent" INT NULL,
             "score" FLOAT NULL,
+            "tags" TEXT NULL,
+            "tags_hash" BLOB(32) NULL, -- Only stored locally, not sent via protobuf
             PRIMARY KEY("id")
         ))",
 
@@ -417,6 +419,15 @@ bool DbStore::updateSchema(uint version)
         "CREATE INDEX IF NOT EXISTS action_start_time_ix ON action(start_time, status)",
         "CREATE INDEX IF NOT EXISTS action_due_by_time_ix ON action(due_by_time, status)",
         "CREATE INDEX IF NOT EXISTS action_completed_time_ix ON action(completed_time, status)",
+
+        R"(CREATE TABLE IF NOT EXISTS tag (
+            name VARCHAR(32) NOT NULL,
+            action VARCHAR(32) NOT NULL,
+            PRIMARY KEY (action, name),
+            FOREIGN KEY (action) REFERENCES action(id) ON DELETE CASCADE
+        ))",
+
+        "CREATE INDEX IF NOT EXISTS idx_tag_name_action ON tag(name, action)",
 
         R"(CREATE TABLE IF NOT EXISTS work_session (
             "id" VARCHAR(32) NOT NULL,

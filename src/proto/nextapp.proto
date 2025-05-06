@@ -449,6 +449,7 @@ message Action {
     int32 timeSpent = 22; // minutes
     int64 updated = 23; // time_t as ms
     float score = 24; // Used to sort the actions. Used locally in the client
+    repeated string tags = 25; // Tags for the action
 }
 
 // Allow updating multiple actions at once, without altering the other fields.

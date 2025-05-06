@@ -1082,6 +1082,24 @@ void ActionsModel::batchDelete(const QStringList &actions)
     }
 }
 
+QStringList ActionsModel::tagsToList(const QString &tags)
+{
+    static const QRegularExpression regex{"[\\s,;]+"};
+    QStringList list = tags.split(regex, Qt::SkipEmptyParts);
+
+    // Remove whitespace around each tag and eliminate duplicates
+    QSet<QString> uniqueTags;
+    for (QString &tag : list) {
+        uniqueTags.insert(tag.trimmed());
+    }
+
+    // Convert set back to list and sort
+    QStringList sortedList = QStringList(uniqueTags.begin(), uniqueTags.end());
+    sortedList.sort();
+    return sortedList;
+}
+
+
 pb::UrgencyImportance ActionsModel::setUrgencyImportance(double urgency, double importance)
 {
     pb::UrgencyImportance ui;
