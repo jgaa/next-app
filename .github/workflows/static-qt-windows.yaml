@@ -14,8 +14,11 @@ jobs:
             shell: cmd
 
     steps:
-      - name: Checkout code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0 
 
       - name: Set up MSVC Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
