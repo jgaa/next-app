@@ -2,6 +2,9 @@
   "name": "qtstuff",
   "dependencies": [
     "boost-program-options",
+    "boost-circular-buffer",
+    "boost-type-index",
+    "boost-multi-index",
     "grpc",
     "protobuf",
     "brotli",
