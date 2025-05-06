@@ -157,7 +157,8 @@ class ActionsModel : public QAbstractListModel
         ReviewedRole, // dummy
         OnCalendarRole,
         WorkedOnTodayRole,
-        ScoreColorRole
+        ScoreColorRole,
+        TagsRole
     };
 
     enum Shortcuts {
@@ -254,6 +255,7 @@ public:
     Q_INVOKABLE void batchDelete(const QStringList& actions);
     static Q_INVOKABLE nextapp::pb::UrgencyImportance setUrgencyImportance(double urgency, double importance);
     static Q_INVOKABLE QStringList tagsToList(const QString& tags);
+    static Q_INVOKABLE QString tagsToString(const QStringList& tags, bool addHash);
 
    //QCoro::Task<void> fetch(nextapp::pb::GetActionsReq& filter);
     //void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);

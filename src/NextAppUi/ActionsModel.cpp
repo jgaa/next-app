@@ -1099,6 +1099,24 @@ QStringList ActionsModel::tagsToList(const QString &tags)
     return sortedList;
 }
 
+QString ActionsModel::tagsToString(const QStringList &tags, bool addHash)
+{
+    if (addHash) {
+        QString rval;
+        for (auto& tag : tags) {
+            if (tag.isEmpty()) {
+                continue;
+            }
+            if (!rval.isEmpty()) {
+                rval += " ";
+            }
+            rval += "#" + tag;
+        }
+        return rval;
+    }
+    return tags.join(" ");
+}
+
 
 pb::UrgencyImportance ActionsModel::setUrgencyImportance(double urgency, double importance)
 {
@@ -1208,6 +1226,8 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         const QColor c = ActionInfoCache::getScoreColor(action.score());
         return c.name();
         }
+    case TagsRole:
+        return tagsToString(action.tags(), true);
     }
 
     return {};
@@ -1279,6 +1299,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[ScoreRole] = "score";
     roles[PriorityKindRole] = "priorityKind";
     roles[ScoreColorRole] = "scoreColor";
+    roles[TagsRole] = "tags";
     return roles;
 }
 
@@ -1297,6 +1318,30 @@ bool ActionsModel::canFetchMore(const QModelIndex &parent) const
     LOG_DEBUG_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
               << ", page = " << pagination_.page;
     return valid_ ? (isVisible() && pagination_.hasMore()) : false;
+}
+
+pair<QString, QStringList> extractTagsAndCleanText(const QString &input)
+{
+    // Regular expression to match tags like #tag
+    static const QRegularExpression tagRegex(R"(#(\w+))");
+
+    QStringList tags;
+    QString result = input;
+
+    // Find all tag matches
+    QRegularExpressionMatchIterator it = tagRegex.globalMatch(input);
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        const auto tag = match.captured(1);
+        if (!tag.isEmpty()) {
+            tags << tag;  // Just the tag name without '#'
+        }
+        result.replace(match.captured(0), "");  // Remove full match (#tag) from text
+    }
+
+    result = result.simplified(); // Trim and remove extra spaces
+
+    return {result, tags};
 }
 
 QCoro::Task<void> ActionsModel::fetchIf(bool restart)
@@ -1318,6 +1363,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     static constexpr string_view sort_completed_prefix = "is_completed DESC, a.completed_time DESC,";
     static constexpr string_view sort_has_due_prefix = "has_due, ";
     static constexpr string_view join_action_name = " LEFT JOIN action_category acat ON a.category = acat.id ";
+    static constexpr string_view join_tags= " LEFT JOIN tags t ON t.action = a.id ";
 
     auto join_action_name_if = [&] {
         if (sort_ == SORT_CATEGORY_NAME) {
@@ -1365,15 +1411,49 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     string sql;
     string match;
     QString match_text;
+    QStringList match_tags;
     if (!match_.isEmpty() && filters_enabled_) {
-        match = " AND a.name LIKE ?";
-        match_text = "%" + match_ + "%";
+        auto [text, tags] = extractTagsAndCleanText(match_);
+
+        if (!text.isEmpty()) {
+            match = " AND a.name LIKE ?";
+            match_text = "%" + text + "%";
+        }
+
+        if (!tags.isEmpty()) {
+            match_tags = std::move(tags);
+        }
     }
 
     auto pushMatch = [&] {
-        if (!match.empty()) {
+        if (!match_text.isEmpty()) {
             params.push_back(match_text);
         }
+    };
+
+    auto join_tags_if = [&] -> string {
+        if (!match_tags.isEmpty()) {
+            //return join_tags;
+            string rval{join_tags};
+            if (match_tags.size() == 1) {
+                rval += " AND t.name=? ";
+                params << match_tags.front();
+                return rval;
+            }
+
+            rval += " AND t.name IN (";
+            int num_tags = 0;
+            for(const auto tag: match_tags) {
+                if (++num_tags > 1) {
+                    rval += ",";
+                }
+                rval += "?";
+                params << tag;
+            }
+            rval += ") ";
+            return rval;
+        }
+        return {};
     };
 
 
@@ -1384,10 +1464,11 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     switch(mode_) {
     case FetchWhat::FW_ACTIVE:
         // Fetch all active actions with start-time before tomorrow.
-        sql = nextapp::format(R"(SELECT a.id FROM action a {} WHERE a.status={} AND a.start_time <= ? {}
+        sql = nextapp::format(R"(SELECT a.id FROM action a {} {} WHERE a.status={} AND a.start_time <= ? {}
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
+                    join_tags_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
                     match,
                     sorting.at(sort_),
@@ -1626,7 +1707,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
 
     co_await ActionInfoCache::instance()->updateAllScores();
     auto& db = NextAppCore::instance()->db();
-    auto result = co_await db.legacyQuery(QString::fromLatin1(sql), &params);
+    auto result = co_await db.query(QString::fromLatin1(sql), params);
     if (result) {
         // Make a new list of actions with the sorted ID's
         decltype(actions_) new_actions;

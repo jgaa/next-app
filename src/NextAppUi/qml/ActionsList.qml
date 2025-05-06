@@ -150,6 +150,7 @@ Rectangle {
                 required property bool workedOnToday
                 required property string scoreColor
                 required property double score
+                required property string tags
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -405,6 +406,7 @@ Rectangle {
                             visible: text !== ""
                         }
 
+
                         // Label {
                         //     color: MaterialDesignStyling.onSurfaceVariant
                         //     text: "score"
@@ -413,6 +415,29 @@ Rectangle {
                         //     color: MaterialDesignStyling.outline
                         //     text: score
                         // }
+                    }
+
+                    RowLayout {
+                        Item {
+                            visible: tagsCtl.visible
+                            Layout.preferredWidth: 20
+                        }
+
+                        Label {
+                            visible: tagsCtl.visible
+                            font.family: ce.faSolidName
+                            font.styleName: ce.faSolidStyle
+                            text: "\uf02c"
+                            color: MaterialDesignStyling.onSurface
+                            font.pixelSize: listLabel.font.pixelSize
+                        }
+
+                        Label {
+                            id: tagsCtl
+                            color: MaterialDesignStyling.onSurfaceVariant
+                            text: tags
+                            visible: text !== ""
+                        }
                     }
                 }
                 }
