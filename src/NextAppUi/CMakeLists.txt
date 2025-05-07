@@ -57,6 +57,10 @@ if (LINUX_BUILD OR WINDOWS_BUILD)
   find_package(Protobuf REQUIRED)
 endif()
 
+if (LINUX_BUILD)
+    add_compile_definitions(LINUX_BUILD)
+endif()
+
 find_package(Qt6 REQUIRED COMPONENTS
     Core
     Gui

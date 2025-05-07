@@ -50,6 +50,25 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
     return logfault::LogLevel::INFO;
 }
 
+void logQtMessages(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    switch (type) {
+    case QtDebugMsg:
+        LOG_TRACE << "[Qt] " << msg;
+        break;
+    case QtInfoMsg:
+        LOG_DEBUG << "[Qt] " << msg;
+        break;
+    case QtWarningMsg:
+        LOG_WARN << "[Qt] " << msg;
+        break;
+    case QtCriticalMsg:
+    case QtFatalMsg:
+        LOG_ERROR << "[Qt] " << msg;
+        break;
+    }
+}
+
 // Must match uiStyle in PrefSettings.qml
 constexpr auto styles = to_array<string_view>(
     {"", "Basic", "Imagine", "Fusion", "Material",
@@ -174,11 +193,6 @@ int main(int argc, char *argv[])
         log_level_qt = parser.value("log-level-console").toStdString();
     }
 
-    if (auto level = toLogLevel(log_level_qt)) {
-        logfault::LogManager::Instance().AddHandler(
-            make_unique<logfault::QtHandler>(*level));
-    }
-
     if (parser.isSet("log-file")) {
         if (auto path = parser.value("log-file").toStdString(); !path.empty()) {
             if (const auto level = toLogLevel(parser.value("log-level").toStdString()); level.has_value()) {
@@ -267,7 +281,7 @@ int main(int argc, char *argv[])
             return app.exec();
         }
 
-
+        qInstallMessageHandler(logQtMessages);
         LOG_INFO << app_name << ' ' << NEXTAPP_UI_VERSION << " starting up.";
         LOG_DEBUG << "Configuration from '" << settings.fileName() << "'";
 

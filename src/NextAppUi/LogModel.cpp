@@ -109,7 +109,7 @@ LogModel::LogModel()
             messages_.push_back(msg);
             endInsertRows();
 
-            if (msg.severity <= LogLevels::INFO) {
+            if (msg.severity <= LogLevels::INFO && !msg.message.startsWith("[Qt]")) {
                 setMessage(msg);
             }
         }, Qt::QueuedConnection);

@@ -5,7 +5,7 @@ namespace nextapp::logging {
 } // ns
 
 #define LOGFAULT_USE_TID_AS_NAME 1
-#define LOGFAULT_USE_QT_LOG 1
+//#define LOGFAULT_USE_QT_LOG 1
 
 #ifdef __ANDROID__
 #define LOGFAULT_USE_ANDROID_NDK_LOG 1
