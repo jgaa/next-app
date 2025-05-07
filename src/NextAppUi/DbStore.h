@@ -127,14 +127,14 @@ public:
                     continue;
                 };
 
-                if constexpr (!std::is_same_v<E, std::nullptr_t>) {
-                    if (!perRowFn(row)) {
-                        success = false;
-                    }
-                }
-
                 bindParams(query, getParams(row));
-                if (!batchQueryImpl(query)) {
+                if (batchQueryImpl(query)) {
+                    if constexpr (!std::is_same_v<E, std::nullptr_t>) {
+                        if (!perRowFn(row)) {
+                            success = false;
+                        }
+                    }
+                } else {
                     success = false;
                 }
             }

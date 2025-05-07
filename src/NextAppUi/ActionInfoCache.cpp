@@ -290,6 +290,11 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
         }
     }
 
+    if (existing.tags() != action.tags()) {
+        existing.setTags(action.tags());
+        changed = true;
+    }
+
     return changed;
 }
 
@@ -754,7 +759,7 @@ QCoro::Task<bool> ActionInfoCache::updateTags(const nextapp::pb::Action &action)
             co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
         }
 
-        QString sql = "INSERT INTO tags (action, tag) VALUES (?, ?)";
+        QString sql = "INSERT INTO tag (action, name) VALUES (?, ?)";
         for(const auto& tag : action.tags()) {
             const auto rval = co_await db.query(sql, action.id_proto(), tag);
             if (!rval) {
@@ -811,7 +816,7 @@ bool ActionInfoCache::updateTagsDirect(const nextapp::pb::Action& action)
         }
 
         // Insert new tags
-        query.prepare("INSERT INTO tag (action, tag) VALUES (?, ?)");
+        query.prepare("INSERT INTO tag (action, name) VALUES (?, ?)");
         for (const auto& tag : action.tags()) {
             query.addBindValue(action.id_proto());
             query.addBindValue(tag);
