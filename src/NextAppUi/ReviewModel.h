@@ -66,6 +66,8 @@ public:
         ReviewedRole, // dummy
         OnCalendarRole,
         WorkedOnTodayRole,
+        ScoreColorRole,
+        TagsRole
     };
 
     Q_ENUM(State)

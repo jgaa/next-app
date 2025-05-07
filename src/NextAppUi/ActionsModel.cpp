@@ -1121,6 +1121,16 @@ QString ActionsModel::tagsToString(const QStringList &tags, bool addHash)
     return tags.join(" ");
 }
 
+bool ActionsModel::equals(const nextapp::pb::Action &action1, const nextapp::pb::Action &action2)
+{
+    return action1 == action2;
+}
+
+pb::Action ActionsModel::clone(const nextapp::pb::Action &action)
+{
+    return action;
+}
+
 
 pb::UrgencyImportance ActionsModel::setUrgencyImportance(double urgency, double importance)
 {
@@ -1903,8 +1913,6 @@ void ActionsModel::actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &a
 
 void ActionsModel::refreshVisibleItems()
 {
-    // TODO: Get the visible items
-
     auto first = createIndex(0,0);
     auto last = createIndex(actions_.size(), 0);
     emit dataChanged(first, last);

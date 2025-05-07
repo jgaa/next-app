@@ -164,9 +164,9 @@ ColumnLayout {
     }
 
     function hasChanged() {
-        const before = JSON.stringify(root.action);
+        const old = NaActionsModel.clone(root.action)
         update()
-        return before !== JSON.stringify(root.action)
+        return NaActionsModel.equals(old, root.action) === false
     }
 
     function commitIf() {

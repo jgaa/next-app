@@ -244,6 +244,12 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
         return ActionsOnCurrentCalendar::instance()->contains(item.uuid());
     case WorkedOnTodayRole:
         return ActionsWorkedOnTodayCache::instance()->contains(item.uuid());
+    case ScoreColorRole: {
+        const QColor c = ActionInfoCache::getScoreColor(action.score());
+        return c.name();
+    }
+    case TagsRole:
+        return ActionsModel::tagsToString(action.tags(), true);
     }
     return {};
 }
@@ -271,6 +277,9 @@ QHash<int, QByteArray> ReviewModel::roleNames() const
     roles[ReviewedRole] = "reviewed";
     roles[OnCalendarRole] = "onCalendar";
     roles[WorkedOnTodayRole] = "workedOnToday";
+    roles[ScoreRole] = "score";
+    roles[ScoreColorRole] = "scoreColor";
+    roles[TagsRole] = "tags";
     return roles;
 }
 
@@ -299,7 +308,7 @@ nextapp::pb::Action ReviewModel::action()
     return {};
 }
 
-int ReviewModel::findNext(bool forward, int from, bool nextList)
+/*int ReviewModel::findNext(bool forward, int from, bool nextList)
 {
     assert(!cache_.empty());
 
@@ -335,7 +344,56 @@ int ReviewModel::findNext(bool forward, int from, bool nextList)
     remaining_ = cache_.countRemaining();
     updateProgress();
     return -1;
+}*/
+
+int ReviewModel::findNext(bool forward,
+                          int from,
+                          bool nextList)
+{
+    const int N = cache_.size();
+    assert(N > 0);
+
+    // If we’re skipping the “current” list, capture its node_id
+    std::optional<QUuid> skipNode;
+    if (nextList) {
+        skipNode = cache_.current().node_id_;
+    }
+
+    // Compute the true starting index in [0..N-1]
+    int startIx = (from < 0
+                       ? cache_.currentIx()
+                       : from) % N;
+    if (startIx < 0)
+        startIx += N;
+
+    // step = +1 or –1
+    const int step = forward ? +1 : -1;
+
+    // Try up to N different slots
+    for (int tries = 1; tries <= N; ++tries) {
+        // advance exactly one slot
+        int i = startIx + step * tries;
+        // wrap properly
+        i = (i % N + N) % N;
+
+        const auto &item = cache_.at(i);
+        if (item.state() != Item::State::PENDING)
+            continue;
+
+        // skip the same node if requested
+        if (skipNode && item.node_id_ == *skipNode)
+            continue;
+
+        // *Found* the next pending item
+        return i;
+    }
+
+    // If we get here, nothing valid was found
+    remaining_ = cache_.countRemaining();
+    updateProgress();
+    return -1;
 }
+
 
 bool ReviewModel::moveToIx(uint ix, bool addHistory)
 {
