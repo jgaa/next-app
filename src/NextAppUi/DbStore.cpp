@@ -105,6 +105,14 @@ void DbStore::createDbObject()
         query.exec("PRAGMA foreign_keys = ON");
     }
 
+    {
+        QSqlQuery query{*db_};
+        query.exec("SELECT sqlite_version()");
+        if (query.next()) {
+            LOG_INFO << "SQLite version: " << query.value(0).toString();
+        }
+    }
+
     const auto version = getDbVersion();
 
     if (!updateSchema(version)) {
