@@ -122,11 +122,12 @@ call configure.bat ^
   -skip qthttpserver ^
   -skip qtdoc ^
   -vcpkg ^
-  -nomake examples -nomake tests ^
+  -c++std c++20 ^
   -- ^
   -DFEATURE_system_jpeg=OFF ^
   -DFEATURE_system_zlib=OFF ^
   -DFEATURE_system_doubleconversion=OFF
+
 if errorlevel 1 (
     echo configure Qt failed
     exit /b

@@ -174,7 +174,7 @@ target_link_libraries(na_grpc_lib
     PRIVATE
         na_proto_lib
         Qt6::Core
-        Qt6::Protobuf
+#        Qt6::Protobuf
         Qt6::ProtobufQuick
         Qt6::ProtobufQtCoreTypes
         Qt6::Grpc
@@ -566,7 +566,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Sql
         $<$<OR:$<BOOL:${WINDOWS_BUILD}>,$<BOOL:${LINUX_BUILD}>>:gRPC::grpc++>
         $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
-        $<$<BOOL:${USE_STATIC_QT}>:dl>
+        $<$<AND:$<BOOL:${USE_STATIC_QT}>,$<BOOL:${LINUX_BUILD}>>:dl>
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}
         miniaudio

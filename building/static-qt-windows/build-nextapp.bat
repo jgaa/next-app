@@ -114,6 +114,7 @@ cmake -S "%SOURCE_DIR%/../.." -B "%MY_BUILD_DIR%" ^
     -DCMAKE_PREFIX_PATH="%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%;%QT_TARGET_DIR%" ^
     -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%" ^
     -G "Ninja" ^
+    -DUSE_STATIC_QT=ON ^
     -DCMAKE_BUILD_TYPE=Release
 if errorlevel 1 (
     echo Failed to run cmake
