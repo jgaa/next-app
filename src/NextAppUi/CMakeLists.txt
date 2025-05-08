@@ -590,15 +590,22 @@ elseif(APPLE)
         RUNTIME DESTINATION bin
     )
 else()
-    include(InstallRequiredSystemLibraries)
-    set(CPACK_GENERATOR "TGZ")
-    set(CPACK_PACKAGE_NAME "nextapp")
-    set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-    set(CPACK_PACKAGE_CONTACT "jgaa@jgaa.com")
+    include(GNUInstallDirs)
 
-    install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
-    install(DIRECTORY ${CMAKE_PREFIX_PATH}/lib DESTINATION lib)
-
-    include(CPack)
+    install(
+        TARGETS ${PROJECT_NAME}
+        COMPONENT Application
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+    # include(InstallRequiredSystemLibraries)
+    # set(CPACK_GENERATOR "TGZ")
+    # set(CPACK_PACKAGE_NAME "nextapp")
+    # set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+    # set(CPACK_PACKAGE_CONTACT "jgaa@jgaa.com")
+    #
+    # install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+    # install(DIRECTORY ${CMAKE_PREFIX_PATH}/lib DESTINATION lib)
+    #
+    # include(CPack)
 endif()
 

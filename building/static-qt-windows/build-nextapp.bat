@@ -131,12 +131,16 @@ echo Copying dll's
 copy /Y %MY_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin\*.dll %MY_BUILD_DIR%\bin\
 copy /Y %MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin\*.dll %MY_BUILD_DIR%\bin\
 
-rem  cpack -G NSIS
-rem
-rem  copy /Y "%MY_BUILD_DIR%\*.exe" "%BUILD_DIR%\"
-rem  if errorlevel 1 (
-rem      echo Failed to copy the executable installer
-rem      exit /b
-rem  )
+cpack -G NSIS
+if errorlevel 1 (
+    echo Failed to make the installer
+    exit /b
+)
+
+copy /Y "%MY_BUILD_DIR%\*.exe" "%BUILD_DIR%\"
+if errorlevel 1 (
+    echo Failed to copy the executable installer
+    exit /b
+)
 
 popd

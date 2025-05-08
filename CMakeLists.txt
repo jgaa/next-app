@@ -174,3 +174,74 @@ if (NEXTAPP_WITH_UI)
     message("Building UI")
     add_subdirectory(src/NextAppUi)
 endif()
+
+message(STATUS "CMake system processor: ${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "CMake host system name: ${CMAKE_HOST_SYSTEM_NAME}")
+message(STATUS "Pointer size (CMAKE_SIZEOF_VOID_P): ${CMAKE_SIZEOF_VOID_P}")
+message(STATUS "CMake build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "CMake generator: ${CMAKE_GENERATOR}")
+
+
+if(WIN32)
+    include(InstallRequiredSystemLibraries)
+
+    # List of runtime DLLs to install with the app
+    install(FILES
+        "${CMAKE_BINARY_DIR}/bin/libssl-3-x64.dll"
+        "${CMAKE_BINARY_DIR}/bin/libcrypto-3-x64.dll"
+        "${CMAKE_BINARY_DIR}/bin/brotlidec.dll"
+        "${CMAKE_BINARY_DIR}/bin/brotlicommon.dll"
+        "${CMAKE_BINARY_DIR}/bin/brotlidec.dll"
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT Application
+    )
+
+    set(CPACK_GENERATOR "NSIS")
+    set(CPACK_PACKAGE_NAME "NextApp")
+    set(CPACK_PACKAGE_VENDOR "The Last Viking LTD")
+    set(CPACK_PACKAGE_CONTACT "contact@lastviking.eu")
+    SET(CPACK_INSTALL_CMAKE_PROJECTS
+      "${CMAKE_CURRENT_BINARY_DIR};${CMAKE_PROJECT_NAME};Application;/"
+      "${CMAKE_CURRENT_BINARY_DIR};appNextAppUi;Application;/"
+    )
+    set(CPACK_NSIS_COMPONENT_INSTALL OFF)
+    set(CPACK_PACKAGE_VERSION_MAJOR ${APP_VERSION_MAJOR})
+    set(CPACK_PACKAGE_VERSION_MINOR ${APP_VERSION_MINOR})
+    set(CPACK_PACKAGE_VERSION_PATCH ${APP_VERSION_PATCH})
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "NextApp ${APP_VERSION}")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+    set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/src/NextAppUi/LICENSE")
+
+    set(CPACK_NSIS_DISPLAY_NAME "NextApp")
+    set(CPACK_NSIS_PACKAGE_NAME "NextApp ${APP_VERSION}")
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/src/NextAppUi/icons/nextapp.ico")
+    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\nextapp.exe")
+    set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
+    set(CPACK_NSIS_MODIFY_PATH ON)
+
+    # Create a Start Menu shortcut
+    set(CPACK_NSIS_CREATE_ICONS_EXTRA "
+    CreateShortCut \\\"$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\nextapp.lnk\\\" \\\"$INSTDIR\\\\bin\\\\nextapp.exe\\\"
+    ")
+
+    # Clean up the shortcut during uninstall
+    set(CPACK_NSIS_DELETE_ICONS_EXTRA "
+    Delete \\\"$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\nextapp.lnk\\\"
+    RMDir \\\"$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\"
+    ")
+
+    # Define the folder name in the Start Menu
+    set(CPACK_NSIS_START_MENU_FOLDER "NextApp")
+
+    set(CPACK_NSIS_MUI_FINISHPAGE_RUN "nextapp.exe")
+
+    # ————————————————————————————————————————
+    # extra NSIS commands to run during uninstall
+    # ————————————————————————————————————————
+    set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
+      SetShellVarContext current
+      RMDir /r '$APPDATA\\\\NextApp'
+      DeleteRegKey HKCU 'Software\\\\The Last Viking LTD\\\\NextApp'")
+
+    include(CPack)
+endif()
