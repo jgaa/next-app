@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtCore
 import NextAppUi
 import Nextapp.Models
+import "qml/common.js" as Common
 
 ApplicationWindow {
     id: root
@@ -29,7 +30,7 @@ ApplicationWindow {
     menuBar: MyMenuBar {
         dragWindow: root
         //infoText: root.getInfoText()
-        Menu {
+        MyMenu {
             title: qsTr("App")
 
             Action {
@@ -107,6 +108,87 @@ ApplicationWindow {
             Action {
                 text: qsTr("New Action")
                 onTriggered: openActionDlg()
+            }
+        }
+    }
+
+
+    header: ToolBar {
+        clip: true
+
+        background: Rectangle {
+            color: MaterialDesignStyling.surfaceContainer
+        }
+
+        RowLayout {
+            anchors.fill: parent
+
+            Item {
+                Layout.preferredWidth: 10
+            }
+
+            RowLayout {
+                id: actionsBar
+                Layout.fillHeight: true
+
+                Label {
+                    color: MaterialDesignStyling.primary
+                    text: qsTr("Action")
+                }
+
+                ToolBarBtn {
+                    // add
+                    tooltipText: qsTr("New Action")
+                    icon: "\u002b"
+                    isActive: NaMainTreeModel.hasSelection
+                    onClicked: {
+                        openActionDlg()
+                    }
+                }
+
+                ToolBarBtn {
+                    // add today
+                    tooltipText: qsTr("New Action Today")
+                    icon: "\uf271"
+                    isActive: NaMainTreeModel.hasSelection
+                    onClicked: {
+                        openDialog("EditActionDlg.qml", {
+                            node: NaMainTreeModel.selected,
+                            title: qsTr("New action today"),
+                            aprx: NaActionsModel.getAction("today")
+                        });
+                    }
+                }
+
+                ToolBarBtn {
+                    // edit
+                    tooltipText: qsTr("Edit Action")
+                    icon: "\uf31c"
+                    isActive: NaActionsModel.hasSelection
+                    onClicked: {
+                        openDialog("EditActionDlg.qml", {
+                            node: NaMainTreeModel.selected,
+                            title: qsTr("Edit Action"),
+                            aprx: NaActionsModel.getAction(NaActionsModel.selected)
+                        });
+                    }
+                }
+
+                ToolBarBtn {
+                    // stats
+                    tooltipText: qsTr("Statistics")
+                    icon: "\ue473"
+                    isActive: NaActionsModel.hasSelection
+                    onClicked: {
+                        openDialog("ActionStatsDlg.qml", {
+                            model: ModelInstances.getActionStatsModel(NaActionsModel.selected)
+                        });
+                    }
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
             }
         }
     }
@@ -340,7 +422,7 @@ ApplicationWindow {
         });
     }
 
-    function openActionDlg(kind) {
+    function openActionDlg() {
         openDialog("EditActionDlg.qml", {
             node: mainTree.selectedItemUuid,
             title: qsTr("New Action"),

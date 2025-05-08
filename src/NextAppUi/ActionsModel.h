@@ -225,6 +225,8 @@ public:
     Q_PROPERTY(QString match MEMBER match_ WRITE setMatch NOTIFY matchChanged FINAL)
     Q_PROPERTY(bool filtersEnabled MEMBER filters_enabled_ WRITE setFiltersEnabled NOTIFY filtersEnabledChanged FINAL)
     Q_PROPERTY(nextapp::pb::GetActionsFlags flags READ flags WRITE setFlags NOTIFY flagsChanged)
+    Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectionChanged)
+    Q_PROPERTY(QString selected READ selected WRITE setSelected NOTIFY selectionChanged)
 
     ActionsModel(QObject *parent = {});
 
@@ -274,6 +276,9 @@ public:
     void setSort(Sorting sort);
     void setMatch(QString match);
     void setFiltersEnabled(bool match_enabled);
+    bool hasSelection() const noexcept;
+    QString selected() const noexcept { return selected_; }
+    void setSelected(QString selected);
 
     static nextapp::pb::ActionKindGadget::ActionKind toKind(const nextapp::pb::ActionInfo& action);
 
@@ -293,10 +298,11 @@ signals:
     void sortChanged();
     void matchChanged();
     void filtersEnabledChanged();
+    void selectionChanged();
 
 private:
     QCoro::Task<void> fetchIf(bool restart = true);
-    void selectedChanged();
+    void selectedTreeNodeChanged();
     void actionChanged(const QUuid &uuid);
     void actionDeleted(const QUuid &uuid);
     void actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo>& ai);
@@ -316,6 +322,7 @@ private:
     bool valid_{false};
     QString match_;
     bool filters_enabled_{false};
+    QString selected_;
 
     // QAbstractItemModel interface
 public:

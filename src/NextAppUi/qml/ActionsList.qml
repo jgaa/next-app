@@ -75,6 +75,12 @@ Rectangle {
                 } else {
                     selectedItems.push(uuid); // Add it
                 }
+
+                if (selectedItems.length == 1) {
+                    NaActionsModel.selected = selectedItems[0]
+                } else {
+                    NaActionsModel.selected = ""
+                }
                 mySelectedItemsChanged();
                 // console.log("[toggle] The list currently contains: ")
                 // for(let i = 0; i < selectedItems.length; i++) {
@@ -122,6 +128,7 @@ Rectangle {
                         console.log("ActionsList: Setting currentIndex to -1 because model was reset and empty")
                         listView.currentIndex = -1
                     }
+                    NaActionsModel.selected = ""
                 }
             }
 
@@ -187,6 +194,8 @@ Rectangle {
                                     listView.resetSelection()
                                     listView.selectUuid(uuid)
                                     listView.currentIndex = index
+                                    NaActionsModel.selected = uuid
+                                    console.log("ActionsList: NaActionsModel.selected = ", uuid)
                                     if (root.callOnSelectionEvent) {
                                         root.onSelectionEvent(uuid)
                                     }

@@ -277,6 +277,8 @@ qt_add_qml_module(${PROJECT_NAME}
     QML_FILES
         Main.qml
         qml/About.qml
+        qml/ActionStatisticsView.qml
+        qml/ActionStatsDlg.qml
         qml/ActionsList.qml
         qml/ActionsListFilterDlg.qml
         qml/ActionsListView.qml
@@ -295,6 +297,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/MyMenu.qml # x
         qml/MyMenuBar.qml # x
         qml/NoInstance.qml
+        qml/NotificationsView.qml
         qml/ReportsView.qml
         qml/ResizeButton.qml # x
         qml/SelectedIndicatorBar.qml
@@ -334,8 +337,10 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/components/DifficultySelector.qml
         qml/components/MoveDue.qml
         qml/components/PrioritySelector.qml
+        qml/components/SliderTicks.qml
         qml/components/TimeAndDurationInput.qml
         qml/components/TimeInput.qml
+        qml/components/ToolBarBtn.qml
         qml/components/UnrecognizedDeviceErrorDlg.qml
         qml/components/WhenSelector.qml
         qml/greendays/DayDialog.qml
@@ -363,6 +368,7 @@ qt_add_qml_module(${PROJECT_NAME}
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Solid-900.otf"
+        icons/filter.svg
         icons/folder.svg
         icons/folder_closed.svg
         icons/folder_open.svg
@@ -378,6 +384,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/clock.svg
         icons/fontawsome/cloud-bolt.svg
         icons/fontawsome/file-lines.svg
+        icons/fontawsome/flag.svg
         icons/fontawsome/folder-tree.svg
         icons/fontawsome/folder.svg
         icons/fontawsome/gear.svg
@@ -390,8 +397,6 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/square-check.svg
         icons/fontawsome/square.svg
         icons/fontawsome/trash-can.svg
-        icons/fontawsome/flag.svg
-        icons/filter.svg
         icons/generic_file.svg
         icons/globe.svg
         icons/info_sign.svg
@@ -416,6 +421,8 @@ qt_add_qml_module(${PROJECT_NAME}
         ActionCategoriesModel.h
         ActionInfoCache.cpp
         ActionInfoCache.h
+        ActionStatsModel.cpp
+        ActionStatsModel.h
         ActionsModel.cpp
         ActionsModel.h
         ActionsOnCurrentCalendar.cpp
@@ -452,8 +459,12 @@ qt_add_qml_module(${PROJECT_NAME}
         MainTreeModel.h
         MaterialDesignStyling.cpp
         MaterialDesignStyling.h
+        ModelInstances.cpp
+        ModelInstances.h
         NextAppCore.cpp
         NextAppCore.h
+        NotificationsModel.cpp
+        NotificationsModel.h
         OtpModel.cpp
         OtpModel.h
         ReviewModel.cpp
@@ -465,6 +476,8 @@ qt_add_qml_module(${PROJECT_NAME}
         SoundPlayer.h
         TimeBoxActionsModel.cpp
         TimeBoxActionsModel.h
+        UseCaseTemplates.cpp
+        UseCaseTemplates.h
         WeeklyWorkReportModel.cpp
         WeeklyWorkReportModel.h
         WorkCache.cpp
@@ -479,14 +492,6 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
-        SOURCES NotificationsModel.h NotificationsModel.cpp
-        QML_FILES qml/NotificationsView.qml
-        SOURCES ModelInstances.h ModelInstances.cpp
-        SOURCES UseCaseTemplates.h UseCaseTemplates.cpp
-        QML_FILES qml/components/SliderTicks.qml
-        QML_FILES qml/ActionStatisticsView.qml
-        SOURCES ActionStatsModel.h ActionStatsModel.cpp
-        QML_FILES qml/ActionStatsDlg.qml
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)

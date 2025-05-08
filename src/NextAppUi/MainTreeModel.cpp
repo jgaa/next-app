@@ -130,8 +130,11 @@ MainTreeModel::MainTreeModel(QObject *parent)
 
 void MainTreeModel::setSelected(const QString& newSel)
 {
-    selected_ = toValidQuid(newSel);
-    emit selectedChanged();
+    auto sel = toValidQuid(newSel);
+    if (sel != selected_) {
+        selected_ = sel;
+        emit selectedChanged();
+    }
 }
 
 QString MainTreeModel::selected() const

@@ -21,6 +21,7 @@ class MainTreeModel : public QAbstractItemModel
 
     // Used by multiple qml components
     Q_PROPERTY(QString selected READ selected WRITE setSelected NOTIFY selectedChanged)
+    Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectedChanged)
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
     Q_PROPERTY(bool valid READ valid NOTIFY stateChanged)
 
@@ -124,6 +125,10 @@ public:
     // bool valid() const noexcept {
     //     return state_ == State::VALID;
     // }
+
+    bool hasSelection() const noexcept {
+        return !selected_.isEmpty();
+    }
 
 signals:
     void useRootChanged();

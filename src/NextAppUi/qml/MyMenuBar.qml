@@ -57,9 +57,7 @@ MenuBar {
             }
         }
     }
-    // We use the contentItem property as a place to attach our window decorations. Beneath
-    // the usual menu entries within a MenuBar, it includes a centered information text, along
-    // with the minimize, maximize, and close buttons.
+
     contentItem: RowLayout {
         id: windowBar
 
@@ -93,79 +91,14 @@ MenuBar {
             id: windowActions
             visible: false
 
-            Layout.alignment: Qt.AlignRight
+            Layout.fillWidth: true
             Layout.fillHeight: true
 
-            spacing: 0
 
-            component InteractionButton: Rectangle {
-                id: interactionButton
-
-                signal action()
-                property alias hovered: hoverHandler.hovered
-
-                Layout.fillHeight: true
-                Layout.preferredWidth: height
-
-                color: hovered ? MaterialDesignStyling.surfaceDim : "transparent"
-                HoverHandler {
-                    id: hoverHandler
-                }
-                TapHandler {
-                    id: tapHandler
-                    onTapped: interactionButton.action()
-                }
+            ToolButton {
+                text: "Gakk!"
             }
 
-            InteractionButton {
-                id: minimize
-
-                onAction: root.dragWindow.showMinimized()
-                Rectangle {
-                    anchors.centerIn: parent
-                    color: parent.hovered ? MaterialDesignStyling.surfaceBright : MaterialDesignStyling.surfaceContainer
-                    height: 2
-                    width: parent.height - 14
-                }
-            }
-
-            InteractionButton {
-                id: maximize
-
-                onAction: root.dragWindow.showMaximized()
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 7
-                    border.color: parent.hovered ? MaterialDesignStyling.tertiaryContainer : MaterialDesignStyling.tertiaryFixedDim
-                    border.width: 2
-                    color: "transparent"
-                }
-            }
-
-            InteractionButton {
-                id: close
-
-                color: hovered ? "green" : "transparent"
-                onAction: root.dragWindow.close()
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: parent.height - 8; height: 2
-
-                    rotation: 45
-                    antialiasing: true
-                    transformOrigin: Item.Center
-                    color: parent.hovered ? "red" : "blue"
-
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: parent.height
-                        height: parent.width
-
-                        antialiasing: true
-                        color: parent.color
-                    }
-                }
-            }
         }
     }
 

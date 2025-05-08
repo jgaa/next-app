@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
@@ -67,6 +69,8 @@ void logQtMessages(QtMsgType type, const QMessageLogContext &context, const QStr
         LOG_ERROR << "[Qt] " << msg;
         break;
     }
+
+    std::cout << "[Qt] " << msg.toStdString() << std::endl;
 }
 
 // Must match uiStyle in PrefSettings.qml

@@ -249,7 +249,7 @@ ActionsModel::ActionsModel(QObject *parent)
 
     connect(std::addressof(ServerComm::instance()), &ServerComm::onUpdate, this, &ActionsModel::onUpdate);
     connect(std::addressof(ServerComm::instance()), &ServerComm::receivedCurrentWorkSessions, this, &ActionsModel::receivedWorkSessions);
-    connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &ActionsModel::selectedChanged);
+    connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &ActionsModel::selectedTreeNodeChanged);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ActionsModel::actionChanged);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ActionsModel::actionDeleted);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionAdded, this, &ActionsModel::actionAdded);
@@ -458,6 +458,19 @@ void ActionsModel::setFiltersEnabled(bool match_enabled)
         filters_enabled_ = match_enabled;
         emit filtersEnabledChanged();
         fetchIf(true);
+    }
+}
+
+bool ActionsModel::hasSelection() const noexcept
+{
+    return !selected_.isEmpty();
+}
+
+void ActionsModel::setSelected(QString selected) {
+    if (selected != selected_) {
+        selected_ = selected;
+        emit selectionChanged();
+        LOG_DEBUG_N << "Selected changed to " << selected;
     }
 }
 
@@ -1762,7 +1775,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
     }
 }
 
-void ActionsModel::selectedChanged()
+void ActionsModel::selectedTreeNodeChanged()
 {
     if (!isVisible()) {
         return;
