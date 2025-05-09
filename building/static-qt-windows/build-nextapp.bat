@@ -134,6 +134,10 @@ copy /Y %MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin\*.dll %MY_BUI
 cpack -G NSIS
 if errorlevel 1 (
     echo Failed to make the installer
+    echo NSISOutput.log:
+    echo --------------------------------
+    type "%MY_BUILD_DIR%/_CPack_Packages/win64/NSIS/NSISOutput.log"
+    echo --------------------------------
     exit /b
 )
 
