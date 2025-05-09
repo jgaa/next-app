@@ -135,8 +135,9 @@ cpack -G NSIS
 if errorlevel 1 (
     echo Failed to make the installer
     echo NSISOutput.log:
+    echo type "D:/a/next-app/next-app/build/nextapp/_CPack_Packages/win64/NSIS/NSISOutput.log"
     echo --------------------------------
-    type "%MY_BUILD_DIR%/_CPack_Packages/win64/NSIS/NSISOutput.log"
+    type "D:/a/next-app/next-app/build/nextapp/_CPack_Packages/win64/NSIS/NSISOutput.log"
     echo --------------------------------
     exit /b
 )
