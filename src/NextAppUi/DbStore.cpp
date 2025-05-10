@@ -511,14 +511,18 @@ bool DbStore::updateSchema(uint version)
              << " to #" << latest_version;
 
     // Here we will run all SQL queries for upgrading from the specified version to the current version.
-    auto relevant = ranges::drop_view(versions, version);
-    for(string_view query : relevant | std::views::join) {
-        QSqlQuery q{*db_};
-        auto sql = QString::fromStdString(string{query});
-        LOG_TRACE_N << "Executing: " << sql;
-        if (!q.exec(sql)) {
-            LOG_ERROR_N << "Failed to execute: \"" << sql << "\",  db=" << q.lastError().databaseText() << ", driver=" << q.lastError().driverText();
-            return false;
+    auto relevant = std::ranges::drop_view(versions, version);
+    for (auto& group : relevant) {
+        for (std::string_view query : group) {
+            QSqlQuery q{*db_};
+            auto sql = QString::fromStdString(std::string{query});
+            LOG_TRACE_N << "Executing: " << sql;
+            if (!q.exec(sql)) {
+                LOG_ERROR_N << "Failed to execute: \"" << sql
+                            << "\", db=" << q.lastError().databaseText()
+                            << ", driver=" << q.lastError().driverText();
+                return false;
+            }
         }
     }
 
