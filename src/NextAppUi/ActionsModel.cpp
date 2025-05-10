@@ -1459,7 +1459,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
         }
     };
 
-    auto join_tags_if = [&] -> string {
+    auto join_tags_if = [&]() -> string {
         if (!match_tags.isEmpty()) {
             string rval{join_tags};
             rval += " AND t.name IN (";
