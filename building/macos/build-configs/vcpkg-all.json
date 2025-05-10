@@ -1,0 +1,49 @@
+{
+"name": "qtstuff",
+"dependencies": [
+    "boost-circular-buffer",
+    "boost-multi-index",
+    "boost-program-options",
+    "boost-type-index",
+    "brotli",
+    "grpc",
+    "libpng",
+    "openssl",
+    "protobuf",
+    "zlib",
+    {
+    "name": "qtbase",
+    "version>=": "6.8.2",
+    "features": [
+        "concurrent",
+        "testlib",
+        "dnslookup",
+        "network",
+        "gui",
+        "widgets",
+        "icu",
+        "jpeg",
+        "opengl",
+        "openssl"
+    ]
+    },
+    {
+    "name": "qtdeclarative",
+    "version>=": "6.8.3"
+    },
+    {
+    "name": "qtgraphs",
+    "version>=": "6.8.3"
+    },
+    {
+    "name": "qtsvg",
+    "version>=": "6.8.3"
+    },
+    {
+    "name": "qtgrpc",
+    "version>=": "6.8.3"
+    }
+],
+
+"builtin-baseline": "e0b65b8ccab766d7570a6734b9b2e6388a27bf41"
+}
