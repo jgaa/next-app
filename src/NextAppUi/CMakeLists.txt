@@ -498,7 +498,7 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 
 if (APPLE)
     set_target_properties(${PROJECT_NAME} PROPERTIES
-        MACOSX_BUNDLE_GUI_IDENTIFIER eu.lastviking.${PROJECT_NAME}
+        MACOSX_BUNDLE_GUI_IDENTIFIER eu.lastviking.nextapp
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}"
         MACOSX_BUNDLE TRUE
@@ -512,7 +512,18 @@ elseif (WIN32)
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
-elseif (NOT ANDROID)
+elseif (ANDROID)
+    set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
+
+    target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
+    include(GNUInstallDirs)
+    install(TARGETS ${PROJECT_NAME}
+        BUNDLE DESTINATION .
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+else()
     # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
     # If you are developing for iOS or macOS you should consider setting an
     # explicit, fixed bundle identifier manually though.
@@ -581,40 +592,64 @@ target_link_libraries(${PROJECT_NAME}
         miniaudio
 )
 
-
-if(ANDROID)
-    set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
-
-    target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
-    include(GNUInstallDirs)
+if (APPLE)
     install(TARGETS ${PROJECT_NAME}
         BUNDLE DESTINATION .
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-elseif(APPLE)
-    install(TARGETS ${PROJECT_NAME}
-        BUNDLE DESTINATION /Applications
-        RUNTIME DESTINATION bin
-    )
-else()
-    include(GNUInstallDirs)
-
-    install(
-        TARGETS ${PROJECT_NAME}
         COMPONENT Application
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-    # include(InstallRequiredSystemLibraries)
-    # set(CPACK_GENERATOR "TGZ")
-    # set(CPACK_PACKAGE_NAME "nextapp")
-    # set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-    # set(CPACK_PACKAGE_CONTACT "jgaa@jgaa.com")
-    #
-    # install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
-    # install(DIRECTORY ${CMAKE_PREFIX_PATH}/lib DESTINATION lib)
-    #
-    # include(CPack)
+elseif(WIN32)
+     install(TARGETS ${PROJECT_NAME}
+        COMPONENT Application
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        COMPONENT Application
+    )
 endif()
+
+
+# if(ANDROID)
+#     # set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+#     #              ${CMAKE_CURRENT_SOURCE_DIR}/android)
+#     # 
+#     # target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
+#     # include(GNUInstallDirs)
+#     # install(TARGETS ${PROJECT_NAME}
+#     #     BUNDLE DESTINATION .
+#     #     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#     #     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+#     # )
+# elseif(APPLE)
+#     # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
+#     # If you are developing for iOS or macOS you should consider setting an
+#     # explicit, fixed bundle identifier manually though.
+#     # set_target_properties(${PROJECT_NAME} PROPERTIES
+#     #     MACOSX_BUNDLE_GUI_IDENTIFIER eu.lastviking.nextapp
+#     #     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+#     #     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+#     #     MACOSX_BUNDLE TRUE
+#     # )
+# elseif (WIN32)
+#     set_target_properties(${PROJECT_NAME} PROPERTIES
+#         WIN32_EXECUTABLE TRUE
+#     )
+# else()
+#     include(GNUInstallDirs)
+# 
+#     install(
+#         TARGETS ${PROJECT_NAME}
+#         COMPONENT Application
+#         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+#     )
+#     # include(InstallRequiredSystemLibraries)
+#     # set(CPACK_GENERATOR "TGZ")
+#     # set(CPACK_PACKAGE_NAME "nextapp")
+#     # set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+#     # set(CPACK_PACKAGE_CONTACT "jgaa@jgaa.com")
+#     #
+#     # install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+#     # install(DIRECTORY ${CMAKE_PREFIX_PATH}/lib DESTINATION lib)
+#     #
+#     # include(CPack)
+# endif()
 

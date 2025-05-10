@@ -1,0 +1,37 @@
+name: Build macOS App
+
+on:
+  push:
+    branches:
+      - macos-ga
+      
+env:
+  SRC_DIR:   ${{ github.workspace }}
+  BUILD_DIR: ${{ github.workspace }}/build
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  VCPKG_TRIPLET: arm64-osx-release
+  VCPKG_INSTALL_OPTIONS: "--clean-after-build"
+  VCPKG_MANIFEST_MODE: "ON"
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Run macOS build script
+        run: ./building/macos/build-nextapp.sh
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: dmg-artifacts
+          path: ${{ env.BUILD_DIR }}/*.dmg
+          retention-days: 3

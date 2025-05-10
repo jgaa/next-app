@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 trap 'echo "[ERROR] Line $LINENO: \"$BASH_COMMAND\" exited with code $?. Aborting." >&2' ERR
 
@@ -26,7 +26,7 @@ export SOURCE_DIR="${SOURCE_DIR:-${SCRIPT_DIR}/../../}"
 export BUILD_DIR="${BUILD_DIR:-/Volumes/devel/build/nextapp}"
 export VCPKG_ROOT="${VCPKG_ROOT:-/Volumes/devel/src/vcpkg}"
 export VCPKG_TRIPLET="${VCPKG_TRIPLET:-x64-osx-release}"
-export VCPKG_INSTALL_OPTIONS="${VCPKG_INSTALL_OPTIONS:---clean-after-build}"
+export VCPKG_INSTALL_OPTIONS="${VCPKG_INSTALL_OPTIONS:-}"
 export VCPKG_MANIFEST_MODE="${VCPKG_MANIFEST_MODE:-ON}"
 export CMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
 
@@ -63,7 +63,7 @@ echo "PATH is now: ${PATH}"
 # —————————————————————————————
 #  6) Copy your manifest into place
 # —————————————————————————————
-cp "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" "${SOURCE_DIR}/vcpkg.json"
+cp -v "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" "${SOURCE_DIR}/vcpkg.json"
 
 # —————————————————————————————
 #  7) Clean & create build dir
@@ -79,6 +79,7 @@ cd "${BUILD_DIR}"
 #  8) Install all vcpkg packages
 # —————————————————————————————
 echo "Installing vcpkg packages…"
+cp -v "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" vcpkg.json
 vcpkg install ${VCPKG_INSTALL_OPTIONS} --triplet "${VCPKG_TRIPLET}"
 echo "Done installing vcpkg packages."
 
