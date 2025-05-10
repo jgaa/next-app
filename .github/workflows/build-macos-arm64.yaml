@@ -30,7 +30,7 @@ jobs:
         run: ./building/macos/build-nextapp.sh
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dmg-artifacts
           path: ${{ env.BUILD_DIR }}/*.dmg
