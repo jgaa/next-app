@@ -114,6 +114,7 @@ cmake -S "%SOURCE_DIR%/../.." -B "%MY_BUILD_DIR%" ^
     -DCMAKE_PREFIX_PATH="%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%;%QT_TARGET_DIR%" ^
     -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%" ^
     -G "Ninja" ^
+    -DUSE_STATIC_QT=ON ^
     -DCMAKE_BUILD_TYPE=Release
 if errorlevel 1 (
     echo Failed to run cmake
@@ -130,12 +131,21 @@ echo Copying dll's
 copy /Y %MY_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin\*.dll %MY_BUILD_DIR%\bin\
 copy /Y %MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin\*.dll %MY_BUILD_DIR%\bin\
 
-rem  cpack -G NSIS
-rem
-rem  copy /Y "%MY_BUILD_DIR%\*.exe" "%BUILD_DIR%\"
-rem  if errorlevel 1 (
-rem      echo Failed to copy the executable installer
-rem      exit /b
-rem  )
+cpack -G NSIS
+if errorlevel 1 (
+    echo Failed to make the installer
+    echo NSISOutput.log:
+    echo type "D:/a/next-app/next-app/build/nextapp/_CPack_Packages/win64/NSIS/NSISOutput.log"
+    echo --------------------------------
+    type "D:/a/next-app/next-app/build/nextapp/_CPack_Packages/win64/NSIS/NSISOutput.log"
+    echo --------------------------------
+    exit /b
+)
+
+copy /Y "%MY_BUILD_DIR%\*.exe" "%BUILD_DIR%\"
+if errorlevel 1 (
+    echo Failed to copy the executable installer
+    exit /b
+)
 
 popd
