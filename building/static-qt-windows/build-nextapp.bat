@@ -131,7 +131,7 @@ echo Copying dll's
 copy /Y %MY_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin\*.dll %MY_BUILD_DIR%\bin\
 copy /Y %MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin\*.dll %MY_BUILD_DIR%\bin\
 
-cpack -G NSIS
+cpack --verbose -G NSIS
 if errorlevel 1 (
     echo Failed to make the installer
     echo NSISOutput.log:

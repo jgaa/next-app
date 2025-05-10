@@ -26,10 +26,10 @@ jobs:
           arch: x64
           
       - name: Install NSIS
-        run: choco install nsis -y
-      
-      - name: Set up environment variables
         run: |
+          choco install nsis --no-progress -y
+          refreshenv
+
       - name: Set up environment variables
         run: |
           echo BUILD_DIR=${{ github.workspace }}\build>>%GITHUB_ENV%
@@ -38,7 +38,6 @@ jobs:
           echo VCPKG_DEFAULT_TRIPLET=x64-windows-release>>%GITHUB_ENV%
           echo CMAKE_GENERATOR_PLATFORM=x64>>%GITHUB_ENV%
       
-
       - name: Update vcpkg to the latest revision
         run: |
             echo Updating vcpkg in %VCPKG_ROOT% 
