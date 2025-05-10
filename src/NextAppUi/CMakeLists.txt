@@ -45,9 +45,6 @@ if (NEXTAPP_USE_ANDROID_UI)
     add_definitions(-DUSE_ANDROID_UI)
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 if(USE_STATIC_QT)
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
@@ -494,7 +491,6 @@ qt_add_qml_module(${PROJECT_NAME}
         util.h
 )
 
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 
 if (APPLE)
     set_target_properties(${PROJECT_NAME} PROPERTIES
