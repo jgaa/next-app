@@ -49,10 +49,20 @@ jobs:
         run: |
             building\static-qt-windows\build-nextapp.bat
 
+      - name: Read NEXTAPP_VERSION from file
+        id: get_version
+        shell: pwsh
+        run: |
+          $ver = Get-Content "${{ env.BUILD_DIR }}\VERSION.txt" -Raw
+          # Trim any trailing newline
+          $ver = $ver.Trim()
+          "NEXTAPP_VERSION=$ver" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "✅ NEXTAPP_VERSION=$ver"
+
       - name: Upload artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
+          name: nextapp-windows-x64-installer-${{ env.NEXTAPP_VERSION }}
           path: "${{ env.BUILD_DIR }}\\*.exe"
           retention-days: 3

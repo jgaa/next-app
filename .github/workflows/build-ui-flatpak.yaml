@@ -5,8 +5,6 @@ on:
     branches:
       - main
       - devel
-  release:
-    types: [created]
 
 jobs:
   build:
@@ -33,53 +31,25 @@ jobs:
           cd building/static-qt
           bash build-nextapp.sh 1
 
-      - name: Upload nextapp artifact (valid for 3 days)
-        uses: actions/upload-artifact@v4
-        with:
-          name: nextapp
-          path: building/static-qt/target/nextapp
-          retention-days: 3
+      - name: Read NEXTAPP_VERSION from file
+        shell: bash
+        run: |
+          ver=$(< "${{ env.BUILD_DIR }}/VERSION.txt")
+          # export it for subsequent steps
+          echo "NEXTAPP_VERSION=$ver" >> $GITHUB_ENV
+          echo "✅ NEXTAPP_VERSION=$ver"
+
+      # - name: Upload nextapp artifact (valid for 3 days)
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: nextapp
+      #     path: building/static-qt/target/nextapp
+      #     retention-days: 3
 
       - name: Upload NextApp.flatpak artifact (valid for 3 days)
         uses: actions/upload-artifact@v4
         with:
-          name: NextApp.flatpak
+          name: NextApp.flatpak-${{ env.NEXTAPP_VERSION }}
           path: building/static-qt/target/NextApp.flatpak
           retention-days: 3
 
-  release:
-    name: Create and Upload Release Tarball
-    needs: build
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: nextapp
-          path: target/
-
-      - name: Download NextApp.flatpak artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: NextApp.flatpak
-          path: target/
-
-      - name: Get release version
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
-      - name: Create compressed tarball for nextapp
-        run: |
-          tar -czvf nextapp-ubuntu-${{ env.VERSION }}.tar.gz -C target nextapp
-
-      - name: Upload release artifacts
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            nextappUI-ubuntu-static-${{ env.VERSION }}.tar.gz
-            target/NextApp.flatpak

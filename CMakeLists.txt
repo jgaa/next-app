@@ -182,6 +182,9 @@ message(STATUS "Pointer size (CMAKE_SIZEOF_VOID_P): ${CMAKE_SIZEOF_VOID_P}")
 message(STATUS "CMake build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "CMake generator: ${CMAKE_GENERATOR}")
 
+# write the version string into VERSION.txt in your build directory
+file(WRITE "${CMAKE_BINARY_DIR}/VERSION.txt" "${NEXTAPP_VERSION}")
+file(WRITE "${CMAKE_BINARY_DIR}/GIT_COMMIT_ID.txt" "${GIT_COMMIT_ID}")
 
 if(WIN32)
     include(InstallRequiredSystemLibraries)
