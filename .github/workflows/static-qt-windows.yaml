@@ -53,7 +53,7 @@ jobs:
         id: get_version
         shell: pwsh
         run: |
-          $ver = Get-Content "${{ env.BUILD_DIR }}\VERSION.txt" -Raw
+          $ver = Get-Content "${{ env.BUILD_DIR }}\nextapp\VERSION.txt" -Raw
           # Trim any trailing newline
           $ver = $ver.Trim()
           "NEXTAPP_VERSION=$ver" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
