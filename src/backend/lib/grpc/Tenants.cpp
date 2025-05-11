@@ -387,9 +387,7 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
             update->mutable_userglobalsettings()->CopyFrom(settings);
             rctx.publishLater(update);
 
-            reply->mutable_userglobalsettings()->CopyFrom(settings);
-
-            // TODO: Cluster: Signal other servers that the settings has changed
+            // TODO: HA-Cluster: Signal other servers that the settings has changed
             owner_.sessionManager().setUserSettings(toUuid(cuser), settings);
 
             co_return;

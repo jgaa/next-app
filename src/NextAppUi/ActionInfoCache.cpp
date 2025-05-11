@@ -715,11 +715,10 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     QList<QVariant> params;
 
     if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
-        QString sql = R"(DELETE FROM action WHERE id = ?)";
-        params.append(action.id_proto());
         LOG_TRACE_N << "Deleting action " << action.id_proto() << " " << action.name();
 
-        const auto rval = co_await db.legacyQuery(sql, &params);
+        co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+        const auto rval = co_await db.query("DELETE FROM action WHERE id = ?", action.id_proto());
         if (!rval) {
             LOG_WARN_N << "Failed to delete action " << action.id_proto() << " " << action.name()
             << " err=" << rval.error();
@@ -727,7 +726,21 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         co_return true; // TODO: Add proper error handling. Probably a full resynch if the action is in the db.
     }
 
-    co_await updateTags(action);
+    bool need_tags_update = true;
+    {
+        const auto hash_rval = co_await db.query("SELECT tags_hash FROM action WHERE id=?", action.id_proto());
+        if (hash_rval.has_value() && !hash_rval.value().rows.empty()) {
+            const auto& hash = hash_rval.value().rows.front()[0].toByteArray();
+            const auto new_hash = computeTagsHash(action.tags());
+            if (hash == new_hash) {
+                need_tags_update = false;
+            } else {
+                co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+            }
+        } else {
+            need_tags_update = !action.tags().isEmpty();
+        }
+    }
 
     params = getParams(action);
     const auto rval = co_await db.legacyQuery(insert_query, &params);
@@ -737,28 +750,18 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         co_return false; // TODO: Add proper error handling. Probably a full resynch.
     }
 
+    if (need_tags_update) {
+        co_await updateTags(action);
+    }
+
     co_return true;
 }
 
-// Must be called before the action is updated with a new hash if is_full_sync() is false
 QCoro::Task<bool> ActionInfoCache::updateTags(const nextapp::pb::Action &action)
 {
     auto& db = NextAppCore::instance()->db();
 
     if (!action.tags().empty()) {
-        if (!isFullSync()) {
-            const auto hash_rval = co_await db.query("SELECT tags_hash FROM action WHERE id=?", action.id_proto());
-            if (hash_rval.has_value() && !hash_rval.value().rows.empty()) {
-                const auto& hash = hash_rval.value().rows.front()[0].toByteArray();
-                const auto new_hash = computeTagsHash(action.tags());
-                if (hash == new_hash) {
-                    co_return true;
-                }
-            }
-
-            co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
-        }
-
         QString sql = "INSERT INTO tag (action, name) VALUES (?, ?)";
         for(const auto& tag : action.tags()) {
             const auto rval = co_await db.query(sql, action.id_proto(), tag);
@@ -768,12 +771,6 @@ QCoro::Task<bool> ActionInfoCache::updateTags(const nextapp::pb::Action &action)
                 co_return false; // TODO: Add proper error handling. Probably a full resynch.
             }
         };
-
-        co_return true;
-    }
-
-    if (!isFullSync()) {
-        co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
     }
 
     co_return true;

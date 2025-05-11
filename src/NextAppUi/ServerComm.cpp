@@ -1091,7 +1091,6 @@ void ServerComm::initGlobalSettings()
             stop();
             return;
         }
-        onGrpcReady();
         emit globalSettingsChanged();
     }, opts);
 }
@@ -1554,8 +1553,8 @@ failed:
 
     } else {
         LOG_INFO << "Omitting server-sync as the local cache is up to date.";
-        // Omit this if we are just reconnecting?
-        emit globalSettingsChanged();
+        // // Omit this if we are just reconnecting?
+        // emit globalSettingsChanged();
 
         if (!co_await GreenDaysModel::instance()->loadFromCache()) {
             LOG_WARN_N << "Failed to get green days.";
@@ -1605,6 +1604,10 @@ failed:
 
     if (new_last_notification_update) {
         NotificationsModel::instance()->setLastUpdateSeen(new_last_notification_update);
+    }
+
+    if (userGlobalSettings_.version() == 0) {
+        initGlobalSettings();
     }
 
     onGrpcReady();
