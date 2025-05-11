@@ -22,7 +22,7 @@ QStringList DayColorModel::getNames() const
     QStringList list = {tr("--- Unset ---")};
     list.reserve(daycolors_.size());
 
-    ranges::copy(views::transform(daycolors_, [](const auto& v) {
+    ranges::copy(views::transform(daycolors_, [](const nextapp::pb::DayColor& v) {
         return v.name();
     }), back_inserter(list));
 

@@ -83,12 +83,22 @@ I'm working towards an Beta version in February 2025.
 
 ## Building
 
-The application use CMake, QT 6.8 and require g++-12 or never for the client and clang++-17 or newer for the server (the templates are too complex for g++). It's developed under
+The application use CMake, QT 6.8.3 and require g++-12 or never for the client and clang++-17 or newer for the server (the templates are too complex for g++). It's developed under
 Linux (Ubuntu 24.04). The server require boost version 1.85 or newer.
+
+**Qt Creator under Windows**
+
+If you just want to build the UI app for Windows with QT Creator, you can copy 
+`building\build-configs\vcpkg-windows-qt-creator.json` to `vcpkg.json` in the 
+projects root directory. You may need to *re-run with initial parameters* in 
+Qt Creatots's build configuration window. This require that **vcpkg** is installed
+your machine and is abailable in the **PATH**. When it works, it will make available 
+all the non-Qt libraries the project depend on.
 
 ## Running
 
-If you don't care about the server, you can start the required components using docker.
+If you don't care about the server, you can start the required back-end components using docker. 
+(I have only tested this under Linux).
 
 ```sh
 
