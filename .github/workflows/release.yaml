@@ -9,7 +9,7 @@ on:
       prerelease:
         description: 'Mark this as a prerelease?'
         required: true
-        default: 'true'
+        default: true
         type: boolean
 
 jobs:
@@ -21,10 +21,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # (Optional) runners already have gh installed
-      #- name: Install GitHub CLI
-      #  run: sudo apt-get update && sudo apt-get install -y gh
 
       - name: Authenticate GitHub CLI
         env:
@@ -51,7 +47,7 @@ jobs:
             exit 1
           fi
           gh run download "$RUN_ID" \
-            --name "NextApp.flatpak-${VERSION}" \
+            --name "NextApp.flatpak-${{ env.VERSION }}" \
             --dir artifacts
 
       - name: Create GitHub Release
@@ -59,8 +55,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: v${{ VERSION }}
-          name: Release v${{ VERSION }}
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
           draft: false
           prerelease: ${{ github.event.inputs.prerelease }}
           generate_release_notes: false
@@ -69,7 +65,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: v${{ VERSION }}
+          tag_name: v${{ env.VERSION }}
           body_path: ${{ github.workspace }}/CHANGELOG.txt
           files: |
             artifacts/*
