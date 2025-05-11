@@ -1,4 +1,4 @@
-name: Build and Release NextApp Flatpak (Static Qt)
+name: Build NextApp Flatpak (Static Qt)
 
 on:
   push:
@@ -38,13 +38,6 @@ jobs:
           # export it for subsequent steps
           echo "NEXTAPP_VERSION=$ver" >> $GITHUB_ENV
           echo "✅ NEXTAPP_VERSION=$ver"
-
-      # - name: Upload nextapp artifact (valid for 3 days)
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: nextapp
-      #     path: building/static-qt/target/nextapp
-      #     retention-days: 3
 
       - name: Upload NextApp.flatpak artifact (valid for 3 days)
         uses: actions/upload-artifact@v4
