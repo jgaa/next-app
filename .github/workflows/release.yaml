@@ -30,14 +30,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RUN_ID=$(gh run list \
-            --repo   "${{ github.repository }}" \
+          RUN_ID=$(
+          gh run list \
+            --repo ${{ github.repository }} \
             --workflow build-ui-flatpak.yml \
             --branch main \
             --status success \
             --limit 1 \
-            --json id \
-          | jq -r '.[0].id')
+            --json databaseId \
+            --jq '.[0].databaseId'
+          )
           if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
             echo "❌ No successful Flatpak run found" >&2
             exit 1
