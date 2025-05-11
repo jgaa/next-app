@@ -52,7 +52,7 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.MY_PAT }}
           tag_name: v${{ env.VERSION }}
           name: Release v${{ env.VERSION }}
           draft: false
@@ -62,7 +62,7 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.MY_PAT }}
           tag_name: v${{ env.VERSION }}
           body_path: ${{ github.workspace }}/CHANGELOG.txt
           files: |
