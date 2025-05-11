@@ -1,0 +1,13 @@
+Initial Beta release.
+
+See https://next-app.org for more information
+
+Back-end Docker containers:
+  - nextappd: Back-end for NextApp
+  - signupd: Handles user-sign up and new devices for existing usres
+
+NextApp user application Supported platforms:
+  - Linux x64 (Flatpak)
+  - Windows x64 (exe Installer)
+  - macOS amd64 (dmg Installer)
+

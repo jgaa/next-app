@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to release (e.g. 1.2.3)'
+        required: true
+      prerelease:
+        description: 'Mark this as a prerelease?'
+        required: true
+        default: 'true'
+        type: boolean
+
+jobs:
+  gather-and-release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # (Optional) runners already have gh installed
+      #- name: Install GitHub CLI
+      #  run: sudo apt-get update && sudo apt-get install -y gh
+
+      - name: Authenticate GitHub CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Prepare artifact dir
+        run: mkdir -p artifacts
+
+      - name: Download Linux Flatpak
+        id: download_flatpak
+        run: |
+          RUN_ID=$(gh run list \
+            --repo   "${{ github.repository }}" \
+            --workflow build-ui-flatpak.yml \
+            --branch main \
+            --status success \
+            --limit 1 \
+            --json id \
+          | jq -r '.[0].id')
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "❌ No successful Flatpak run found" >&2
+            exit 1
+          fi
+          gh run download "$RUN_ID" \
+            --name "NextApp.flatpak-${VERSION}" \
+            --dir artifacts
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: v${{ VERSION }}
+          name: Release v${{ VERSION }}
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease }}
+          generate_release_notes: false
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: v${{ VERSION }}
+          body_path: ${{ github.workspace }}/CHANGELOG.txt
+          files: |
+            artifacts/*
