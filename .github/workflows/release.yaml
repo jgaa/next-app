@@ -33,7 +33,7 @@ jobs:
           RUN_ID=$(
           gh run list \
             --repo ${{ github.repository }} \
-            --workflow build-ui-flatpak.yml \
+            --workflow build-ui-flatpak.yaml \
             --branch main \
             --status success \
             --limit 1 \
