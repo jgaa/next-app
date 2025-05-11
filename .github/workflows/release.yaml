@@ -27,6 +27,8 @@ jobs:
 
       - name: Download Linux Flatpak
         id: download_flatpak
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           RUN_ID=$(gh run list \
             --repo   "${{ github.repository }}" \
