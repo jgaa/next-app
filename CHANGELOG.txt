@@ -1,3 +1,10 @@
+**** TEST RELEASE ****
+
+=======================================================
+This release is used for testing the release workflow.
+It is not a real release, and it will be deleted soon.
+=======================================================
+
 Initial Beta release.
 
 See https://next-app.org for more information
