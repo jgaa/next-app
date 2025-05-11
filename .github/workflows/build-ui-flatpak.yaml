@@ -34,7 +34,7 @@ jobs:
       - name: Read NEXTAPP_VERSION from file
         shell: bash
         run: |
-          ver=$(< "${{ env.BUILD_DIR }}/VERSION.txt")
+          ver=$(grep -Po '(?<=set\(NEXTAPP_VERSION\s)[^)]+' CMakeLists.txt)
           # export it for subsequent steps
           echo "NEXTAPP_VERSION=$ver" >> $GITHUB_ENV
           echo "✅ NEXTAPP_VERSION=$ver"
