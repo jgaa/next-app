@@ -3,7 +3,7 @@ name: Build for Windows with Static Qt
 on:
   push:
     branches:
-      - windows-ga
+      - main
 
 jobs:
   build:
