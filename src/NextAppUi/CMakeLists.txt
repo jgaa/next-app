@@ -589,19 +589,39 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 if (APPLE)
+    set(PLIST_IN   "${NEXTAPP_ROOT}/building/macos/Info.plist.in")
+    set(PLIST_OUT  "${CMAKE_BINARY_DIR}/Info.plist")
+    configure_file("${PLIST_IN}" "${PLIST_OUT}" @ONLY)
+
     set_target_properties(${PROJECT_NAME} PROPERTIES
-        MACOSX_BUNDLE ON
-        MACOSX_BUNDLE_ICON_FILE "${NEXTAPP_ROOT}/building/macos/nextapp.icns"
+    MACOSX_BUNDLE            ON
+    MACOSX_BUNDLE_INFO_PLIST "${PLIST_OUT}"
     )
+        
     install(TARGETS ${PROJECT_NAME}
         BUNDLE DESTINATION .
         COMPONENT Application
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
+    install(
+      FILES "${NEXTAPP_ROOT}/building/macos/nextapp.icns"
+      DESTINATION "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources"
+      COMPONENT Application
+    )
+    # set_target_properties(${PROJECT_NAME} PROPERTIES
+    #     MACOSX_BUNDLE ON
+    #     # tells CMake to inject CFBundleIconFile into the generated Info.plist
+    #     MACOSX_BUNDLE_ICON_FILE "nextapp"
+    # )
+    install(
+        FILES "${NEXTAPP_ROOT}/src/NextAppUi/LICENSE"
+        DESTINATION "."
+        COMPONENT Application
+    )
+
 
 elseif(WIN32)
-     install(TARGETS ${PROJECT_NAME}
-        COMPONENT Application
+    install(TARGETS ${PROJECT_NAME}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT Application

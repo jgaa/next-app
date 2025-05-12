@@ -260,8 +260,6 @@ if(APPLE)
   set(CPACK_PACKAGE_NAME        "NextApp")
   set(CPACK_PACKAGE_VENDOR      "The Last Viking LTD")
   set(CPACK_DMG_VOLUME_NAME     "NextApp ${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
-  set(CPACK_DMG_VOLUME_ICON     "${CMAKE_SOURCE_DIR}/building/macos/nextapp.icns")
-  set(CPACK_PACKAGE_CONTACT     "contact@lastviking.eu")
   SET(CPACK_INSTALL_CMAKE_PROJECTS
       "${CMAKE_CURRENT_BINARY_DIR};appNextAppUi;Application;/"
     )
@@ -270,20 +268,11 @@ if(APPLE)
   set(CPACK_PACKAGE_VERSION_PATCH ${APP_VERSION_PATCH})
 
   # The name of the volume when the user mounts the DMG
-  set(CPACK_DMG_VOLUME_NAME     "MextApp ${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
+  set(CPACK_DMG_VOLUME_NAME     "NextApp ${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 
   # (Optional) Custom background image & icon positions
   # set(CPACK_DMG_BACKGROUND_IMAGE "${CMAKE_SOURCE_DIR}/mac/dmg_background.png")
   # set(CPACK_DMG_DS_STORE_SETUP  "${CMAKE_SOURCE_DIR}/mac/dmg_dsstore")
-
-  # Make sure we don’t end up with a monolithic installer
-  set(CPACK_MONOLITHIC_INSTALL  OFF)
-  
-  install(
-      FILES "${NEXTAPP_ROOT}/building/macos/nextapp.icns"
-      DESTINATION "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources"
-      COMPONENT Application
-  )
 
   include(CPack)
 endif()
