@@ -589,11 +589,16 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 if (APPLE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE ON
+        MACOSX_BUNDLE_ICON_FILE "${NEXTAPP_ROOT}/building/macos/nextapp.icns"
+    )
     install(TARGETS ${PROJECT_NAME}
         BUNDLE DESTINATION .
         COMPONENT Application
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
+
 elseif(WIN32)
      install(TARGETS ${PROJECT_NAME}
         COMPONENT Application

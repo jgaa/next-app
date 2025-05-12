@@ -25,6 +25,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: true
+          
+      - name: Cache vcpkg directory
+        uses: actions/cache@v4
+        with:
+          # Cache the entire vcpkg folder
+          path: ${{ env.VCPKG_ROOT }}
+          # Key on runner OS + triplet + hash of your vcpkg-all.json manifest
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('building/macos/build-configs/vcpkg-all.json') }}
 
       - name: Run macOS build script
         run: ./building/macos/build-nextapp.sh

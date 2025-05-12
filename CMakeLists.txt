@@ -259,6 +259,8 @@ if(APPLE)
   # Basic package info
   set(CPACK_PACKAGE_NAME        "NextApp")
   set(CPACK_PACKAGE_VENDOR      "The Last Viking LTD")
+  set(CPACK_DMG_VOLUME_NAME     "NextApp ${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
+  set(CPACK_DMG_VOLUME_ICON     "${CMAKE_SOURCE_DIR}/building/macos/nextapp.icns")
   set(CPACK_PACKAGE_CONTACT     "contact@lastviking.eu")
   SET(CPACK_INSTALL_CMAKE_PROJECTS
       "${CMAKE_CURRENT_BINARY_DIR};appNextAppUi;Application;/"
@@ -276,6 +278,12 @@ if(APPLE)
 
   # Make sure we don’t end up with a monolithic installer
   set(CPACK_MONOLITHIC_INSTALL  OFF)
+  
+  install(
+      FILES "${NEXTAPP_ROOT}/building/macos/nextapp.icns"
+      DESTINATION "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources"
+      COMPONENT Application
+  )
 
   include(CPack)
 endif()
