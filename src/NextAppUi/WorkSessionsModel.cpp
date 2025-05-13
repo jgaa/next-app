@@ -85,8 +85,6 @@ void WorkSessionsModel::touch(const QString &sessionId)
 
 void WorkSessionsModel::finishAction(const QString &sessionId)
 {
-    done(sessionId);
-
     if (!sessionId.isEmpty()) {
         if (auto session = lookup(toQuid(sessionId))) {
             ServerComm::instance().markActionAsDone(session->action(), true);
@@ -107,8 +105,33 @@ void WorkSessionsModel::fetch()
     auto active = WorkCache::instance()->getActive();
     sessions_.clear();
     for (const auto& session : active) {
+        if (session->state() >= nextapp::pb::WorkSession::State::DONE) {
+            continue;
+        }
         sessions_.push_back(session);
     }
+    sortAndValidate();
+}
+
+void WorkSessionsModel::sortAndValidate()
+{
+    // Remove anyhthing that is done or deleted.
+    auto& sessions = session_by_ordered();
+
+    sessions.sort([](const auto& lhs, const auto& rhs) {
+        // Sort on state, and then touched time DESC
+        if (lhs.session->state() != rhs.session->state()) {
+            return lhs.session->state() < rhs.session->state();
+        }
+        if (lhs.session->touched() != rhs.session->touched()) {
+            return lhs.session->touched() > rhs.session->touched();
+        }
+        return false;
+    });
+
+    sessions.remove_if([](const auto& v) {
+        return v.session->state() >= nextapp::pb::WorkSession::State::DONE;
+    });
 }
 
 bool WorkSessionsModel::actionIsInSessionList(const QUuid &actionId) const
@@ -120,7 +143,7 @@ bool WorkSessionsModel::actionIsInSessionList(const QUuid &actionId) const
 void WorkSessionsModel::fetchIf()
 {
     if (isVisible()) {
-        fetch();
+        fetch();        
     }
 }
 

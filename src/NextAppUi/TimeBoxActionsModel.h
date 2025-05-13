@@ -59,13 +59,13 @@ private:
         }
 
         bool hasTb() const noexcept {
-            return tb_;
+            return tb_.has_value();
         }
 
-        nextapp::pb::TimeBlock* tb() const noexcept {
+        const nextapp::pb::TimeBlock& tb() const noexcept {
             assert(!done_);
             assert(tb_);
-            return tb_;
+            return tb_.value();
         }
 
         auto& ai() const noexcept {
@@ -77,7 +77,7 @@ private:
         }
 
         bool valid() const noexcept {
-            return !done_ && valid_;
+            return !done_ && valid_ && !is_synching_;
         }
 
         void invalidate() noexcept {
@@ -88,7 +88,7 @@ private:
 
     private:
         TimeBoxActionsModel& parent_;
-        nextapp::pb::TimeBlock *tb_{};
+        std::optional<nextapp::pb::TimeBlock> tb_;
         nextapp::pb::StringList actions_;
         std::vector<std::shared_ptr<nextapp::pb::ActionInfo>> ai_{};
         bool is_synching_{};
@@ -101,8 +101,6 @@ private:
     void reSync();
     void resetState();
     void onSynched();
-    void notifyBeginResetModel();
-    void notifyEndResetModel();
 
     QUuid uuid_;
     QQuickItem* timeBox_{};

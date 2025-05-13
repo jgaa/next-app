@@ -222,6 +222,7 @@ QCoro::Task<bool> WorkCache::loadFromCache()
     }
 
     sortActive(active_);
+    emit activeChanged();
 
     co_return true;
 }

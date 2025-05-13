@@ -51,7 +51,7 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
     });
 
     connect(day_, &CalendarDayModel::eventChanged, [this](const QString &eventId) {
-        if (state_->hasTb() && day_->valid() && state_->tb()->id_proto() == eventId) {
+        if (state_->hasTb() && day_->valid() && state_->tb().id_proto() == eventId) {
             reSync();
         }
     });
@@ -61,9 +61,11 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
     }
 
     connect(ActionsWorkedOnTodayCache::instance(), &ActionsWorkedOnTodayCache::modelReset, this, [this] {
-        if (state_ && state_->valid()) {
-            beginResetModel();
-            endResetModel();
+        if (state_ && state_->valid() && !state_->isSynching()) {
+            QMetaObject::invokeMethod(this, [this]() {
+                beginResetModel();
+                endResetModel();
+            }, Qt::QueuedConnection);
         }
     });
 }
@@ -103,7 +105,6 @@ void TimeBoxActionsModel::reSync()
     }
 
     assert(state_);
-    notifyBeginResetModel();
     state_->invalidate();
 
     // sync() may return before the synch is actually done, so we will call begin/reste state again when it has finished.
@@ -112,11 +113,10 @@ void TimeBoxActionsModel::reSync()
 
 void TimeBoxActionsModel::resetState()
 {
-    notifyBeginResetModel();
+    beginResetModel();
     if (state_) {
         state_->cancel();
     }
-
     state_ = make_shared<State>(*this);
     endResetModel();
 }
@@ -124,30 +124,23 @@ void TimeBoxActionsModel::resetState()
 void TimeBoxActionsModel::onSynched()
 {
     // The data has changed. Emit the signal.
-    notifyEndResetModel();
+    beginResetModel();
+    endResetModel();
     emit actionsChanged();
 }
 
-void TimeBoxActionsModel::notifyBeginResetModel()
-{
-    if (!pending_reset_model_) {
-        pending_reset_model_ = true;
-        beginResetModel();
-    }
-}
 
-void TimeBoxActionsModel::notifyEndResetModel()
-{
-    if (pending_reset_model_) {
-        pending_reset_model_ = false;
-        endResetModel();
-    }
-}
 
 int TimeBoxActionsModel::rowCount(const QModelIndex &parent) const
 {
+    LOG_TRACE_N << "rowCount called";
     if (state_ && state_->valid()) {
-        return state_->tb()->actions().list().size();
+        const auto& tb = state_->tb();
+        const auto& actions = tb.actions();
+        const auto& list = actions.list();
+        LOG_TRACE_N << "rowCount: " << list.size() << " actions";
+
+        return state_->tb().actions().list().size();
     }
 
     return 0;
@@ -159,7 +152,7 @@ QVariant TimeBoxActionsModel::data(const QModelIndex &index, int role) const
         return {};
     }
 
-    const auto& actions = state_->tb()->actions().list();
+    const auto& actions = state_->tb().actions().list();
     if (index.row() >= actions.size()) {
         return {};
     }
@@ -223,20 +216,26 @@ QCoro::Task<bool> TimeBoxActionsModel::State::sync()
         co_return false;
     }
 
+    LOG_DEBUG << "TimeBoxActionsModel: Starting async sync data...";
+
     is_synching_ = true;
     ScopedExit later {[&] {
         is_synching_ = false;
+        LOG_DEBUG << "TimeBoxActionsModel: Syncing is finished";
     }};
 
     valid_ = false;
 
-    tb_ = parent_.getTb();
+    tb_.reset();
+    if (auto * tb = parent_.getTb()) {
+        *tb = *tb;
+    }
     if (!tb_) {
         parent_.onSynched();
         co_return false;
     }
 
-    assert(tb_);
+    assert(tb_.has_value());
     const auto& tb_id = tb_->id_proto();
 
     ai_.clear();

@@ -229,6 +229,7 @@ QCoro::Task<bool> CalendarCache::remove(const nextapp::pb::TimeBlock &tb)
 
 QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent> > > CalendarCache::getCalendarEvents(QDate start, QDate end)
 {
+    LOG_TRACE_N << "Getting calendar events from " << start.toString() << " to " << end.toString();
     QList<std::shared_ptr<nextapp::pb::CalendarEvent>> events;
 
     auto& db = NextAppCore::instance()->db();
@@ -266,6 +267,7 @@ QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent> > > CalendarCache:
         }
     }
 
+    LOG_TRACE_N << "Found " << events.size() << " events";
     co_return events;
 }
 

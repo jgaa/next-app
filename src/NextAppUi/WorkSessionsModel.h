@@ -72,6 +72,7 @@ signals:
 private:
     void onDurationChanged(const WorkCache::active_duration_changes_t& changes);
     void fetch();
+    void sortAndValidate();
 
     static WorkSessionsModel* instance_;
 };

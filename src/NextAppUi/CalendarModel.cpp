@@ -424,9 +424,11 @@ QCoro::Task<void> CalendarModel::onCalendarEventRemoved(const QUuid id)
 
 QCoro::Task<void> CalendarModel::fetchIf()
 {
+    LOG_TRACE_N << "Called. mode_=" << mode_ << " online_=" << online_ << " valid_=" << valid_;
     setValid(false);
 
     if (mode_ == CM_UNSET) {
+        LOG_TRACE_N << "CM_UNSET, returning.";
         co_return;
     }
 
@@ -449,6 +451,8 @@ QCoro::Task<void> CalendarModel::fetchIf()
             updateActionsOnCalendarCache();
         }
     }
+
+    LOG_TRACE_N << "Done.";
 }
 
 void CalendarModel::setOnline(bool online)
