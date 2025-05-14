@@ -1481,6 +1481,14 @@ failed:
 #endif
 
     connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
+    connect(updates_.get(), &QGrpcServerStream::finished, this, [this] (const QGrpcStatus &status) {
+        LOG_WARN << "Server stream finished: " << status.message();
+        if (status_ == Status::ONLINE) {
+            setStatus(Status::ERROR);
+            addMessage(tr("Server stream finished: %1").arg(toString(status)));
+            scheduleReconnect();
+        }
+    });
 
     if (needs_sync || full_sync) {
 
