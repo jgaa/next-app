@@ -68,6 +68,13 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
             }, Qt::QueuedConnection);
         }
     });
+
+    connect(this, &TimeBoxActionsModel::modelAboutToBeReset, this, [this] {
+        LOG_DEBUG << "TimeBoxActionsModel: modelAboutToBeReset";
+    });
+    connect(this, &TimeBoxActionsModel::modelAboutToBeReset, this, [this] {
+        LOG_DEBUG << "TimeBoxActionsModel: modelReset";
+    });
 }
 
 void TimeBoxActionsModel::removeAction(const QString &eventId, const QString &action)
@@ -133,17 +140,13 @@ void TimeBoxActionsModel::onSynched()
 
 int TimeBoxActionsModel::rowCount(const QModelIndex &parent) const
 {
-    LOG_TRACE_N << "rowCount called";
+    int rows = 0;
     if (state_ && state_->valid()) {
-        const auto& tb = state_->tb();
-        const auto& actions = tb.actions();
-        const auto& list = actions.list();
-        LOG_TRACE_N << "rowCount: " << list.size() << " actions";
-
-        return state_->tb().actions().list().size();
+        rows = state_->tb().actions().list().size();
     }
 
-    return 0;
+    LOG_TRACE_N << "rows: " << rows;
+    return rows;
 }
 
 QVariant TimeBoxActionsModel::data(const QModelIndex &index, int role) const
@@ -221,16 +224,18 @@ QCoro::Task<bool> TimeBoxActionsModel::State::sync()
     is_synching_ = true;
     ScopedExit later {[&] {
         is_synching_ = false;
+        parent_.onSynched();
         LOG_DEBUG << "TimeBoxActionsModel: Syncing is finished";
     }};
 
     valid_ = false;
 
     tb_.reset();
-    if (auto * tb = parent_.getTb()) {
-        *tb = *tb;
+    if (const auto * tb = parent_.getTb()) {
+        tb_.emplace(*tb);
     }
     if (!tb_) {
+        LOG_TRACE_N << "No tb_";
         parent_.onSynched();
         co_return false;
     }
@@ -269,7 +274,6 @@ QCoro::Task<bool> TimeBoxActionsModel::State::sync()
     actions_ = tb_->actions();
     assert(tb_->actions().list().size() == ai_.size());
     valid_ = true;
-    parent_.onSynched();
     co_return true;
 }
 

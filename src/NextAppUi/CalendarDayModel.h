@@ -38,7 +38,7 @@ public:
             end_ = 0;
         }
 
-        QObject* get(QObject *parent);
+        QObject* get(CalendarDayModel *parent, QObject *ctl);
 
         void makeReady();
 
@@ -150,6 +150,6 @@ private:
     int work_start_ = 0; // Minutes since midnight
     int work_end_ = 0; // Minutes since midnight
     QObject& component_;
-    Pool timx_boxes_pool_{QStringLiteral("qrc:/qt/qml/NextAppUi/qml/calendar/TimeBlock.qml")};
+    Pool timx_boxes_pool_{QStringLiteral("qrc:/qt/qml/NextAppUi/qml/calendar/TimeBlockArea.qml")};
     CalendarModel& calendar_;
 };

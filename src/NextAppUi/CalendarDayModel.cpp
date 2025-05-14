@@ -205,7 +205,7 @@ void CalendarDayModel::addCalendarEvents()
 
         if (item.event.hasTimeBlock()) {
             const auto& tb = item.event.timeBlock();
-            if (auto *object = timx_boxes_pool_.get(ctl)) {
+            if (auto *object = timx_boxes_pool_.get(this, ctl)) {
                 auto name = tb.name();
                 if (name.isEmpty() && !tb.category().isEmpty()) {
                     name = ActionCategoriesModel::instance().getName(tb.category());
@@ -473,7 +473,7 @@ CategoryUseModel::list_t CalendarDayModel::getCategoryUsage()
     return values;
 }
 
-QObject *CalendarDayModel::Pool::get(QObject *parent)
+QObject *CalendarDayModel::Pool::get(CalendarDayModel *parent, QObject *ctl)
 {
     if (end_ >= pool_.size()) {
         if (!component_factory_) {
@@ -482,8 +482,8 @@ QObject *CalendarDayModel::Pool::get(QObject *parent)
 
         QVariantMap properties;
         properties["visible"] = false;
-        properties["parent"] = QVariant::fromValue(parent);
-        properties["model"] = QVariant::fromValue(parent);
+        properties["parent"] = QVariant::fromValue(ctl);
+        properties["model"] = QVariant{};
 
         auto *object = component_factory_->createWithInitialProperties(properties);
         if (!object) {

@@ -100,7 +100,6 @@ Rectangle {
 
             drop.accepted = false
         }
-
     }
 
 
@@ -176,7 +175,7 @@ Rectangle {
             Layout.fillWidth: true
             interactive: false
             clip: true
-            model: root.model !== null ? root.model.getTimeBoxActionsModel(root.uuid, root) : null
+            model: root.model?.valid ? root.model.getTimeBoxActionsModel(root.uuid, root) : null
 
             delegate: Rectangle {
                 id: actionItem

@@ -324,7 +324,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/calendar/EditTimeBlockDlg.qml
         qml/calendar/ExpandArea.qml
         qml/calendar/HoursBar.qml
-        qml/calendar/TimeBlock.qml
+        qml/calendar/TimeBlockArea.qml
         qml/categories/CategoriesMgr.qml
         qml/categories/CategoryComboBox.qml
         qml/categories/ColorPicker.qml
