@@ -622,9 +622,9 @@ if (APPLE)
 
 elseif(WIN32)
     install(TARGETS ${PROJECT_NAME}
+        COMPONENT Application
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        COMPONENT Application
     )
 endif()
 
