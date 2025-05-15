@@ -216,7 +216,7 @@ Rectangle {
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/laptop.svg"
                 checkable: false
                 text: qsTr("Devices")
-                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/onboard/GetNewOtpForDevice.qml", appWindow, {});
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/DevicesDlg.qml", appWindow, {});
             }
 
             RoundButton {
