@@ -12,6 +12,9 @@ on:
         default: true
         type: boolean
 
+permissions:
+  contents: write
+
 jobs:
   gather-and-release:
     runs-on: ubuntu-latest

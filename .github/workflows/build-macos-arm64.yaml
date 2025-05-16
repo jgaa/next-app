@@ -5,6 +5,9 @@ on:
     branches:
       - main
       
+permissions:
+  contents: read
+
 env:
   SRC_DIR:   ${{ github.workspace }}
   BUILD_DIR: ${{ github.workspace }}/build

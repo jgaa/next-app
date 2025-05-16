@@ -3,6 +3,10 @@ name: Build and Push Qt Static Container
 on:
   workflow_dispatch:  # Allows manual triggering
 
+permissions:
+  contents: read
+  packages: write
+  
 jobs:
   build-and-push:
     runs-on: ubuntu-latest  # Uses a GitHub-hosted runner
