@@ -3,16 +3,21 @@ set -eo pipefail
 
 trap 'echo "[ERROR] Line $LINENO: \"$BASH_COMMAND\" exited with code $?. Aborting." >&2' ERR
 
+if [ -z "${IDENTITY:-}" ]; then
+  echo "Error: \$IDENTITY is not set. Please export IDENTITY before running." >&2
+  exit 1
+fi
+
 echo "Preparing to build NextApp on macOS using vcpkg for all dependencies..."
 
 # —————————————————————————————
-#  1) Change into the script’s directory
+# Change into the script’s directory
 # —————————————————————————————
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 # —————————————————————————————
-#  2) Verify we’re in the right place
+# Verify we’re in the right place
 # —————————————————————————————
 if [[ ! -d "build-configs" ]]; then
   echo "Error: This script must be run from the directory containing the 'build-configs' folder." >&2
@@ -20,7 +25,7 @@ if [[ ! -d "build-configs" ]]; then
 fi
 
 # —————————————————————————————
-#  3) Defaults (only applied if unset)
+# Defaults (only applied if unset)
 # —————————————————————————————
 export SOURCE_DIR="${SOURCE_DIR:-${SCRIPT_DIR}/../../}"
 export BUILD_DIR="${BUILD_DIR:-/Volumes/devel/build/nextapp}"
@@ -37,14 +42,14 @@ echo "CMAKE_TOOLCHAIN_FILE is: ${CMAKE_TOOLCHAIN_FILE}"
 echo "VCPKG_TRIPLET is: ${VCPKG_TRIPLET}"
 
 # —————————————————————————————
-#  4) Install system deps via Homebrew
+# Install system deps via Homebrew
 # —————————————————————————————
 echo "Updating brew and installing required packages…"
 brew update
 brew install automake autoconf libtool pkg-config autoconf-archive ninja
 
 # —————————————————————————————
-#  5) Clone or update vcpkg
+# Clone or update vcpkg
 # —————————————————————————————
 if [[ -d "${VCPKG_ROOT}" ]]; then
   echo "Updating existing vcpkg in ${VCPKG_ROOT}…"
@@ -61,12 +66,12 @@ export PATH="${VCPKG_ROOT}:${PATH}"
 echo "PATH is now: ${PATH}"
 
 # —————————————————————————————
-#  6) Copy your manifest into place
+# Copy your manifest into place
 # —————————————————————————————
 cp -v "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" "${SOURCE_DIR}/vcpkg.json"
 
 # —————————————————————————————
-#  7) Clean & create build dir
+# Clean & create build dir
 # —————————————————————————————
 if [[ -d "${BUILD_DIR}" ]]; then
   echo "Removing existing build directory ${BUILD_DIR}…"
@@ -76,7 +81,7 @@ mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
 # —————————————————————————————
-#  8) Install all vcpkg packages
+# Install all vcpkg packages
 # —————————————————————————————
 echo "Installing vcpkg packages…"
 cp -v "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" vcpkg.json
@@ -84,7 +89,7 @@ vcpkg install ${VCPKG_INSTALL_OPTIONS} --triplet "${VCPKG_TRIPLET}"
 echo "Done installing vcpkg packages."
 
 # —————————————————————————————
-#  9) Configure, build, pack
+#  Configure
 # —————————————————————————————
 echo "Configuring CMake…"
 cmake -G Ninja \
@@ -94,8 +99,24 @@ cmake -G Ninja \
   -DVCPKG_MANIFEST_MODE="${VCPKG_MANIFEST_MODE}" \
   "${SOURCE_DIR}"
 
+# —————————————————————————————
+#  Build
+# —————————————————————————————
+
 echo "Building…"
 cmake --build . --config Release
+
+# —————————————————————————————
+#  Sign
+# —————————————————————————————
+
+codesign --deep --force --verbose \
+  --sign "$IDENTITY" \
+  "$BUILD_DIR/MyApp.app"
+
+# —————————————————————————————
+#  Package
+# —————————————————————————————
 
 echo "Packaging…"
 cpack
