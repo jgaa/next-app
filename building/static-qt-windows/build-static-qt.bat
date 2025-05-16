@@ -109,6 +109,9 @@ call configure.bat ^
   -feature-png ^
   -feature-jpeg ^
   -openssl-linked ^
+  -no-sql-psql ^
+  -no-sql-odbc ^
+  -no-sql-mysql ^
   -skip qtcharts ^
   -skip qtwebengine ^
   -skip qtmultimedia ^
@@ -132,6 +135,10 @@ if errorlevel 1 (
     echo configure Qt failed
     exit /b
 )
+
+echo Successfully configured Qt.
+echo config.summary:
+type config.summary
 
 cmake --build . -j
 if errorlevel 1 (
