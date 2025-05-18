@@ -189,7 +189,10 @@ int main(int argc, char* argv[]) {
 
         po::options_description metrics("Metrics");
         metrics.add_options()
-            ("enable-metrics", po::bool_switch(&config.enable_http))
+            ("enable-metrics", po::bool_switch(&config.options.enable_http),
+              "Enable /metrics HTTP endpoint for monitoring")
+            ("disable-metrics-password", po::bool_switch(&config.options.no_metrics_password),
+              "Disable password for the /metrics endpoint.")
             ("metrics-endpoint", po::value(&config.http.metrics_target)->default_value(config.http.metrics_target),
               "Scrape endpoint for metrics.")
             ("metrics-port", po::value(&config.http.http_port)->default_value(config.http.http_port),

@@ -89,7 +89,7 @@ void Server::run()
             co_await loadServerId();
             co_await loadCertAuthority();
             co_await startGrpcService();
-            co_await loadConfig();
+            co_await prepareMetricsAuth();
         }, boost::asio::use_future).get();
     } catch (const std::exception& ex) {
         LOG_ERROR << "Caught exception during initialization: " << ex.what();
@@ -97,12 +97,16 @@ void Server::run()
         throw runtime_error{"Startup failed"};
     }
 
-    if (!config().enable_http) {
+    if (!config().options.enable_http) {
         LOG_INFO << "HTTP server (metrics) is disabled.";
     } else {
         LOG_INFO << "Starting HTTP server (metrics).";
         http_server_.emplace(config().http, [this](const yahat::AuthReq& ar) {
             if (ar.req.target == "/metrics" && ar.req.type == yahat::Request::Type::GET) {
+                if (config().options.no_metrics_password) {
+                    LOG_TRACE << "Metrics request " << ar.req.uuid << " authenticated (no password required)";
+                    return yahat::Auth{"metrics", true};
+                }
                 // Need authentication here
                 const auto lower = toLower(ar.auth_header);
                 if (lower.starts_with("basic ")) {
@@ -1249,18 +1253,27 @@ boost::asio::awaitable<void> Server::resetMetricsPassword(jgaa::mysqlpool::Mysql
     }
 }
 
-boost::asio::awaitable<void> Server::loadConfig()
+boost::asio::awaitable<void> Server::prepareMetricsAuth()
 {
-    for(auto i = 0u; i < 2; ++i) {
-        auto res = co_await db().exec("SELECT value FROM config WHERE name='metric_auth_hash'");
-        if (!res.rows().empty()) {
-            metrics_auth_hash_ = res.rows().at(0).at(0).as_string();
-        } else {
-            if (i == 0) {
-                auto conn = co_await db().getConnection();
-                co_await resetMetricsPassword(conn);
+    if (!config_.options.enable_http) {
+        LOG_DEBUG << "Metrics HTTP server is disabled";
+        co_return;
+    }
+
+    if (config_.options.no_metrics_password) {
+        LOG_INFO << "Metrics password is disabled";
+    } else {
+        for(auto i = 0u; i < 2; ++i) {
+            auto res = co_await db().exec("SELECT value FROM config WHERE name='metric_auth_hash'");
+            if (!res.rows().empty()) {
+                metrics_auth_hash_ = res.rows().at(0).at(0).as_string();
             } else {
-                LOG_WARN_N << "No metrics password found in config table, even after I tried to reset it.";
+                if (i == 0) {
+                    auto conn = co_await db().getConnection();
+                    co_await resetMetricsPassword(conn);
+                } else {
+                    LOG_WARN_N << "No metrics password found in config table, even after I tried to reset it.";
+                }
             }
         }
     }
