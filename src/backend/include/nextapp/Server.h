@@ -126,7 +126,7 @@ private:
     boost::asio::awaitable<void> loadCertAuthority();
     boost::asio::awaitable<void> startGrpcService();
     boost::asio::awaitable<void> resetMetricsPassword(jgaa::mysqlpool::Mysqlpool::Handle& handle);
-    boost::asio::awaitable<void> loadConfig();
+    boost::asio::awaitable<void> prepareMetricsAuth();
     boost::asio::awaitable<void> loadServerId();
 
     void createCa();

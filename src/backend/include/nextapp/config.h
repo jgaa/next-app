@@ -55,6 +55,20 @@ struct ServerOptions {
      * This is to prevent the server from spending all it's resources on the notifications.
      */
     unsigned notification_delay_ms = 5;
+
+    /*! Disable metrics password
+     *
+     * If the password is disabled, the metrics endpoint will be available without authentication.
+     * This is not recommended for production use, unless it is protected behind a reverse proxy or
+     * other authentication mechanism, or is only accessible from IP addresses that are trusted.
+     */
+    bool no_metrics_password = false;
+
+    /*! Enable the embedded HTTP server.
+     *
+     *  Currently this is only used for the /metrics endpoint.
+     */
+    bool enable_http = true;
 };
 
 struct Config {
@@ -77,7 +91,6 @@ struct Config {
     CaOptions ca;
 
     yahat::HttpConfig http;
-    bool enable_http = true;
 };
 
 } // ns
