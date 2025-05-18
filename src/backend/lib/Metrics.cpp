@@ -47,6 +47,10 @@ Metrics::Metrics(Server& server)
     sessions_user_ = metrics_.AddGauge("nextapp_sessions", "Number of user sessions", {}, {{"kind", "user"}});
     sessions_admin_ = metrics_.AddGauge("nextapp_sessions", "Number of admin sessions", {}, {{"kind", "admin"}});
 
+    const std::vector quantiles = {0.5, 0.9, 0.95, 0.99};
+    grpc_request_latency_ = metrics_.AddSummary("nextapp_grpc_request_latency", "gRPC request latency", {},
+                                                {{"kind", "grpc-unary"}}, quantiles);
+
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::ERROR, errors_));
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::WARN, warnings_));
 }

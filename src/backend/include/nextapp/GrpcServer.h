@@ -210,6 +210,9 @@ public:
                     try {
                         LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
+                        // Start measuring latency for this request
+                        const auto latency = owner_.server().metrics().grpc_request_latency().scoped();
+
                         RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx, allowNewSession)};
                         rctx.session().touch();
 

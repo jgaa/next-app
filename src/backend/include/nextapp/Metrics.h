@@ -15,6 +15,8 @@ public:
     using counter_t = yahat::Metrics::Counter<uint64_t>;
     using gauge_scoped_t = yahat::Metrics::Scoped<gauge_t>;
     using counter_scoped_t = yahat::Metrics::Scoped<counter_t>;
+    using summary_t = yahat::Metrics::Summary<double>;
+    using summary_scoped_t = yahat::Metrics::Scoped<summary_t>;
 
     Metrics(Server& server);
 
@@ -59,6 +61,10 @@ public:
         return *sessions_admin_;
     }
 
+    summary_t& grpc_request_latency() {
+        return *grpc_request_latency_;
+    }
+
 
 private:
     Server& server_;
@@ -73,6 +79,7 @@ private:
     gauge_t * data_streams_nodes_{};
     gauge_t * data_streams_actions_{};
     gauge_t * asio_worker_threads_{};
+    summary_t * grpc_request_latency_{};
 };
 
 
