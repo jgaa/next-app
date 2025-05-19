@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - devel
   release:
     types: [published]  # Run when a release is published
 
