@@ -251,6 +251,7 @@ if(WIN32)
 endif()
 
 if(APPLE)
+  message("Packing for macos. SIGN_ID: ${SIGN_ID}")
   include(InstallRequiredSystemLibraries)  # for any system libs (zlib, etc.)
 
   # Use the DragNDrop generator (produces a .dmg)
@@ -269,6 +270,14 @@ if(APPLE)
 
   # The name of the volume when the user mounts the DMG
   set(CPACK_DMG_VOLUME_NAME     "NextApp ${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
+  
+  set(CPACK_BUNDLE_APPLE_CERT_APP "${SIGN_ID}")
+  
+# # (Optional) also have CPack sign the resulting .dmg
+# set(CPACK_DMG_SIGN            ON)
+# set(CPACK_DMG_SIGNING_IDENTITY "${SIGN_ID}")
+# set(CPACK_DMG_SIGNING_OPTIONS "--deep --verbose")
+
 
   # (Optional) Custom background image & icon positions
   # set(CPACK_DMG_BACKGROUND_IMAGE "${CMAKE_SOURCE_DIR}/mac/dmg_background.png")

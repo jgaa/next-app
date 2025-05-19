@@ -3,8 +3,8 @@ set -eo pipefail
 
 trap 'echo "[ERROR] Line $LINENO: \"$BASH_COMMAND\" exited with code $?. Aborting." >&2' ERR
 
-if [ -z "${IDENTITY:-}" ]; then
-  echo "Error: \$IDENTITY is not set. Please export IDENTITY before running." >&2
+if [ -z "${SIGN_ID:-}" ]; then
+  echo "Error: \$SIGN_ID is not set. Please export SIGN_ID before running." >&2
   exit 1
 fi
 
@@ -97,6 +97,7 @@ cmake -G Ninja \
   -DVCPKG_TARGET_TRIPLET="${VCPKG_TRIPLET}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DVCPKG_MANIFEST_MODE="${VCPKG_MANIFEST_MODE}" \
+  -DSIGN_ID="${SIGN_ID}" \
   "${SOURCE_DIR}"
 
 # —————————————————————————————
@@ -106,13 +107,13 @@ cmake -G Ninja \
 echo "Building…"
 cmake --build . --config Release
 
-# —————————————————————————————
-#  Sign
-# —————————————————————————————
-
-codesign --deep --force --verbose \
-  --sign "$IDENTITY" \
-  "$BUILD_DIR/MyApp.app"
+# # —————————————————————————————
+# #  Sign
+# # —————————————————————————————
+# 
+# codesign --deep --force --verbose \
+#   --sign "$SIGN_ID" \
+#   "$BUILD_DIR/bin/nextapp.app"
 
 # —————————————————————————————
 #  Package
