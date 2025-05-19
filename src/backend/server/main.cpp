@@ -127,6 +127,8 @@ int main(int argc, char* argv[]) {
         bool bootstrap = false;
         bool admin_cert = false;
         bool create_server_cert = false;
+        bool json_logging_to_console = false;
+        bool json_logging_to_file = false;
 
         general.add_options()
             ("help,h", "Print help and exit")
@@ -137,6 +139,8 @@ int main(int argc, char* argv[]) {
             ("log-to-console,C",
              po::value(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
+            ("log-as-json-to-console", po::bool_switch(&json_logging_to_console),
+             "Logs to the console using json format.")
             ("log-level,l",
              po::value<string>(&log_level)->default_value(log_level),
              "Log-level; one of 'info', 'debug', 'trace'.")
@@ -146,6 +150,8 @@ int main(int argc, char* argv[]) {
             ("truncate-log-file,T",
               po::bool_switch(&trunc_log),
              "Truncate the log-file if it already exists.")
+            ("log-as-json-to-file", po::bool_switch(&json_logging_to_file),
+             "Logs to the file using json format.")
             ("log-messages",
              po::value(&config.options.log_protobuf_messages)->default_value(config.options.log_protobuf_messages),
              "Log data-messages to the log in Json format.\n0=disable, 1=enable, 2=enable and format in readable form.\n"
@@ -309,14 +315,24 @@ int main(int argc, char* argv[]) {
         }
 
         if (auto level = toLogLevel(log_level_console)) {
-            logfault::LogManager::Instance().AddHandler(
-                make_unique<logfault::StreamHandler>(clog, *level));
+            if (json_logging_to_console) {
+                logfault::LogManager::Instance().AddHandler(
+                    make_unique<logfault::JsonHandler>(clog, *level, 0xffff));
+            } else {
+                logfault::LogManager::Instance().AddHandler(
+                    make_unique<logfault::StreamHandler>(clog, *level));
+            }
         }
 
         if (!log_file.empty()) {
             if (auto level = toLogLevel(log_level)) {
-                logfault::LogManager::Instance().AddHandler(
-                    make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+                if (json_logging_to_file) {
+                    logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::JsonHandler>(log_file, *level, trunc_log, 0xffff));
+                } else {
+                    logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+                }
             }
         }
 
