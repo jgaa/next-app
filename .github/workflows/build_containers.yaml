@@ -40,12 +40,21 @@ jobs:
           mkdir -p artifacts          
         shell: bash
 
+      - name: Set image tag
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF##*/}" == "main" ]]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF##*/}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push nextappd image
         run: |
           chmod +x ./building/build-nextapp-image.sh  # Ensure script is executable
           export BUILD_DIR=`pwd`/build/nextapp
           export SYM_ARTIFACTS_DIR=`pwd`/artifacts
-          REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push
+          REGISTRY=ghcr.io/jgaa ./building/build-nextapp-image.sh --scripted --strip --push --tag ${{ steps.tag.outputs.tag }}
         shell: bash
       
       - name: Upload build artifacts
@@ -57,5 +66,5 @@ jobs:
       - name: Build and push signupd image
         run: |
           chmod +x ./building/build-signup-image.sh  # Ensure script is executable
-          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-signup-image.sh --scripted --strip --push
+          BUILD_DIR=`pwd`/build REGISTRY=ghcr.io/jgaa ./building/build-signup-image.sh --scripted --strip --push --tag ${{ steps.tag.outputs.tag }}
         shell: bash
