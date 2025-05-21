@@ -28,7 +28,7 @@
         <string>Copyright 2025 by The Last Viking LTD.\nReleased under the GNU General Public License version ß3.</string>
 
         <key>CFBundleIconFile</key>
-        <string>nextapp</string>
+        <string>NextApp</string>
 
         <key>CFBundleDevelopmentRegion</key>
         <string>en</string>

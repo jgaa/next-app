@@ -604,21 +604,15 @@ if (APPLE)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
     install(
-      FILES "${NEXTAPP_ROOT}/building/macos/nextapp.icns"
+      FILES "${NEXTAPP_ROOT}/building/macos/NextApp.icns"
       DESTINATION "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources"
       COMPONENT Application
     )
-    # set_target_properties(${PROJECT_NAME} PROPERTIES
-    #     MACOSX_BUNDLE ON
-    #     # tells CMake to inject CFBundleIconFile into the generated Info.plist
-    #     MACOSX_BUNDLE_ICON_FILE "nextapp"
-    # )
     install(
         FILES "${NEXTAPP_ROOT}/src/NextAppUi/LICENSE"
         DESTINATION "."
         COMPONENT Application
     )
-
 
 elseif(WIN32)
     install(TARGETS ${PROJECT_NAME}
