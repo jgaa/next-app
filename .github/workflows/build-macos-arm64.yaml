@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - macos-ga
       
 permissions:
   contents: read
@@ -15,6 +16,7 @@ env:
   VCPKG_TRIPLET: arm64-osx-release
   VCPKG_INSTALL_OPTIONS: "--clean-after-build"
   VCPKG_MANIFEST_MODE: "ON"
+  SIGN_ID: "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"
 
 jobs:
   build-macos:
