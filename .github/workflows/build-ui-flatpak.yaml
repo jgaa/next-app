@@ -6,6 +6,9 @@ on:
       - main
       - devel
 
+permissions:
+  contents: read
+      
 jobs:
   build:
     name: Build NextApp in Docker (Static Qt)
