@@ -68,7 +68,7 @@ struct ServerOptions {
      *
      *  Currently this is only used for the /metrics endpoint.
      */
-    bool enable_http = true;
+    bool enable_http = false;
 };
 
 struct Config {
@@ -89,7 +89,6 @@ struct Config {
     GrpcConfig grpc;
     ServerOptions options;
     CaOptions ca;
-
     yahat::HttpConfig http;
 };
 
