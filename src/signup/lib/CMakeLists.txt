@@ -4,11 +4,13 @@ project(sulib VERSION ${SIGNUP_VERSION} LANGUAGES CXX)
 add_library(${PROJECT_NAME}
     ${SIGNUP_BACKEND}/include/signup/GrpcServer.h
     ${SIGNUP_BACKEND}/include/signup/Server.h
+    ${SIGNUP_BACKEND}/include/signup/Metrics.h
     ${SIGNUP_BACKEND}/include/signup/config.h
     ${NEXTAPP_ROOT}/include/nextapp/logging.h
     ${NEXTAPP_ROOT}/include/nextapp/util.h
     Server.cpp
     GrpcServer.cpp
+    Metrics.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

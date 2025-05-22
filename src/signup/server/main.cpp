@@ -100,6 +100,8 @@ int main(int argc, char* argv[]) {
         string log_level = "info";
         string log_file;
         bool trunc_log = false;
+        bool json_logging_to_console = false;
+        bool json_logging_to_file = false;
 
         auto init_logging_and_config_file = [&](auto& cmdline_options, auto& vm) {
             if (!config_file.empty()) {
@@ -123,14 +125,24 @@ int main(int argc, char* argv[]) {
             }
 
             if (auto level = toLogLevel(log_level_console)) {
-                logfault::LogManager::Instance().AddHandler(
-                    make_unique<logfault::StreamHandler>(clog, *level));
+                if (json_logging_to_console) {
+                    logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::JsonHandler>(clog, *level, 0xffff));
+                } else {
+                    logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::StreamHandler>(clog, *level));
+                }
             }
 
             if (!log_file.empty()) {
                 if (auto level = toLogLevel(log_level)) {
-                    logfault::LogManager::Instance().AddHandler(
-                        make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+                    if (json_logging_to_file) {
+                        logfault::LogManager::Instance().AddHandler(
+                            make_unique<logfault::JsonHandler>(log_file, *level, trunc_log, 0xffff));
+                    } else {
+                        logfault::LogManager::Instance().AddHandler(
+                            make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+                    }
                 }
             }
 
@@ -146,6 +158,8 @@ int main(int argc, char* argv[]) {
             ("log-to-console,C",
              po::value(&log_level_console)->default_value(log_level_console),
              "Log-level to the console; one of 'info', 'debug', 'trace'. Empty string to disable.")
+            ("log-as-json-to-console", po::bool_switch(&json_logging_to_console),
+             "Logs to the console using json format.")
             ("log-level,l",
              po::value<string>(&log_level)->default_value(log_level),
              "Log-level; one of 'info', 'debug', 'trace'.")
@@ -155,6 +169,8 @@ int main(int argc, char* argv[]) {
             ("truncate-log-file,T",
               po::bool_switch(&trunc_log),
              "Truncate the log-file if it already exists.")
+            ("log-as-json-to-file", po::bool_switch(&json_logging_to_file),
+             "Logs to the file using json format.")
             ("log-messages",
              po::value(&config.options.log_protobuf_messages)->default_value(config.options.log_protobuf_messages),
              "Log data-messages to the log in Json format.\n0=disable, 1=enable, 2=enable and format in readable form.\n"
@@ -215,6 +231,25 @@ int main(int argc, char* argv[]) {
             ("eula", po::value(&config.cluster.eula_path),
              "Path to the EULA page")
             ;
+
+        po::options_description metrics("Metrics");
+        metrics.add_options()
+            ("enable-metrics", po::bool_switch(&config.options.enable_http),
+             "Enable /metrics HTTP endpoint for monitoring")
+            ("disable-metrics-password", po::bool_switch(&config.options.no_metrics_password),
+             "Disable password for the /metrics endpoint.")
+            ("metrics-endpoint", po::value(&config.http.metrics_target)->default_value(config.http.metrics_target),
+             "Scrape endpoint for metrics.")
+            ("metrics-port", po::value(&config.http.http_port)->default_value(config.http.http_port),
+             "Port to listen on for metrics.")
+            ("metrics-host", po::value(&config.http.http_endpoint)->default_value(config.http.http_endpoint),
+             "Host to listen on for metrics.")
+            ("metrics-tls-cert", po::value(&config.http.http_tls_cert)->default_value(config.http.http_tls_cert),
+             "TLS (PAM) cert to use (enables HTTPS).")
+            ("metrics-tls-key", po::value(&config.http.http_tls_key)->default_value(config.http.http_tls_key),
+             "TLS key to use (enables HTTPS).")
+            ;
+
 
         po::options_description db("Database");
         db.add_options()
@@ -295,7 +330,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        cmdline_options.add(general).add(svr).add(info).add(db);
+        cmdline_options.add(general).add(svr).add(info).add(metrics).add(db);
         po::variables_map vm;
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);

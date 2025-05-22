@@ -26,10 +26,23 @@ namespace asio = boost::asio;
 
 namespace nextapp {
 
-Server::Server(const Config& config)
-    : config_(config)
-{
+namespace {
 
+string hashMetricsPassword(std::string_view passwd)
+{
+    // Not very secure with hard-coded salt, but in all professionally deployd systems
+    // the password for /metrics will not be uses, and some reverse proxy or VPN
+    // will keep it safe.
+    constexpr string_view salt = "a85450ec-36d4-11f0-98e7-4fd263e4efbf";
+    const auto base = format("{}:{}", salt, passwd);
+    return sha256(base, true);
+}
+
+} // ns
+
+Server::Server(const Config& config)
+    : config_(config), metrics_(*this)
+{
 }
 
 Server::~Server()
@@ -80,6 +93,34 @@ void Server::run()
             }
     }, asio::use_future).get();
 
+    if (!config().options.enable_http) {
+        LOG_INFO << "HTTP server (metrics) is disabled.";
+    } else {
+        LOG_INFO << "Starting HTTP server (metrics).";
+        http_server_.emplace(config().http, [this](const yahat::AuthReq& ar) {
+            if (ar.req.target == "/metrics" && ar.req.type == yahat::Request::Type::GET) {
+                if (config().options.no_metrics_password) {
+                    LOG_TRACE << "Metrics request " << ar.req.uuid << " authenticated (no password required)";
+                    return yahat::Auth{"metrics", true};
+                }
+                // Need authentication here
+                const auto lower = toLower(ar.auth_header);
+                if (lower.starts_with("basic ")) {
+                    const auto base64 = ar.auth_header.substr(6);
+                    const auto hash = hashMetricsPassword(base64);
+                    if (hash == metrics_auth_hash_) {
+                        LOG_TRACE << "Metrics request " << ar.req.uuid << " authenticated";
+                        return yahat::Auth{"metrics", true};
+                    }
+                }
+            }
+            return yahat::Auth{"", false};
+        }, metrics_.metrics(), "signup "s + NEXTAPP_VERSION);
+
+        http_server_->start();
+    }
+
+
     LOG_DEBUG_N << "Main thread joins the IO thread pool...";
     runIoThread(0);
     LOG_DEBUG_N << "Main thread left the IO thread pool...";
@@ -125,6 +166,8 @@ void Server::initCtx(size_t numThreads)
 
 void Server::runIoThread(const size_t id)
 {
+    auto scope = metrics().asio_worker_threads().scoped();
+
     LOG_DEBUG_N << "starting io-thread " << id;
     while(!ctx_.stopped()) {
         try {
@@ -231,17 +274,33 @@ boost::asio::awaitable<void> Server::connectToInstances()
 {
     const auto max_wait = chrono::steady_clock::now() + chrono::seconds(config().options.max_retry_time_to_nextapp_secs);
     assert(grpc_service_); // Must be initialized
+    auto num_instances = 0u;
+    auto num_peered = 0u;
+    auto num_regions = 0u;
+    auto num_reachable = 0u;
+
     while(!is_done()) {
         if (auto cluster = cluster_.load()) {
-            auto num_instances = 0u;
-            auto num_connected = 0u;
+            num_instances = {};
+            num_peered = {};
+            num_regions = {};
 
             for(auto& [_, region] : cluster->regions) {
+                ++num_regions;
                 LOG_INFO << "Connecting to instances in region " << region.name;
                 num_instances += region.instances.size();
                 for(auto& [_, instance] : region.instances) {
                     if (instance->is_online) {
-                        ++num_connected;
+                        ++num_peered; // Assume for now that grpc channelse will self-heal once they have been connected.
+
+                        if (auto inst = grpc_service_->getInstance(instance->uuid)) {
+                            if (co_await inst->isReachable()) {
+                                ++num_reachable;
+                            } else {
+                                LOG_INFO << "  -- Instance " << instance->uuid << " at " << instance->url
+                                         << " was connected but is currently unreachable. ";
+                            }
+                        };
                         continue;
                     }
 
@@ -254,7 +313,8 @@ boost::asio::awaitable<void> Server::connectToInstances()
                     auto info = co_await grpc_service_->connectToInstance(instance->uuid, i);
                     if (info) {
                         instance->is_online = true;
-                        ++num_connected;
+                        ++num_peered;
+                        ++num_reachable;
 
                         // Is this the first time we connect to this instance?
                         if (instance->server_id.empty()) {
@@ -274,24 +334,39 @@ boost::asio::awaitable<void> Server::connectToInstances()
                 LOG_WARN << "No instances are added to the server.";
                 break;
             }
-            if (num_instances == num_connected) {
+
+            if (num_instances == num_reachable && num_instances == num_peered) {
                 LOG_INFO << "All instances are connected.";
                 break;
+
+            } else {
+                LOG_INFO << "Peered with " << num_peered << " out of " << num_instances
+                         << " instances in the cluster. "
+                         << num_peered - num_reachable << " instances are currently unreachable.";
+
+                if (num_instances == num_peered) {
+                    LOG_DEBUG_N << "All instances are initialized. The one(s) that are down should heal automatically...";
+                    break;
+                }
             }
 
             if (chrono::steady_clock::now() > max_wait) {
                 LOG_ERROR << "Failed to connect to all instances in time."
-                          << ". Connected to " << num_connected << " out of " << num_instances;
+                          << ". Connected to " << num_peered << " out of " << num_instances;
                 break;
             };
 
-            LOG_INFO << "Connected to " << num_connected << " out of " << num_instances << " instances."
+            LOG_INFO << "Peered with " << num_peered << " out of " << num_instances << " instances."
                      << " Retrying in " << config().options.retry_connect_to_nextappd_secs << " seconds.";
 
             auto timer = asio::steady_timer(ctx_, chrono::seconds(config().options.retry_connect_to_nextappd_secs));
             co_await timer.async_wait(asio::use_awaitable);
         }
     }
+
+    metrics().regions().set(num_regions);
+    metrics().nextapp_connections().set(num_reachable);
+    metrics().nextapp_servers().set(num_instances);
 }
 
 boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& region, Cluster::Region::Instance &instance)
@@ -652,8 +727,19 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             UNIQUE KEY (nickname)))",
     });
 
+    static constexpr auto v2_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE TABLE IF NOT EXISTS config (
+            name VARCHAR(128) NOT NULL PRIMARY KEY,
+            value TEXT NOT NULL))",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
+        v2_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
@@ -861,3 +947,60 @@ string Server::getEmailHash(std::string_view email) const
 
 
 } // ns
+
+
+boost::asio::awaitable<void> nextapp::Server::prepareMetricsAuth()
+{
+    if (!config_.options.enable_http) {
+        LOG_DEBUG << "Metrics HTTP server is disabled";
+        co_return;
+    }
+
+    if (config_.options.no_metrics_password) {
+        LOG_INFO << "Metrics password is disabled";
+    } else {
+        for(auto i = 0u; i < 2; ++i) {
+            auto res = co_await db().exec("SELECT value FROM config WHERE name='metric_auth_hash'");
+            if (!res.rows().empty()) {
+                metrics_auth_hash_ = res.rows().at(0).at(0).as_string();
+            } else {
+                if (i == 0) {
+                    auto conn = co_await db().getConnection();
+                    co_await resetMetricsPassword(conn);
+                } else {
+                    LOG_WARN_N << "No metrics password found in config table, even after I tried to reset it.";
+                }
+            }
+        }
+    }
+    co_return;
+}
+
+
+
+boost::asio::awaitable<void> nextapp::Server::resetMetricsPassword(jgaa::mysqlpool::Mysqlpool::Handle &handle)
+{
+    const auto passwd = getRandomStr(32);
+    const auto auth = format("metrics:{}", passwd);
+    const auto http_basic_auth = Base64Encode(auth);
+    const auto hash = hashMetricsPassword(http_basic_auth);
+
+    auto res = co_await handle.exec("INSERT INTO config (name, value) VALUES ('metric_auth_hash', ?) ON DUPLICATE KEY UPDATE value = ?", hash, hash);
+    if (!res.affected_rows()) {
+        LOG_ERROR << "Failed to insert metric_auth_hash into config table";
+        co_return;
+    }
+
+    // Write the password to a file in users home directory
+    const auto path = filesystem::path(getEnv("HOME", "/var/lib/nextapp")) / "signup_metrics_password.txt";
+    auto content = format("user: metrics\npasswd: {}", passwd);
+
+    if (auto fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR); fd != -1) {
+        write(fd, content.c_str(), content.size());
+        close(fd);
+        LOG_INFO << "Metrics password saved to " << path;
+    } else {
+        LOG_ERROR << "Failed to write metrics password to " << path;
+    }
+}
+

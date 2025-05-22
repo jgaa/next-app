@@ -114,11 +114,13 @@ public:
             return *nextapp_stub_;
         }
 
-    void prepareMetadata(::grpc::ClientContext& ctx) {
-        if (!session_id_.empty()) {
-            ctx.AddMetadata("sid", session_id_);
+        boost::asio::awaitable<bool> isReachable();
+
+        void prepareMetadata(::grpc::ClientContext& ctx) {
+            if (!session_id_.empty()) {
+                ctx.AddMetadata("sid", session_id_);
+            }
         }
-    }
 
     private:
         void startNextTimer(size_t seconds);
@@ -245,8 +247,12 @@ public:
                 try {
                     LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
+                    // Start measuring latency for this request
+                    const auto latency = owner_.server().metrics().grpc_request_latency().scoped();
+
                     if (requireAdminCreds) {
                         if (!co_await owner_.isAdmin(ctx)) {
+                            owner_.server().metrics().unauthorized_admin_requests().inc();
                             LOG_DEBUG << "Request [" << name << "] Unauthorized request. Missing admin credentials.";
                             reply->set_error(signup::pb::Error::UNAUTHORIZED);
                             reply->set_message("Unauthorized request. Missing admin credentials.");

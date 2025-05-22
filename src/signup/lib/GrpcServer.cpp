@@ -704,6 +704,42 @@ boost::asio::awaitable<bool> GrpcServer::InstanceCommn::connect(const InstanceIn
     co_return true;
 }
 
+boost::asio::awaitable<bool> GrpcServer::InstanceCommn::isReachable()
+{
+    if (!channel_) {
+        co_return false;
+    }
+
+    // Check if the channel is still alive
+    auto state = channel_->GetState(true);
+    if (state == GRPC_CHANNEL_SHUTDOWN) {
+        LOG_DEBUG << "Channel is shutdown. Reconnecting.";
+        co_return false;
+    }
+
+    if (state == GRPC_CHANNEL_IDLE) {
+        LOG_DEBUG << "Channel is idle. Reconnecting.";
+        co_return false;
+    }
+
+    try {
+        nextapp::pb::PingReq pr;
+        auto resp = co_await callRpc<nextapp::pb::Status>(
+            pr,
+            &stub_t::async::Ping,
+            asio::use_awaitable);
+        if (resp.error() != nextapp::pb::Error::OK) {
+            LOG_DEBUG_N << "Ping failed: " << resp.message();
+            co_return false;
+        }
+    } catch (const std::exception &ex) {
+        LOG_TRACE_N << "Ping failed: " << ex.what();
+        co_return false;
+    }
+
+    co_return true;
+}
+
 void GrpcServer::InstanceCommn::startNextTimer(size_t seconds)
 {
     try {
@@ -741,21 +777,17 @@ void GrpcServer::InstanceCommn::onTimer() {
     }
 
     // Test the connection to the NextApp server.
-    // Create asio C++20 coro scope
-    auto f = asio::co_spawn(owner_.server().ctx(), [this]() -> asio::awaitable<void> {
+    asio::co_spawn(owner_.server().ctx(), [this]() -> asio::awaitable<void> {
         ::grpc::ClientContext ctx;
 
-        try {
-            auto resp = co_await callRpc<nextapp::pb::Status>(
-                nextapp::pb::PingReq{},
-                &stub_t::async::Ping,
-                asio::use_awaitable);
+        bool reachable = co_await isReachable();
 
+        if (co_await isReachable()) {
             LOG_DEBUG_N << "Still connected to nextapp-server at " << url_;
-        } catch(const std::exception &ex) {
-            LOG_ERROR << "Failed to ping nextapp-server: " << ex.what();
+        } else {
+            LOG_DEBUG_N << "Cannot reach nextapp-server at " << url_;
         }
-    }, boost::asio::use_awaitable);
+    }, boost::asio::detached);
 }
 
 boost::asio::awaitable<std::optional<::nextapp::pb::ServerInfo>>

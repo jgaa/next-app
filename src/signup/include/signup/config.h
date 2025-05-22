@@ -6,6 +6,7 @@
 #include <cstdint>
 //#include "nextapp/util.h"
 #include "mysqlpool/conf.h"
+#include "yahat/HttpServer.h"
 
 namespace nextapp {
 
@@ -42,6 +43,20 @@ struct ServerOptions {
 
     unsigned retry_connect_to_nextappd_secs = 2; // 0 to disable
     unsigned max_retry_time_to_nextapp_secs = 60; //
+
+    /*! Disable metrics password
+     *
+     * If the password is disabled, the metrics endpoint will be available without authentication.
+     * This is not recommended for production use, unless it is protected behind a reverse proxy or
+     * other authentication mechanism, or is only accessible from IP addresses that are trusted.
+     */
+    bool no_metrics_password = false;
+
+    /*! Enable the embedded HTTP server.
+     *
+     *  Currently this is only used for the /metrics endpoint.
+     */
+    bool enable_http = false;
 };
 
 struct Cluster {
@@ -59,6 +74,11 @@ struct Config {
     Config() {
         db.database = "signup";
         db.username = "signup";
+
+        http.http_port = "9013";
+        http.num_http_threads = 2;
+        http.http_endpoint = "localhost";
+        http.auto_handle_cors = false;
     }
 
     ServerConfig svr;
@@ -67,6 +87,7 @@ struct Config {
     ServerOptions options;
     Cluster cluster;
     jgaa::mysqlpool::DbConfig db;
+    yahat::HttpConfig http;
 };
 
 } // ns

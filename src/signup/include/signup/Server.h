@@ -9,6 +9,7 @@
 #include "signup/config.h"
 #include "nextapp/util.h"
 #include "mysqlpool/mysqlpool.h"
+#include "signup/Metrics.h"
 
 #include "signup.pb.h"
 
@@ -19,7 +20,7 @@ class GrpcServer;
 
 class Server {
 public:
-    static constexpr uint latest_version = 1;
+    static constexpr uint latest_version = 2;
 
     struct Cluster {
         struct Region {
@@ -129,6 +130,10 @@ public:
         return *db_;
     }
 
+    auto& metrics() noexcept {
+        return metrics_;
+    }
+
     boost::asio::awaitable<bool> loadCluster(bool checkClusterWhenLoaded = true);
 
 private:
@@ -150,12 +155,16 @@ private:
     boost::asio::awaitable<void> checkCluster_();
     void startClusterTimer();
     boost::asio::awaitable<bool> loadCluster_();
+    boost::asio::awaitable<void> prepareMetricsAuth();
+    boost::asio::awaitable<void> resetMetricsPassword(jgaa::mysqlpool::Mysqlpool::Handle& handle);
 
+    Metrics metrics_;
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;
     std::vector <std::jthread> io_threads_;
     std::optional<jgaa::mysqlpool::Mysqlpool> db_;
     Config config_;
+    std::optional<yahat::HttpServer> http_server_;
     std::atomic_size_t running_io_threads_{0};
     std::atomic_bool done_{false};
     std::shared_ptr<GrpcServer> grpc_service_;
@@ -166,6 +175,7 @@ private:
     std::atomic<std::shared_ptr<Cluster>> cluster_;
     boost::asio::strand<boost::asio::io_context::executor_type> cluster_strand_{ctx_.get_executor()};
     boost::asio::steady_timer cluster_timer_{ctx_};
+    std::string metrics_auth_hash_;
 };
 
 
