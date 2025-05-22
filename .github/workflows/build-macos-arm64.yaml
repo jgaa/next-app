@@ -56,12 +56,6 @@ jobs:
           echo "NEXTAPP_VERSION=$ver" >> $GITHUB_ENV
           echo "✅ NEXTAPP_VERSION=$ver"
 
-      - name: Sign the .app
-        run: |
-          codesign --deep --force --verbose \
-            --sign "$SIGNING_IDENTITY" \
-            "${{ env.BUILD_DIR }}/MyApp.app"
-
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
