@@ -11,6 +11,37 @@ namespace asio = boost::asio;
 
 #include <grpcpp/support/server_interceptor.h>
 
+std::ostream& operator << (std::ostream& out, const nextapp::grpc::RequestCtx& ctx) {
+    return out << "RequestCtx{"
+               << "session=" << ctx.session().sessionId()
+               << ", user=" << ctx.uctx->userUuid()
+               << ", tenant=" << ctx.uctx->tenantUuid()
+               << ", device=" << ctx.session().deviceId()
+               << "}";
+}
+
+
+namespace logfault {
+std::pair<bool /* json */, std::string /* content or json */> toLog(const nextapp::grpc::RequestCtx& ctx, bool json) {
+
+    if (json) {
+        return make_pair(true, format(R"("session":"{}", "user":"{}", "tenant":"{}", "device":"{}")",
+                                      boost::uuids::to_string(ctx.session().sessionId()),
+                                      ctx.uctx->userUuid(),
+                                      ctx.uctx->tenantUuid(),
+                                      boost::uuids::to_string(ctx.session().deviceId())));
+    }
+
+    return make_pair(false, format("RequestCtx{{session={}, user={}, tenant={}, device={}}}",
+                                   boost::uuids::to_string(ctx.session().sessionId()),
+                                   ctx.uctx->userUuid(),
+                                   ctx.uctx->tenantUuid(),
+                                   boost::uuids::to_string(ctx.session().deviceId())));
+}
+
+} // ns
+
+
 namespace nextapp::grpc {
 
 namespace {

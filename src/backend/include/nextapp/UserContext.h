@@ -212,9 +212,14 @@ public:
         return db_options_;
     }
 
-    const pb::UserGlobalSettings& settings() const noexcept {
+    pb::UserGlobalSettings settings() const noexcept {
         std::shared_lock lock(mutex_);
         return settings_;
+    }
+
+    const bool autoStartNextWorkSession() const noexcept {
+        std::shared_lock lock(mutex_);
+        return settings_.autostartnextworksession();
     }
 
     bool isAdmin() const noexcept {

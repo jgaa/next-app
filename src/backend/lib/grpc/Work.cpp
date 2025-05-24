@@ -616,11 +616,9 @@ boost::asio::awaitable<void> GrpcServer::endWorkSessionForAction(const std::stri
             co_await stopWorkSession(ws, rctx);
         }
 
-        if (was_active) {
-            // TODO: This should be made optional per users global settings
-            if (was_active) {
-                co_await activateNextWorkSession(rctx);
-            }
+        if (was_active&& rctx.uctx->autoStartNextWorkSession()) {
+            LOG_TRACE_N << "Auto-starting next work session for action " << rctx;
+            co_await activateNextWorkSession(rctx);
         }
     }
     co_return; // Make QT Creator happy

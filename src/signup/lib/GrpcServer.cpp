@@ -238,7 +238,7 @@ GrpcServer::GrpcServer(Server &server)
     }, __func__);
 }
 
-grpc::ServerUnaryReactor *GrpcServer::SignupImpl::UpdateInstance(grpc::CallbackServerContext *ctx,
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::UpdateInstance(::grpc::CallbackServerContext *ctx,
                                                                  const signup::pb::SetInstance *req,
                                                                  signup::pb::Reply *reply)
 {
@@ -329,8 +329,8 @@ grpc::ServerUnaryReactor *GrpcServer::SignupImpl::UpdateInstance(grpc::CallbackS
     }, __func__, true);
 }
 
-grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListInstances(
-    grpc::CallbackServerContext *ctx,
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListInstances(
+    ::grpc::CallbackServerContext *ctx,
     const common::Empty *req,
     signup::pb::Reply *reply)
 {
@@ -356,7 +356,7 @@ grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListInstances(
     }, __func__, true);
 }
 
-grpc::ServerUnaryReactor *GrpcServer::SignupImpl::RemoveInstance(grpc::CallbackServerContext *ctx,
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::RemoveInstance(::grpc::CallbackServerContext *ctx,
                                                                  const common::Uuid *req,
                                                                  signup::pb::Reply *reply)
 {
@@ -384,7 +384,7 @@ grpc::ServerUnaryReactor *GrpcServer::SignupImpl::RemoveInstance(grpc::CallbackS
     }, __func__, true);
 }
 
-grpc::ServerUnaryReactor *GrpcServer::SignupImpl::AddInstance(grpc::CallbackServerContext *ctx,
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::AddInstance(::grpc::CallbackServerContext *ctx,
                                                               const signup::pb::SetInstance *req,
                                                               signup::pb::Reply *reply)
 {
@@ -426,8 +426,8 @@ grpc::ServerUnaryReactor *GrpcServer::SignupImpl::AddInstance(grpc::CallbackServ
     }, __func__, true);
 }
 
-grpc::ServerUnaryReactor *GrpcServer::SignupImpl::DeleteRegion(
-    grpc::CallbackServerContext *ctx, const common::Uuid *req, signup::pb::Reply *reply)
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::DeleteRegion(
+    ::grpc::CallbackServerContext *ctx, const common::Uuid *req, signup::pb::Reply *reply)
 {
     return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
         auto res = co_await owner_.server().db().exec("DELETE FROM region WHERE id = ?", req->uuid());
@@ -440,8 +440,8 @@ grpc::ServerUnaryReactor *GrpcServer::SignupImpl::DeleteRegion(
     }, __func__, true);
 }
 
-grpc::ServerUnaryReactor *GrpcServer::SignupImpl::UpdateRegion(
-    grpc::CallbackServerContext *ctx, const signup::pb::Region *req, signup::pb::Reply *reply)
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::UpdateRegion(
+    ::grpc::CallbackServerContext *ctx, const signup::pb::Region *req, signup::pb::Reply *reply)
 {
     return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
         auto res = co_await owner_.server().db().exec("UPDATE region SET name = ?, description = ?, state = ? WHERE id = ?",
@@ -459,8 +459,8 @@ grpc::ServerUnaryReactor *GrpcServer::SignupImpl::UpdateRegion(
     }, __func__, true);
 }
 
-grpc::ServerUnaryReactor *GrpcServer::SignupImpl::CreateRegion(
-    grpc::CallbackServerContext *ctx, const signup::pb::Region *req, signup::pb::Reply *reply)
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::CreateRegion(
+    ::grpc::CallbackServerContext *ctx, const signup::pb::Region *req, signup::pb::Reply *reply)
 {
     return unaryHandler(ctx, req, reply, [this, req, ctx](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
 
@@ -485,8 +485,8 @@ grpc::ServerUnaryReactor *GrpcServer::SignupImpl::CreateRegion(
     }, __func__, true);
 }
 
-grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListRegions(
-    grpc::CallbackServerContext *ctx,
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::ListRegions(
+    ::grpc::CallbackServerContext *ctx,
     const common::Empty *req,
     signup::pb::Reply *reply)
 {
@@ -809,7 +809,7 @@ auto to_string_view(::grpc::string_ref ref) {
     return string_view{ref.data(), ref.size()};
 }
 
-std::optional<std::string> lookup(grpc::CallbackServerContext *ctx, const std::string& name) {
+std::optional<std::string> lookup(::grpc::CallbackServerContext *ctx, const std::string& name) {
     if (auto it = ctx->client_metadata().find(name); it != ctx->client_metadata().end()) {
         return string{it->second.data(), it->second.size()};
     }
@@ -821,7 +821,7 @@ std::optional<std::string> lookup(grpc::CallbackServerContext *ctx, const std::s
 //       The current implementation can be user to DoS the service by sending
 //       a lot of requests with invalid user/password combinations, causing
 //       a lot of SQL queries.
-boost::asio::awaitable<bool> GrpcServer::isAdmin(grpc::CallbackServerContext *ctx)
+boost::asio::awaitable<bool> GrpcServer::isAdmin(::grpc::CallbackServerContext *ctx)
 {
     auto user = lookup(ctx, "user");
     auto passwd = lookup(ctx, "password");

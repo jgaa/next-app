@@ -328,7 +328,7 @@ int main(int argc, char* argv[]) {
             if (auto level = toLogLevel(log_level)) {
                 if (json_logging_to_file) {
                     logfault::LogManager::Instance().AddHandler(
-                        make_unique<logfault::JsonHandler>(log_file, *level, trunc_log, 0xffff));
+                        make_unique<logfault::JsonHandler>(log_file, *level, 0xffff, trunc_log));
                 } else {
                     logfault::LogManager::Instance().AddHandler(
                         make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));

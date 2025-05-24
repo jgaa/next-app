@@ -208,12 +208,11 @@ public:
                                   [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name, restrictedToAdmin]
                                   () mutable -> boost::asio::awaitable<void> {
                     try {
-                        LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
-
                         // Start measuring latency for this request
                         const auto latency = owner_.server().metrics().grpc_request_latency().scoped();
 
                         RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx, allowNewSession)};
+                        LOG_TRACE_EX(rctx) << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
                         rctx.session().touch();
 
                         if (restrictedToAdmin) {
@@ -486,3 +485,7 @@ private:
 };
 
 } // ns
+
+
+std::ostream& operator << (std::ostream& out, const nextapp::grpc::RequestCtx& ctx);
+
