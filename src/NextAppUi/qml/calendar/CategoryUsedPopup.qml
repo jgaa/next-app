@@ -10,11 +10,11 @@ Popup {
     property alias model: categoriesUsed.model
     x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
     y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
-    width: Math.min(300, NaCore.width, Screen.width)
-    height: Math.min(500, NaCore.height, Screen.height)
+    width: Math.min(400, NaCore.width, Screen.width)
+    height: Math.min(700, NaCore.height, Screen.height)
 
     Rectangle {
-        color: MaterialDesignStyling.surfaceBright
+        color: MaterialDesignStyling.surface
         anchors.fill: parent
     }
 
@@ -33,7 +33,7 @@ Popup {
             Layout.alignment: Qt.AlignHCenter
             Layout.margins: 16
             horizontalAlignment: Text.AlignHCenter
-            color: MaterialDesignStyling.onPrimaryContainer
+            color: MaterialDesignStyling.onSurface
         }
 
         CategoriesUsed {

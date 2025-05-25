@@ -333,15 +333,6 @@ TimeBoxActionsModel *CalendarDayModel::getTimeBoxActionsModel(const QString &eve
     return model;
 }
 
-CategoryUseModel *CalendarDayModel::getCategoryUseModel()
-{
-    auto model = new CategoryUseModel();
-    //QQmlEngine::setObjectOwnership(model, QQmlEngine::JavaScriptOwnership);
-    model->connect(this, &CalendarDayModel::categoryUseChanged, model, &CategoryUseModel::setList);
-    model->setList(getCategoryUsage());
-    return model;
-}
-
 void CalendarDayModel::moveEventToDay(const QString &eventId, time_t start)
 {
     // Delegate to the main calendar model
@@ -375,7 +366,6 @@ void CalendarDayModel::setValid(bool valid, bool signalAlways )
         return;
     }
     valid_ = valid;
-    updateCategoiesUsed();
     emit validChanged();
 }
 
@@ -422,55 +412,6 @@ void CalendarDayModel::setWorkHours()
     if (old_start != work_start_ || old_end != work_end_) {
         emit workHoursChanged();
     }
-}
-
-void CalendarDayModel::updateCategoiesUsed()
-{
-    if (!isSignalConnected(QMetaMethod::fromSignal(&CalendarDayModel::categoryUseChanged))) {
-        LOG_TRACE_N << "Skipping update of categories used, no one is listening.";
-        return;
-    };
-
-    emit categoryUseChanged(getCategoryUsage());
-}
-
-CategoryUseModel::list_t CalendarDayModel::getCategoryUsage()
-{
-    std::map<QString, CategoryUseModel::Data> use;
-    CategoryUseModel::list_t list;
-    uint total = 0;
-    uint without_cat = 0;
-    if (valid_) {
-        for(const auto& event : events_) {
-            if (event->hasTimeBlock()) {
-                const auto& tb = event->timeBlock();
-                const uint duration_minutes = (tb.timeSpan().end() - tb.timeSpan().start()) / 60;
-                total += duration_minutes;
-
-                if (tb.category().isEmpty()) {
-                    without_cat += duration_minutes;
-                } else if (auto it = use.find(tb.category()); it != use.end()) {
-                    it->second.minutes += duration_minutes;
-                } else {
-                    const auto& cat = ActionCategoriesModel::instance().getFromUuid(tb.category());
-                    use[tb.category()] = {cat.name(), cat.color(), duration_minutes};
-                };
-            }
-        }
-    }
-
-    vector<CategoryUseModel::Data> values;
-    ranges::transform(use, std::back_inserter(values),
-                      [](const auto& pair) { return pair.second; });
-
-    if (without_cat) {
-        values.push_back({tr("No category"), "transparent", without_cat});
-    }
-
-    ranges::sort(values, ranges::greater{}, &CategoryUseModel::Data::minutes);
-    values.push_back({tr("Total"), "transparent", total});
-
-    return values;
 }
 
 QObject *CalendarDayModel::Pool::get(CalendarDayModel *parent, QObject *ctl)

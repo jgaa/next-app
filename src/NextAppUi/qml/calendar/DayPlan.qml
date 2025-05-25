@@ -198,13 +198,13 @@ Rectangle {
         preventStealing: true
         property bool dragging: false
 
-        onPressAndHold: {
-            if (! mouseArea.dragging) {
-                Common.openDialog("calendar/CategoryUsedPopup.qml", root, {
-                    model: root.model.getCategoryUseModel()
-                });
-            }
-        }
+        // onPressAndHold: {
+        //     if (! mouseArea.dragging) {
+        //         Common.openDialog("calendar/CategoryUsedPopup.qml", root, {
+        //             model: root.model.getCategoryUseModel()
+        //         });
+        //     }
+        // }
 
         onPressed: {
             dragging = false;

@@ -70,6 +70,7 @@ public:
     Q_INVOKABLE void goToday();
     Q_INVOKABLE bool addAction(const QString& eventId, const QString& action);
     Q_INVOKABLE void removeAction(const QString& eventId, const QString& action);
+    Q_INVOKABLE CategoryUseModel *getCategoryUseModel();
 
     nextapp::pb::CalendarEvent *lookup(const QString& eventId);
 
@@ -107,7 +108,9 @@ private:
     void onAudioEvent();
     void updateIfPrimary();
     void updateActionsOnCalendarCache();
+    CategoryUseModel::list_t getCategoryUsage();
 
+    CategoryUseModel *category_use_model_{};
     bool valid_ = false;
     bool online_ = false;
     QDate first_;

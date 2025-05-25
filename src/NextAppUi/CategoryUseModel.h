@@ -2,6 +2,7 @@
 
 #include <QQmlEngine>
 #include <QAbstractListModel>
+#include <QPieSeries>
 
 /*! Model to to list categories used and how many minutes they were used.
  *
@@ -15,6 +16,8 @@ class CategoryUseModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_ELEMENT
+
+    Q_PROPERTY(QPieSeries* pieSeries READ pieSeries NOTIFY pieSeriesChanged)
 
 public:
     struct Data {
@@ -30,15 +33,25 @@ public:
     };
 
     using list_t = std::vector<Data>;
-    CategoryUseModel(QObject *parent = {});
+    using list_fn_t = std::function<list_t()>;
+
+    CategoryUseModel(list_fn_t fn, QObject *parent = {});
     ~CategoryUseModel();
 
     void setList(const list_t& list);
+    void listChanged();
+    QPieSeries* pieSeries() ;
+
+signals:
+    void pieSeriesChanged();
 
 private:
     list_t list_;
+    list_fn_t list_fn_;
+    QPieSeries *pie_series_{};
 
     int rowCount(const QModelIndex &parent) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
+    void updatePieList();
 };

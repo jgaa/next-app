@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtCharts
+import QtGraphs               // 1. import the Graphs module
 import NextAppUi
 import Nextapp.Models
 
@@ -23,27 +23,48 @@ ColumnLayout {
             required property int minutes
             implicitHeight: 20
             implicitWidth: listView.width
-            color: index % 2 ? MaterialDesignStyling.secondaryContainer : MaterialDesignStyling.primaryContainer
+            color: index % 2
+                   ? MaterialDesignStyling.surface
+                   : MaterialDesignStyling.surfaceContainerHigh
 
             RowLayout {
-                id: rowLayout
                 Rectangle {
                     Layout.preferredHeight: nameCtl.implicitHeight
                     Layout.preferredWidth: 10
                     color: colorName
                 }
-
                 Text {
                     id: nameCtl
                     text: name
-                    color: MaterialDesignStyling.onPrimaryContainer
+                    color: MaterialDesignStyling.onSurface
                 }
-
                 Text {
                     text: NaCore.toHourMin(minutes * 60)
-                    color: MaterialDesignStyling.onPrimaryContainer
+                    color: MaterialDesignStyling.onSurface
                 }
             }
+        }
+    }
+
+
+    // --- PIE CHART AREA ---
+    GraphsView {
+        id: pieChart
+        Layout.fillWidth: true
+        Layout.preferredHeight: root.width * 0.5
+        seriesList: root.model.pieSeries
+        marginLeft: 0
+        marginRight: 0
+        marginTop: 0
+        marginBottom: 0
+
+        theme: GraphsTheme {
+            id: pieTheme
+            theme: GraphsTheme.Theme.UserDefined
+            labelsVisible: false
+            backgroundColor: MaterialDesignStyling.surface
+            labelBackgroundVisible: false
+            labelTextColor: MaterialDesignStyling.surface
         }
     }
 }

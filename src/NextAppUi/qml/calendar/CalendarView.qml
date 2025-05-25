@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import NextAppUi
 import Nextapp.Models
-
+import "../common.js" as Common
 
 Rectangle {
     id: root
@@ -92,6 +92,29 @@ Rectangle {
                         root.model.goToday();
                     }
                 }
+
+                Button {
+                    height: navigation.height - 4
+                    Layout.preferredWidth: 28
+                    width: height
+                    Text {
+                        anchors.fill: parent
+                        font.family: ce.faSolidName
+                        font.styleName: ce.faSolidStyle
+                        font.pixelSize: 10
+                        text: "\uf200"
+                        verticalAlignment: Text.AlignVCenter
+                        horizontalAlignment: Text.AlignHCenter
+                        color: MaterialDesignStyling.onPrimary
+                    }
+
+                    onClicked: {
+                        Common.openDialog("calendar/CategoryUsedPopup.qml", root, {
+                                              model: root.model.getCategoryUseModel()
+                                          });
+                    }
+                }
+
 
                 Button {
                     height: navigation.height - 4

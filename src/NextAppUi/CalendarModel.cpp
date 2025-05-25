@@ -13,6 +13,7 @@
 #include "util.h"
 #include "ActionsModel.h"
 #include "ActionsOnCurrentCalendar.h"
+#include "ActionCategoriesModel.h"
 
 using namespace std;
 
@@ -277,6 +278,23 @@ void CalendarModel::removeAction(const QString &eventId, const QString &action)
             }
         }
     }
+}
+
+CategoryUseModel *CalendarModel::getCategoryUseModel()
+{
+    //if (!category_use_model_) {
+        auto get_list = [this]() {
+            LOG_DEBUG_N << "Getting category usage list";
+            return getCategoryUsage();
+        };
+
+        auto model = new CategoryUseModel(get_list);
+        model->connect(this, &CalendarModel::validChanged, model, &CategoryUseModel::listChanged);
+        model->setList(getCategoryUsage());
+    //}
+
+        return model;
+    //return category_use_model_;
 }
 
 nextapp::pb::CalendarEvent *CalendarModel::lookup(const QString &eventId)
@@ -696,5 +714,44 @@ void CalendarModel::updateActionsOnCalendarCache()
     });
 
     ActionsOnCurrentCalendar::instance()->setActions(actions);
+}
+
+CategoryUseModel::list_t CalendarModel::getCategoryUsage()
+{
+    std::map<QString, CategoryUseModel::Data> use;
+    CategoryUseModel::list_t list;
+    uint total = 0;
+    uint without_cat = 0;
+    if (valid_) {
+        for(const auto& event : all_events_) {
+            if (event->hasTimeBlock()) {
+                const auto& tb = event->timeBlock();
+                const uint duration_minutes = (tb.timeSpan().end() - tb.timeSpan().start()) / 60;
+                total += duration_minutes;
+
+                if (tb.category().isEmpty()) {
+                    without_cat += duration_minutes;
+                } else if (auto it = use.find(tb.category()); it != use.end()) {
+                    it->second.minutes += duration_minutes;
+                } else {
+                    const auto& cat = ActionCategoriesModel::instance().getFromUuid(tb.category());
+                    use[tb.category()] = {cat.name(), cat.color(), duration_minutes};
+                };
+            }
+        }
+    }
+
+    vector<CategoryUseModel::Data> values;
+    ranges::transform(use, std::back_inserter(values),
+                      [](const auto& pair) { return pair.second; });
+
+    if (without_cat) {
+        values.push_back({tr("No category"), "transparent", without_cat});
+    }
+
+    ranges::sort(values, ranges::greater{}, &CategoryUseModel::Data::minutes);
+    values.push_back({tr("Total"), "transparent", total});
+
+    return values;
 }
 

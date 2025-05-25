@@ -64,7 +64,6 @@ public:
     Q_INVOKABLE bool addAction(const QString& eventId, const QString& action);
     Q_INVOKABLE void removeAction(const QString& eventId, const QString& action);
     Q_INVOKABLE TimeBoxActionsModel *getTimeBoxActionsModel(const QString& eventId, QObject *tbItem);
-    Q_INVOKABLE CategoryUseModel *getCategoryUseModel();
 
     // Called after a drop operation, potentially on another day
     Q_INVOKABLE void moveEventToDay(const QString& eventId, time_t start);
@@ -135,12 +134,9 @@ signals:
     void timeChanged();
     void todayChanged();
     void workHoursChanged();
-    void categoryUseChanged(const CategoryUseModel::list_t& list);
 
 private:
     void setWorkHours();
-    void updateCategoiesUsed();
-    CategoryUseModel::list_t getCategoryUsage();
 
     QDate date_;
     bool today_ = false;
