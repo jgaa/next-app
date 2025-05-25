@@ -535,22 +535,24 @@ void GrpcServer::start() {
 }
 
 void GrpcServer::stop() {
-    LOG_INFO << "Shutting down GrpcServer.";
     active_ = false;
     auto deadline = std::chrono::system_clock::now() + 6s;
-    grpc_server_->Shutdown(deadline);
-    grpc_server_.reset();
-    LOG_DEBUG << "GrpcServer is done.";
+    if (grpc_server_) {
+        LOG_INFO << "Shutting down GrpcServer.";
+        grpc_server_->Shutdown(deadline);
+        grpc_server_.reset();
+        LOG_DEBUG << "GrpcServer is done.";
 
-    LOG_DEBUG << "Shutting down NextApp gRPC channels to Nextapp servers.";
-    for(auto& [id, conn] : instances_) {
-        try {
-            conn->shutdown();
-        } catch(const std::exception &ex) {
-            LOG_ERROR << "Caught exception while shutting down NextApp connection "
-                << id << ": " << ex.what();
-        }
-    };
+        LOG_DEBUG << "Shutting down NextApp gRPC channels to Nextapp servers.";
+        for(auto& [id, conn] : instances_) {
+            try {
+                conn->shutdown();
+            } catch(const std::exception &ex) {
+                LOG_ERROR << "Caught exception while shutting down NextApp connection "
+                          << id << ": " << ex.what();
+            }
+        };
+    }
 }
 
 void GrpcServer::startSignup()
@@ -684,13 +686,14 @@ boost::asio::awaitable<bool> GrpcServer::InstanceCommn::connect(const InstanceIn
             &stub_t::async::GetServerInfo,
             asio::use_awaitable);
 
-        LOG_INFO << "Connected to nextapp-server at " << url_;
         if (resp.has_serverinfo()) {
-            for(const auto& [key, value] : resp.serverinfo().properties().kv()) {
-                LOG_INFO << key << ": " << value;
-            }
+            LOG_INFO << "     Connected to nextapp-server at " << url_ << resp.serverinfo().properties();
             server_info_ = resp.serverinfo();
+        } else {
+            LOG_ERROR_N << "Failed to get server info from nextapp-server at " << url_;
+            co_return false;
         }
+
     } catch (const std::exception &ex) {
         LOG_ERROR << "Failed to connect to NextApp server at "
                   << info.url

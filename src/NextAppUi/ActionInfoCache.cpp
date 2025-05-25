@@ -484,6 +484,26 @@ QCoro::Task<void> ActionInfoCache::updateAllScores()
 {
     auto cache_copy = hot_cache_;
 
+    /*  TODO: Implement batch update in the future
+        QVariantList scores, ids;
+        for (auto& [uuid, action] : cache_copy) {
+          if (…) continue;
+          scores << getScore(*action);
+          ids    << action->id_proto();
+        }
+
+        QSqlQuery q(db);
+        q.prepare("UPDATE action SET score = ? WHERE id = ?");
+        q.addBindValue(scores);
+        q.addBindValue(ids);
+
+        db.transaction();
+        if (!q.execBatch()) {
+          qWarning() << "batch update failed:" << q.lastError();
+        }
+        db.commit();
+*/
+
     if (updating_scores_.exchange(true)) {
         for (auto& [uuid, action] : cache_copy) {
             if (action->status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
@@ -499,9 +519,7 @@ QCoro::Task<void> ActionInfoCache::updateAllScores()
             // save to db
             auto& db = NextAppCore::instance()->db();
             co_await db.query("UPDATE action SET score=? WHERE id=?", new_score, action->id_proto());
-            //emit actionChanged(uuid);
         }
-        //emit cacheReloaded();
         updating_scores_.store(false);
     }
 }

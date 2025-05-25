@@ -291,3 +291,11 @@ bool isValidEmail(const std::string& email) {
 }
 
 } // ns
+
+
+ostream &operator <<(std::ostream &o, const nextapp::pb::KeyValue &v) {
+    for(const auto& [key, value] : v.kv()) {
+        o << ' ' << key << "=" << value;
+    };
+    return o;
+}

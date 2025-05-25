@@ -1,4 +1,4 @@
-#pragma once
+ #pragma once
 
 #include <atomic>
 #include <memory>
@@ -75,7 +75,7 @@ public:
                     {
                         std::scoped_lock lock{mutex_};
                         if (state_ == IoState::READY) {
-                            LOG_DEBUG << "sendMessage/co_spawn/before write " << grpc_.toJsonForLog(message);
+                            LOG_TRACE_N << "sendMessage/co_spawn/before write"; // << grpc_.toJsonForLog(message);
                             write(std::move(message));
                             self.complete({});
                             co_return;
@@ -84,8 +84,8 @@ public:
                             co_return;
                         }
 
-                        LOG_TRACE << "sendMessage() called while state is not READY. Going to sleep. "
-                                  << "state = " << static_cast<int>(state_);
+                        LOG_TRACE_N << "sendMessage() called while state is not READY. Going to sleep. "
+                                    << "state = " << static_cast<int>(state_);
 
                         // Use a relatively short wait for now in case we have a race-conditions
                         // that leads to nobody cancelling the timer.
@@ -96,7 +96,7 @@ public:
                         co_await timer_.async_wait(boost::asio::use_awaitable);
                     } catch (const boost::system::system_error& e) {
                         if (e.code() != boost::asio::error::operation_aborted) {
-                            LOG_WARN << "Caught exception while waiting for write() to be ready: "
+                            LOG_WARN_N << "Caught exception while waiting for write() to be ready: "
                                      << e.what();
                             self.complete(e.code());
                             co_return;
@@ -126,7 +126,7 @@ public:
         {
             std::lock_guard lock{mutex_};
             if (state_ == IoState::WAITING_ON_DONE) {
-                LOG_WARN << "OnDone() called while state is not WAITING_ON_DONE. state="
+                LOG_WARN_N << "OnDone() called while state is not WAITING_ON_DONE. state="
                          << static_cast<int>(state_);
             }
 
@@ -147,7 +147,7 @@ public:
         LOG_TRACE_N << "OnWriteDone() called with " << (ok ? "OK" : "NOT OK") << " on stream " << uuid_ << " state=" << static_cast<int>(state_);
 
         if (!ok) [[unlikely]] {
-            LOG_WARN << "The write-operation failed.";
+            LOG_WARN_N << "The write-operation failed.";
 
             // We still need to call Finish or the request will remain stuck!
             close_({::grpc::StatusCode::CANCELLED, "Write failed"}, true);

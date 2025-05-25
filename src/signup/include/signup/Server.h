@@ -135,6 +135,7 @@ public:
     }
 
     boost::asio::awaitable<bool> loadCluster(bool checkClusterWhenLoaded = true);
+    std::string hashPasswd(std::string_view passwd);
 
 private:
     void handleSignals();

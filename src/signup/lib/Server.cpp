@@ -26,20 +26,6 @@ namespace asio = boost::asio;
 
 namespace nextapp {
 
-namespace {
-
-string hashMetricsPassword(std::string_view passwd)
-{
-    // Not very secure with hard-coded salt, but in all professionally deployd systems
-    // the password for /metrics will not be uses, and some reverse proxy or VPN
-    // will keep it safe.
-    constexpr string_view salt = "a85450ec-36d4-11f0-98e7-4fd263e4efbf";
-    const auto base = format("{}:{}", salt, passwd);
-    return sha256(base, true);
-}
-
-} // ns
-
 Server::Server(const Config& config)
     : config_(config), metrics_(*this)
 {
@@ -79,19 +65,25 @@ void Server::init()
 
 void Server::run()
 {
-    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-            try {
+    bool ok = false;
+    try {
+        asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
                 co_await db().init();
                 co_await checkDb();
                 co_await loadCluster(false);
                 co_await connectToInstances();
                 co_await startGrpcService();
                 startClusterTimer();
-            } catch (const std::exception& ex) {
-                LOG_ERROR << "Failed to start gRPC service: " << ex.what();
-                co_return;
-            }
-    }, asio::use_future).get();
+                ok = true;
+        }, asio::use_future).get();
+    } catch (const std::exception& ex) {
+        LOG_ERROR << "Failed to initialize the server: " << ex.what();
+    }
+
+    if (!ok) {
+        stop();
+        throw runtime_error{"Failed to initialize the server"};
+    }
 
     if (!config().options.enable_http) {
         LOG_INFO << "HTTP server (metrics) is disabled.";
@@ -107,7 +99,7 @@ void Server::run()
                 const auto lower = toLower(ar.auth_header);
                 if (lower.starts_with("basic ")) {
                     const auto base64 = ar.auth_header.substr(6);
-                    const auto hash = hashMetricsPassword(base64);
+                    const auto hash = hashPasswd(base64);
                     if (hash == metrics_auth_hash_) {
                         LOG_TRACE << "Metrics request " << ar.req.uuid << " authenticated";
                         return yahat::Auth{"metrics", true};
@@ -133,6 +125,14 @@ void Server::stop()
     if (grpc_service_) {
         grpc_service_->stop();
     }
+
+    if (db_) {
+        asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+            LOG_DEBUG << "Closing the database connection...";
+            co_await db().close();
+        }, asio::use_future).get();
+    }
+
     LOG_DEBUG << "Shutting down the thread-pool.";
     ctx_.stop();
     LOG_DEBUG << "Server stopped.";
@@ -558,14 +558,17 @@ boost::asio::awaitable<bool> Server::checkDb()
 
     enum Cols { VERSION, SALT };
 
-    if (res.has_value()) {
+    if (res.rows().empty()) {
+        LOG_ERROR_N << "The 'signup' table is empty. Is the database initialized?";
+        throw runtime_error{"The 'signup' table is empty"};
+    } else {
         const auto version = res.rows().front().at(VERSION).as_int64();
         salt_ = res.rows().front().at(SALT).as_string();
         if (salt_.empty()) {
-            LOG_ERROR << "Salt is empty in the 'signup' table.!";
+            LOG_ERROR_N << "Salt is empty in the 'signup' table.!";
             co_return false;
         }
-        LOG_DEBUG << "I need the database to be at version " << latest_version
+        LOG_DEBUG_N << "I need the database to be at version " << latest_version
                   << ". The existing database is at version " << version << '.';
 
         if (latest_version > version) {
@@ -577,8 +580,6 @@ boost::asio::awaitable<bool> Server::checkDb()
 
     co_return false;
 }
-
-
 
 boost::asio::awaitable<void> Server::createDb(const BootstrapOptions &opts)
 {
@@ -751,29 +752,26 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
     mysqlpool::Mysqlpool db{ctx_, cfg};
 
-    //co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-        co_await db.init();
-        {
-            auto handle = co_await db.getConnection();
-            auto trx = co_await handle.transaction();
+    co_await db.init();
+    {
+        auto handle = co_await db.getConnection();
+        auto trx = co_await handle.transaction();
 
-            // Here we will run all SQL queries for upgrading from the specified version to the current version.
-            auto relevant = ranges::drop_view(versions, version);
-            for(string_view query : relevant | std::views::join) {
-                co_await handle.exec(query);
-            }
-
-            if (latest_version == 1) {
-                auto salt = getRandomStr(32);
-                co_await handle.exec("INSERT INTO signup (id, version, salt) VALUES (1, 1, ?)", salt);
-            }
-
-            co_await handle.exec("UPDATE signup SET VERSION = ? WHERE id = 1", latest_version);
-            co_await trx.commit();
+        // Here we will run all SQL queries for upgrading from the specified version to the current version.
+        auto relevant = ranges::drop_view(versions, version);
+        for(string_view query : relevant | std::views::join) {
+            co_await handle.exec(query);
         }
-        co_await db.close();
 
-    //}, asio::use_awaitable);
+        if (version == 0) {
+            auto salt = getRandomStr(32);
+            co_await handle.exec("INSERT INTO signup (id, version, salt) VALUES (1, 1, ?)", salt);
+        }
+
+        co_await handle.exec("UPDATE signup SET VERSION = ? WHERE id = 1", latest_version);
+        co_await trx.commit();
+    }
+    co_await db.close();
 }
 
 boost::asio::awaitable<void> Server::createAdminUser()
@@ -899,6 +897,12 @@ boost::asio::awaitable<bool> Server::loadCluster(bool checkClusterWhenLoaded) {
     co_return result;
 }
 
+string Server::hashPasswd(std::string_view passwd)
+{
+    const auto base = format("{}:{}", salt_, passwd);
+    return sha256(base, true);
+}
+
 boost::asio::awaitable<bool> Server::loadCluster_()
 {
     auto new_cluster = co_await getClusterFromDb();
@@ -983,7 +987,7 @@ boost::asio::awaitable<void> nextapp::Server::resetMetricsPassword(jgaa::mysqlpo
     const auto passwd = getRandomStr(32);
     const auto auth = format("metrics:{}", passwd);
     const auto http_basic_auth = Base64Encode(auth);
-    const auto hash = hashMetricsPassword(http_basic_auth);
+    const auto hash = hashPasswd(http_basic_auth);
 
     auto res = co_await handle.exec("INSERT INTO config (name, value) VALUES ('metric_auth_hash', ?) ON DUPLICATE KEY UPDATE value = ?", hash, hash);
     if (!res.affected_rows()) {

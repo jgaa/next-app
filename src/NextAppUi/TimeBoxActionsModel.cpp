@@ -206,8 +206,6 @@ nextapp::pb::StringList TimeBoxActionsModel::actions() const
 
 TimeBoxActionsModel::State::State(TimeBoxActionsModel &parent)
     : parent_(parent) {
-
-    //tb_ = parent_.getTb();
 }
 
 QCoro::Task<bool> TimeBoxActionsModel::State::sync()

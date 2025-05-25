@@ -279,3 +279,4 @@ static void atomicSetIfGreater(V& v, T new_value) noexcept {
 } // ns
 
 std::ostream& operator << (std::ostream& out, const std::optional<std::string>& v);
+std::ostream& operator << (std::ostream& o, const nextapp::pb::KeyValue& v);
