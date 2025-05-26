@@ -136,6 +136,10 @@ public:
         return state_;
     }
 
+    bool isActive() const noexcept {
+        return state() == State::ACTIVE;
+    }
+
     QObject * openQmlComponent(const QUrl& resourcePath);
 
 public slots:

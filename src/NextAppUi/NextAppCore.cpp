@@ -28,6 +28,35 @@ QDate getDefaultDate(time_t when) {
     }
     return QDate::currentDate();
 }
+
+#ifdef WIN32
+#include <QAbstractNativeEventFilter>
+class PowerEventFilter : public QAbstractNativeEventFilter {
+public:
+    using fn_t = std::function<void()>;
+    PowerEventFilter(fn_t fn)
+        : callback_{std::move(fn)} {}
+
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override {
+        LOG_TRACE_N << "Received event: " << string_view(eventType.constData(), eventType.size());
+        if (eventType == "windows_generic_MSG") {
+            auto *msg = static_cast<MSG*>(message);
+            if (msg->message == WM_POWERBROADCAST
+                && (msg->wParam == PBT_APMRESUMEAUTOMATIC
+                    || msg->wParam == PBT_APMRESUMECRITICAL
+                    || msg->wParam == PBT_APMRESUMESUSPEND)) {
+                LOG_DEBUG_N << "Received wake-up event";
+                assert(callback_);
+                callback_();
+            }
+        }
+        return false;
+    }
+
+private:
+    fn_t callback_;
+};
+#endif
 } // anon ns
 
 NextAppCore *NextAppCore::instance_;
@@ -84,7 +113,19 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
         LOG_WARN << "Cannot connect to the D-Bus system bus";
     }
 
-    #endif
+#endif
+
+#ifdef WIN32
+    auto *pef = new PowerEventFilter([this]() {
+        if (instance_ && state_ != State::SHUTTING_DOWN) {
+            LOG_TRACE_N << "Emitting wokeFromSleep()";
+            emit wokeFromSleep();
+        }
+    });
+
+    LOG_INFO << "Installing event-listener for wakup.";
+    qApp->installNativeEventFilter(pef);
+#endif
 
     connect(qApp, &QGuiApplication::applicationStateChanged, [this](Qt::ApplicationState state) {
         const auto old_state = state_;
