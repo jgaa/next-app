@@ -1351,10 +1351,17 @@ QCoro::Task<void> ServerComm::startNextappSession()
     LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
     NextAppCore::instance()->showSyncPopup(true);
     bool close_popup = true;
-    ScopedExit hide_popup_on_exit{[this, &close_popup] {
+    const auto start_time = chrono::steady_clock::now();
+    ScopedExit hide_popup_on_exit{[this, &close_popup, &start_time] {
         if (close_popup) {
             NextAppCore::instance()->showSyncPopup(false);
             clearMessages();
+            if (status() == Status::ONLINE) {
+                LOG_INFO << "Initialized nextapp session in "
+                         << std::fixed << std::setprecision(2)
+                         << std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count()
+                         << " seconds.";
+            }
         }
     }};
 
