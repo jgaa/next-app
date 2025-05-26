@@ -18,7 +18,8 @@ Item {
 
     function commit() {
         settings.setValue("logging/path", logPath.text)
-        settings.setValue("logging/level", uiStyle.currentIndex.toString())
+        settings.setValue("logging/level", logLevelFile.currentIndex.toString())
+        settings.setValue("logging/applevel", logLevelApp.currentIndex.toString())
         settings.setValue("logging/prune", prune.checked ? "true" : "false")
         settings.setValue("sync/resync", resync.checked ? "true" : "false")
         settings.setValue("server/reconnect_level", reconnectLevel.currentIndex.toString())
@@ -34,27 +35,30 @@ Item {
         rowSpacing: 4
         columns: 2
 
-        Label { text: qsTr("Logfile")}
-        RowLayout {
-            DlgInputField {
-                Layout.fillWidth: true
-                id: logPath
-                text: settings.value("logging/path")
-            }
+        Label {
+            text: qsTr("Log Level\n(Application)")
+            visible: logLevelApp.visible
+        }
+        ComboBox {
+            id: logLevelApp
+            visible: Qt.platform.os === "linux"
+                     || Qt.platform.os === "android"
 
-            // Does not work in Ubuntu 23.10. The system goes into a loop of opening the file
-            // RoundButton {
-            //     id: viewLogBtn
-            //     text: qsTr("View")
-            //     onClicked: {
-            //         NaCore.openFile(logPath.text)
-            //     }
-            // }
+            currentIndex: parseInt(settings.value("logging/applevel"))
+            Layout.fillWidth: true
+            model: [
+                qsTr("Disabled"),
+                qsTr("Error"),
+                qsTr("Warning"),
+                qsTr("Notice"),
+                qsTr("Info"),
+                qsTr("Debug"),
+                qsTr("Trace")]
         }
 
-        Label { text: qsTr("Log Level")}
+        Label { text: qsTr("Log Level\n(File)")}
         ComboBox {
-            id: uiStyle
+            id: logLevelFile
             currentIndex: parseInt(settings.value("logging/level"))
             Layout.fillWidth: true
             model: [
@@ -67,11 +71,28 @@ Item {
                 qsTr("Trace")]
         }
 
-        Item {}
+        Label { text: qsTr("Logfile")}
+        RowLayout {
+            DlgInputField {
+                Layout.fillWidth: true
+                id: logPath
+                text: settings.value("logging/path")
+            }
 
+            // Broken!
+            // RoundButton {
+            //     id: viewLogBtn
+            //     text: qsTr("View")
+            //     onClicked: {
+            //         NaCore.openFile(logPath.text)
+            //     }
+            // }
+        }
+
+        Item {}
         CheckBox {
             id: prune
-            text: qsTr("Prune log when starting")
+            text: qsTr("Prune log-file when starting")
             checked: settings.value("logging/prune") == "true"
         }
 
