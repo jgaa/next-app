@@ -236,6 +236,10 @@ int main(int argc, char *argv[])
             settings.setValue("client/maxInstances", 1);
         }
 
+        if (!settings.contains("logging/applevel")) {
+            settings.setValue("logging/applevel", 4); // INFO
+        }
+
         auto style = styles.at(settings.value("UI/style").toInt());
         auto scale = scales.at(settings.value("UI/scale").toInt());
 
@@ -261,6 +265,18 @@ int main(int argc, char *argv[])
                 LOG_INFO << "Logging to: " << path;
             }
         }
+
+#if defined(LINUX_BUILD) || defined(__ANDROID__)
+        if (const auto level = settings.value("logging/applevel", 4).toInt()) {
+            logfault::LogManager::Instance().AddHandler(
+#ifdef __ANDROID__
+                make_unique<logfault::AndroidHandler>("NextApp", static_cast<logfault::LogLevel>(level)));
+#else
+                make_unique<logfault::StreamHandler>(clog, static_cast<logfault::LogLevel>(level)));
+#endif
+            LOG_INFO << "Logging to system";
+        }
+#endif
 
 #ifndef __ANDROID__
         // Handle multiple instances of the app with their own data
