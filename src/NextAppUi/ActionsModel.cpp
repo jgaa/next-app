@@ -1702,7 +1702,13 @@ ORDER BY {} LIMIT {} OFFSET {})",
                 pushMatch();
                 params << cal_date;
                 params << cal_date.addDays(1);
+            } else {
+                LOG_WARN_N << "Primary calendar date is not valid. Cannot fetch actions on calendar.";
+                goto failed;
             }
+        } else {
+            LOG_WARN_N << "Primary calendar property is not set. Cannot fetch actions on calendar.";
+            goto failed;
         }
         break;
 
@@ -1741,38 +1747,42 @@ ORDER BY {} LIMIT {} OFFSET {})",
     }
 
     co_await ActionInfoCache::instance()->updateAllScores();
-    auto& db = NextAppCore::instance()->db();
-    auto result = co_await db.query(QString::fromLatin1(sql), params);
-    if (result.has_value()) {
-        // Make a new list of actions with the sorted ID's
-        const auto& rows = result.value().rows;
-        decltype(actions_) new_actions;
-        for(const auto& row: rows) {
-            const auto& id = row.at(0);
-            new_actions.push_back({id.toString()});
+    {
+        auto& db = NextAppCore::instance()->db();
+        auto result = co_await db.query(QString::fromLatin1(sql), params);
+        if (result.has_value()) {
+            // Make a new list of actions with the sorted ID's
+            const auto& rows = result.value().rows;
+            decltype(actions_) new_actions;
+            for(const auto& row: rows) {
+                const auto& id = row.at(0);
+                new_actions.push_back({id.toString()});
+            }
+
+            // Send the list to the cache to fill in the data-pointers
+            co_await ActionInfoCache::instance()->fill(new_actions);
+
+            // Insert or replace the new list depending on it's page.
+            start_reset();
+            if (restart) {
+                actions_ = std::move(new_actions);
+            } else {
+                std::copy(new_actions.begin(), new_actions.end(), std::back_inserter(actions_));
+            }
+
+            pagination_.more = rows.size() == pagination_.pageSize();
+            pagination_.increment(rows.size());
+            valid_ = true;
+            co_return;
         }
-
-        // Send the list to the cache to fill in the data-pointers
-        co_await ActionInfoCache::instance()->fill(new_actions);
-
-        // Insert or replace the new list depending on it's page.
-        start_reset();
-        if (restart) {
-            actions_ = std::move(new_actions);
-        } else {
-            std::copy(new_actions.begin(), new_actions.end(), std::back_inserter(actions_));
-        }
-
-        pagination_.more = rows.size() == pagination_.pageSize();
-        pagination_.increment(rows.size());
-        valid_ = true;
-    } else {
-        LOG_ERROR << "Failed to query actions from local db";
-        pagination_.more = false;
-        valid_ = false;
-        start_reset();
-        actions_.clear();
     }
+
+    LOG_ERROR << "Failed to query actions from local db";
+failed:
+    pagination_.more = false;
+    valid_ = false;
+    start_reset();
+    actions_.clear();
 }
 
 void ActionsModel::selectedTreeNodeChanged()

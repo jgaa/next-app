@@ -174,6 +174,9 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
     });
 
     resetTomorrowTimer();
+
+    auto today = QDateTime::currentDateTime().date();
+    setProperty("primaryForActionList", today);
 }
 
 NextAppCore::~NextAppCore()

@@ -690,7 +690,11 @@ void CalendarModel::onAudioEvent()
 
 void CalendarModel::updateIfPrimary()
 {
+#ifdef ANDROID
+    if (first_ == last_) {
+#else
     if (is_primary_) {
+#endif
         assert(first_ == last_);
         NextAppCore::instance()->setProperty("primaryForActionList", first_);
     }
