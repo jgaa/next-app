@@ -369,6 +369,13 @@ void CalendarDayModel::setValid(bool valid, bool signalAlways )
     emit validChanged();
 }
 
+bool CalendarDayModel::hasEvent(const QString &id) const noexcept
+{
+    return std::ranges::any_of(events_, [&](const auto& event) {
+        return event->id_proto() == id;
+    });
+}
+
 void CalendarDayModel::setDate(QDate date) {
     date_ = date;
     emit whenChanged();

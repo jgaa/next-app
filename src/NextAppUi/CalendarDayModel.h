@@ -85,6 +85,8 @@ public:
         return events_;
     }
 
+    bool hasEvent(const QString& id) const noexcept;
+
     time_t when() const {
         if (date_.isValid()) [[likely]] {
             return date_.startOfDay().toSecsSinceEpoch();

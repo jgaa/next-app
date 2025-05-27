@@ -361,7 +361,17 @@ QCoro::Task<void> CalendarModel::onCalendarEventAddedOrUpdated(const QUuid id)
     }
 
     QDate new_date = get_date(*event);
-    QDate old_date = existing ? get_date(*existing) : QDate();
+    QDate old_date;
+    if (existing) {
+        // existing points to the same buffer as event, so we can't get the old data.
+        // We need to search to see if we had it in another date.
+        for (const auto& [_, day] : day_models_) {
+            if (day->hasEvent(existing->id_proto())) {
+                old_date = day->date();
+                break;
+            }
+        }
+    }
     bool removed = false;
 
     if (existing) {
