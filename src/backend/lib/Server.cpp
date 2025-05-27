@@ -1118,6 +1118,41 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    // make sure users and tenants can be deleted without leaving behind dangling references
+    static constexpr auto v21_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        "ALTER TABLE node DROP FOREIGN KEY node_ibfk_2",
+
+        R"(ALTER TABLE node
+            ADD CONSTRAINT node_ibfk_2
+            FOREIGN KEY (user) REFERENCES user (id)
+            ON DELETE CASCADE ON UPDATE NO ACTION)",
+
+        "ALTER TABLE day_colors DROP FOREIGN KEY day_colors_ibfk_1",
+
+        R"(ALTER TABLE day_colors
+            ADD CONSTRAINT day_colors_ibfk_1
+            FOREIGN KEY (tenant) REFERENCES tenant (id)
+            ON DELETE CASCADE ON UPDATE NO ACTION)",
+
+        "ALTER TABLE time_block DROP FOREIGN KEY time_block_ibfk_2",
+
+        R"(ALTER TABLE time_block
+            ADD CONSTRAINT time_block_ibfk_2
+            FOREIGN KEY (category) REFERENCES action_category (id)
+                ON DELETE CASCADE ON UPDATE NO ACTION)",
+
+        "ALTER TABLE action DROP FOREIGN KEY action_ibfk_3",
+
+        R"(ALTER TABLE action ADD CONSTRAINT action_ibfk_3
+          FOREIGN KEY (origin) REFERENCES action (id)
+              ON DELETE SET NULL
+              ON UPDATE NO ACTION)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
@@ -1139,7 +1174,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v17_upgrade,
         v18_upgrade,
         v19_upgrade,
-        v20_upgrade
+        v20_upgrade,
+        v21_upgrade
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
@@ -1174,10 +1210,6 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
                 co_await handle.exec("INSERT INTO tenant (id, name, kind, system_tenant) VALUES (?, ?, 'super', 1)", tenant_id, tenant_name);
                 // Add user
                 co_await handle.exec("INSERT INTO user (id, tenant, name, kind, system_user) VALUES (?, ?, ?, 'super', 1)", user_id, tenant_id, user_name);
-            } else if (version < 16) {
-                // TODO: Remove after upgrade
-                co_await handle.exec("UPDATE tenant SET system_tenant=1 WHERE kind='super'");
-                co_await handle.exec("UPDATE user SET system_user=1 WHERE kind='super'");
             }
 
             co_await handle.exec("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
