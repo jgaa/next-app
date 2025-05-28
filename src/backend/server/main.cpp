@@ -121,14 +121,59 @@ int main(int argc, char* argv[]) {
         string log_level_console = "info";
         string log_level = "info";
         string log_file;
-        string client_certs;
+        string client_certs_name{"client"};
         string client_cert_uuid;
         bool trunc_log = false;
-        bool bootstrap = false;
         bool admin_cert = false;
         bool create_server_cert = false;
         bool json_logging_to_console = false;
         bool json_logging_to_file = false;
+
+        auto init_logging_and_config_file = [&](auto& cmdline_options, auto& vm) {
+            if (!config_file.empty()) {
+                if (filesystem::exists(config_file)) {
+                    try {
+                        ifstream config_file_stream(config_file);
+                        po::store(po::parse_config_file(config_file_stream, cmdline_options), vm);
+                        po::notify(vm);
+                    } catch (const exception& ex) {
+                        cerr << appname << " Failed to load configuration file '" << config_file << "': " << ex.what() << endl;
+                        return -4;
+                    }
+                } else {
+                    if (config_file == default_config_file) {
+                        cerr << appname << " Default configuration file '" << config_file << "' does not exist." << endl;
+                    } else {
+                        cerr << appname << " Configuration file '" << config_file << "' does not exist." << endl;
+                        return -4;
+                    }
+                }
+            }
+
+            if (auto level = toLogLevel(log_level_console)) {
+                if (json_logging_to_console) {
+                    logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::JsonHandler>(clog, *level, 0xffff));
+                } else {
+                    logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::StreamHandler>(clog, *level));
+                }
+            }
+
+            if (!log_file.empty()) {
+                if (auto level = toLogLevel(log_level)) {
+                    if (json_logging_to_file) {
+                        logfault::LogManager::Instance().AddHandler(
+                            make_unique<logfault::JsonHandler>(log_file, *level, trunc_log, 0xffff));
+                    } else {
+                        logfault::LogManager::Instance().AddHandler(
+                            make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
+                    }
+                }
+            }
+
+            return 0;
+        };
 
         general.add_options()
             ("help,h", "Print help and exit")
@@ -158,11 +203,14 @@ int main(int argc, char* argv[]) {
              "This mostly applies for debug and trace level log-messages.")
             ;
 
+        po::options_description servercert("Server Cert");
+        servercert.add_options()
+            ("server-fqdn", po::value(&config.options.server_cert_dns_names),
+             "The fqdn to use in the server-certificate. Can be repeated to allow multiple aliases.")
+            ;
+
         po::options_description bs("Bootstrap");
         bs.add_options()
-            ("bootstrap", po::bool_switch(&bootstrap),
-             "Bootstrap the system. Creates the database and system tenant. Exits when done. "
-             "The databse credentials must be for the system (root) user of the database.")
             ("drop-database", po::bool_switch(&bootstrap_opts.drop_old_db),
              "Tells the server to delete the existing database.")
             ("root-db-user",
@@ -213,24 +261,17 @@ int main(int argc, char* argv[]) {
 
         po::options_description ca("Certs");
         ca.add_options()
+            ("cert-name", po::value(&client_certs_name)->default_value(client_certs_name),
+             "Name of the cert. Can be a name or a path, for example 'client' or '/certs/client'. "
+             "'-ca.pem', '-cert.pem' and '-key.pem' will be appended to the actual file-names.")
             ("cert-lifetime", po::value(&config.ca.lifetime_days_certs)->default_value(config.ca.lifetime_days_certs),
              "Life-time in days for self signed TLS certificates")
             ("cert-key-size", po::value(&config.ca.key_bytes)->default_value(config.ca.key_bytes),
              "Size of keys in self-signed carts (in bytes)")
-            ("server-fqdn", po::value(&config.options.server_cert_dns_names),
-             "The fqdn to use in the server-certificate. Can be repeated to allow multiple aliases. "
-             "The server cert is created if it is missing when the server starts, for example during initial bootstrap. "
-             "It is also created when the --create-server-cert option is used.")
-            ("create-server-cert", po::bool_switch(&create_server_cert),
-             "Re-creates the serverts TLS cert and key. Exits when done.")
-            ("create-client-cert", po::value(&client_certs),
-             "Create a client-certificate and key and store it files beginning with [name]. "
-             "The files will be overwritten if they exists. "
-             "Exits when done.")
             ("with-user-uuid", po::value(&client_cert_uuid),
-             "Used with --create-client-cert to create a client-certificate for a specific user.")
+             "Create a client-certificate for a specific user.")
             ("admin-cert", po::bool_switch(&admin_cert),
-             "Used with --create-client-cert to create a client-certificate for the default admin user. For example for signupd.")
+             "Create a client-certificate for the default admin user. For example for signupd.")
             ;
 
         po::options_description db("Database");
@@ -265,25 +306,175 @@ int main(int argc, char* argv[]) {
             ;
 
         po::options_description cmdline_options;
-        cmdline_options.add(general).add(bs).add(svr).add(metrics).add(ca).add(db);
-        po::variables_map vm;
+
+        auto check_for_fqdn = [&]() -> bool {
+            if (config.options.server_cert_dns_names.empty()) {
+                cerr << "Missing required option --server-fqdn. "
+                     << "You must specify at least one server FQDN for the server certificate." << endl;
+                return false;
+            }
+
+            return true;
+        };
+
+
+        if (argc > 1) {
+            if (argv[1] == "bootstrap"s) {
+                cmdline_options.add(general).add(bs).add(db).add(servercert);
+                po::variables_map vm;
+                try {
+                    // Shift arguments left to remove "bootstrap"
+                    vector<char*> new_argv(argv, argv + argc); // Copy argv
+                    new_argv.erase(new_argv.begin() + 1); // Remove second element (index 1)
+
+                    po::store(po::command_line_parser(new_argv.size(), new_argv.data()).options(cmdline_options).run(), vm);
+                    po::notify(vm);
+                } catch (const exception& ex) {
+                    cerr << appname
+                         << " Failed to parse command-line arguments: " << ex.what() << endl;
+                    return -1;
+                }
+
+                if (vm.count("help")) {
+                    cout <<appname << "bootstrap" << " [options]"
+                         << cmdline_options << endl;
+                    return 0;
+                }
+
+                if (auto err = init_logging_and_config_file(cmdline_options, vm)) {
+                    return err;
+                }
+
+                if (!check_for_fqdn()) {
+                    return -3;
+                }
+
+                try {
+                    Server server{config};
+                    server.bootstrap(bootstrap_opts);
+                    return 0; // Done
+                } catch (const exception& ex) {
+                    LOG_ERROR << "Caught exception during bootstrap: " << ex.what();
+                    return -5;
+                }
+            }
+
+            if (argv[1] == "create-grpc-cert"s) {
+                cmdline_options.add(general).add(db).add(servercert);
+                po::variables_map vm;
+                try {
+                    // Shift arguments left to remove "bootstrap"
+                    vector<char*> new_argv(argv, argv + argc); // Copy argv
+                    new_argv.erase(new_argv.begin() + 1); // Remove second element (index 1)
+
+                    po::store(po::command_line_parser(new_argv.size(), new_argv.data()).options(cmdline_options).run(), vm);
+                    po::notify(vm);
+                } catch (const exception& ex) {
+                    cerr << appname
+                         << " Failed to parse command-line arguments: " << ex.what() << endl;
+                    return -1;
+                }
+
+                if (vm.count("help")) {
+                    cout <<appname << "bootstrap" << " [options]"
+                         << cmdline_options << endl << endl
+                         << "This command re-creates the servers self-signed gRPC TLS cert for the specidied FQDN(s)." << endl;
+                        return 0;
+                }
+
+                if (auto err = init_logging_and_config_file(cmdline_options, vm)) {
+                    return err;
+                }
+
+                if (!check_for_fqdn()) {
+                    return -3;
+                }
+
+                try {
+                    Server server{config};
+                    server.createGrpcCert();
+                    return 0; // Done
+                } catch (const exception& ex) {
+                    LOG_ERROR << "Caught exception during bootstrap: " << ex.what();
+                    return -5;
+                }
+            }
+
+            if (argv[1] == "create-client-cert"s) {
+                cmdline_options.add(general).add(db).add(ca);
+                po::variables_map vm;
+                try {
+                    // Shift arguments left to remove "bootstrap"
+                    vector<char*> new_argv(argv, argv + argc); // Copy argv
+                    new_argv.erase(new_argv.begin() + 1); // Remove second element (index 1)
+
+                    po::store(po::command_line_parser(new_argv.size(), new_argv.data()).options(cmdline_options).run(), vm);
+                    po::notify(vm);
+                } catch (const exception& ex) {
+                    cerr << appname
+                         << " Failed to parse command-line arguments: " << ex.what() << endl;
+                    return -1;
+                }
+
+                if (vm.count("help")) {
+                    cout <<appname << "bootstrap" << " [options]"
+                         << cmdline_options << endl << endl
+                         << "This command creates a new client-cert for a user or the admin user." << endl;
+                    return 0;
+                }
+
+                if (auto err = init_logging_and_config_file(cmdline_options, vm)) {
+                    return err;
+                }
+
+                try {
+                    Server server{config};
+                    boost::uuids::uuid userUuid;
+                    if (admin_cert) {
+                        ;
+                    } else if (!client_cert_uuid.empty()){
+                        userUuid = toUuid(client_cert_uuid);
+                    } else {
+                        LOG_ERROR << "You must specify --with-user-uuid=uuid or --admin-cert to create a client-certificate.";
+                        return -7;
+                    }
+                    server.createClientCert(client_certs_name, userUuid);
+                    return 0; // Done
+                } catch (const exception& ex) {
+                    LOG_ERROR << "Caught exception during client-certificate creation: " << ex.what();
+                    return -6;
+                }
+            }
+        }
+
+        cmdline_options.add(general).add(svr).add(metrics).add(db);
+        po::variables_map vm;        
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);
             po::notify(vm);
-        } catch (const std::exception& ex) {
+        } catch (const exception& ex) {
             cerr << appname
                  << " Failed to parse command-line arguments: " << ex.what() << endl;
             return -1;
         }
 
+        if (auto err = init_logging_and_config_file(cmdline_options, vm)) {
+            return err;
+        }
+
         if (vm.count("help")) {
-            std::cout <<appname << " [options]";
-            std::cout << cmdline_options << std::endl;
-            return -2;
+            cout <<appname << " [options]";
+            cout << cmdline_options << endl << endl;
+            cout << appname << " can also be started with the following arguments" << endl
+                 << "to take specific actions like a command-line utility." << endl << endl;
+            cout << appname << " bootstrap          [bootstrap-options]" << endl;
+            cout << appname << " create-grpc-cert   [cert-options]" << endl;
+            cout << appname << " create-client-cert [cci-options]" << endl;
+            return 0;
         }
 
         if (vm.count("version")) {
-            std::cout << appname << ' ' << APP_VERSION << endl
+            cout << appname << ' ' << APP_VERSION << endl
                       << "Using C++ standard " << __cplusplus << endl
                       << "Boost " << BOOST_LIB_VERSION << endl
                       << "Platform " << BOOST_PLATFORM << endl
@@ -294,100 +485,7 @@ int main(int argc, char* argv[]) {
             return -3;
         }
 
-        if (!config_file.empty()) {
-            if (filesystem::exists(config_file)) {
-                try {
-                    std::ifstream config_file_stream(config_file);
-                    po::store(po::parse_config_file(config_file_stream, cmdline_options), vm);
-                    po::notify(vm);
-                } catch (const exception& ex) {
-                    cerr << appname << " Failed to load configuration file '" << config_file << "': " << ex.what() << endl;
-                    return -4;
-                }
-            } else {
-                if (config_file == default_config_file) {
-                    cerr << appname << " Default configuration file '" << config_file << "' does not exist." << endl;
-                } else {
-                    cerr << appname << " Configuration file '" << config_file << "' does not exist." << endl;
-                    return -4;
-                }
-            }
-        }
-
-        if (auto level = toLogLevel(log_level_console)) {
-            if (json_logging_to_console) {
-                logfault::LogManager::Instance().AddHandler(
-                    make_unique<logfault::JsonHandler>(clog, *level, 0xffff));
-            } else {
-                logfault::LogManager::Instance().AddHandler(
-                    make_unique<logfault::StreamHandler>(clog, *level));
-            }
-        }
-
-        if (!log_file.empty()) {
-            if (auto level = toLogLevel(log_level)) {
-                if (json_logging_to_file) {
-                    logfault::LogManager::Instance().AddHandler(
-                        make_unique<logfault::JsonHandler>(log_file, *level, 0xffff, trunc_log));
-                } else {
-                    logfault::LogManager::Instance().AddHandler(
-                        make_unique<logfault::StreamHandler>(log_file, *level, trunc_log));
-                }
-            }
-        }
-
         LOG_TRACE_N << "Getting ready...";
-
-        if (bootstrap) {
-            LOG_INFO << appname << ' ' << APP_VERSION << ".";
-            try {
-                Server server{config};
-                server.bootstrap(bootstrap_opts);
-                return 0; // Done
-            } catch (const exception& ex) {
-                LOG_ERROR << "Caught exception during bootstrap: " << ex.what();
-                return -4;
-            }
-        }
-
-        if (!client_certs.empty()) {
-            LOG_INFO << appname << ' ' << APP_VERSION << ".";
-            try {
-                Server server{config};
-                server.init();
-
-                ScopedExit se([&] {
-                    server.stop();
-                });
-
-                boost::uuids::uuid userUuid;
-                if (admin_cert) {
-                    userUuid = server.getAdminUserId();
-                } else if (!client_cert_uuid.empty()){
-                    userUuid = toUuid(client_cert_uuid);
-                } else {
-                    LOG_ERROR << "You must specify --with-user-uuid=uuid or --admin-cert to create a client-certificate.";
-                    return -7;
-                }
-                server.createClientCert(client_certs, userUuid);
-                return 0; // Done
-            } catch (const exception& ex) {
-                LOG_ERROR << "Caught exception during client-certificate creation: " << ex.what();
-                return -6;
-            }
-        }
-
-        if (create_server_cert) {
-            LOG_INFO << appname << ' ' << APP_VERSION << ".";
-            try {
-                Server server{config};
-                server.recreateServerCert();
-                return 0; // Done
-            } catch (const exception& ex) {
-                LOG_ERROR << "Caught exception during server-certificate creation: " << ex.what();
-                return -8;
-            }
-        }
     }
 
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";

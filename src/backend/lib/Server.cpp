@@ -73,14 +73,25 @@ void Server::init()
     assert(!instance_);
     instance_ = this;
 
-    db_.emplace(ctx_, config().db);
+    auto res = asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        co_await initDb();
+    }, boost::asio::use_future);
+
+    res.get();
+}
+
+boost::asio::awaitable<void> Server::initDb() {
+    if (!db_) {
+        db_.emplace(ctx_, config().db);
+        co_await db_->init();
+    }
 }
 
 void Server::run()
 {
+    assert(db_);
     try {
         asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-            co_await db().init();
             if (!co_await checkDb()) {
                 LOG_ERROR << "The database version is wrong. Please upgrade before starting the server.";
                 throw std::runtime_error("Database version is wrong");
@@ -156,24 +167,51 @@ void Server::bootstrap(const BootstrapOptions& opts)
 {
     LOG_INFO << "Bootstrapping the system...";
 
-    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+    auto res = asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        ScopedExit se{[this] {
+            ctx_.stop();
+        }};
+
         co_await createDb(opts);
+        co_await initDb();
         co_await upgradeDbTables(0);
-    },
-    [](std::exception_ptr ptr) {
-        if (ptr) {
-            std::rethrow_exception(ptr);
-        }
-    });
+        co_await recreateServerCert(config().options.server_cert_dns_names);
+    }, boost::asio::use_future);
 
     ctx_.run();
-
+    res.get();
     LOG_INFO << "Bootstrapping is complete";
 }
 
-void Server::createClientCert(const std::string &fileName, const boost::uuids::uuid &user)
+void Server::createGrpcCert()
 {
-    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+    auto res = asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        ScopedExit se{[this] {
+            ctx_.stop();
+        }};
+        co_await initDb();
+        co_await recreateServerCert(config().options.server_cert_dns_names);
+    }, boost::asio::use_future);
+
+    ctx_.run();
+    res.get();
+}
+
+void Server::createClientCert(const std::string &fileName, boost::uuids::uuid user)
+{
+    auto res = asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        ScopedExit se{[this] {
+            ctx_.stop();
+        }};
+
+        co_await initDb();
+
+        bool is_admin = false;
+        if (user.is_nil()) {
+            user = co_await getAdminUserId();
+            LOG_DEBUG << "Using admin user id: " << user;
+            is_admin = true;
+        }
 
         filesystem::path cert_name = fileName + "-cert.pem";
         filesystem::path key_name = fileName + "-key.pem";
@@ -205,29 +243,16 @@ void Server::createClientCert(const std::string &fileName, const boost::uuids::u
         key_file << cert.key;
         ca_file << ca().rootCert();
 
-        LOG_INFO << "Created client cert for user " << user << " with 'deviceid' " << subject
+        LOG_INFO << "Created client cert for "
+                 << (is_admin ? "**ADMIN**" : "")
+                 << " user " << user << " with 'deviceid' " << subject
                  << " and saved the cert to " << cert_name << " and the key to " << key_name
                  << ". The CA cert is saved to " << ca_name;
 
-    }, boost::asio::use_future).get();
+    }, boost::asio::use_future);
 
-}
-
-void Server::recreateServerCert()
-{
-    init();
-
-    ScopedExit se([this] {
-        stop();
-    });
-
-    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-        LOG_INFO << "Creating new server-cert for " << config().options.server_cert_dns_names.front()
-                 << " with " << config().options.server_cert_dns_names.size() << " DNS entries";
-        co_await db().exec("DELETE FROM cert WHERE id='grpc-server'");
-        co_await loadCertAuthority();
-        co_await getCert("grpc-server", WithMissingCert::CREATE_SERVER);
-    },  boost::asio::use_future).get();
+    ctx_.run();
+    res.get();
 }
 
 boost::asio::awaitable<CertData> Server::getCert(std::string_view id, WithMissingCert what)
@@ -248,18 +273,17 @@ boost::asio::awaitable<CertData> Server::getCert(std::string_view id, WithMissin
         switch (what) {
         case WithMissingCert::FAIL:
             co_return cd;
-        case WithMissingCert::CREATE_SERVER:
-            if (config().options.server_cert_dns_names.empty()) {
-                throw std::runtime_error("No server cert DNS names configured (--server-fqdn)");
+        case WithMissingCert::CREATE_SERVER: {
+            auto res = co_await conn.exec("SELECT value FROM config WHERE name='grpc-fqdns'");
+            if (res.rows().empty() || res.rows().front().empty()) {
+                throw std::runtime_error("No FQDNs configured in the db nextapp.config:'grpc-fqdns'");
             }
-            LOG_INFO << "Creating server cert for " << config().options.server_cert_dns_names.front();
-            cd = ca().createServerCert(config().options.server_cert_dns_names);
-            break;
-        // case WithMissingCert::CREATE_CLIENT:
-        //     // This is for creating a client cert with a name (id). Users devices will not use this.
-        //     LOG_INFO << "Creating client cert for " << id;
-        //     cd = ca().createClientCert(string{id});
-        //     break;
+            const auto fqdns = res.rows().front().at(0).as_string();
+            const auto fqdns_list = split(fqdns, ',');
+
+            LOG_INFO << "Creating server cert for " << fqdns;
+            cd = ca().createServerCert(fqdns_list);
+            } break;
         default:
             break;
         }
@@ -283,21 +307,15 @@ boost::asio::awaitable<CertData> Server::getCert(std::string_view id, WithMissin
     co_return cd;
 }
 
-boost::uuids::uuid Server::getAdminUserId()
+boost::asio::awaitable<boost::uuids::uuid> Server::getAdminUserId()
 {
-    assert(db_);
-    boost::uuids::uuid uuid;
-    boost::asio::co_spawn(ctx_, [&]() -> boost::asio::awaitable<void> {
-        auto res = co_await db().exec("SELECT id FROM user WHERE kind='super' AND active=1 AND system_user=1 LIMIT 1");
-        if (res.has_value() && !res.rows().empty()) {
-            uuid = toUuid(res.rows().front().front().as_string());
-        } else {
-            throw std::runtime_error("No active system/super-user found");
-        }
-        co_return;
-    }, boost::asio::use_future).get();
+    co_await initDb();
+    auto res = co_await db().exec("SELECT id FROM user WHERE kind='super' AND active=1 AND system_user=1 LIMIT 1");
+    if (res.has_value() && !res.rows().empty()) {
+        co_return toUuid(res.rows().front().front().as_string());
+    }
 
-    return uuid;
+    throw std::runtime_error("No active system/super-user found");
 }
 
 string Server::hashPassword(std::string_view passwd)
@@ -368,45 +386,50 @@ boost::asio::awaitable<void> Server::createDb(const BootstrapOptions& opts)
     cfg.username = opts.db_root_user;
     cfg.password = opts.db_root_passwd;
     cfg.max_connections = 1;
+    cfg.timer_interval_ms = 0; // disable
 
     mysqlpool::Mysqlpool db{ctx_, cfg};
 
-    co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+    co_await db.init();
 
-        co_await db.init();
+    if (opts.drop_old_db) {
+        LOG_INFO << "Dropping database " << config_.db.database ;
 
-        if (opts.drop_old_db) {
-            LOG_TRACE_N << "Dropping database " << config_.db.database ;
+        try {
+            co_await db.exec(format("REVOKE ALL PRIVILEGES ON {}.* FROM `{}`@`%`",
+                                    config_.db.database, config_.db.username));
+        } catch (const exception&) {};
 
-            try {
-                co_await db.exec(format("REVOKE ALL PRIVILEGES ON {}.* FROM `{}`@`%`",
-                                        config_.db.database, config_.db.username));
-            } catch (const exception&) {};
-
-            try {
-                co_await db.exec(format("DROP USER '{}'@'%'",
-                                        config_.db.username));
-            } catch (const exception&) {};
-
-            co_await db.exec("FLUSH PRIVILEGES");
-            co_await db.exec(format("DROP DATABASE {}", config_.db.database));
-        }
-
-        LOG_TRACE_N << "Creating database...";
-        co_await db.exec(format("CREATE DATABASE {} CHARACTER SET = 'utf8'", config_.db.database));
-
-        LOG_TRACE_N << "Creating database user " << config_.db.username;
-        co_await db.exec(format("CREATE USER '{}'@'%' IDENTIFIED BY '{}'",
-                                config_.db.username, config_.db.password));
-
-        co_await db.exec(format("GRANT ALL PRIVILEGES ON {}.* TO '{}'@'%'",
-                                config_.db.database, config_.db.username));
+        try {
+            co_await db.exec(format("DROP USER '{}'@'%'",
+                                    config_.db.username));
+        } catch (const exception&) {};
 
         co_await db.exec("FLUSH PRIVILEGES");
+        co_await db.exec(format("DROP DATABASE {}", config_.db.database));
+    }
 
-        co_await db.close();
+    {
+        auto res = co_await db.exec(format("SELECT SCHEMA_NAME FROM information_schema.schemata WHERE SCHEMA_NAME = '{}'", config_.db.database));
+        if (!res.rows().empty()) {
+            LOG_INFO_N << "Database " << config_.db.database << " already exists. Skipping creation.";
+            throw runtime_error{"Database already exist."};
+        }
+    }
 
-        }, asio::use_awaitable);
+    LOG_INFO_N << "Creating database " << config_.db.database;
+    co_await db.exec(format("CREATE DATABASE {} CHARACTER SET = 'utf8'", config_.db.database));
+
+    LOG_TRACE_N << "Creating database user " << config_.db.username;
+    co_await db.exec(format("CREATE USER '{}'@'%' IDENTIFIED BY '{}'",
+                            config_.db.username, config_.db.password));
+
+    co_await db.exec(format("GRANT ALL PRIVILEGES ON {}.* TO '{}'@'%'",
+                            config_.db.database, config_.db.username));
+
+    co_await db.exec("FLUSH PRIVILEGES");
+
+    co_await db.close();
 }
 
 boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
@@ -1181,43 +1204,44 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     LOG_INFO << "Will upgrade the database structure from version " << version
              << " to version " << latest_version;
 
-    auto cfg = config_.db;
-    cfg.max_connections = 1;
+    // auto cfg = config_.db;
+    // cfg.max_connections = 1;
 
-    mysqlpool::Mysqlpool db{ctx_, cfg};
+    // mysqlpool::Mysqlpool db{ctx_, cfg};
 
-    co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-        co_await db.init();
-        {
-            auto handle = co_await db.getConnection();
-            auto trx = co_await handle.transaction();
+    // co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+    //     co_await db.init();
+    //     {
 
-            // Here we will run all SQL queries for upgrading from the specified version to the current version.
-            auto relevant = ranges::drop_view(versions, version);
-            for(string_view query : relevant | std::views::join) {
-                co_await handle.exec(query);
-            }
+    auto handle = co_await db().getConnection();
+    auto trx = co_await handle.transaction();
 
-            if (version == 0) {
-                // Create system tenant
-                // Names and uuid's must be globally unique, so it can be used in a cluster.
-                const auto tenant_id = newUuid();
-                const auto user_id = newUuid();
-                const auto tenant_name = format("system-{}", to_string(tenant_id));
-                const auto user_name = format("admin-{}", to_string(user_id));
+    // Here we will run all SQL queries for upgrading from the specified version to the current version.
+    auto relevant = ranges::drop_view(versions, version);
+    for(string_view query : relevant | std::views::join) {
+        co_await handle.exec(query);
+    }
 
-                // Add tenant
-                co_await handle.exec("INSERT INTO tenant (id, name, kind, system_tenant) VALUES (?, ?, 'super', 1)", tenant_id, tenant_name);
-                // Add user
-                co_await handle.exec("INSERT INTO user (id, tenant, name, kind, system_user) VALUES (?, ?, ?, 'super', 1)", user_id, tenant_id, user_name);
-            }
+    if (version == 0) {
+        // Create system tenant
+        // Names and uuid's must be globally unique, so it can be used in a cluster.
+        const auto tenant_id = newUuid();
+        const auto user_id = newUuid();
+        const auto tenant_name = format("system-{}", to_string(tenant_id));
+        const auto user_name = format("admin-{}", to_string(user_id));
 
-            co_await handle.exec("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
-            co_await trx.commit();
-        }
-        co_await db.close();
+        // Add tenant
+        co_await handle.exec("INSERT INTO tenant (id, name, kind, system_tenant) VALUES (?, ?, 'super', 1)", tenant_id, tenant_name);
+        // Add user
+        co_await handle.exec("INSERT INTO user (id, tenant, name, kind, system_user) VALUES (?, ?, ?, 'super', 1)", user_id, tenant_id, user_name);
+    }
 
-    }, asio::use_awaitable);
+    co_await handle.exec("UPDATE nextapp SET VERSION = ? WHERE id = 1", latest_version);
+    co_await trx.commit();
+    //    }
+    //     co_await db.close();
+
+    // }, asio::use_awaitable);
 }
 
 boost::asio::awaitable<void> Server::loadCertAuthority()
@@ -1321,6 +1345,34 @@ boost::asio::awaitable<void> Server::loadServerId()
     } else {
         LOG_WARN << "No server-id found in nextapp table";
     }
+}
+
+boost::asio::awaitable<void> Server::recreateServerCert(const std::vector<std::string> &fqdns)
+{
+    assert(db_);
+
+    if (fqdns.empty()) {
+        LOG_DEBUG_N << "No FQDNs provided. Will not change the servers FQDNs.";
+    } else {
+        // Create a comma separated list of fqdn's from the list
+        std::string fqdn_list;
+        for (const auto& fqdn : fqdns) {
+            if (!fqdn_list.empty()) {
+                fqdn_list += ",";
+            }
+            fqdn_list += fqdn;
+        }
+
+        LOG_INFO << "(Re)creating the server's grpc TLS certificate for FQDNs: " << fqdn_list
+                 << ". These FQDNs will be visible for all gRPC clients connecting to this server.";
+        auto conn = co_await db().getConnection();
+        co_await conn.exec("DELETE FROM cert WHERE id='grpc-server'");
+        co_await conn.exec("DELETE FROM config where name='grpc-fqdns'");
+        co_await conn.exec("INSERT INTO config (name, value) VALUES ('grpc-fqdns', ?)", fqdn_list);
+    }
+
+    co_await loadCertAuthority();
+    co_await getCert("grpc-server", WithMissingCert::CREATE_SERVER);
 }
 
 void Server::handleSignals()

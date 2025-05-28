@@ -71,7 +71,7 @@ class CertAuthority {
 public:
     CertAuthority(const CertData& rootCaCert, const CaOptions& options);
 
-    CertData createServerCert(const std::vector<std::string>& serverSubject);
+    CertData createServerCert(const std::vector<std::string_view>& serverSubject);
     CertData createClientCert(const std::string& clientSubject, const std::string &userUuid);
     CertData signCert(const std::string_view& csr, const std::string& subject, std::string *certHash = {});
 

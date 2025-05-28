@@ -42,9 +42,7 @@ public:
 
     void bootstrap(const BootstrapOptions& opts);
 
-    void createClientCert(const std::string& fileName, const boost::uuids::uuid& user);
-
-    void recreateServerCert();
+    void createClientCert(const std::string& fileName, boost::uuids::uuid user);
 
     const auto& config() const noexcept {
         return config_;
@@ -110,15 +108,16 @@ public:
         return server_id_;
     }
 
-    boost::uuids::uuid getAdminUserId();
-
     /*! Make a hash for the password, using the server-id as seed */
     std::string hashPassword(std::string_view passwd);
 
+    // Called from main()
+    void createGrpcCert();
 
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
+    boost::asio::awaitable<void> initDb();
     void runIoThread(size_t id);
     boost::asio::awaitable<bool> checkDb();
     boost::asio::awaitable<void> createDb(const BootstrapOptions& opts);
@@ -128,6 +127,8 @@ private:
     boost::asio::awaitable<void> resetMetricsPassword(jgaa::mysqlpool::Mysqlpool::Handle& handle);
     boost::asio::awaitable<void> prepareMetricsAuth();
     boost::asio::awaitable<void> loadServerId();
+    boost::asio::awaitable<void> recreateServerCert(const std::vector<std::string>& fqdns);
+    boost::asio::awaitable<boost::uuids::uuid> getAdminUserId();
 
     void createCa();
     void createServerCert();

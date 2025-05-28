@@ -56,8 +56,9 @@ void setSubjects(X509 *cert, const T& subjects) {
         int loc = 0;
 
         for(const auto [subj, section] : subjects) {
+            const string sect{section};
             X509_NAME_add_entry_by_txt(
-                name, section.c_str(), MBSTRING_ASC,
+                name, sect.c_str(), MBSTRING_ASC,
                 reinterpret_cast<const unsigned char *>(subj.data()), subj.size(), loc++, 0);
         }
 
@@ -318,13 +319,13 @@ CertAuthority::CertAuthority(const CertData& rootCaCert, const CaOptions &option
     root_cert_ = rootCaCert.cert;
 }
 
-CertData CertAuthority::createServerCert(const std::vector<std::string>& serverSubjects)
+CertData CertAuthority::createServerCert(const std::vector<std::string_view>& serverSubjects)
 {
     if (serverSubjects.empty()) {
         throw runtime_error{"No subjects given for server cert!"};
     }
 
-    const array<pair<string, string>, 2> s = {
+    const array<pair<string_view, string_view>, 2> s = {
         make_pair("Nextapp", "O"s),
         make_pair(serverSubjects.front(), "CN"s)
     };
@@ -342,7 +343,7 @@ CertData CertAuthority::createServerCert(const std::vector<std::string>& serverS
         auto san = GENERAL_NAME_new();
         san->type = GEN_DNS;
         san->d.dNSName = ASN1_IA5STRING_new();
-        ASN1_STRING_set(san->d.dNSName, dns.c_str(), dns.size());
+        ASN1_STRING_set(san->d.dNSName, dns.data(), dns.size());
         sk_GENERAL_NAME_push(san_names, san);
     }
     X509_EXTENSION* ext = X509V3_EXT_i2d(NID_subject_alt_name, 0, san_names);

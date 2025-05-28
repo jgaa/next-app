@@ -103,6 +103,42 @@ auto pb_adapt(const T& v) {
     }
 }
 
+inline std::string_view trim(std::string_view sv) {
+    auto begin = sv.find_first_not_of(" \t\n\r\f\v");
+    auto end = sv.find_last_not_of(" \t\n\r\f\v");
+
+    if (begin == std::string_view::npos) return {}; // string was all whitespace
+    return sv.substr(begin, end - begin + 1);
+}
+
+template <range_of<char> T>
+std::vector<std::string_view> split(const T& input, char delimiter) {
+    std::vector<std::string_view> result;
+
+    auto first = std::ranges::begin(input);
+    auto last = std::ranges::end(input);
+
+    auto start = first;
+    for (auto it = first; it != last; ++it) {
+        if (*it == delimiter) {
+            std::string_view segment(&*start, std::distance(start, it));
+            result.push_back(trim(segment));
+            start = std::next(it);
+        }
+    }
+
+    // Add the final segment
+    if (start != last) {
+        std::string_view segment(&*start, std::distance(start, last));
+        result.push_back(trim(segment));
+    } else {
+        // if delimiter is at the end, preserve empty segment
+        result.emplace_back("");
+    }
+
+    return result;
+}
+
 std::string getEnv(const char *name, std::string def = {});
 
 /*! Read a file into a string
