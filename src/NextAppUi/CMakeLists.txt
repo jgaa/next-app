@@ -268,6 +268,10 @@ set_source_files_properties(qml/Colors.qml
         QT_QML_SINGLETON_TYPE TRUE
 )
 
+if (APPLE)
+    set (EXTRA_SOURCE_FILES AppDelegate.mm)
+endif()
+
 qt_add_qml_module(${PROJECT_NAME}
     URI NextAppUi
     VERSION ${VERSION}
@@ -489,6 +493,7 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
+        ${EXTRA_SOURCE_FILES}
 )
 
 

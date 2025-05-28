@@ -144,6 +144,8 @@ public:
 
     QObject * openQmlComponent(const QUrl& resourcePath);
 
+    void onWokeFromSleep();
+
 public slots:
     void handlePrepareForSleep(bool sleep);
 

@@ -118,8 +118,9 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
 #ifdef WIN32
     auto *pef = new PowerEventFilter([this]() {
         if (instance_ && state_ != State::SHUTTING_DOWN) {
-            LOG_TRACE_N << "Emitting wokeFromSleep()";
-            emit wokeFromSleep();
+            // LOG_TRACE_N << "Emitting wokeFromSleep()";
+            // emit wokeFromSleep();
+            onWokeFromSleep();
         }
     });
 
@@ -492,6 +493,12 @@ QObject *NextAppCore::openQmlComponent(const QUrl &resourcePath)
                << resourcePath.toString()
                << "]: " << qcomponent.errorString();
     return {};
+}
+
+void NextAppCore::onWokeFromSleep()
+{
+    LOG_TRACE_N << "Emitting wokeFromSleep()";
+    emit wokeFromSleep();
 }
 
 void NextAppCore::handlePrepareForSleep(bool sleep)
