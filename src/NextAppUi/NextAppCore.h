@@ -73,6 +73,8 @@ public:
     static Q_INVOKABLE QString toTime(time_t when);
     Q_INVOKABLE void playSound(double volume, const QString& soundFile);
     Q_INVOKABLE void playSoundDelayed(int delayMs, double volume, const QString& soundFile);
+    // Called when signup is complete
+    Q_INVOKABLE void bootstrapDevice(bool newUser);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseHourMin(const QString& str);

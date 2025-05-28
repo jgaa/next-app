@@ -27,8 +27,8 @@ public:
 
     struct BootstrapOptions {
         bool drop_old_db = false;
-        std::string db_root_user = getEnv("NA_ROOT_DBUSER", "root");
-        std::string db_root_passwd = getEnv("NA_ROOT_DBPASSWD");
+        std::string db_root_user = getEnv("NEXTAPP_ROOT_DBUSER", "root");
+        std::string db_root_passwd = getEnv("NEXTAPP_ROOT_DBPASSW");
     };
 
     Server(const Config& config);

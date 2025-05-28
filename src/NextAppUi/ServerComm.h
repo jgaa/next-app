@@ -95,16 +95,13 @@ private:
     Q_ENUM(SignupStatus)
     QML_ELEMENT
 
-    Q_PROPERTY(QString version
-                   READ version
-                   NOTIFY versionChanged)
-
     Q_PROPERTY(QString defaultServerAddress READ getDefaultServerAddress CONSTANT)
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
     Q_PROPERTY(bool status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString statusText MEMBER status_text_ NOTIFY statusChanged)
     Q_PROPERTY(QString statusColor MEMBER status_color_ NOTIFY statusChanged)
-    Q_PROPERTY(QString version READ version NOTIFY versionChanged)
+    Q_PROPERTY(QString version MEMBER server_version_ NOTIFY versionChanged)
+    Q_PROPERTY(QString serverId MEMBER server_id_ NOTIFY versionChanged)
     Q_PROPERTY(nextapp::pb::UserGlobalSettings globalSettings
                 READ getGlobalSettings
                 NOTIFY globalSettingsChanged)
@@ -121,7 +118,7 @@ private:
             MARK_ACTION_AS_DONE,
             MARK_ACTION_AS_FAVORITE,
             MOVE_ACTION,
-            //CREATE_ACTION_CATEGORY,
+            CREATE_ACTION_CATEGORY,
             ADD_NODE,
             UPDATE_NODE,
             MOVE_NODE,
@@ -244,6 +241,7 @@ public:
     void deleteTimeBlock(const QString& timeBlockUuid);
     void fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents>&& done);
     void fetchActionCategories(callback_t<nextapp::pb::ActionCategories>&& done);
+    void createActionCategory(const nextapp::pb::ActionCategory& category);
     void createActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
     void updateActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
     void deleteActionCategory(const QString& id, callback_t<nextapp::pb::Status>&& done);
@@ -624,6 +622,7 @@ private:
     std::unique_ptr<signup::pb::SignUp::Client> signup_client_;
     nextapp::pb::ServerInfo server_info_;
     QString server_version_{"Unknown"};
+    QString server_id_;
     Status status_{Status::OFFLINE};
     QString status_text_;
     QString status_color_;

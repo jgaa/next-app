@@ -167,10 +167,10 @@ int main(int argc, char* argv[]) {
              "Tells the server to delete the existing database.")
             ("root-db-user",
               po::value(&bootstrap_opts.db_root_user)->default_value(bootstrap_opts.db_root_user),
-             "Mysql user to use when logging into the mysql server")
+             "Mysql user to use when logging into the mysql server. YOu can also use envvar NEXTAPP_ROOT_DBUSER.")
             ("root-db-passwd",
              po::value(&bootstrap_opts.db_root_passwd),
-             "Mysql password to use when logging into the mysql server")
+             "Mysql password to use when logging into the mysql server. You can also use envvar NEXTAPP_ROOT_DBPASSW.")
             ;
 
         po::options_description svr("Server");
@@ -240,7 +240,7 @@ int main(int argc, char* argv[]) {
               "Mysql user to use when logging into the mysql server")
             ("db-passwd",
              po::value(&config.db.password),
-             "Mysql password to use when logging into the mysql server")
+             "Mysql password to use when logging into the mysql server. You can also use envvar NEXTAPP_DBPASSW.")
             ("db-name",
               po::value(&config.db.database)->default_value(config.db.database),
              "Database to use")

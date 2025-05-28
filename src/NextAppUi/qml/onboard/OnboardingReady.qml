@@ -21,7 +21,7 @@ ColumnLayout  {
         text: qsTr("<h2>Congratulations!</h2>"
                    + "<p>You are now ready to start using Nextapp!</p>"
                    + "<p>You can find free documentations, FAQ and instrcution videos on "
-                   + "<a href='https://www.next-app.org'>www.next-app.org</a></p>")
+                   + "<a href='https://next-app.org'>next-app.org</a></p>")
         font.pixelSize: 20
         textFormat: Text.RichText
         wrapMode: Text.WordWrap
@@ -81,6 +81,7 @@ ColumnLayout  {
             text: useCaseCombo.currentIndex > 0 ? qsTr("Create lists from template and start using Nextapp!") : qsTr("Start using Nextapp!")
             onClicked: {
                 UseCaseTemplates.createFromTemplate(useCaseCombo.currentIndex)
+                NaCore.bootstrapDevice(root.newUser)
                 nextClicked()
             }
         }

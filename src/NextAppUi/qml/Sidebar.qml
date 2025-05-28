@@ -199,7 +199,7 @@ Rectangle {
                 id: qtWebsiteButton
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/globe.svg"
                 checkable: false
-                onClicked: Qt.openUrlExternally("https://github.com/jgaa/next-app")
+                onClicked: Qt.openUrlExternally("https://next-app.org")
             }
 
             // Opens the About Qt Window.
@@ -211,13 +211,6 @@ Rectangle {
                 onClicked: aboutQtWindow.visible = !aboutQtWindow.visible
             }
         }
-
-        // Rectangle {
-        //     height: 2
-        //     Layout.fillWidth: true
-        //     Layout.alignment: Qt.AlignHCenter
-        //     color: Colors.text
-        // }
 
         ColumnLayout {
             Layout.fillWidth: true

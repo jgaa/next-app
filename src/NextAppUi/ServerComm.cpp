@@ -751,6 +751,11 @@ void ServerComm::fetchActionCategories(callback_t<nextapp::pb::ActionCategories>
     });
 }
 
+void ServerComm::createActionCategory(const nextapp::pb::ActionCategory &category)
+{
+    rpcQueueAndExecute<QueuedRequest::Type::CREATE_ACTION_CATEGORY>(category);
+}
+
 void ServerComm::createActionCategory(const nextapp::pb::ActionCategory &category, callback_t<nextapp::pb::Status> &&done)
 {
     callRpc<nextapp::pb::Status>([this, category]() {
@@ -1476,7 +1481,8 @@ failed:
     assert(res.hasServerInfo());
     if (res.hasServerInfo()) {
         const auto& se = res.serverInfo();
-            server_version_ = se.properties().kv()["version"];
+        server_version_ = se.properties().kv()["version"];
+        server_id_ = se.properties().kv()["server-id"];
         LOG_INFO << "Connected to server version " << server_version_ << " at " << current_server_address_;
     } else {
         LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
@@ -1989,6 +1995,10 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
         case QueuedRequest::Type::MOVE_ACTION: {
             const auto req = deserialize<nextapp::pb::MoveActionReq>(qr.data);
             res = co_await rpc(req, &nextapp::pb::Nextapp::Client::MoveAction, options);
+        } break;
+        case  QueuedRequest::Type::CREATE_ACTION_CATEGORY: {
+            const auto req = deserialize<nextapp::pb::ActionCategory>(qr.data);
+            res = co_await rpc(req, &nextapp::pb::Nextapp::Client::CreateActionCategory, options);
         } break;
         case QueuedRequest::Type::ADD_NODE: {
             const auto req = deserialize<nextapp::pb::CreateNodeReq>(qr.data);
