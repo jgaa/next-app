@@ -92,6 +92,7 @@ private:
 
     bool valid_{false};
     nextapp::pb::CompleteDay day_;
+    nextapp::pb::CompleteDay old_day_;
     const int year_;
     const int month_;
     const int mday_;

@@ -441,6 +441,13 @@ QCoro::Task<bool> GreenDaysModel::loadDaysFromCache()
 
     months_.clear();
 
+    // Create the months for the years we want to cache.
+    for(auto year : years_to_cache_) {
+        for(int month = 1; month <= 12; ++month) {
+            months_[getKey(year, month)] = GreenDaysModel::days_in_month_t{};
+        }
+    }
+
     const auto rval = co_await db.legacyQuery(query);
     if (rval) {
         for (const auto& row : rval.value()) {

@@ -143,14 +143,19 @@ void GreenDayModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
     assert(update);
     if (update->hasDay()) {
         const auto& date = update->day().day().date();
-        if (date == day_.day().date()) {
+        const auto& days_date = day_.day().date();
+        if (date == days_date) {
             updateSelf(update->day());
         }
     }
 }
 
 void GreenDayModel::updateSelf(const nextapp::pb::CompleteDay &day) {
-    const auto old = day_;
+    LOG_TRACE_N << "Updating self with day: " << day.day().date().mday()
+                << "/" << day.day().date().month() + 1
+                << "/" << day.day().date().year()
+                << "old color=" << day_.day().color()
+                << ", new color=" << day.day().color();
     day_ = day;
 
     const auto& date = day_.day().date();
@@ -160,18 +165,20 @@ void GreenDayModel::updateSelf(const nextapp::pb::CompleteDay &day) {
         emit validChanged();
     }
 
-    if (old.day().color() != day_.day().color()) {
+    if (old_day_.day().color() != day_.day().color()) {
         emit colorChanged();
         emit colorUuidChanged();
     }
 
-    if (notes(old) != notes(day)) {
+    if (notes(old_day_) != notes(day)) {
         emit notesChanged();
     }
 
-    if (report(old) != report(day_)) {
+    if (report(old_day_) != report(day_)) {
         emit reportChanged();
     }
+
+    old_day_ = day_;
 }
 
 QCoro::Task<void> GreenDayModel::fetch()
@@ -216,6 +223,8 @@ QCoro::Task<void> GreenDayModel::fetch()
     } else {
         valid_ = false;
     }
+
+    old_day_ = day_;
 
     emit validChanged();
 }
