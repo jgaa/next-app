@@ -186,7 +186,7 @@ int main(int argc, char* argv[]) {
              "Mysql user to use when logging into the mysql server")
             ("root-db-passwd",
              po::value(&bootstrap_opts.db_root_passwd),
-             "Mysql password to use when logging into the mysql server. If unset, the password is read from the environment variable SIGNUP_ROOT_DBPASSWD.")
+             "Mysql password to use when logging into the mysql server. If unset, the password is read from the environment variable SIGNUP_ROOT_DB_PASSWD.")
             ;
 
         po::options_description cluster("Cluster");
@@ -258,7 +258,7 @@ int main(int argc, char* argv[]) {
              "Mysql user to use when logging into the mysql server")
             ("db-passwd",
              po::value(&config.db.password),
-             "Mysql password to use when logging into the mysql server. If unset, the password is read from the environment variable SIGNUP_DB_PASSWD.")
+             "Mysql password to use when logging into the mysql server. If unset, the password is read from the environment variable SIGNUP_DB_PASSWORD.")
             ("db-host",
              po::value(&config.db.host)->default_value(config.db.host),
              "Hostname or IP address for the database server")
@@ -314,7 +314,7 @@ int main(int argc, char* argv[]) {
                 }
 
                 if (config.db.password.empty()) {
-                    LOG_ERROR << "Database password is not set. Please set the SIGNUP_DB_PASSWD environment variable or use --db-passwd option.";
+                    LOG_ERROR << "Database password is not set. Please set the SIGNUP_DB_PASSWORD environment variable or use --db-passwd option.";
                     return -4;
                 }
 

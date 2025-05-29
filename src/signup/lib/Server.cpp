@@ -503,15 +503,19 @@ void Server::bootstrap(const BootstrapOptions &opts)
 {
     LOG_INFO << "Bootstrapping the system...";
 
-    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+    auto res = asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        ScopedExit se{[this] {
+            ctx_.stop();
+        }};
+
         co_await createDb(opts);
         co_await upgradeDbTables(0);
         co_await createAdminUser();
         co_await createDefaultNextappInstance();
-    }, boost::asio::detached);
+    }, boost::asio::use_future);
 
     ctx_.run();
-
+    res.get();
     LOG_INFO << "Bootstrapping is complete";
 }
 
@@ -627,6 +631,14 @@ boost::asio::awaitable<void> Server::createDb(const BootstrapOptions &opts)
             } catch (const exception& ex) {
                 LOG_WARN_N << "Failed to drop database " << config_.db.database << ": " << ex.what();
             };
+        }
+
+        {
+            auto res = co_await db.exec(format("SELECT SCHEMA_NAME FROM information_schema.schemata WHERE SCHEMA_NAME = '{}'", config_.db.database));
+            if (!res.rows().empty()) {
+                LOG_INFO_N << "Database " << config_.db.database << " already exists. Skipping creation.";
+                throw runtime_error{"Database already exist."};
+            }
         }
 
         LOG_TRACE_N << "Creating database...";
@@ -806,7 +818,7 @@ boost::asio::awaitable<void> Server::createDefaultNextappInstance()
         || config_.grpc_nextapp.address.empty()
         || config_.grpc_nextapp.server_key.empty()
         || config_.grpc_nextapp.server_cert.empty()) {
-        LOG_INFO << "Nextapp instance is not configured. Skipping...";
+        LOG_INFO << "Nextapp instance is not configured. Skipping configuration.";
         co_return;
     }
 
