@@ -224,7 +224,7 @@ int main(int argc, char* argv[]) {
         po::options_description svr("Server");
         svr.add_options()
             ("io-threads", po::value(&config.svr.io_threads)->default_value(config.svr.io_threads),
-             "Number of worker-threads to start for IO")
+             "Number of worker-threads to start for IO. Cannot be less than 4.")
             ("grpc-address,g", po::value(&config.grpc.address)->default_value(config.grpc.address),
              "Address and port to use for gRPC")
             ("grpc-tls-mode", po::value(&config.grpc.tls_mode)->default_value(config.grpc.tls_mode),
@@ -489,6 +489,11 @@ int main(int argc, char* argv[]) {
     }
 
     LOG_INFO << appname << ' ' << APP_VERSION << " starting up.";
+
+    if (config.svr.io_threads < 4) {
+        LOG_WARN << "Cannot start with less than 4 IO threads. Setting to 4.";
+        config.svr.io_threads = 4;
+    }
 
     {
         std::ifstream maps("/proc/self/maps");

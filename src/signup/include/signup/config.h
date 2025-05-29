@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-//#include "nextapp/util.h"
+#include "nextapp/util.h"
 #include "mysqlpool/conf.h"
 #include "yahat/HttpServer.h"
 
@@ -72,8 +72,9 @@ struct Cluster {
 
 struct Config {
     Config() {
-        db.database = "signup";
-        db.username = "signup";
+        db.database = getEnv("SIGNUP_DB_DATABASE", "signup");
+        db.username = getEnv("SIGNUP_DB_USER", "signup");
+        db.password = getEnv("SIGNUP_DB_PASSWORD", "");
 
         http.http_port = "9013";
         http.num_http_threads = 2;

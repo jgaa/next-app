@@ -11,7 +11,7 @@
 namespace nextapp {
 
 struct ServerConfig {
-    size_t io_threads = std::min<size_t>(std::max<size_t>(2,std::thread::hardware_concurrency()), 8);
+    size_t io_threads = std::min<size_t>(std::max<size_t>(4,std::thread::hardware_concurrency()), 16);
     size_t time_block_max_actions = 24;
     uint32_t session_timeout_sec = 60 * 5;
     uint32_t session_timer_interval_sec = 15;

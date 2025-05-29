@@ -37,7 +37,7 @@ std::ostream& operator << (std::ostream& out, const std::optional<std::string>& 
 namespace nextapp {
 
 std::string getEnv(const char *name, std::string def) {
-    if (auto var = std::getenv(name)) {
+    if (const auto *var = std::getenv(name)) {
         return var;
     }
 

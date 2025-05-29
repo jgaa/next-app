@@ -71,8 +71,8 @@ public:
 
     struct BootstrapOptions {
         bool drop_old_db = false;
-        std::string db_root_user = getEnv("NA_ROOT_DBUSER", "root");
-        std::string db_root_passwd = getEnv("NA_ROOT_DBPASSWD");
+        std::string db_root_user = getEnv("SIGNUP_ROOT_DBUSER", "root");
+        std::string db_root_passwd = getEnv("SIGNUP_ROOT_DB_PASSWD", "");
     };
 
     Server(const Config& config);

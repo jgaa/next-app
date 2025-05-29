@@ -186,7 +186,7 @@ int main(int argc, char* argv[]) {
              "Mysql user to use when logging into the mysql server")
             ("root-db-passwd",
              po::value(&bootstrap_opts.db_root_passwd),
-             "Mysql password to use when logging into the mysql server")
+             "Mysql password to use when logging into the mysql server. If unset, the password is read from the environment variable SIGNUP_ROOT_DBPASSWD.")
             ;
 
         po::options_description cluster("Cluster");
@@ -258,13 +258,7 @@ int main(int argc, char* argv[]) {
              "Mysql user to use when logging into the mysql server")
             ("db-passwd",
              po::value(&config.db.password),
-             "Mysql password to use when logging into the mysql server")
-
-            // TODO: Add support for database name. For now hard-coded to `signup`
-            // ("db-name",
-            //  po::value(&config.db.database)->default_value(config.db.database),
-            //  "Database to use")
-
+             "Mysql password to use when logging into the mysql server. If unset, the password is read from the environment variable SIGNUP_DB_PASSWD.")
             ("db-host",
              po::value(&config.db.host)->default_value(config.db.host),
              "Hostname or IP address for the database server")
@@ -319,13 +313,18 @@ int main(int argc, char* argv[]) {
                     return err;
                 }
 
+                if (config.db.password.empty()) {
+                    LOG_ERROR << "Database password is not set. Please set the SIGNUP_DB_PASSWD environment variable or use --db-passwd option.";
+                    return -4;
+                }
+
                 try {
                     Server server{config};
                     server.bootstrap(bootstrap_opts);
                     return 0; // Done
                 } catch (const exception& ex) {
                     LOG_ERROR << "Caught exception during bootstrap: " << ex.what();
-                    return -4;
+                    return -5;
                 }
             }
         }
