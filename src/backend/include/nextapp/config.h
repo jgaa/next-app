@@ -69,6 +69,14 @@ struct ServerOptions {
      *  Currently this is only used for the /metrics endpoint.
      */
     bool enable_http = false;
+
+    /* Time interval for updating costly metrics values
+     *
+     * The value is in minutes.
+     *
+     * To disable the timer, set this to 0.
+     */
+    size_t metrics_timer_minutes = 5;
 };
 
 struct Config {

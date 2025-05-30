@@ -129,6 +129,8 @@ private:
     boost::asio::awaitable<void> loadServerId();
     boost::asio::awaitable<void> recreateServerCert(const std::vector<std::string>& fqdns);
     boost::asio::awaitable<boost::uuids::uuid> getAdminUserId();
+    boost::asio::awaitable<void> onMetricsTimer();
+    void startMetricsTimer();
 
     void createCa();
     void createServerCert();

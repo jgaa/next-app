@@ -65,6 +65,18 @@ public:
         return *grpc_request_latency_;
     }
 
+    gauge_t& users() {
+        return *users_;
+    }
+
+    gauge_t& tenants() {
+        return *tenants_;
+    }
+
+    gauge_t& devices() {
+        return *devices_;
+    }
+
 
 private:
     Server& server_;
@@ -80,6 +92,9 @@ private:
     gauge_t * data_streams_actions_{};
     gauge_t * asio_worker_threads_{};
     summary_t * grpc_request_latency_{};
+    gauge_t * users_{};
+    gauge_t * tenants_{};
+    gauge_t *devices_{};
 };
 
 

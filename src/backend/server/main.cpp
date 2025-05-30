@@ -257,6 +257,10 @@ int main(int argc, char* argv[]) {
               "TLS (PAM) cert to use (enables HTTPS).")
             ("metrics-tls-key", po::value(&config.http.http_tls_key)->default_value(config.http.http_tls_key),
              "TLS key to use (enables HTTPS).")
+            ("metrics-timer-interval",
+             po::value(&config.options.metrics_timer_minutes)->default_value(config.options.metrics_timer_minutes),
+             "Timer interval in minutes for costly metrics values (like metrics that require database queries)."
+             "Set to 0 to disable the timer.")
             ;
 
         po::options_description ca("Certs");

@@ -118,3 +118,12 @@ docker stop signupd-devel nextappd-devel na-mariadb-devel
 
 ```
 
+## nextappd
+
+**Enviroment variables**
+
+| Name             | Value                                                                                    |
+|------------------|------------------------------------------------------------------------------------------|
+| NEXTAPP_REGION   | Region where the instance is running. Adds a `region` tag to all metrics values.         |
+| NEXTAPP_DBPASSW  | Database password for the `nextapp` user on Mariadb.                                     |
+| NEXTAPP_ROOT_DBPASSW | Root database password for Mariadb. Only used during bootstrap to create the database.|

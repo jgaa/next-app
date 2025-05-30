@@ -30,32 +30,6 @@ namespace nextapp {
 Server::Server(const Config& config)
     : config_(config), metrics_(*this)
 {
-// Macro to detect compiler and version
-#define STRINGIFY(x) #x
-#define TOSTRING(x) STRINGIFY(x)
-#if defined(__clang__)
-#define COMPILER_NAME "Clang"
-#define COMPILER_VERSION TOSTRING(__clang_major__ ) "." TOSTRING(__clang_minor__) "." TOSTRING(__clang_patchlevel__)
-#elif defined(__GNUC__)
-#define COMPILER_NAME "GCC"
-#define COMPILER_VERSION TOSTRING(__GNUC__) "." TOSTRING(__GNUC_MINOR__) "." TOSTRING(__GNUC_PATCHLEVEL__)
-#elif defined(_MSC_VER)
-#define COMPILER_NAME "MSVC"
-#define COMPILER_VERSION TOSTRING(_MSC_VER)
-#else
-#define COMPILER_NAME "Unknown Compiler"
-#define COMPILER_VERSION "Unknown Version"
-#endif
-
-    metrics().metrics().AddInfo("nextapp_build", "Build information", {}, {
-        {"version", NEXTAPP_VERSION},
-        {"build_date", __DATE__},
-        {"build_time", __TIME__},
-        {"platform", BOOST_PLATFORM},
-        {"compiler", COMPILER_NAME},
-        {"compiler_version", COMPILER_VERSION},
-        {"branch", GIT_BRANCH}
-    });
 }
 
 Server::~Server()
@@ -101,6 +75,7 @@ void Server::run()
             co_await loadCertAuthority();
             co_await startGrpcService();
             co_await prepareMetricsAuth();
+            co_await onMetricsTimer();
         }, boost::asio::use_future).get();
     } catch (const std::exception& ex) {
         LOG_ERROR << "Caught exception during initialization: " << ex.what();
@@ -134,6 +109,8 @@ void Server::run()
 
         http_server_->start();
     }
+
+    startMetricsTimer();
 
     LOG_DEBUG_N << "Main thread joins the IO thread pool...";
     runIoThread(0);
@@ -316,6 +293,64 @@ boost::asio::awaitable<boost::uuids::uuid> Server::getAdminUserId()
     }
 
     throw std::runtime_error("No active system/super-user found");
+}
+
+boost::asio::awaitable<void> Server::onMetricsTimer()
+{
+    if (config().options.metrics_timer_minutes == 0) {
+        LOG_TRACE_N << "Metrics timer is disabled, skipping metrics update.";
+        co_return;
+    }
+
+    auto conn = co_await db().getConnection();
+
+    auto res = co_await conn.exec("SELECT COUNT(*) FROM user WHERE active=1");
+    if (res.has_value() && !res.rows().empty()) {
+        metrics().users().set(res.rows().front().front().as_int64());
+    } else {
+        LOG_WARN_N << "Failed to get the number of active users from the database, or there are no uses.";
+    }
+
+    res = co_await conn.exec("SELECT COUNT(*) FROM tenant WHERE state='active'");
+    if (res.has_value() && !res.rows().empty()) {
+        metrics().tenants().set(res.rows().front().front().as_int64());
+    } else {
+        LOG_WARN_N << "Failed to get the number of active tenants from the database, or there are no tenants.";
+    }
+
+    // device
+    res = co_await conn.exec("SELECT COUNT(*) FROM device WHERE enabled=1");
+    if (res.has_value() && !res.rows().empty()) {
+        metrics().devices().set(res.rows().front().front().as_int64());
+    } else {
+        LOG_WARN_N << "Failed to get the number of active devices from the database, or there are no devices.";
+    }
+}
+
+void Server::startMetricsTimer()
+{
+    if (config().options.metrics_timer_minutes == 0) {
+        LOG_DEBUG << "Metrics timer is disabled.";
+        return;
+    }
+
+    LOG_DEBUG << "Starting metrics timer with interval of "
+              << config().options.metrics_timer_minutes << " minutes.";
+
+    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        auto scope = metrics().asio_worker_threads().scoped();
+        while (!ctx_.stopped()) {
+            co_await asio::steady_timer{ctx_,
+                std::chrono::minutes(config().options.metrics_timer_minutes)
+            }.async_wait(asio::use_awaitable);
+
+            try {
+                co_await onMetricsTimer();
+            } catch (const std::exception& ex) {
+                LOG_WARN_N << "Caught exception during metrics timer: " << ex.what();
+            }
+        }
+    }, asio::detached);
 }
 
 string Server::hashPassword(std::string_view passwd)
