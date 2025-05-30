@@ -371,6 +371,7 @@ boost::asio::awaitable<void> Server::connectToInstances()
 
 boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& region, Cluster::Region::Instance &instance)
 {
+    LOG_DEBUG_N << "Initializing instance " << instance.uuid << " in region " << region.uuid;
     auto conn = grpc_service_->getInstance(instance.uuid);
     if (!conn) {
         throw runtime_error("Failed to get connection to the instance " + to_string(instance.uuid));
@@ -397,7 +398,12 @@ boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& r
 
         ++tenants;
         LOG_TRACE << "Adding tenant " << tenant.uuid() << " from instance " << instance.uuid;
-        co_await db().exec("INSERT INTO tenant (id, state, instance, region) VALUES (?, ?, ?, ?)",
+        co_await db().exec( R"(INSERT INTO tenant (id, state, instance, region)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       state    = VALUES(state),
+       instance = VALUES(instance),
+       region   = VALUES(region))",
                            tenant.uuid(), tenant.state(), instance.uuid, region.uuid);
 
         for(const auto& user : tenant.users()) {
@@ -406,7 +412,12 @@ boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& r
             const auto email_hash = getEmailHash(user.email());
             const string_view state = user.active() ? "active" : "inactive";
 
-            co_await db().exec("INSERT INTO user (id, email_hash, tenant, state) VALUES (?, ?, ?, ?)",
+            co_await db().exec(R"(INSERT INTO `user` (id, email_hash, tenant, state)
+      VALUES (?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      email_hash = VALUES(email_hash),
+      tenant     = VALUES(tenant),
+      state      = VALUES(state))",
                                user.uuid(), email_hash, tenant.uuid(), state);
         }
     }
@@ -777,6 +788,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         if (version == 0) {
             auto salt = getRandomStr(32);
+            LOG_DEBUG_N << "Initializing the signup table";
             co_await handle.exec("INSERT INTO signup (id, version, salt) VALUES (1, 1, ?)", salt);
         }
 
