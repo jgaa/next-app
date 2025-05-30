@@ -11,7 +11,15 @@ Window  {
     height: Math.min(800, NaCore.height, Screen.height)
     visible: true
     property bool isNewUser: false
+    property bool onboardingComplete: false
     signal onboardingDone()
+
+    onClosing: function(event) {
+       if (!root.onboardingComplete) {
+           // user closed early → quit the entire application
+           Qt.quit()
+       }
+   }
 
     Rectangle {
         anchors.fill: parent
@@ -94,6 +102,7 @@ Window  {
                         onNextClicked: {
                             onboardingDone()
                             // Switch to the main UI
+                            root.onboardingComplete = true
                             stackView.clear()
                             NaComm.signupDone();
                             console.log("Closing window")

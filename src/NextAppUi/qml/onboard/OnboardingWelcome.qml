@@ -12,15 +12,18 @@ ColumnLayout  {
     TextArea {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignHCenter
         textFormat: Text.RichText
+        font.pointSize: 12
 
-        text: qsTr("<h1>Welcome to Nextapp!</h1>"
-                   + "<p>This application stores its data in \"The Cloud\" and need "
-                   + "to be connected to the internet and to an external server to work.</p>"
-                   + "<p>Before you can start using it, I must know what backend server you sill be using. "
-                   + "You can use the public one, or you may deploy your own server for maximum privacy.</p>"
-                   + "")
+        text: qsTr(
+                  "<h1>Welcome to NextApp!</h1>\n"
+                + "<h3>Your Personal Organizer</h3>\n"
+                + "<p>To continue, make sure you’re online.</p>\n"
+                + "<p>Let’s get you up and running!</p>"
+              )
+
 
         wrapMode: Text.WordWrap
         readOnly: true

@@ -36,16 +36,14 @@ ColumnLayout  {
     TextArea {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        horizontalAlignment: Text.AlignHCenter
         textFormat: Text.RichText
+        font.pointSize: 12
 
-        text: qsTr("<h1>Select server to use!</h1>"
-                   + "<p>The default server is a good choise if you want to start using the "
-                   + "application right away.</p>"
-                   + "<p>A server is simply an accompanying application that runs on a computer "
-                   + "and stores and syncronize the data used by the application. </p>"
-                   + "<p>The default server (below) is running in the \"cloud\" which is a fancy way "
-                   + "of saying that it is running on somebody elses computer.</p>"
+        text: qsTr("<h2>Choose a cloud server to get started:</h2></p>\n"
+                   + "<ul>\n"
+                   + "  <li><strong>Public Server</strong> — Quick setup. Free trial. Ready to go. Just press <strong>Next</strong>.</li>\n"
+                   + "  <li><strong>Private Server</strong> — <a href href=\"https://next-app.org/private_backend.html\">Deploy your own</a> for even better privacy or legal compliance.</li>\n"
+                   + "</ul>\n"
                    + "<p>When you have choosen a server, you will be presented with the conditions "
                    + "of use for that server. You can then choose to accept these conditions to continue.</p>"
                    + "")
@@ -56,6 +54,15 @@ ColumnLayout  {
         color: MaterialDesignStyling.onSurface
         background: Rectangle {
             color: "transparent"
+        }
+
+        HoverHandler {
+            enabled: parent.hoveredLink.length > 0
+            cursorShape: Qt.PointingHandCursor
+        }
+
+        onLinkActivated: function(link) {
+            Qt.openUrlExternally(link)
         }
     }
 

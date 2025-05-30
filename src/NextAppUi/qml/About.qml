@@ -68,6 +68,11 @@ Dialog {
               antialiasing: true
               background: null
 
+              HoverHandler {
+                  enabled: parent.hoveredLink.length > 0
+                  cursorShape: Qt.PointingHandCursor
+              }
+
               onLinkActivated: function(link) {
                   Qt.openUrlExternally(link)
               }

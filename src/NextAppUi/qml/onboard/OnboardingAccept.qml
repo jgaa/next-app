@@ -14,20 +14,36 @@ ColumnLayout  {
     signal nextClicked()
     signal backClicked()
 
-    TextArea {
+    ScrollView {
         Layout.fillWidth: true
-        Layout.fillHeight: true
-        horizontalAlignment: Text.AlignHCenter
-        textFormat: Text.RichText
+        Layout.preferredHeight: greetingTextArea.implicitHeight
+        Layout.alignment: Text.AlignHCenter
 
-        text: NaComm.signupInfo.greeting
+        TextArea {
+            id: greetingTextArea
+            //anchors.fill: parent
+            textFormat: Text.RichText
+            horizontalAlignment: Text.AlignHCenter
+            font.pointSize: 12
 
-        wrapMode: Text.WordWrap
-        readOnly: true
-        antialiasing: true
-        color: MaterialDesignStyling.onSurface
-        background: Rectangle {
-            color: "transparent"
+            text: NaComm.signupInfo.greeting
+
+            wrapMode: Text.WordWrap
+            readOnly: true
+            antialiasing: true
+            color: MaterialDesignStyling.onSurface
+            background: Rectangle {
+                color: "transparent"
+            }
+
+            HoverHandler {
+                enabled: parent.hoveredLink.length > 0
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            onLinkActivated: function(link) {
+                Qt.openUrlExternally(link)
+            }
         }
     }
 
@@ -48,6 +64,15 @@ ColumnLayout  {
             color: "black"
             background: Rectangle {
                 color: "white"
+            }
+
+            HoverHandler {
+                enabled: parent.hoveredLink.length > 0
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            onLinkActivated: function(link) {
+                Qt.openUrlExternally(link)
             }
         }
     }
