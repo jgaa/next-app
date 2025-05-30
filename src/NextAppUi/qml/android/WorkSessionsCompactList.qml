@@ -57,7 +57,7 @@ Rectangle {
         delegate: Rectangle {
             id: delegateCtl
             implicitHeight: columnLayout.implicitHeight
-            implicitWidth: parent.width
+            implicitWidth: listView.width
 
             required property int index
             required property string name

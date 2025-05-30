@@ -28,5 +28,8 @@
             <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.qtprovider" android:exported="false" android:grantUriPermissions="true">
                 <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/qtprovider_paths"/>
             </provider>
+
+        <!-- force software renderer -->
+        <!-- <meta-data android:name="qt.environment" android:value="QML_SCENE_GRAPH_RENDERER=software"/> -->
     </application>
 </manifest>

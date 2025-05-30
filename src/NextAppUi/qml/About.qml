@@ -10,8 +10,8 @@ Dialog {
     standardButtons: Dialog.Close
     x: NaCore.isMobile ? 0 : (ApplicationWindow.window.width - width) / 3
     y: NaCore.isMobile ? 0 : (ApplicationWindow.window.height - height) / 3
-    width: Math.min(ApplicationWindow.window.width, 450)
-    height: Math.min(ApplicationWindow.window.height - 10, 650)
+    width: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.width, 450) : 100
+    height: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.height - 10, 650) : 100
 
     ColumnLayout {
         anchors.fill: parent

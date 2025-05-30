@@ -48,23 +48,26 @@ Rectangle {
         ToolBar {
             id: headerCtl
             Layout.fillWidth: true
-            property int comboWidth: (width - (3 * 5)
-                                      - refreschButton.width
-                                      - filterButton.width
-                                      - selectionsButton.width) / 2
-            //property bool showFilter: false
 
             background: Rectangle {
                 color: MaterialDesignStyling.surfaceContainer
             }
 
             RowLayout {
+                id: row
                 anchors.fill: parent
                 spacing: 4
                 StyledComboBox {
                     id: selectionCtl
                     currentIndex: NaActionsModel.mode
-                    Layout.preferredWidth: headerCtl.comboWidth
+                    Layout.minimumWidth: 40
+                    Layout.maximumWidth: 250
+                    Layout.fillWidth: true
+                    // maxWidth: (root.width
+                    //                         - selectionsButton.width
+                    //                         - filterButton.width
+                    //                         - refreschButton.width
+                    //                         - row.spacing * 3) / 2
 
                     model: ListModel {
                         ListElement { text: qsTr("Active") }
@@ -85,7 +88,8 @@ Rectangle {
                     }
 
                     onActivated: (ix) => {
-                        // console.log("Selection changed to", ix)
+                        console.log("Selection changed to", ix,
+                                    ", row.width=", row.width, ", root.width=", root.width, ", selectionCtl.width=", selectionCtl.width)
                         NaActionsModel.mode = ix
                     }
                 }
@@ -93,7 +97,14 @@ Rectangle {
                 StyledComboBox {
                     id: sortingCtl
                     currentIndex: NaActionsModel.sort
-                    Layout.preferredWidth: headerCtl.comboWidth
+                    Layout.minimumWidth: 40
+                    Layout.maximumWidth: 250
+                    Layout.fillWidth: true
+                    // maxWidth: (root.width
+                    //                         - selectionsButton.width
+                    //                         - filterButton.width
+                    //                         - refreschButton.width
+                    //                         - row.spacing * 3) / 2
                     implicitContentWidthPolicy: ComboBox.ContentItemImplicitWidth
                     model: ListModel {
                         ListElement { text: qsTr("Default") }
@@ -118,8 +129,9 @@ Rectangle {
                 StyledButton {
                     id: selectionsButton
                     enabled: actions.hasSelection
-                    Layout.preferredWidth: parent.height
-                    Layout.minimumWidth: 20
+                    Layout.preferredHeight: parent.height
+                    //Layout.minimumWidth: 20
+                    useWidth: 30
                     text: "";
                     onClicked: {
                         menu.open()
@@ -171,8 +183,9 @@ Rectangle {
 
                 StyledButton {
                     id: filterButton
-                    Layout.preferredWidth: parent.height
-                    Layout.minimumWidth: 20
+                    Layout.preferredHeight: parent.height
+                    //Layout.minimumWidth: 20
+                    useWidth: 30
                     //text: qsTr("Filter")
                     text: "";
                     dim: NaActionsModel.filtersEnabled
@@ -191,8 +204,9 @@ Rectangle {
 
                 StyledButton {
                     id: refreschButton
-                    Layout.preferredWidth: parent.height
-                    Layout.minimumWidth: 20
+                    Layout.preferredHeight: parent.height
+                    //Layout.minimumWidth: 20
+                    useWidth: 30
                     //text: qsTr("Refresh")
                     text: "";
                     onClicked: {
@@ -209,6 +223,7 @@ Rectangle {
                 }
 
                 Item {
+                    Layout.minimumWidth: 0
                     Layout.fillWidth: true
                 }
             }

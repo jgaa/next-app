@@ -41,7 +41,7 @@ ColumnLayout  {
 
         text: qsTr("<h2>Choose a cloud server to get started:</h2></p>\n"
                    + "<ul>\n"
-                   + "  <li><strong>Public Server</strong> — Quick setup. Free trial. Ready to go. Just press <strong>Next</strong>.</li>\n"
+                   + "  <li><strong>Public Server</strong> — Quick setup. Free trial. Ready to go. Just press <strong>Connect</strong>.</li>\n"
                    + "  <li><strong>Private Server</strong> — <a href href=\"https://next-app.org/private_backend.html\">Deploy your own</a> for even better privacy or legal compliance.</li>\n"
                    + "</ul>\n"
                    + "<p>When you have choosen a server, you will be presented with the conditions "

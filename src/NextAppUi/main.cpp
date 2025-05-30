@@ -66,7 +66,8 @@ void logQtMessages(QtMsgType type, const QMessageLogContext &context, const QStr
         break;
     case QtWarningMsg: {
         static const QRegularExpression filter{"is neither a default constructible QObject"
-                                               "|Cannot anchor to an item that isn't a parent or sibling"};
+                                               "|Cannot anchor to an item that isn't a parent or sibling"
+                                               "|Detected anchors on an item that is managed by a layout"};
         if (filter.match(msg).hasMatch()) {
             LOG_TRACE << "[Qt] " << msg;
             break;

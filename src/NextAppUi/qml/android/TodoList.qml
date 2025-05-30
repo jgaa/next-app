@@ -12,5 +12,7 @@ Rectangle {
     Layout.fillWidth: true
     Layout.fillHeight: true
 
-    ActionsListView {}
+    ActionsListView {
+        anchors.fill: parent
+    }
 }

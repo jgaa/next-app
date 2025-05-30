@@ -117,7 +117,7 @@ ApplicationWindow {
 
             Connections {
                 target: sidebar
-                onSelectionChanged: (left, right) => {
+                function onSelectionChanged(left, right) {
                     console.log("Selection changed B ", left, " ", right)
                     dualView.setViews(left, right)
                 }
@@ -135,6 +135,7 @@ ApplicationWindow {
     }
 
     function openWindow(name, args) {
+        console.log("Creating QML window: " + name + " with args: " + JSON.stringify(args) )
         var component = Qt.createComponent("qrc:/qt/qml/NextAppUi/qml/" + name);
         if (component.status !== Component.Ready) {
             if(component.status === Component.Error )
