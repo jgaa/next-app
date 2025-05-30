@@ -11,41 +11,49 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        TabBar {
-            id: bar
-            Layout.fillWidth: true
-            StyledTabButton {
-                text: qsTr("Week")
-            }
-            StyledTabButton {
-                text: qsTr("Today")
-            }
-            StyledTabButton {
-                text: qsTr("Month")
-            }
+        // TabBar {
+        //     id: bar
+        //     Layout.preferredHeight: 30
+        //     Layout.preferredWidth:  Math.min(parent.width, 250)
+        //     StyledTabButton {
+        //         id: weekButton
+        //         text: qsTr("Week")
+        //     }
+        //     StyledTabButton {
+        //         text: qsTr("Today")
+        //     }
+        //     StyledTabButton {
+        //         text: qsTr("Month")
+        //     }
 
-            background: Rectangle {
-                implicitHeight: 40
-                color: MaterialDesignStyling.primary
-            }
-        }
+        //     background: Rectangle {
+        //         height: bar.height
+        //         color: MaterialDesignStyling.primary
+        //     }
+        // }
 
-        StackLayout {
+        // StackLayout {
+        //     Layout.fillHeight: true
+        //     Layout.fillWidth: true
+        //     currentIndex: bar.currentIndex
+
+        //     WeeklyHoursView {
+        //         id: weekly
+        //     }
+
+        //     Rectangle {
+        //         color: "pink"
+        //     }
+
+        //     Rectangle {
+        //         color: "red"
+        //     }
+        // }
+
+        WeeklyHoursView {
             Layout.fillHeight: true
             Layout.fillWidth: true
-            currentIndex: bar.currentIndex
-
-            WeeklyHoursView {
-                id: weekly
-            }
-
-            Rectangle {
-                color: "pink"
-            }
-
-            Rectangle {
-                color: "red"
-            }
+            id: weekly
         }
     }
 }

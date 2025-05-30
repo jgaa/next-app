@@ -58,7 +58,7 @@ void WorkModel::fetchSome(FetchWhat what)
 
 QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
 {
-    LOG_DEBUG << "WorkModel::fetchSome() called, what=" << what << ", uuid=" << uuid().toString()
+    LOG_TRACE << "WorkModel::fetchSome() called, what=" << what << ", uuid=" << uuid().toString()
               << ", firstPage=" << firstPage;
 
     nextapp::pb::GetWorkSessionsReq req;
@@ -169,7 +169,7 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
 
 void WorkModel::setSorting(Sorting sorting)
 {
-    LOG_DEBUG << "WorkModel::setSorting() called, sorting=" << sorting << ", uuid=" << uuid().toString();
+    LOG_TRACE << "WorkModel::setSorting() called, sorting=" << sorting << ", uuid=" << uuid().toString();
     sorting_ = sorting;
 
     if (pagination_.hasMore()) {
@@ -236,7 +236,7 @@ WorkModel::WorkModel(QObject *parent)
 void WorkModel::fetchMore(const QModelIndex &parent)
 {
 
-    LOG_DEBUG << "WorkModel::fetchMore() called " << uuid().toString()
+    LOG_TRACE << "WorkModel::fetchMore() called " << uuid().toString()
               << ", more=" << pagination_.more << ", prev=" << pagination_.prev
               << ", page = " << pagination_.page;
 
@@ -247,7 +247,7 @@ void WorkModel::fetchMore(const QModelIndex &parent)
 
 bool WorkModel::canFetchMore(const QModelIndex &parent) const
 {
-    LOG_DEBUG_N << "Called " << uuid().toString()
+    LOG_TRACE_N << "Called " << uuid().toString()
               << ", more=" << pagination_.more << ", prev=" << pagination_.prev
               << ", page = " << pagination_.page;
     return pagination_.hasMore();
@@ -259,7 +259,7 @@ void WorkModel::selectedChanged()
         return;
     }
 
-    LOG_DEBUG << "Tree selection changed...";
+    LOG_TRACE << "Tree selection changed...";
     if (fetch_what_ == SELECTED_LIST) {
         // TODO: Handle race condition when we select a node wile we are still fetching some other nodes data
         doFetchSome(SELECTED_LIST);
@@ -284,7 +284,7 @@ QCoro::Task<void> WorkModel::fetchIf()
 // {
 //     if (!sessionId.isEmpty()) {
 //         if (auto session = lookup(toQuid(sessionId))) {
-//             LOG_DEBUG_N << "Returning session " << sessionId << " from cache";
+//             LOG_TRACE_N << "Returning session " << sessionId << " from cache";
 //             return *session;
 //         }
 //     }

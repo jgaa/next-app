@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls.Basic
+import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtQuick.Effects
@@ -9,7 +9,7 @@ import Nextapp.Models
 
 Rectangle {
     id: root
-    anchors.fill: parent
+    //anchors.fill: parent
     color: MaterialDesignStyling.surface
     property int prev_selection: 0
     enabled: NaComm.connected
@@ -29,7 +29,7 @@ Rectangle {
 
     Connections {
         target: NaMainTreeModel
-        onSelectedChanged: {
+        function onSelectedChanged() {
             if (root.visible) {
                 //console.log("ActionsListView: Tree selection changed to", NaMainTreeModel.selected)
                 if (NaMainTreeModel.selected != ""
@@ -94,7 +94,7 @@ Rectangle {
                     id: sortingCtl
                     currentIndex: NaActionsModel.sort
                     Layout.preferredWidth: headerCtl.comboWidth
-                    implicitContentWidthPolicy: ComboBox.widestTextWhenCompleted
+                    implicitContentWidthPolicy: ComboBox.ContentItemImplicitWidth
                     model: ListModel {
                         ListElement { text: qsTr("Default") }
                         ListElement { text: qsTr("Priority, Start Date, Name") }

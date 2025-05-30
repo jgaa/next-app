@@ -227,7 +227,7 @@ int NextAppCore::weekFromDate(const QDateTime &date)
 WorkModel *NextAppCore::createWorkModel()
 {
     // TODO: Use QQmlEngine::JavaScriptOwnership or track lifetime. Right now we leak memory.
-    LOG_DEBUG_N << "Creating a new WorkModel.";
+    LOG_TRACE_N << "Creating a new WorkModel.";
     auto model = make_unique<WorkModel>();
     // Causes crash!
     //QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
@@ -237,7 +237,7 @@ WorkModel *NextAppCore::createWorkModel()
 
 WeeklyWorkReportModel *NextAppCore::createWeeklyWorkReportModel()
 {
-    LOG_DEBUG_N << "Creating WeeklyWorkReportModel";
+    LOG_TRACE_N << "Creating WeeklyWorkReportModel";
     auto model = new WeeklyWorkReportModel(instance());
     //QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::JavaScriptOwnership);
     return model;
@@ -250,7 +250,7 @@ QString NextAppCore::toHourMin(int duration)
 
 CalendarModel *NextAppCore::createCalendarModel()
 {
-    LOG_DEBUG_N << "Creating CalendarModel";
+    LOG_TRACE_N << "Creating CalendarModel";
     auto model = new CalendarModel();
     QQmlEngine::setObjectOwnership(model, QQmlEngine::JavaScriptOwnership);
     return model;

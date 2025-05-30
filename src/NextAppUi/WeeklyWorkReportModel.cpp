@@ -21,7 +21,7 @@ void WeeklyWorkReportModel::setStartTime(time_t when)
         startTime_ = when;
 
         const auto st = QDateTime::fromSecsSinceEpoch(when);
-        LOG_DEBUG_N << "Setting start time to " << st.toString();
+        LOG_TRACE_N << "Setting start time to " << st.toString();
 
         emit startTimeChanged();
         fetch();
@@ -31,7 +31,7 @@ void WeeklyWorkReportModel::setStartTime(time_t when)
 WeeklyWorkReportModel::WeeklyWorkReportModel(QObject *parent)
     : QAbstractTableModel(parent)
 {
-    LOG_DEBUG_N << "Creating WeeklyWorkReportModel " << uuid_.toString();
+    LOG_TRACE_N << "Creating WeeklyWorkReportModel " << uuid_.toString();
     connect(NextAppCore::instance(), &NextAppCore::onlineChanged, this, &WeeklyWorkReportModel::setOnline);
     connect(NextAppCore::instance(), &NextAppCore::allBaseModelsCreated, this, [this]() {
         emit isAvailableChanged();
@@ -39,7 +39,7 @@ WeeklyWorkReportModel::WeeklyWorkReportModel(QObject *parent)
 }
 
 void WeeklyWorkReportModel::setIsVisible(bool visible) {
-    LOG_DEBUG_N << "Setting visible to " << visible;
+    LOG_TRACE_N << "Setting visible to " << visible;
     if (visible_ != visible) {
         visible_ = visible;
         emit isVisibleChanged();
@@ -55,7 +55,7 @@ void WeeklyWorkReportModel::setIsVisible(bool visible) {
 }
 
 void WeeklyWorkReportModel::setOnline(bool online) {
-    LOG_DEBUG << "Setting online to " << online;
+    LOG_TRACE << "Setting online to " << online;
     online_ = online;
     emit isAvailableChanged();
     if (online && visible_ && initialized_) {
@@ -65,7 +65,7 @@ void WeeklyWorkReportModel::setOnline(bool online) {
 
 void WeeklyWorkReportModel::start()
 {
-    LOG_DEBUG_N << "Starting...";
+    LOG_TRACE_N << "Starting...";
     initialized_ = true;
 
     connect(&ServerComm::instance(), &ServerComm::receivedDetailedWorkSummary,
@@ -82,7 +82,7 @@ void WeeklyWorkReportModel::start()
 
 void WeeklyWorkReportModel::fetch()
 {
-    LOG_DEBUG_N << "Fetching...";
+    LOG_TRACE_N << "Fetching...";
     if (!online_) {
         LOG_WARN_N << "Not online";
         return;
@@ -109,7 +109,7 @@ void WeeklyWorkReportModel::receivedDetailedWorkSummary(const nextapp::pb::Detai
         return;
     }
 
-    LOG_DEBUG_N << "Received detailed work summary";
+    LOG_TRACE_N << "Received detailed work summary";
 
     beginResetModel();
     ScopedExit scoped{[this] { endResetModel(); }};
@@ -299,7 +299,7 @@ WeeklyWorkReportModel::WeekSelection WeeklyWorkReportModel::weekSelection() cons
 
 void WeeklyWorkReportModel::setWeekSelection(WeekSelection when)
 {
-    LOG_DEBUG << "Setting week selection to " << when;
+    LOG_TRACE << "Setting week selection to " << when;
     if (week_selection_ == when) {
         return;
     }

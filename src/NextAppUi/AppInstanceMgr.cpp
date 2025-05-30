@@ -46,7 +46,7 @@ bool AppInstanceMgr::init()
             break;
         }
 
-        LOG_DEBUG_N << "Failed to attach to shared memory!";
+        LOG_TRACE_N << "Failed to attach to shared memory. Will retry.";
         QThread::sleep(80ms);
     }
 
@@ -75,8 +75,9 @@ bool AppInstanceMgr::init()
     }
 
     LOG_ERROR_N << "No available instance slots!";
-    //qFatal("No available instance slots!");
     return false;
+#else
+    return true;
 #endif // __ANDROID__
 }
 

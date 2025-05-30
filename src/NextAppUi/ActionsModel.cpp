@@ -404,7 +404,7 @@ void ActionsModel::doUpdate(const nextapp::pb::WorkSession &work, nextapp::pb::U
 void ActionsModel::setMode(FetchWhat mode)
 {
     if (mode_ != mode) {
-        LOG_DEBUG_N << "Mode changed to " << mode;
+        LOG_TRACE_N << "Mode changed to " << mode;
         mode_ = mode;
         emit modeChanged();
         fetchIf(true);
@@ -413,9 +413,9 @@ void ActionsModel::setMode(FetchWhat mode)
 
 void ActionsModel::setIsVisible(bool isVisible)
 {
-    LOG_DEBUG_N << "Visible is now: " << isVisible;
+    LOG_TRACE_N << "Visible is now: " << isVisible;
     if (is_visible_ != isVisible) {
-        LOG_DEBUG_N << "Visible changed to " << isVisible;
+        LOG_TRACE_N << "Visible changed to " << isVisible;
         is_visible_ = isVisible;
         emit isVisibleChanged();
         fetchIf(true);
@@ -425,7 +425,7 @@ void ActionsModel::setIsVisible(bool isVisible)
 void ActionsModel::setFlags(nextapp::pb::GetActionsFlags flags)
 {
     if (flags_ != flags) {
-        LOG_DEBUG_N << "Flags changed ";
+        LOG_TRACE_N << "Flags changed ";
         flags_ = flags;
         emit flagsChanged();
         fetchIf(true);
@@ -470,7 +470,7 @@ void ActionsModel::setSelected(QString selected) {
     if (selected != selected_) {
         selected_ = selected;
         emit selectionChanged();
-        LOG_DEBUG_N << "Selected changed to " << selected;
+        LOG_TRACE_N << "Selected changed to " << selected;
     }
 }
 
@@ -1332,7 +1332,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
 
 void ActionsModel::fetchMore(const QModelIndex &parent)
 {
-    LOG_DEBUG_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
+    LOG_TRACE_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
                 << ", page = " << pagination_.page;
 
     if (pagination_.hasMore()) {
@@ -1342,7 +1342,7 @@ void ActionsModel::fetchMore(const QModelIndex &parent)
 
 bool ActionsModel::canFetchMore(const QModelIndex &parent) const
 {
-    LOG_DEBUG_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
+    LOG_TRACE_N  << "more=" << pagination_.more << ", offset =" << pagination_.nextOffset()
               << ", page = " << pagination_.page;
     return valid_ ? (isVisible() && pagination_.hasMore()) : false;
 }
@@ -1425,7 +1425,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     }
 
     if (!isVisible() ) {
-        LOG_DEBUG_N << "Not visible. Skipping fetch. connected="
+        LOG_TRACE_N << "Not visible. Skipping fetch. connected="
                     << ServerComm::instance().connected() << ", visible=" << isVisible();
         co_return;
     }

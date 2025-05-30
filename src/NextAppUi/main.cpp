@@ -52,8 +52,11 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
     return logfault::LogLevel::INFO;
 }
 
-void logQtMessages(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+void logQtMessages(QtMsgType type, const QMessageLogContext &context, const QString &rawMsg)
 {
+    auto msg = rawMsg;
+    msg.replace('\n', ' ');
+
     switch (type) {
     case QtDebugMsg:
         LOG_TRACE << "[Qt] " << msg;
@@ -61,12 +64,21 @@ void logQtMessages(QtMsgType type, const QMessageLogContext &context, const QStr
     case QtInfoMsg:
         LOG_DEBUG << "[Qt] " << msg;
         break;
-    case QtWarningMsg:
+    case QtWarningMsg: {
+        static const QRegularExpression filter{"is neither a default constructible QObject"
+                                               "|Cannot anchor to an item that isn't a parent or sibling"};
+        if (filter.match(msg).hasMatch()) {
+            LOG_TRACE << "[Qt] " << msg;
+            break;
+        }
         LOG_WARN << "[Qt] " << msg;
-        break;
+        } break;
     case QtCriticalMsg:
-    case QtFatalMsg:
         LOG_ERROR << "[Qt] " << msg;
+        break;
+    case QtFatalMsg:
+        LOG_ERROR << "[Qt **FATAL**] " << msg;
+        exit(-1);
         break;
     }
 }

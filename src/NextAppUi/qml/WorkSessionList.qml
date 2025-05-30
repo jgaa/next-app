@@ -40,10 +40,13 @@ Rectangle {
         anchors.left: tableView.left
         anchors.top: root.top
         syncView: tableView
+        implicitHeight: 40
+        implicitWidth: scrollView.width >= 0 ? scrollView.width : 100
         //visible: tableView.model && tableView.model.rowCount > 0
     }
 
     ScrollView {
+        id: scrollView
         anchors.top: horizontalHeader.bottom
         anchors.left: horizontalHeader.left
         anchors.right: parent.right

@@ -127,7 +127,7 @@ void WorkModelBase::setIsVisible(bool isVisible) {
     if (is_visible_ != isVisible) {
         is_visible_ = isVisible;
         emit visibleChanged();
-        LOG_DEBUG_N << "isVisible=" << isVisible << ", uuid=" << uuid().toString();
+        LOG_TRACE_N << "isVisible=" << isVisible << ", uuid=" << uuid().toString();
     }
 }
 
@@ -267,7 +267,7 @@ nextapp::pb::WorkSession WorkModelBase::getSession(const QString &sessionId)
 {
     if (!sessionId.isEmpty()) {
         if (auto session = lookup(toQuid(sessionId))) {
-            LOG_DEBUG_N << "Returning session " << sessionId << " from cache";
+            LOG_TRACE_N << "Returning session " << sessionId << " from cache";
             return *session;
         }
     }

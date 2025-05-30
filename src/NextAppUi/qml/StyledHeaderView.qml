@@ -11,6 +11,7 @@ HorizontalHeaderView {
     delegate: Item {
         required property string display
         implicitHeight: 30
+        implicitWidth: label.implicitWidth + 20
 
         Rectangle {
             anchors.fill: parent
@@ -22,6 +23,7 @@ HorizontalHeaderView {
         }
 
         Label {
+            id: label
             text: display
             color: MaterialDesignStyling.onPrimary
             anchors.centerIn: parent

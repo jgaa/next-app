@@ -211,7 +211,7 @@ ServerComm::ServerComm()
     });
 
     if (QNetworkInformation::loadDefaultBackend()) {
-        LOG_INFO << "Network information backend loaded.";
+        LOG_DEBUG_N << "Network information backend loaded.";
         if (auto *networkInfo = QNetworkInformation::instance()) {
 
         connect(networkInfo, &QNetworkInformation::reachabilityChanged,
@@ -470,7 +470,7 @@ void ServerComm::getDayColorDefinitions()
     callRpc<nextapp::pb::DayColorDefinitions>([this]() {
         return client_->GetDayColorDefinitions({});
     } , [this](const nextapp::pb::DayColorDefinitions& defs) {
-        LOG_DEBUG_N << "Received " << defs.dayColors().size()
+        LOG_TRACE_N << "Received " << defs.dayColors().size()
                     << " day-color definitions.";
 
         emit receivedDayColorDefinitions(defs);
@@ -1496,11 +1496,13 @@ failed:
 
     connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
     connect(updates_.get(), &QGrpcServerStream::finished, this, [this] (const QGrpcStatus &status) {
-        LOG_WARN << "Server stream finished: " << status.message();
         if (status_ == Status::ONLINE) {
+            LOG_WARN << "Server stream finished: " << status.message();
             setStatus(Status::ERROR);
             addMessage(tr("Server stream finished: %1").arg(toString(status)));
             scheduleReconnect();
+        } else {
+            LOG_DEBUG_N << "Server stream finished while status is "<< status_ << ": " << status.message();
         }
     });
 

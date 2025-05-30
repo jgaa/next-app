@@ -15,7 +15,7 @@ using namespace std;
 
 namespace {
 const array<QString, 7> severity_names = {
-    "DISABLED", "ERROR", "WARN", "NOTICE", "INFO", "DEBUGGING", "TRACE"
+    "DISABLED", "ERROR", "WARN", "NOTICE", "INFO", "DEBUG", "TRACE"
 };
 
 const array<QString, 7> color_names = {

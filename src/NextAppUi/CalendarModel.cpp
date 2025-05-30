@@ -284,7 +284,7 @@ CategoryUseModel *CalendarModel::getCategoryUseModel()
 {
     //if (!category_use_model_) {
         auto get_list = [this]() {
-            LOG_DEBUG_N << "Getting category usage list";
+            LOG_TRACE_N << "Getting category usage list";
             return getCategoryUsage();
         };
 

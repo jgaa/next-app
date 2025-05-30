@@ -458,7 +458,7 @@ double calculateScore(const T& action) {
         return computeScore(ui.importance(), ui.urgency(), due_by, time_estimate, time_spent);
     }
 
-    LOG_DEBUG <<  "Action " << action.id_proto() << ' ' << action.name()  << " has no priority or urgency.";
+    LOG_DEBUG_N <<  "Action " << action.id_proto() << ' ' << action.name()  << " has no priority or urgency.";
     return 0;
 }
 

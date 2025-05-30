@@ -70,10 +70,10 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
     });
 
     connect(this, &TimeBoxActionsModel::modelAboutToBeReset, this, [this] {
-        LOG_DEBUG << "TimeBoxActionsModel: modelAboutToBeReset";
+        LOG_TRACE << "TimeBoxActionsModel: modelAboutToBeReset";
     });
     connect(this, &TimeBoxActionsModel::modelAboutToBeReset, this, [this] {
-        LOG_DEBUG << "TimeBoxActionsModel: modelReset";
+        LOG_TRACE << "TimeBoxActionsModel: modelReset";
     });
 }
 
@@ -217,13 +217,13 @@ QCoro::Task<bool> TimeBoxActionsModel::State::sync()
         co_return false;
     }
 
-    LOG_DEBUG << "TimeBoxActionsModel: Starting async sync data...";
+    LOG_TRACE << "TimeBoxActionsModel: Starting async sync data...";
 
     is_synching_ = true;
     ScopedExit later {[&] {
         is_synching_ = false;
         parent_.onSynched();
-        LOG_DEBUG << "TimeBoxActionsModel: Syncing is finished";
+        LOG_TRACE << "TimeBoxActionsModel: Syncing is finished";
     }};
 
     valid_ = false;

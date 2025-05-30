@@ -11,7 +11,7 @@ ComboBox {
     id: root
     property var due: null
     property var maybeKind: NextappPb.ActionDueKind.UNSET
-    displayText: NaActionsModel.formatDue(due)
+    displayText: due !== null ? NaActionsModel.formatDue(due) : ""
     signal dueWasSelected(var due)
 
     model: ListModel {

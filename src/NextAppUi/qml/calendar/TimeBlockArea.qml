@@ -23,7 +23,7 @@ Rectangle {
     required property var model
 
     property bool haveDragIcons: true // height > 20 && width > 50
-    property real minuteHight: parent.hourHeight / 60.0
+    property real minuteHight: parent !== null ? parent.hourHeight / 60.0 : 20
 
     DragHandler {
         id: dragHandler

@@ -648,3 +648,6 @@ private:
     uint64_t last_seen_server_instance_{};
     bool closed_{false};
 };
+
+
+std::ostream& operator << (std::ostream& os, const ServerComm::Status& v);

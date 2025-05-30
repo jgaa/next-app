@@ -19,7 +19,6 @@ GreenMonthModel::GreenMonthModel(unsigned int year, unsigned int month, GreenDay
             &GreenMonthModel::updatedMonth);
 
     connect(&parent, &GreenDaysModel::validChanged, this, [this]() {
-        LOG_DEBUG_N << "GreenDaysModel::validChanged() -> emitting colorsChanged";
         valid_ = parent_.valid();
         emit colorsChanged();
     });
@@ -52,7 +51,6 @@ void GreenMonthModel::updatedMonth(int year, int month)
             emit colorsChanged();
             valid_ = true;
         }
-        LOG_DEBUG_N << "emitting colorsChanged";
         emit colorsChanged();
     }
 }

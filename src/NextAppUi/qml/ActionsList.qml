@@ -20,8 +20,8 @@ Rectangle {
     property bool callOnSelectionEvent: typeof onSelectionEvent === "function"
     color: MaterialDesignStyling.surface
     property bool hasReview: false
-    property bool hasSelection: selectedItems.length > 0
     property alias selectedIds: listView.selectedItems
+    property bool hasSelection: listView.selectedItems.length > 0
 
     ColumnLayout {
         anchors.fill: parent
