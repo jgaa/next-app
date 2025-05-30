@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.9.8) # MajorVersion.MinorVersion.PatchVersion
+    set(NEXTAPP_VERSION 0.9.9) # MajorVersion.MinorVersion.PatchVersion
 endif()
 
 project(next-app
@@ -47,11 +47,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   endif()
 endif()
 
-if(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
-  set(NEXTPP_DISABLE_TRACE_LOGGING_DEFAULT ON)
-else()
+# if(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+#   set(NEXTPP_DISABLE_TRACE_LOGGING_DEFAULT ON)
+# else()
   set(NEXTPP_DISABLE_TRACE_LOGGING_DEFAULT OFF)
-endif()
+#endif()
 
 option(NEXTAPP_WITH_TESTS "Enable Tests" OFF)
 option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" ON)
