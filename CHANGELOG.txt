@@ -1,20 +1,17 @@
-**** TEST RELEASE ****
-
-=======================================================
-This release is used for testing the release workflow.
-It is not a real release, and it will be deleted soon.
-=======================================================
-
 Initial Beta release.
 
 See https://next-app.org for more information
 
-Back-end Docker containers:
+Backend Docker containers:
   - nextappd: Back-end for NextApp
-  - signupd: Handles user-sign up and new devices for existing usres
+  - signupd: Handles user sign-up and new devices for existing usres
 
 NextApp user application Supported platforms:
   - Linux x64 (Flatpak)
   - Windows x64 (exe Installer)
   - macOS amd64 (dmg Installer)
+  - Android (armeabi-v7a arm64-v8a x86_64) (apk Installers)
 
+
+If your Android device don't work with arm64-v8a, try armeabi-v7a. The Qt
+framework have problems with the graphics drivers for some arm64 Android devices.

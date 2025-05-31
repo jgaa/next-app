@@ -15,7 +15,7 @@ if (Protobuf_VERSION VERSION_GREATER 22.0)
     find_package(absl CONFIG REQUIRED)
     find_package(utf8_range CONFIG REQUIRED)
 
-    set(extra_proto_sources absl_fuckup.cpp)
+    set(extra_proto_sources absl_fix.cpp)
     set(extra_prot_libs
         utf8_range::utf8_validity
         absl::log_internal_message
