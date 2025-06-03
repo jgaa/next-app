@@ -359,9 +359,11 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/onboard/OnboardingServer.qml
         qml/onboard/OnboardingWelcome.qml
         qml/settings/AdvancedSettings.qml
+        qml/settings/DeleteAccountConfirmation.qml
         qml/settings/GlobalSettings.qml
         qml/settings/NotificationSettings.qml
         qml/settings/PrefSettings.qml
+        qml/settings/ResetConfirmation.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
         qml/styling/SplitterStyle.qml

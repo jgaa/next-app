@@ -9,7 +9,7 @@ import nextapp.pb as NextappPb
 
 pragma ComponentBehavior: Bound
 
-Item {
+ScrollView {
     id: root
     anchors.fill: parent
 
@@ -26,7 +26,7 @@ Item {
     }
 
     ColumnLayout {
-        anchors.fill: parent
+        width: parent.width
 
         Label { text: qsTr("Calendar Alarms")}
 

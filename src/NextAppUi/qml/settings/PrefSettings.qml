@@ -9,9 +9,8 @@ import nextapp.pb as NextappPb
 
 pragma ComponentBehavior: Bound
 
-Item {
+ScrollView {
     anchors.fill: parent
-
     Settings {
         id: settings
     }
@@ -24,7 +23,7 @@ Item {
     }
 
     GridLayout {
-        anchors.fill: parent
+        width: parent.width
         rowSpacing: 4
         columns: 2
 

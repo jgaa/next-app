@@ -6,10 +6,12 @@ import QtCore
 import NextAppUi
 import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
+import "../common.js" as Common
 
 pragma ComponentBehavior: Bound
 
-Item {
+ScrollView {
+    id: root
     anchors.fill: parent
 
     Settings {
@@ -31,7 +33,7 @@ Item {
     }
 
     GridLayout {
-        anchors.fill: parent
+        width: parent.width
         rowSpacing: 4
         columns: 2
 
@@ -161,8 +163,8 @@ Item {
             }
 
             Text {
+                Layout.leftMargin: 10
                 property string singleton: qsTr("Singleton")
-                Layout.preferredWidth: textMetrics.boundingRect(text).width + 10 // Add some padding
                 text: instances.value == 1 ? singleton : instances.value.toFixed(0)
             }
         }
@@ -173,11 +175,22 @@ Item {
             color: "red"
         }
 
-        Button {
-            text: qsTr("Factory Reset")
-            visible: expertMode.checked
-            onClicked: {
-               resetDialog.open()
+        RowLayout {
+            spacing: 10
+            Button {
+                text: qsTr("Factory Reset")
+                visible: expertMode.checked
+                onClicked: {
+                    Common.openDialog("settings/ResetConfirmation.qml", root, {})
+                }
+            }
+
+            Button {
+                text: qsTr("Delete Account")
+                visible: expertMode.checked
+                onClicked: {
+                    Common.openDialog("settings/DeleteAccountConfirmation.qml", root, {})
+                }
             }
         }
 
@@ -186,39 +199,4 @@ Item {
         }
     }
 
-    Dialog {
-        id: resetDialog
-        title: qsTr("Factory Reset")
-        standardButtons: Dialog.Yes | Dialog.No
-        width: 400
-        height: 300
-
-        contentItem: ColumnLayout {
-            spacing: 10
-
-            // ScrollView to allow scrolling long messages
-            ScrollView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-
-                TextArea {
-                    id: errorMessage
-                    text: qsTr("Are you sure you want to reset NextApp?\nThis will open the Signup wizard next time you start NextApp. Your current local configuration and settings will be lost. You will have to re-add this device using an One Time Password (OTP) from another device, or sign up for a new account.")
-                    wrapMode: TextArea.Wrap
-                    readOnly: true
-                    selectByMouse: true  // Allow selecting text for copying
-                    background: Rectangle {
-                        color: "transparent"  // Make it blend with the dialog
-                    }
-                }
-            }
-        }
-
-
-        onAccepted: {
-            settings.setValue("onboarding", false);
-            Qt.callLater(Qt.quit)
-        }
-    }
 }

@@ -7,7 +7,7 @@ import NextAppUi
 import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
 
-Item {
+ScrollView {
     anchors.fill: parent
 
     Settings {
@@ -23,7 +23,7 @@ Item {
     }
 
     GridLayout {
-        anchors.fill: parent
+        width: parent.width
         rowSpacing: 4
         columns: 2
         //flow: GridLayout.TopToBottom
@@ -37,7 +37,6 @@ Item {
             Layout.fillWidth: true
             id: address
             text: settings.serverAddress
-            //placeholderText: qsTr("https://nextapp.lastviking.eu");
         }
 
         Label { text: qsTr("Page Size")}

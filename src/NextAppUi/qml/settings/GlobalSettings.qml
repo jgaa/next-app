@@ -7,7 +7,7 @@ import NextAppUi
 import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
 
-Item {
+ScrollView {
     id: root
     property bool initialized: false
     anchors.fill: parent
@@ -45,7 +45,7 @@ Item {
 
     GridLayout {
         id: grid
-        anchors.fill: parent
+        width: parent.width
         rowSpacing: 4
         columns: 2
 
