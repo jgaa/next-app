@@ -122,6 +122,7 @@ message UserGlobalSettings {
     bool autoStartNextWorkSession = 6;
     bool autoStartNewWorkSession = 7;
     int64 version = 8;
+    bool optInEmail = 9; // If the user wants to receive emails
 }
 
 message Node {

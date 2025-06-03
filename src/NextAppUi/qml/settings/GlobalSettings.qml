@@ -22,6 +22,7 @@ Item {
         tmp.firstDayOfWeekIsMonday = monday.checked
         tmp.autoStartNextWorkSession = autoStartNextWs.checked
         tmp.autoStartNewWorkSession = autoStartNewWs.checked
+        tmp.optInEmail = optInEmail.checked
 
         NaComm.saveGlobalSettings(tmp)
         initialized = false
@@ -38,6 +39,7 @@ Item {
             initialized = true;
             autoStartNextWs.checked = tmp.autoStartNextWorkSession
             autoStartNewWs.checked = tmp.autoStartNewWorkSession
+            optInEmail.checked = tmp.optInEmail
         }
     }
 
@@ -102,6 +104,13 @@ Item {
         CheckBox {
             id: autoStartNextWs
             text: qsTr("When a work session is\ncompleted, start the next")
+        }
+
+        Item {}
+
+        CheckBox {
+            id: optInEmail
+            text: qsTr("Opt in to receive information or promotions on email")
         }
 
         Item {
