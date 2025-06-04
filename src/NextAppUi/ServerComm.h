@@ -262,6 +262,7 @@ public:
     QCoro::Task<void> setLastReadNotification(uint32_t id);
     QCoro::Task<void> updateLastReadNotification();
     QCoro::Task<void> createNodesFromTemplate(nextapp::pb::NodeTemplate root);
+    QCoro::Task<nextapp::pb::Status> deleteAccount();
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
@@ -284,6 +285,8 @@ public:
     }
 
     static bool isTemporaryError(nextapp::pb::ErrorGadget::Error error);
+
+    void resetSignupStatus();
 
 signals:
     void versionChanged();

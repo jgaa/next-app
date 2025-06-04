@@ -1,5 +1,6 @@
 
 #include "shared_grpc_server.h"
+#include "nextapp/logging.h"
 
 namespace nextapp::grpc {
 
@@ -591,6 +592,51 @@ ORDER BY t.id;
         co_return;
 
     }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteAccount(::grpc::CallbackServerContext *ctx,
+                                                                   const pb::Empty *req,
+                                                                   pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+
+
+            auto res = co_await rctx.dbh->exec(
+                "SELECT COUNT(*) FROM user WHERE tenant = ?", rctx.uctx->tenantUuid());
+            if (res.rows().empty()) {
+                throw server_err{pb::Error::GENERIC_ERROR, "Could not enumerate users for the tenant"};
+            }
+            const auto num_users = res.rows().front().front().as_int64();
+            if (num_users == 1) {
+                LOG_INFO_EX(rctx) << "Deleting tenant " << rctx.uctx->tenantUuid()
+                                 << " for user " << cuser << ", since it is the last user in the tenant. "
+                                 << "The user is deleting their account";
+
+                res = co_await rctx.dbh->exec(
+                    "DELETE FROM tenant WHERE id = ?", rctx.uctx->tenantUuid());
+                if (res.affected_rows() < 1) {
+                    throw server_err{pb::Error::GENERIC_ERROR, "Could not delete tenant (database failure)"};
+                }
+            } else {
+                LOG_INFO_EX(rctx) << "Deleting user " << cuser
+                                 << " from tenant " << rctx.uctx->tenantUuid()
+                                 << ". The user is deleting their account";
+                res = co_await rctx.dbh->exec(
+                    "DELETE FROM user WHERE id = ?", cuser);
+                if (res.affected_rows() < 1) {
+                    throw server_err{pb::Error::GENERIC_ERROR, "Could not delete user (database failure)"};
+                }
+            }
+
+            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+            update.set_accountdeleted(true);
+
+            rctx.uctx->setAsInvalid();
+
+            co_return;
+        }, __func__);
 }
 
 

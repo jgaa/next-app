@@ -27,6 +27,18 @@ ApplicationWindow {
         }
     }
 
+    Connections {
+        target: NaCore
+
+        function onAccountDeleted() {
+            // If the account has just been deleted,
+            // re‐open the onboarding wizard immediately:
+            settings.onboarding = false
+            console.log("Account was deleted – re‐launching onboarding wizard")
+            root.openWindow("onboard/OnBoardingWizard.qml")
+        }
+    }
+
     menuBar: MyMenuBar {
         dragWindow: root
         //infoText: root.getInfoText()

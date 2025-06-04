@@ -875,6 +875,11 @@ QCoro::Task<void> ServerComm::createNodesFromTemplate(nextapp::pb::NodeTemplate 
     co_await rpc(root, &nextapp::pb::Nextapp::Client::CreateNodesFromTemplate);
 }
 
+QCoro::Task<nextapp::pb::Status> ServerComm::deleteAccount()
+{
+    co_return co_await rpc({}, &nextapp::pb::Nextapp::Client::DeleteAccount);
+}
+
 void ServerComm::setStatus(Status status) {
     if (status_ != status) {
         LOG_INFO << "Status changed from " << status_ << " to " << status;
@@ -1186,6 +1191,13 @@ void ServerComm::onUpdateMessage()
                     LOG_DEBUG << "Received reload-nodes update";
                     MainTreeModel::instance()->doSynch(true);
                 }
+            }
+
+            if (msg->hasAccountDeleted() && msg->accountDeleted()) {
+                LOG_WARN << "Account deleted! Logging out.";
+                QTimer::singleShot(0, []() {
+                    NextAppCore::instance()->onAccountDeleted();
+                });
             }
 
             emit onUpdate(std::move(msg));
@@ -2217,6 +2229,12 @@ bool ServerComm::isTemporaryError(nextapp::pb::ErrorGadget::Error error) {
     }
 
     return false;
+}
+
+void ServerComm::resetSignupStatus() {
+    signup_status_ = SIGNUP_NOT_STARTED;
+    stop();
+    emit signupStatusChanged();
 }
 
 bool ServerComm::canConnect() const noexcept

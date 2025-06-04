@@ -15,6 +15,7 @@
 #include <QSqlError>
 #include <QSqlRecord>
 #include "qcorosignal.h"
+#include "qcorotimer.h"
 
 #include "AppInstanceMgr.h"
 #include "DbStore.h"
@@ -192,6 +193,43 @@ QCoro::Task<bool> DbStore::clear()
 
     createDbObject();
     co_return true;
+}
+
+QCoro::Task<void> DbStore::closeAndDeleteDb()
+{
+    LOG_DEBUG_N << "Closing and deleting the database";
+    QMetaObject::invokeMethod(this, [&]() {
+        if (db_ && db_->isOpen()) {
+            db_->close();
+            db_.reset();
+            if constexpr (use_worker_thread) {
+                if (thread_ && thread_->isRunning()) {
+                    LOG_DEBUG_N << "Stopping the worker thread";
+                    thread_->quit();
+                }
+            }
+        }
+    });
+
+    // Wait for the worker thread to finish
+    if constexpr (use_worker_thread) {
+        LOG_DEBUG_N << "Waiting for the DB worker thread to finish";
+        if (thread_ && thread_->isRunning()) {
+            LOG_DEBUG_N << "Worker thread is running, waiting for it to finish";
+            co_await QCoro::sleepFor(500ms);
+        }
+    }
+
+    QFile file(db_path_);
+    if (file.exists()) {
+        if (!file.remove()) {
+            LOG_WARN << "Failed to remove database file: " << db_path_;
+        }
+    }
+
+    LOG_DEBUG_N << "Database closed and deleted";
+
+    co_return;
 }
 
 DbStore::qrval_t DbStore::executeQuery(const QString &sql, const QList<QVariant> &params) {

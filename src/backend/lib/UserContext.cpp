@@ -476,6 +476,13 @@ initial_auth_ok:
         shared_lock lock{mutex_};
         if (auto it = sessions_.find(sid); it != sessions_.end()) {
             auto& session = *it->second;
+            if (!session.user().valid()) {
+                LOG_DEBUG_N << "Session " << sid << " for device " << device_uuid
+                            << " is not valid because the user context is not valid. Removing it.";
+                // User context is not valid, remove the session.
+                removeSession_(sid);
+                throw server_err{pb::Error::AUTH_FAILED, "User context is no longer valid. Did you delete your user account?"};
+            }
             if (session.deviceId() == device_uuid) [[likely]] {
                 co_return session.shared_from_this();
             }

@@ -284,6 +284,13 @@ public:
 
     void setLastReadNotification(uint32_t id) noexcept;
 
+    bool valid() const noexcept {
+        return valid_.load(std::memory_order::relaxed);
+    }
+
+    void setAsInvalid() {
+        valid_ = false;
+    }
 
 private:
     static boost::uuids::uuid newUuid();
@@ -304,6 +311,7 @@ private:
     std::atomic_int32_t last_read_notification_id_{-1};
     mutable std::shared_mutex mutex_;
     mutable std::mutex instance_mutex_;
+    std::atomic_bool valid_{true}; // Indicates if the user context is still valid.
 };
 
 

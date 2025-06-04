@@ -2,12 +2,15 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtCore
+import Nextapp.Models 1.0 // (where NextAppCore is registered as NaCore)
+import nextapp.pb as NextappPb
 
 // We create this component from the C++ code on a fatal error condition.
 // It's non-trivial to open a QML Dialog direcctly from C++, as the underlaying
 // type, QQuickPopup, is not exposed to the C++ QT API.
 // So we create an Item, which is exposed, and let it add the Dialog.
 Item {
+    id: root
     anchors.fill: parent
     visible: true
 
@@ -38,8 +41,9 @@ Item {
                 clip: true
 
                 TextArea {
+                    Layout.fillWidth: true
                     id: errorMessage
-                    text: qsTr("The server does not recognize this device. You should re-run the signup process, select 'Add Device' and then use a One Time Password (OTP) from another device to authorize it.\n\nDo you want to do this now?")
+                    text: qsTr("The server does not recognize this device. You should re-run the signup process, select 'Add Device' and then use a One Time Password (OTP) from another device to authorize it.\nDo you want to do this now?\n\nAlternatively, if you deleted your account, you can press \"Delete Data\" to remove the local copy of your NextApp data.")
                     wrapMode: TextArea.Wrap
                     readOnly: true  // Prevent accidental edits
                     selectByMouse: true  // Allow selecting text for copying
@@ -48,11 +52,17 @@ Item {
                     }
                 }
             }
+
+            Button {
+                text: qsTr("Delete Data")
+                onClicked: {
+                    NaCore.deleteLocalData()
+                }
+            }
         }
 
         onAccepted: {
-            settings.setValue("onboarding", false);
-            Qt.callLater(Qt.quit)
+            NaCore.deleteLocalData()
         }
 
         function setErrorMessage(message) {

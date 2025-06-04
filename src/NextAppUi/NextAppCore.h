@@ -4,19 +4,18 @@
 #include <QQmlEngine>
 #include <QQmlApplicationEngine>
 #include <QGuiApplication>
-// #include <QAudioOutput>
-// #include <QMediaPlayer>
 
 #include "DbStore.h"
 #include "WorkModel.h"
 #include "WeeklyWorkReportModel.h"
 #include "ReviewModel.h"
 #include "DevicesModel.h"
-//#include "NotificationsModel.h"
 
 #ifdef LINUX_BUILD
 #include <QDBusConnection>
 #endif
+
+#include "qcorotask.h"
 
 class CalendarModel;
 
@@ -75,6 +74,8 @@ public:
     Q_INVOKABLE void playSoundDelayed(int delayMs, double volume, const QString& soundFile);
     // Called when signup is complete
     Q_INVOKABLE void bootstrapDevice(bool newUser);
+    Q_INVOKABLE void deleteAccount();
+    Q_INVOKABLE void deleteLocalData();
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseHourMin(const QString& str);
@@ -145,6 +146,7 @@ public:
     QObject * openQmlComponent(const QUrl& resourcePath);
 
     void onWokeFromSleep();
+    QCoro::Task<void> onAccountDeleted();
 
 public slots:
     void handlePrepareForSleep(bool sleep);
@@ -161,10 +163,13 @@ signals:
     void wokeFromSleep();
     void suspending();
     void currentDateChanged(); // Should happen just after midnight
+    void accountDeleted();
+    void accountDeletionFailed(const QString& message);
 
 private:
     void setState(State state);
     void resetTomorrowTimer();
+    QCoro::Task<void> doDeleteAccount();
 
     static NextAppCore *instance_;
     State state_{State::STARTING_UP};

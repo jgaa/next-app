@@ -19,6 +19,8 @@
 #include "ActionCategoriesModel.h"
 #include "util.h"
 
+#include "qcorotimer.h"
+
 using namespace std;
 
 namespace {
@@ -385,6 +387,16 @@ void NextAppCore::bootstrapDevice(bool newUser)
     }
 }
 
+void NextAppCore::deleteAccount()
+{
+    doDeleteAccount();
+}
+
+void NextAppCore::deleteLocalData()
+{
+    onAccountDeleted();
+}
+
 time_t NextAppCore::parseHourMin(const QString &str)
 {
     try {
@@ -501,6 +513,16 @@ void NextAppCore::onWokeFromSleep()
     emit wokeFromSleep();
 }
 
+QCoro::Task<void> NextAppCore::onAccountDeleted()
+{
+    co_await db().closeAndDeleteDb();
+    QSettings settings;
+    settings.clear(); // Clear all settings
+    settings.sync();
+    ServerComm::instance().resetSignupStatus();
+    emit accountDeleted();
+}
+
 void NextAppCore::handlePrepareForSleep(bool sleep)
 {
     LOG_DEBUG_N << "Prepare for sleep: " << sleep;
@@ -562,4 +584,27 @@ void NextAppCore::resetTomorrowTimer() {
             resetTomorrowTimer();
         }
     });
+}
+
+QCoro::Task<void> NextAppCore::doDeleteAccount()
+{
+    try {
+        LOG_DEBUG_N << "Deleting account...";
+
+        auto result = co_await ServerComm::instance().deleteAccount();
+        if (result.error() != nextapp::pb::ErrorGadget::Error::OK) {
+            LOG_ERROR_N << "Failed to delete account: " << result.message();
+            emit accountDeletionFailed(tr("Failed to delete the account: %1").arg(result.message()));
+            co_return;
+        }
+        LOG_INFO_N << "Account successfully deleted.";
+        co_return;
+
+    } catch (const std::exception &e) {
+        LOG_ERROR_N << "Failed to delete account: " << e.what();
+        emit accountDeletionFailed(tr("Failed to delete the account: %1").arg(e.what()));
+        co_return;
+    }
+
+    emit accountDeletionFailed("Failed to delete the account: Unknown error. Please try again later.");
 }

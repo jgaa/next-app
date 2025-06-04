@@ -732,6 +732,7 @@ message Update {
         Notifications notifications = 22;
         uint32 lastReadNotificationId = 23;
         Reload reload = 24;
+        bool accountDeleted = 25; // The user account has been deleted
     }
 }
 
@@ -1050,4 +1051,5 @@ service Nextapp {
     rpc GetLastReadNotification(Empty) returns (Status) {}
     rpc SetLastReadNotification(SetReadNotificationReq) returns (Status) {}
     rpc CreateNodesFromTemplate(NodeTemplate) returns (Status) {}
+    rpc DeleteAccount(Empty) returns (Status) {} // Deletes the user account and the tenant account if the user is tenant admin
 }

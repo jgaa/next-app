@@ -178,6 +178,8 @@ public:
         return *db_;
     }
 
+    QCoro::Task<void> closeAndDeleteDb();
+
 signals:
     // Emitted from the main thread to query the database.
     void doQuery(const QString& sql, const param_t *params, QPromise<rval_t> *promise);

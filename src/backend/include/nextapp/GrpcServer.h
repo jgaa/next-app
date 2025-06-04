@@ -190,6 +190,7 @@ public:
         ::grpc::ServerUnaryReactor *GetLastReadNotification(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *SetLastReadNotification(::grpc::CallbackServerContext *, const pb::SetReadNotificationReq *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *CreateNodesFromTemplate(::grpc::CallbackServerContext *, const pb::NodeTemplate *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *DeleteAccount(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
 
 
     private:
