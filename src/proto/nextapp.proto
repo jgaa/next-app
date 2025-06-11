@@ -936,6 +936,12 @@ message SetReadNotificationReq {
     uint32 notificationId = 1;
 }
 
+message ExportDataReq {
+    enum What {
+        USER = 0;
+    }
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -1052,4 +1058,5 @@ service Nextapp {
     rpc SetLastReadNotification(SetReadNotificationReq) returns (Status) {}
     rpc CreateNodesFromTemplate(NodeTemplate) returns (Status) {}
     rpc DeleteAccount(Empty) returns (Status) {} // Deletes the user account and the tenant account if the user is tenant admin
+    rpc ExportData(ExportDataReq) returns (stream Status) {}
 }

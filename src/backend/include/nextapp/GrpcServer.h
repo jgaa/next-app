@@ -191,6 +191,7 @@ public:
         ::grpc::ServerUnaryReactor *SetLastReadNotification(::grpc::CallbackServerContext *, const pb::SetReadNotificationReq *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *CreateNodesFromTemplate(::grpc::CallbackServerContext *, const pb::NodeTemplate *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *DeleteAccount(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
+        ::grpc::ServerWriteReactor<::nextapp::pb::Status>* ExportData(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::ExportDataReq *req) override;
 
 
     private:
@@ -453,6 +454,42 @@ done:
     }
 
     void setLastNotificationUpdated(uint64_t lastNotificationUpdated) noexcept;
+
+    using export_flush_fn_t = std::function<boost::asio::awaitable<void>(pb::Status& req)>;
+    boost::asio::awaitable<uint64_t> exportActions(
+        const uint64_t since,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx);
+
+    boost::asio::awaitable<uint64_t> exportDays(
+        const uint64_t since,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx);
+
+    boost::asio::awaitable<uint64_t> exportNodes(
+        const uint64_t since,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx);
+
+    boost::asio::awaitable<uint64_t> exportWork(
+        const uint64_t since,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx);
+
+    boost::asio::awaitable<uint64_t> exportTimeBlocks(
+        const uint64_t since,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx);
+
+    boost::asio::awaitable<pb::User> getUser(jgaa::mysqlpool::Mysqlpool::Handle& dbh, std::string_view uuid);
+    boost::asio::awaitable<pb::DayColorDefinitions> getDayColorDefinitions(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+                                                            const std::string& tenantUuid /* unused */);
+    boost::asio::awaitable<pb::ActionCategories> getActionCategories(jgaa::mysqlpool::Mysqlpool::Handle& dbh, std::string_view userId);
 
 private:
 

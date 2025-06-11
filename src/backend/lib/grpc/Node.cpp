@@ -381,66 +381,83 @@ GrpcServer::NextappImpl::GetNewNodes(::grpc::CallbackServerContext *ctx, const p
     return writeStreamHandler(ctx, req,
         [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto stream_scope = owner_.server().metrics().data_streams_nodes().scoped();
-            const auto uctx = rctx.uctx;
-            const auto& cuser = uctx->userUuid();
-            const auto batch_size = owner_.server().config().options.stream_batch_size;
 
-            // Use batched reading from the database, so that we can get all the data, but
-            // without running out of memory.
-            // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
-            assert(rctx.dbh);
-            co_await  rctx.dbh->start_exec(
-                format("SELECT {} from node WHERE user=? AND updated > ?", ToNode::selectCols),
-                uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz()));
-
-            nextapp::pb::Status reply;
-
-            auto *nodes = reply.mutable_nodes();
-            auto num_rows_in_batch = 0u;
-            auto total_rows = 0u;
-            auto batch_num = 0u;
-
-            auto flush = [&]() -> boost::asio::awaitable<void> {
-                reply.set_error(::nextapp::pb::Error::OK);
-                assert(reply.has_nodes());
-                ++batch_num;
-                reply.set_message(format("Fetched {} nodes in batch {}", reply.nodes().nodes_size(), batch_num));
-                co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
-                reply.Clear();
-                nodes = reply.mutable_nodes();
-                num_rows_in_batch = {};
+            auto flush = [&](pb::Status& status) -> boost::asio::awaitable<void> {
+                co_await stream->sendMessage(std::move(status), boost::asio::use_awaitable);
             };
 
-            bool read_more = true;
-            for(auto rows = co_await rctx.dbh->readSome()
-                 ; read_more
-                 ; rows = co_await rctx.dbh->readSome()) {
-
-                read_more = rctx.dbh->shouldReadMore(); // For next iteration
-
-                if (rows.empty()) {
-                    LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
-                    break;
-                }
-
-                for(const auto& row : rows) {
-                    auto * node = nodes->add_nodes();
-                    ToNode::assign(row, *node, rctx);
-                    ++total_rows;
-                    // Do we need to flush?
-                    if (++num_rows_in_batch >= batch_size) {
-                        co_await flush();
-                    }
-                }
-
-            } // read more from db loop
-
-            co_await flush();
+            const auto total_rows = co_await owner_.exportNodes(
+                req->since(), *rctx.dbh, flush, rctx);
 
             LOG_DEBUG_N << "Sent " << total_rows << " nodes to client.";
             co_return;
-
     }, __func__);
+}
+
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
+    const uint64_t since,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx) {
+
+    const auto uctx = rctx.uctx;
+    const auto& cuser = uctx->userUuid();
+    const auto batch_size = server().config().options.stream_batch_size;
+
+    // Use batched reading from the database, so that we can get all the data, but
+    // without running out of memory.
+    // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
+    assert(rctx.dbh);
+    co_await  rctx.dbh->start_exec(
+        format("SELECT {} from node WHERE user=? AND updated > ?", ToNode::selectCols),
+        uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));
+
+    nextapp::pb::Status reply;
+
+    auto *nodes = reply.mutable_nodes();
+    auto num_rows_in_batch = 0u;
+    auto total_rows = 0u;
+    auto batch_num = 0u;
+
+    auto flush = [&]() -> boost::asio::awaitable<void> {
+        reply.set_error(::nextapp::pb::Error::OK);
+        assert(reply.has_nodes());
+        ++batch_num;
+        reply.set_message(format("Fetched {} nodes in batch {}", reply.nodes().nodes_size(), batch_num));
+        co_await flush_fn(reply);
+        reply.Clear();
+        nodes = reply.mutable_nodes();
+        num_rows_in_batch = {};
+    };
+
+    bool read_more = true;
+    for(auto rows = co_await rctx.dbh->readSome()
+         ; read_more
+         ; rows = co_await rctx.dbh->readSome()) {
+
+        read_more = rctx.dbh->shouldReadMore(); // For next iteration
+
+        if (rows.empty()) {
+            LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+            break;
+        }
+
+        for(const auto& row : rows) {
+            auto * node = nodes->add_nodes();
+            ToNode::assign(row, *node, rctx);
+            ++total_rows;
+            // Do we need to flush?
+            if (++num_rows_in_batch >= batch_size) {
+                co_await flush();
+            }
+        }
+
+    } // read more from db loop
+
+    co_await flush();
+
+    co_return total_rows;
 }
 
 boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, const std::string &userUuid, RequestCtx& rctx)

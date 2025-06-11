@@ -639,5 +639,89 @@ ORDER BY t.id;
         }, __func__);
 }
 
+::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::ExportData(
+    ::grpc::CallbackServerContext *ctx, const pb::ExportDataReq *req)
+{
+    return writeStreamHandler(ctx, req,
+    [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+        pb::Status msg;
+        assert(rctx.dbh);
+        auto &dbh = rctx.dbh.value();
+
+        auto flush = [&](pb::Status& status) -> boost::asio::awaitable<void> {
+            co_await stream->sendMessage(std::move(status), boost::asio::use_awaitable);
+        };
+
+        // User account data
+        msg.Clear();
+        msg.set_error(pb::Error::OK);
+        msg.mutable_user()->CopyFrom(co_await owner_.getUser(dbh, rctx.uctx->userUuid()));
+        co_await stream->sendMessage(std::move(msg), boost::asio::use_awaitable);
+
+        // Global settings
+        msg.Clear();
+        msg.set_error(pb::Error::OK);
+        msg.mutable_userglobalsettings()->CopyFrom(rctx.uctx->settings());
+        co_await stream->sendMessage(std::move(msg), boost::asio::use_awaitable);
+
+        // Green day colors
+        msg.Clear();
+        msg.set_error(pb::Error::OK);
+        msg.mutable_daycolordefinitions()->CopyFrom(
+            co_await owner_.getDayColorDefinitions(dbh, rctx.uctx->tenantUuid()));
+
+        // Green days
+        co_await owner_.exportDays(0, dbh, flush, rctx);
+
+        // Nodes
+        co_await owner_.exportNodes(0, dbh, flush, rctx);
+
+        // Categories
+        msg.Clear();
+        msg.set_error(pb::Error::OK);
+        msg.mutable_actioncategories()->CopyFrom(
+            co_await owner_.getActionCategories(dbh, rctx.uctx->userUuid()));
+
+        // Actions
+        co_await owner_.exportActions(0, dbh, flush, rctx);
+
+        // Work sessions
+        co_await owner_.exportWork(0, dbh, flush, rctx);
+
+        // Time blocks
+        co_await owner_.exportTimeBlocks(0, dbh, flush, rctx);
+
+    }, __func__);
+}
+
+
+boost::asio::awaitable<pb::User> GrpcServer::getUser(jgaa::mysqlpool::Mysqlpool::Handle& dbh, std::string_view uuid) {
+
+    enum Cols { ID, TENANT, NAME, EMAIL, KIND, ACTIVE, DESCR, PROPERTIES, SYSTEM_USER };
+    auto res = co_await dbh.exec("SELECT id, tenant, name, email, kind, active, descr, properties, system_user FROM user WHERE id = ?",
+                                 uuid);
+    if (res.rows().empty()) {
+        throw server_err{pb::Error::NOT_FOUND, "User not found"};
+    }
+
+    pb::User u;
+    const auto& row = res.rows().front();
+    u.set_uuid(row.at(ID).as_string());
+    u.set_tenant(row.at(TENANT).as_string());
+    u.set_name(row.at(NAME).as_string());
+    u.set_email(row.at(EMAIL).as_string());
+    pb::User::Kind kind_value{};
+    if (pb::User::Kind_Parse(toUpper(row.at(KIND).as_string()), &kind_value)) {
+        u.set_kind(kind_value);
+    }
+    u.set_active(row.at(ACTIVE).as_int64() > 0);
+    u.set_descr(row.at(DESCR).as_string());
+    if (auto kv = KeyValueFromBlob(row.at(PROPERTIES))) {
+        u.mutable_properties()->CopyFrom(*kv);
+    }
+    u.set_system_user(row.at(SYSTEM_USER).as_int64() > 0);
+    co_return u;
+}
 
 } // ns

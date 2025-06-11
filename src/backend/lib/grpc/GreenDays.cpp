@@ -13,29 +13,36 @@ GrpcServer::NextappImpl::GetDayColorDefinitions(::grpc::CallbackServerContext *c
                                                 pb::DayColorDefinitions *reply)
 {
     auto rval = unaryHandler(ctx, req, reply,
-     [this] (auto *reply) -> boost::asio::awaitable<void> {
-         auto res = co_await owner_.server().db().exec(
-             "SELECT id, name, color, score FROM day_colors WHERE tenant IS NULL ORDER BY score DESC");
-
-         enum Cols {
-             ID, NAME, COLOR, SCORE
-         };
-
-         for(const auto row : res.rows()) {
-             auto *dc = reply->add_daycolors();
-             dc->set_id(pb_adapt(row.at(ID).as_string()));
-             dc->set_color(pb_adapt(row.at(COLOR).as_string()));
-             dc->set_name(pb_adapt(row.at(NAME).as_string()));
-             dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
-         }
-
-         boost::asio::steady_timer timer{owner_.server().ctx()};
-         timer.expires_after(2s);
-         co_return;
+        [this] (auto *reply) -> boost::asio::awaitable<void> {
+        auto dbh = co_await owner_.server().db().getConnection();
+        *reply = co_await owner_.getDayColorDefinitions(dbh, {});
+        co_return;
      }, __func__);
 
-    LOG_TRACE_N << "Leaving the coro do do it's magic...";
     return rval;
+}
+
+boost::asio::awaitable<pb::DayColorDefinitions> GrpcServer::getDayColorDefinitions(
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,const std::string& tenantUuid) {
+
+    auto res = co_await dbh.exec(
+        "SELECT id, name, color, score FROM day_colors WHERE tenant IS NULL ORDER BY score DESC");
+
+    enum Cols {
+        ID, NAME, COLOR, SCORE
+    };
+
+    pb::DayColorDefinitions dcd;
+
+    for(const auto row : res.rows()) {
+        auto *dc = dcd.add_daycolors();
+        dc->set_id(pb_adapt(row.at(ID).as_string()));
+        dc->set_color(pb_adapt(row.at(COLOR).as_string()));
+        dc->set_name(pb_adapt(row.at(NAME).as_string()));
+        dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
+    }
+
+    co_return dcd;
 }
 
 boost::asio::awaitable<std::optional<pb::CompleteDay>>
@@ -245,98 +252,114 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
         [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto stream_scope = owner_.server().metrics().data_streams_days().scoped();
 
-            const auto uctx = rctx.uctx;
-            const auto& cuser = uctx->userUuid();
-
-            const auto batch_size = owner_.server().config().options.stream_batch_size;
-
-            // Use batched reading from the database, so that we can get all the data, but
-            // without running out of memory.
-            // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
-            assert(rctx.dbh);
-            co_await  rctx.dbh->start_exec(
-                R"(SELECT deleted, updated, date, color, notes, report FROM day
-                   WHERE user=? AND updated > ?)",
-                uctx->dbOptions(), cuser, toMsDateTime(req->since(), uctx->tz(), true));
-
-            enum Cols {
-                DELETED, UPDATED, DATE, COLOR, NOTES, REPORT
-            };
-
-            nextapp::pb::Status reply;
-
-            auto *days = reply.mutable_days();
-            auto num_rows_in_batch = 0u;
-            auto total_rows = 0u;
-            auto batch_num = 0u;
-
-            auto flush = [&]() -> boost::asio::awaitable<void> {
-                reply.set_error(::nextapp::pb::Error::OK);
-                assert(reply.has_days());
-                assert(reply.days().days_size() == num_rows_in_batch);
-                ++batch_num;
-                reply.set_message(format("Fetched {} days in batch {}", reply.days().days_size(), batch_num));
+            auto flush = [&](pb::Status& reply) -> boost::asio::awaitable<void> {
                 co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
-                reply.Clear();
-                days = reply.mutable_days();
-                num_rows_in_batch = {};
             };
 
-            bool read_more = true;
-            for(auto rows = co_await rctx.dbh->readSome()
-                 ; read_more
-                 ; rows = co_await rctx.dbh->readSome()) {
-
-                read_more = rctx.dbh->shouldReadMore(); // For next iteration
-
-                if (rows.empty()) {
-                    LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
-                    break;
-                }
-
-                for(const auto& row : rows) {
-                    auto current_day = days->add_days();
-                    auto *d = current_day->mutable_day();
-                    assert(row.at(DELETED).is_int64());
-                    d->set_deleted(row.at(DELETED).as_int64() == 1);
-                    d->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
-                    const auto date_val = row.at(DATE).as_date();
-                    if (!date_val.valid()) {
-                        LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
-                        continue;
-                    }
-                    *d->mutable_date() = toDate(date_val);
-
-                    if (!d->deleted()) {
-
-                        if (row.at(COLOR).is_string()) {
-                            d->set_color(pb_adapt(row.at(COLOR).as_string()));
-                        }
-                        if (row.at(NOTES).is_string()) {
-                            d->set_hasnotes(true);
-                            current_day->set_notes(pb_adapt(row.at(NOTES).as_string()));
-                        }
-                        if (row.at(REPORT).is_string()) {
-                            d->set_hasreport(true);
-                            current_day->set_report(pb_adapt(row.at(REPORT).as_string()));
-                        }
-                    }
-
-                    ++total_rows;
-
-                    // Do we need to flush?
-                    if (++num_rows_in_batch >= batch_size) {
-                        co_await flush();
-                    }
-                }
-
-            } // read more from db loop
-
-            co_await flush();
+            assert(rctx.dbh);
+            const auto total_rows = co_await owner_.exportDays(
+                req->since(), rctx.dbh.value(), flush, rctx);
 
             LOG_DEBUG_N << "Sent " << total_rows << " days to client.";
             co_return;
     }, __func__ );
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
+    const uint64_t since,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx) {
+
+    const auto uctx = rctx.uctx;
+    const auto& cuser = uctx->userUuid();
+    const auto batch_size = server().config().options.stream_batch_size;
+
+    // Use batched reading from the database, so that we can get all the data, but
+    // without running out of memory.
+    // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
+    assert(rctx.dbh);
+    co_await  rctx.dbh->start_exec(
+        R"(SELECT deleted, updated, date, color, notes, report FROM day
+                   WHERE user=? AND updated > ?)",
+        uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz(), true));
+
+    enum Cols {
+        DELETED, UPDATED, DATE, COLOR, NOTES, REPORT
+    };
+
+    nextapp::pb::Status reply;
+
+    auto *days = reply.mutable_days();
+    auto num_rows_in_batch = 0u;
+    auto total_rows = 0u;
+    auto batch_num = 0u;
+
+    auto flush = [&]() -> boost::asio::awaitable<void> {
+        reply.set_error(::nextapp::pb::Error::OK);
+        assert(reply.has_days());
+        assert(reply.days().days_size() == num_rows_in_batch);
+        ++batch_num;
+        reply.set_message(format("Fetched {} days in batch {}", reply.days().days_size(), batch_num));
+        //co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
+        co_await flush_fn(reply);
+        reply.Clear();
+        days = reply.mutable_days();
+        num_rows_in_batch = {};
+    };
+
+    bool read_more = true;
+    for(auto rows = co_await rctx.dbh->readSome()
+         ; read_more
+         ; rows = co_await rctx.dbh->readSome()) {
+
+        read_more = rctx.dbh->shouldReadMore(); // For next iteration
+
+        if (rows.empty()) {
+            LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+            break;
+        }
+
+        for(const auto& row : rows) {
+            auto current_day = days->add_days();
+            auto *d = current_day->mutable_day();
+            assert(row.at(DELETED).is_int64());
+            d->set_deleted(row.at(DELETED).as_int64() == 1);
+            d->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
+            const auto date_val = row.at(DATE).as_date();
+            if (!date_val.valid()) {
+                LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
+                continue;
+            }
+            *d->mutable_date() = toDate(date_val);
+
+            if (!d->deleted()) {
+
+                if (row.at(COLOR).is_string()) {
+                    d->set_color(pb_adapt(row.at(COLOR).as_string()));
+                }
+                if (row.at(NOTES).is_string()) {
+                    d->set_hasnotes(true);
+                    current_day->set_notes(pb_adapt(row.at(NOTES).as_string()));
+                }
+                if (row.at(REPORT).is_string()) {
+                    d->set_hasreport(true);
+                    current_day->set_report(pb_adapt(row.at(REPORT).as_string()));
+                }
+            }
+
+            ++total_rows;
+
+            // Do we need to flush?
+            if (++num_rows_in_batch >= batch_size) {
+                co_await flush();
+            }
+        }
+
+    } // read more from db loop
+
+    co_await flush();
+    co_return total_rows;
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetNewDayColorDefinitions(::grpc::CallbackServerContext *ctx,
