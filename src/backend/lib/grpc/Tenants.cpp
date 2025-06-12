@@ -692,6 +692,11 @@ ORDER BY t.id;
         // Time blocks
         co_await owner_.exportTimeBlocks(0, dbh, flush, rctx);
 
+        msg.Clear();
+        msg.set_error(pb::Error::OK);
+        msg.set_hasmore(false); // No more messages to send
+        co_await stream->sendMessage(std::move(msg), boost::asio::use_awaitable);
+
     }, __func__);
 }
 
@@ -720,7 +725,9 @@ boost::asio::awaitable<pb::User> GrpcServer::getUser(jgaa::mysqlpool::Mysqlpool:
     if (auto kv = KeyValueFromBlob(row.at(PROPERTIES))) {
         u.mutable_properties()->CopyFrom(*kv);
     }
-    u.set_system_user(row.at(SYSTEM_USER).as_int64() > 0);
+    if (row.at(SYSTEM_USER).is_int64()) {
+        u.set_system_user(row.at(SYSTEM_USER).as_int64() > 0);
+    }
     co_return u;
 }
 

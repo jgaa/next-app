@@ -76,14 +76,19 @@ ApplicationWindow {
             }
 
             Action {
-                text: qsTr("Exit")
-                onTriggered: Qt.exit(0)
-                shortcut: StandardKey.Quit
+                text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
+                onTriggered: NaComm.toggleConnect();
             }
 
             Action {
-                text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
-                onTriggered: NaComm.toggleConnect();
+                text: qsTr("Import/Export data")
+                onTriggered: { openDialog("ImportExport.qml") }
+            }
+
+            Action {
+                text: qsTr("Exit")
+                onTriggered: Qt.exit(0)
+                shortcut: StandardKey.Quit
             }
         }
 

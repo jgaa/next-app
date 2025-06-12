@@ -13,6 +13,7 @@
 #include <QProtobufSerializer>
 #include <qcorocore.h>
 #include <qcorothread.h>
+#include <qcorosignal.h>
 
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
@@ -878,6 +879,84 @@ QCoro::Task<void> ServerComm::createNodesFromTemplate(nextapp::pb::NodeTemplate 
 QCoro::Task<nextapp::pb::Status> ServerComm::deleteAccount()
 {
     co_return co_await rpc({}, &nextapp::pb::Nextapp::Client::DeleteAccount);
+}
+
+QCoro::Task<void> ServerComm::exportData(const QString &fileName, const write_export_fn_t& write)
+{
+    nextapp::pb::ExportDataReq req;
+    auto stream = client_->ExportData(req);
+    if (!stream) {
+        throw std::runtime_error("Failed to export data: Unable to create stream from server");
+    }
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        LOG_ERROR_N << "Could not open" << fileName << " for writing: " << file.errorString();
+        throw std::runtime_error("Failed to open export file for writing");
+    }
+
+    bool done = false;
+    bool ok = true;
+
+    QObject::connect(
+        stream.get(), &QGrpcServerStream::finished, stream.get(),
+        [&](const QGrpcStatus &status) {
+            if (status.isOk()) {
+                LOG_DEBUG_N << "Export stream finished successfully.";
+                done = true;
+            } else {
+                LOG_ERROR_N << "Export stream finished with error: " << status.message();
+                done = true;
+                ok = false;
+            }
+        },
+        Qt::SingleShotConnection);
+
+    // We can't use co-routines on a Qt grpc stream as the stream cursor moves forward
+    // when the messageReceived signal is emitted, not when we read the message.
+    QObject::connect(stream.get(), &QGrpcServerStream::messageReceived, [&]() {
+        if (ok) {
+            if (auto status = stream->read<nextapp::pb::Status>()) {
+                if (status->error() == nextapp::pb::ErrorGadget::Error::OK) {
+                    // Happy path
+                    try {
+                        write(*status, file);
+                    } catch (const std::exception& e) {
+                        LOG_ERROR_N << "Failed to write data to file: " << e.what();
+                        ok = false;
+                        stream->cancel();
+                        return;
+                    }
+                } else {
+                    LOG_ERROR_N << "Error from server in data-export stream: " << status->message();
+                    ok = false;
+                    stream->cancel();
+                }
+            } else {
+                if (!done) {
+                    LOG_WARN_N << "Failed to read the current message from the export stream.";
+                    ok = false;
+                    stream->cancel();
+                }
+            }
+        } else {
+            LOG_TRACE_N << "Ignoring message from export stream, since we had an error.";
+            stream->read<nextapp::pb::Status>();
+        }
+    });
+
+    // Wait for the stream to end
+    const auto status = co_await qCoro(stream.get(), &QGrpcServerStream::finished);
+    file.close();
+    if (status.isOk()) {
+        LOG_DEBUG_N << "Export stream finished successfully.";
+        done = true;
+        co_return;
+    }
+
+    LOG_ERROR_N << "Export stream finished with error: " << status.message();
+    QFile::remove(fileName);
+    throw std::runtime_error("Export stream was not successful");
 }
 
 void ServerComm::setStatus(Status status) {

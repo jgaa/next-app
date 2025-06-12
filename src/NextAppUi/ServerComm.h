@@ -16,6 +16,7 @@
 #include <QNetworkInformation>
 #include <QProtobufSerializer>
 #include <QSettings>
+#include <QFile>
 
 #include "qcorotask.h"
 #include "qcorofuture.h"
@@ -263,6 +264,10 @@ public:
     QCoro::Task<void> updateLastReadNotification();
     QCoro::Task<void> createNodesFromTemplate(nextapp::pb::NodeTemplate root);
     QCoro::Task<nextapp::pb::Status> deleteAccount();
+
+    // Special stream function. This will do everything in the main thread to speed up the transfer.
+    using write_export_fn_t = std::function<void(const nextapp::pb::Status& msg, QFile& file)>;
+    QCoro::Task<void> exportData(const QString &fileName, const write_export_fn_t& write);
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;

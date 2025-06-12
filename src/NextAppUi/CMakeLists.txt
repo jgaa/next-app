@@ -496,6 +496,8 @@ qt_add_qml_module(${PROJECT_NAME}
         util.cpp
         util.h
         ${EXTRA_SOURCE_FILES}
+        QML_FILES qml/ImportExport.qml
+        SOURCES ImportExportModel.h ImportExportModel.cpp
 )
 
 
