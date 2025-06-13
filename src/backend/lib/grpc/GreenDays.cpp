@@ -223,7 +223,6 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                 color,
                 notes,
                 report,
-                // update
                 color,
                 notes,
                 report
@@ -243,6 +242,35 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
             co_return;
         }, __func__);
+}
+
+boost::asio::awaitable<void> GrpcServer::saveDays(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::ListOfDays& days, RequestCtx& rctx) {
+    const auto& cuser = rctx.uctx->userUuid();
+    const auto &items = days.days();
+    const size_t num_items = items.size();
+
+    auto sql = "INSERT INTO day (date, user, color, notes, report) VALUES (?, ?, ?, ?, ?)";
+    enum Cols {
+        DATE, USER, COLOR, NOTES, REPORT, COLS_
+    };
+
+    jgaa::mysqlpool::FieldViewMatrix values{num_items, COLS_};
+
+    size_t index = 0;
+    for(const auto& row : items) {
+        assert(index < values.rows());
+        values.set(index, USER, cuser);
+        values.copy(index, DATE, toAnsiDate(row.day().date()));
+        values.set(index, COLOR, toStringViewOrNull(row.day().color()));
+        string_view notes, report;
+        if (row.has_notes()) notes = row.notes();
+        if (row.has_report()) report = row.report();
+        values.set(index, NOTES, toStringViewOrNull(notes));
+        values.set(index, REPORT, toStringViewOrNull(report));
+        ++index;
+    }
+
+    auto res = co_await dbh.exec(sql, values);
 }
 
 ::grpc::ServerWriteReactor< ::nextapp::pb::Status>*

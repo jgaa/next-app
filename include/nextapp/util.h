@@ -234,6 +234,24 @@ std::optional<std::string> toStringOrNull(const T& val) {
     return std::string{val};
 }
 
+template <range_of<char> T>
+std::optional<std::string_view> toStringViewOrNull(const T& val) {
+    if (val.empty()) {
+        return {};
+    }
+
+    return val;
+}
+
+template <range_of<char> T>
+std::optional<std::string_view> toStringViewOrNull(const std::optional<T>& val) {
+    if (!val) {
+        return {};
+    }
+
+    return *val;
+}
+
 template <typename T>
 auto toStringIfValue(const T& row, size_t col) -> decltype(row[0].as_string()) {
     const auto &r = row.at(col);

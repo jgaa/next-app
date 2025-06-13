@@ -10,6 +10,7 @@ add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/errors.h
     ${NEXTAPP_BACKEND}/include/nextapp/nextappd.h
     ${NEXTAPP_ROOT}/include/nextapp/AsyncServerWriteReactor.h
+    ${NEXTAPP_ROOT}/include/nextapp/AsyncServerReadReactor.h
     ${NEXTAPP_ROOT}/include/nextapp/logging.h
     ${NEXTAPP_ROOT}/include/nextapp/util.h
     Metrics.cpp

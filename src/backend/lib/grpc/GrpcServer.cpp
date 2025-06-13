@@ -43,7 +43,6 @@ std::pair<bool /* json */, std::string /* content or json */> toLog(const nextap
 
 
 namespace nextapp::grpc {
-
 namespace {
 struct ToDevice {
     enum Cols { ID, USER, NAME, CREATED, HOSTNAME, OS, OSVERSION, APPVERSION, PRODUCTTYPE, PRODUCTVERSION,

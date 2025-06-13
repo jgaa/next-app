@@ -9,7 +9,20 @@
 
 namespace {
 
+
+// Static variables are OK here, as exports are not called concurrently.
+bool first_record = true;
+
 void WriteNextapp(const nextapp::pb::Status& msg, QFile& file) {
+
+    if (first_record) {
+        ImportExportModel::FileHeader hdr;
+        const auto *ptr = reinterpret_cast<const char*>(&hdr);
+        const size_t len = sizeof(ImportExportModel::FileHeader);
+        assert(len == 8);
+        file.write(ptr, len);
+    }
+
     QProtobufSerializer serializer;
     const auto data = msg.serialize(&serializer);
 
@@ -36,7 +49,6 @@ enum class JsonSections {
     DONE
 };
 
-// Static variables are OK here, as exports are not called concurrently.
 JsonSections json_current_section = JsonSections::BEGIN;
 bool json_in_array = false;
 bool json_in_array_list = false;
@@ -214,6 +226,14 @@ void ImportExportModel::exportData(const QUrl &url)
     doExport(path);
 }
 
+void ImportExportModel::importData(const QUrl &url)
+{
+    const auto path = url.toLocalFile();
+    LOG_INFO_N << "Importing data from " << path;
+
+    doExport(path);
+}
+
 void ImportExportModel::setWorking(bool working)
 {
     if (working_ != working) {
@@ -248,5 +268,119 @@ QCoro::Task<void> ImportExportModel::doExport(QString fileName)
 
 QCoro::Task<void> ImportExportModel::doImport(QString fileName)
 {
+    enum State {
+        INIT,
+        SENDING_DATA,
+        DONE,
+        ERROR
+    };
+
+    auto state = INIT;
+
+    LOG_DEBUG_N << "Importing data from " << fileName;
+
+    setWorking(true);
+    ScopedExit workingGuard([this]() {
+        setWorking(false);
+    });
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly)) {
+        LOG_ERROR_N << "Failed to open file for import: " << file.errorString();
+        co_return;
+    }
+
+    if (file.size() < sizeof(ImportExportModel::FileHeader)) {
+        LOG_ERROR_N << "Not a valid .nextapp import file: " << fileName;
+        co_return;
+    }
+
+    ImportExportModel::FileHeader hdr;
+    if (file.read(reinterpret_cast<char*>(&hdr), sizeof(hdr)) != sizeof(hdr)) {
+        LOG_ERROR_N << "Failed to read file header from " << fileName;
+        co_return;
+    }
+    if (std::string_view(hdr.magic, sizeof(hdr.magic)) != "NextApp") {
+        LOG_ERROR_N << "Not a valid .nextapp import file: " << fileName;
+        co_return;
+    }
+    if (hdr.version != ImportExportModel::current_file_version) {
+        LOG_ERROR_N << "Unsupported file version: " << static_cast<int>(hdr.version);
+        co_return;
+    }
+
+    // This is called repeatedly until we return false when all the messages are read from our file.
+    auto read = [&] (nextapp::pb::Status& msg) -> bool {
+        if (state == DONE) {
+            return false; // No more data to read
+        }
+
+        if (state < SENDING_DATA) {
+            LOG_DEBUG_N << "Sending data to server.";
+            state = SENDING_DATA;
+        } else if (state > SENDING_DATA) {
+            LOG_TRACE_N << "Unexpected state: " << static_cast<int>(state);
+            return false; // stop reading
+        }
+
+        // Read message-length
+        quint32 binary_len{};
+        if (file.read(reinterpret_cast<char*>(&binary_len), sizeof(binary_len)) != sizeof(binary_len)) {
+            LOG_ERROR_N << "Failed to read message length from file.";
+            state = ERROR;
+            return false;
+        }
+        const auto len = qFromBigEndian<quint32>(binary_len);
+        constexpr decltype(len) ten_megabytes = 1024u * 1024u * 10u;
+        if (len > ten_megabytes) {
+            LOG_ERROR_N << "Message-length is too large: " << len;
+            state = ERROR;
+            return false;
+        }
+
+        QByteArray data;
+        if (len > 0) {
+            data.resize(len);
+            if (file.read(data.data(), len) != len) {
+                LOG_ERROR_N << "Failed to read message data from file.";
+                state = ERROR;
+                return false;
+            }
+
+            QProtobufSerializer serializer;
+            if (!msg.deserialize(&serializer, data)) {
+                LOG_ERROR_N << "Failed to parse protobuf message.";
+                state = ERROR;
+                return false;
+            }
+
+            const bool last = msg.hasHasMore() && !msg.hasMore();
+            if (last || file.atEnd()) {
+                if (!last && file.atEnd()) {
+                    LOG_ERROR_N << "Invalid end of data-file. Last=" << last
+                                << ", eof=" << file.atEnd();
+                    state = ERROR;
+                    return false;
+                }
+
+                state = DONE;
+                LOG_DEBUG_N << "End of file reached.";
+            }
+
+            return true;
+        }
+
+        LOG_ERROR_N << "Message-length cannot be zero.";
+        state = ERROR;
+        return false;
+    };
+
+    try {
+        co_await ServerComm::instance().importData(read);
+    } catch (const std::exception &e) {
+        LOG_ERROR_N << "Import failed: " << e.what();
+        state = ERROR;
+    }
+
     co_return;
 }

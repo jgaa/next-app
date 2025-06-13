@@ -102,6 +102,39 @@ struct ToNode {
         });
 }  // CreateNode
 
+boost::asio::awaitable<void> GrpcServer::saveNodes(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::Nodes& nodes, RequestCtx& rctx) {
+    const auto& cuser = rctx.uctx->userUuid();
+    const auto &items = nodes.nodes();
+    const size_t num_items = items.size();
+
+    const auto sql = "INSERT INTO node (id, user, name, kind, descr, active, parent, exclude_from_wr, category) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ";
+
+    enum Cols {
+        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, EXCLUDE_FROM_WR, CATEGORY, COLS_
+    };
+
+    jgaa::mysqlpool::FieldViewMatrix values{num_items, COLS_};
+
+    size_t index = 0;
+    for(const auto& node : items) {
+        assert(index < values.rows());
+        values.set(index, ID, node.uuid());
+        values.set(index, USER, cuser);
+        values.set(index, NAME, node.name());
+        values.set(index, KIND, static_cast<int>(node.kind()));
+        values.set(index, DESCR, toStringViewOrNull(node.descr()));
+        values.set(index, ACTIVE, node.active() ? 1 : 0);
+        values.set(index, PARENT, toStringOrNull(node.parent()));
+        values.set(index, EXCLUDE_FROM_WR, node.excludefromweeklyreview() ? 1 : 0);
+        values.set(index, CATEGORY, toStringOrNull(node.category()));
+        ++index;
+    }
+
+    co_await dbh.exec(sql, values);
+}
+
+
 boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, const pb::NodeTemplate &t, RequestCtx& rctx)
 {
     const auto& cuser = rctx.uctx->userUuid();
@@ -131,7 +164,6 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
         co_await addNodes(id, child, rctx);
     }
 }
-
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateNodesFromTemplate(::grpc::CallbackServerContext *ctx,
                                                                              const pb::NodeTemplate *req,

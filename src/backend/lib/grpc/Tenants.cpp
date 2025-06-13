@@ -358,8 +358,6 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
 
             // TODO: Validate the settings
 
-            const auto blob = toBlob(*req);
-
             auto res = co_await rctx.dbh->exec(
                 "SELECT version FROM user_settings where user = ?", cuser);
             if (!res.rows().empty()) {
@@ -372,27 +370,34 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
                 }
             }
 
-            res = co_await rctx.dbh->exec(
-                "INSERT INTO user_settings (user, settings) VALUES (?, ?) "
-                "ON DUPLICATE KEY UPDATE settings = ?",
-                rctx.uctx->dbOptions(), cuser, blob, blob);
+            auto added = co_await owner_.saveUserGlobalSettings(rctx.dbh.value(), *req, rctx);
 
-            auto update = newUpdate(res.affected_rows() == 1 /* inserted, 2 == updated */
-                                        ? pb::Update::Operation::Update_Operation_ADDED
-                                        : pb::Update::Operation::Update_Operation_UPDATED);
+            auto update = newUpdate(added ? pb::Update::Operation::Update_Operation_ADDED
+                                          : pb::Update::Operation::Update_Operation_UPDATED);
 
-            // Rr-read from database so we get everything right. The version is updated by a trigger.
+            // Re-read from database so we get everything right. The version is updated by a trigger.
             pb::UserGlobalSettings settings;
             co_await owner_.getGlobalSettings(settings, rctx);
 
             update->mutable_userglobalsettings()->CopyFrom(settings);
             rctx.publishLater(update);
 
-            // TODO: HA-Cluster: Signal other servers that the settings has changed
             owner_.sessionManager().setUserSettings(toUuid(cuser), settings);
 
             co_return;
         }, __func__);
+}
+
+boost::asio::awaitable<bool> GrpcServer::saveUserGlobalSettings(
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::UserGlobalSettings& settings, RequestCtx& rctx) {
+
+    const auto blob = toBlob(settings);
+    auto res = co_await rctx.dbh->exec(
+        "INSERT INTO user_settings (user, settings) VALUES (?, ?) "
+        "ON DUPLICATE KEY UPDATE settings = ?",
+        rctx.uctx->dbOptions(), rctx.uctx->userUuid(), blob, blob);
+
+    co_return res.affected_rows() == 1 ;
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetOtpForNewDevice(
@@ -637,6 +642,83 @@ ORDER BY t.id;
 
             co_return;
         }, __func__);
+}
+
+::grpc::ServerReadReactor<pb::ImportDataMsg> *GrpcServer::NextappImpl::ImportData(
+    ::grpc::CallbackServerContext *ctx, pb::Status *reply)
+{
+    return readStreamHandler<pb::ImportDataMsg>(ctx, reply,
+    [this, reply, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+
+        // Delete the users current data
+        const auto& cuser = rctx.uctx->userUuid();
+
+        auto msg = co_await stream->read();
+        if (!msg->has_request()) {
+            LOG_WARN_N << "Missing request in ImportData stream for user " << cuser;
+            throw server_err{pb::Error::GENERIC_ERROR, "Missing request in ImportData stream"};
+        }
+
+        auto clear_user_data = [&] () -> boost::asio::awaitable<void> {
+            co_await rctx.dbh->exec("DELETE FROM time_block WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM actions WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM nodes WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM days WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM request_state WHERE userid = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM action_categories WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM user_settings WHERE user = ?", cuser);
+        };
+
+        co_await clear_user_data();
+
+        while(true) {
+            auto msg = co_await stream->read();
+            if (!msg) {
+                // Unexpected end of stream
+                LOG_WARN_N << "Unexpected end of stream while importing data for user " << cuser;
+                co_await clear_user_data();
+                throw server_err{pb::Error::GENERIC_ERROR, "Unexpected end of stream"};
+            }
+
+            if (msg->has_user()) {
+                // We don't do anything with the user data for now
+            } else if (msg->has_userglobalsettings()) {
+                owner_.saveUserGlobalSettings(rctx.dbh.value(), msg->userglobalsettings(), rctx);
+            } else if (msg->has_daycolordefinitions()) {
+                // Currently set globally
+                //co_await owner_.saveDayColorDefinitions(rctx.dbh.value(), msg->daycolordefinitions(), rctx);
+            } else if (msg->has_actioncategories()) {
+                co_await owner_.saveActionCategories(rctx.dbh.value(), msg->actioncategories(), rctx);
+            } else if (msg->has_days()) {
+                co_await owner_.saveDays(rctx.dbh.value(), msg->days(), rctx);
+            // } else if (msg->has_nodes()) {
+            //     co_await owner_.saveNodes(rctx.dbh.value(), msg->nodes(), rctx);
+            // } else if (msg->has_actions()) {
+            //     co_await owner_.saveActions(rctx.dbh.value(), msg->actions(), rctx);
+            // } else if (msg->has_worksessions()) {
+            //     co_await owner_.saveWorkSessions(rctx.dbh.value(), msg->worksessions(), rctx);
+            // } else if (msg->has_timeblocks()) {
+            //     co_await owner_.saveTimeBlocks(rctx.dbh.value(), msg->timeblocks(), rctx);
+            } else if (msg->has_completed()) {
+                if (!msg->completed()) {
+                    LOG_INFO_N << "ImportData stream for user " << cuser
+                               << " was aborted by the user.";
+                    clear_user_data();
+                }
+                auto last = co_await stream->read();
+                if (last) {
+                    LOG_WARN_N << "Unexpected message after completed in ImportData stream for user " << cuser
+                               << ", what=" << static_cast<int>(last->what_case());
+                }
+                co_return;
+             } else {
+                LOG_WARN_N << "Unexpected message type in ImportData stream for user " << cuser
+                           << ", what=" << static_cast<int>(msg->what_case());
+            }
+        }
+
+        co_return;
+    }, __func__);
 }
 
 ::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::ExportData(

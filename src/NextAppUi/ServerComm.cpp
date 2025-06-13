@@ -14,6 +14,7 @@
 #include <qcorocore.h>
 #include <qcorothread.h>
 #include <qcorosignal.h>
+#include <qcorofuture.h>
 
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
@@ -957,6 +958,84 @@ QCoro::Task<void> ServerComm::exportData(const QString &fileName, const write_ex
     LOG_ERROR_N << "Export stream finished with error: " << status.message();
     QFile::remove(fileName);
     throw std::runtime_error("Export stream was not successful");
+}
+
+QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
+{
+    nextapp::pb::ImportDataMsg req;
+    req.setRequest({});
+    auto stream = client_->ImportData(req);
+    if (!stream) {
+        throw std::runtime_error("Failed to import data: Unable to create stream from server");
+    }
+
+    bool finished = false;
+    QPromise<bool> ok;
+    auto future = ok.future();
+
+    QObject::connect(stream.get(), &QGrpcClientStream::finished, [&](const QGrpcStatus &status) {
+        if (status.isOk()) {
+            LOG_DEBUG_N << "Import stream finished successfully.";
+            ok.addResult(true);
+        } else {
+            LOG_ERROR_N << "Import stream finished with error: " << status.message();
+            ok.addResult(false);
+        }
+        ok.finish();
+        finished = true;
+    });
+
+    const auto status = co_await qCoro(stream.get(), &QGrpcServerStream::finished);
+    if (status.isOk()) {
+        LOG_DEBUG_N << "Import stream finished successfully.";
+        co_return;
+    }
+
+    while(!finished) {
+        nextapp::pb::ImportDataMsg req;
+        nextapp::pb::Status status;
+
+        try {
+            if (read(status)) {
+                if (status.hasUser()) {
+                    req.setUser(status.user());
+                } else if (status.hasUserGlobalSettings()) {
+                    req.setUserGlobalSettings(status.userGlobalSettings());
+                } else if (status.hasDayColorDefinitions()) {
+                    req.setDayColorDefinitions(status.dayColorDefinitions());
+                } else if (status.hasNodes()) {
+                    req.setNodes(status.nodes());
+                } else if (status.hasActionCategories()) {
+                    req.setActionCategories(status.actionCategories());
+                } else if (status.hasAction()) {
+                    req.setActions(status.actions());
+                } else if (status.hasWorkSessions()) {
+                    req.setWorkSessions(status.workSessions());
+                } else if (status.hasTimeBlocks()) {
+                    req.setTimeBlocks(status.timeBlocks());
+                } else {
+                    LOG_WARN_N << "Received unexpected field# in import stream: "
+                               << static_cast<int>(status.whatField());
+                    continue;
+                }
+                stream->writeMessage(req);
+            } else {
+                req.setCompleted(true);
+                stream->writesDone();
+            }
+        } catch (const std::exception &e) {
+            LOG_ERROR_N << "Failed to read data from file: " << e.what();
+            req.setCompleted(false);
+            finished = true;
+            break;
+        }
+    }
+
+    auto result = co_await future;
+    if (result) {
+        co_return;
+    }
+    throw std::runtime_error("Import was not successful");
 }
 
 void ServerComm::setStatus(Status status) {

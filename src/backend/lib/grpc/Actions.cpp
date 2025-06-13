@@ -1,6 +1,7 @@
 ﻿
 #include "shared_grpc_server.h"
 #include "nextapp/UserContext.h"
+#include <boost/multi_array.hpp>
 
 namespace nextapp::grpc {
 
@@ -31,7 +32,7 @@ struct ToActionCategory {
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, UPDATED, CREATED_DATE, ORIGIN, PRIORITY, URGENCY, IMPORTANCE, STATUS, FAVORITE, NAME, DUE_KIND, START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
+        ID, NODE, USER, VERSION, UPDATED, CREATED_DATE, ORIGIN, PRIORITY, URGENCY, IMPORTANCE, STATUS, FAVORITE, NAME, DUE_KIND,START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER, TIME_SPENT, TAGS // remaining
     };
 
@@ -106,7 +107,7 @@ struct ToAction {
         }
 
         auto bargs = make_tuple(
-            toStringOrNull(action.origin()),
+            toStringViewOrNull(action.origin()),
             priority,
             urgency,
             importance,
@@ -118,19 +119,19 @@ struct ToAction {
             pb::ActionDueKind_Name(action.due().kind()),
             toAnsiTime(action.due().start(), uctx.tz()),
             toAnsiTime(action.due().due(),  uctx.tz()),
-            toStringOrNull(action.due().timezone()),
+            toStringViewOrNull(action.due().timezone()),
 
             toAnsiTime(action.completedtime(),  uctx.tz()),
-            toStringOrNull(action.category()),
+            toStringViewOrNull(action.category()),
             action.descr(),
             action.timeestimate(),
             pb::ActionDifficulty_Name(action.difficulty()),
             pb::Action::RepeatKind_Name(action.repeatkind()),
-            toStringOrNull(pb::Action::RepeatUnit_Name(action.repeatunits())),
-            toStringOrNull(pb::Action::RepeatWhen_Name(action.repeatwhen())),
+            toStringViewOrNull(pb::Action::RepeatUnit_Name(action.repeatunits())),
+            toStringViewOrNull(pb::Action::RepeatWhen_Name(action.repeatwhen())),
             action.repeatafter(),
             action.timespent(),
-            toStringOrNull(tags)
+            toStringViewOrNull(tags)
             );
 
         if constexpr (sizeof...(Args) > 0) {
@@ -627,6 +628,12 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
     } else {
         ToAction::assign(res.rows().front(), *update.mutable_action(), *rctx.uctx);
     }
+}
+
+boost::asio::awaitable<void> saveActions(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+                                         const pb::Actions& actions,
+                                         RequestCtx& rctx) {
+
 }
 
 
@@ -1581,6 +1588,35 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
             }
 
         }, __func__);
+}
+
+boost::asio::awaitable<void> GrpcServer::saveActionCategories(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+                                                  const pb::ActionCategories& categories,
+                                                  RequestCtx& rctx) {
+
+    const auto& cuser = rctx.uctx->userUuid();
+    const auto &cats = categories.categories();
+    const size_t items = cats.size();
+
+    auto sql = "INSERT INTO action_category (USER, NAME, DESCR, COLOR, ICON) VALUES (?,?,?,?,?)";
+    enum Cols {
+        USER, NAME, DESCR, COLOR, ICON, COLS_
+    };
+
+    jgaa::mysqlpool::FieldViewMatrix values{items, COLS_};
+
+    size_t index = 0;
+    for(const auto& row : cats) {
+        assert(index < values.rows());
+        values.set(index, USER, cuser);
+        values.set(index, NAME, row.name());
+        values.set(index, DESCR, toStringViewOrNull(row.descr()));
+        values.set(index, COLOR, row.color());
+        values.set(index, ICON, toStringViewOrNull(row.icon()));
+        ++index;
+    }
+
+    co_await dbh.exec(sql, values);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateActionCategory(::grpc::CallbackServerContext *ctx, const pb::ActionCategory *req, pb::Status *reply) {
