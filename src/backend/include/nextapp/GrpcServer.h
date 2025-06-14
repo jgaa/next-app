@@ -553,7 +553,9 @@ public:
     boost::asio::awaitable<void> saveActionCategories(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::ActionCategories& categories, RequestCtx& rctx);
     boost::asio::awaitable<void> saveDays(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::ListOfDays& days, RequestCtx& rctx);
     boost::asio::awaitable<void> saveNodes(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::Nodes& nodes, RequestCtx& rctx);
-    boost::asio::awaitable<void> saveActions(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::Actions& actions, RequestCtx& rctx);
+    boost::asio::awaitable<void> saveActions(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::CompleteActions& actions, RequestCtx& rctx);
+    boost::asio::awaitable<void> saveWorkSessions(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::WorkSessions& sessions, RequestCtx& rctx);
+    boost::asio::awaitable<void> saveTimeBlocks(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::TimeBlocks& timeblocks, RequestCtx& rctx);
 
 private:
 

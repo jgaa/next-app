@@ -126,6 +126,28 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
         }, __func__);
 }
 
+boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::TimeBlocks& timeblocks, RequestCtx& rctx) {
+    const auto& cuser = rctx.uctx->userUuid();
+
+    const auto sql = "INSERT INTO time_block (id, user, start_time, end_time, name, kind, category, actions) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ";
+
+    auto generator = jgaa::mysqlpool::BindTupleGenerator(timeblocks.blocks(), [&](const pb::TimeBlock& tb) {
+        return make_tuple (
+            pb_adapt(tb.id()),
+            cuser,
+            toAnsiTime(tb.timespan().start(), true),
+            toAnsiTime(tb.timespan().end(), true),
+            pb_adapt(tb.name()),
+            toLower(pb::TimeBlock::Kind_Name(tb.kind())),
+            toStringViewOrNull(tb.category()),
+            toBlob(tb.actions())
+            );
+    });
+
+    co_await dbh.exec(sql, generator);
+}
+
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateTimeblock(::grpc::CallbackServerContext *ctx, const pb::TimeBlock *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,

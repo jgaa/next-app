@@ -958,7 +958,7 @@ message ImportDataMsg {
         ListOfDays days = 5;
         Nodes nodes = 6;
         ActionCategories actionCategories = 7;
-        Actions actions = 8;
+        CompleteActions actions = 8;
         WorkSessions workSessions = 9;
         TimeBlocks timeBlocks = 10;
         bool completed = 11; // Marks the end of the import. True indicate success on the client end.

@@ -661,6 +661,35 @@ boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, 
     }
 }
 
+boost::asio::awaitable<void> GrpcServer::saveWorkSessions(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::WorkSessions& sessions, RequestCtx& rctx) {
+    const auto& cuser = rctx.uctx->userUuid();
+
+    auto sql = "INSERT INTO work_session "
+               "(id, action, user, state, version, touch_time, start_time, end_time, duration, paused, name, note, events) "
+               " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ";
+
+    auto generator = jgaa::mysqlpool::BindTupleGenerator(sessions.sessions(),
+         [&] (const pb::WorkSession& w) {
+             return make_tuple (
+                 pb_adapt(w.id()),
+                 pb_adapt(w.action()),
+                 cuser,
+                 pb::WorkSession_State_Name(w.state()),
+                 w.version(),
+                 toAnsiTime(w.touched(), rctx.uctx->tz()),
+                 toAnsiTime(w.start(), rctx.uctx->tz()),
+                 w.has_end() ? toAnsiTime(w.end(), rctx.uctx->tz()) : std::nullopt,
+                 w.duration(),
+                 w.paused(),
+                 toStringViewOrNull(w.name()),
+                 toStringViewOrNull(w.notes()),
+                 eventsToBlob(w)
+                 );
+         });
+
+    co_await dbh.exec(sql, generator);
+}
+
 /* This function is called when a work session is maked as done.
 
     - It calculates the outcome (duration, paused)

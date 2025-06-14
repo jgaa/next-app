@@ -683,7 +683,7 @@ ORDER BY t.id;
             if (msg->has_user()) {
                 // We don't do anything with the user data for now
             } else if (msg->has_userglobalsettings()) {
-                owner_.saveUserGlobalSettings(rctx.dbh.value(), msg->userglobalsettings(), rctx);
+                auto res = owner_.saveUserGlobalSettings(rctx.dbh.value(), msg->userglobalsettings(), rctx);
             } else if (msg->has_daycolordefinitions()) {
                 // Currently set globally
                 //co_await owner_.saveDayColorDefinitions(rctx.dbh.value(), msg->daycolordefinitions(), rctx);
@@ -691,19 +691,19 @@ ORDER BY t.id;
                 co_await owner_.saveActionCategories(rctx.dbh.value(), msg->actioncategories(), rctx);
             } else if (msg->has_days()) {
                 co_await owner_.saveDays(rctx.dbh.value(), msg->days(), rctx);
-            // } else if (msg->has_nodes()) {
-            //     co_await owner_.saveNodes(rctx.dbh.value(), msg->nodes(), rctx);
-            // } else if (msg->has_actions()) {
-            //     co_await owner_.saveActions(rctx.dbh.value(), msg->actions(), rctx);
-            // } else if (msg->has_worksessions()) {
-            //     co_await owner_.saveWorkSessions(rctx.dbh.value(), msg->worksessions(), rctx);
-            // } else if (msg->has_timeblocks()) {
-            //     co_await owner_.saveTimeBlocks(rctx.dbh.value(), msg->timeblocks(), rctx);
+            } else if (msg->has_nodes()) {
+                co_await owner_.saveNodes(rctx.dbh.value(), msg->nodes(), rctx);
+            } else if (msg->has_actions()) {
+                co_await owner_.saveActions(rctx.dbh.value(), msg->actions(), rctx);
+            } else if (msg->has_worksessions()) {
+                co_await owner_.saveWorkSessions(rctx.dbh.value(), msg->worksessions(), rctx);
+            } else if (msg->has_timeblocks()) {
+                co_await owner_.saveTimeBlocks(rctx.dbh.value(), msg->timeblocks(), rctx);
             } else if (msg->has_completed()) {
                 if (!msg->completed()) {
                     LOG_INFO_N << "ImportData stream for user " << cuser
                                << " was aborted by the user.";
-                    clear_user_data();
+                    co_await clear_user_data();
                 }
                 auto last = co_await stream->read();
                 if (last) {

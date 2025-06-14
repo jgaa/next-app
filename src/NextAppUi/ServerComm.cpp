@@ -1007,8 +1007,8 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
                     req.setNodes(status.nodes());
                 } else if (status.hasActionCategories()) {
                     req.setActionCategories(status.actionCategories());
-                } else if (status.hasAction()) {
-                    req.setActions(status.actions());
+                } else if (status.hasCompleteActions()) {
+                    req.setActions(status.completeActions());
                 } else if (status.hasWorkSessions()) {
                     req.setWorkSessions(status.workSessions());
                 } else if (status.hasTimeBlocks()) {

@@ -125,9 +125,9 @@ boost::asio::awaitable<void> GrpcServer::saveNodes(jgaa::mysqlpool::Mysqlpool::H
         values.set(index, KIND, static_cast<int>(node.kind()));
         values.set(index, DESCR, toStringViewOrNull(node.descr()));
         values.set(index, ACTIVE, node.active() ? 1 : 0);
-        values.set(index, PARENT, toStringOrNull(node.parent()));
+        values.set(index, PARENT, toStringViewOrNull(node.parent()));
         values.set(index, EXCLUDE_FROM_WR, node.excludefromweeklyreview() ? 1 : 0);
-        values.set(index, CATEGORY, toStringOrNull(node.category()));
+        values.set(index, CATEGORY, toStringViewOrNull(node.category()));
         ++index;
     }
 

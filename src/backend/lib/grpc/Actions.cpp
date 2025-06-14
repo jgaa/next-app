@@ -630,10 +630,24 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
     }
 }
 
-boost::asio::awaitable<void> saveActions(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
-                                         const pb::Actions& actions,
+boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+                                         const pb::CompleteActions& actions,
                                          RequestCtx& rctx) {
 
+    const auto& cuser = rctx.uctx->userUuid();
+
+    const auto sql = format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
+                            ToAction::insertCols(),
+                            ToAction::statementBindingStr(),
+                            ToAction::allSelectCols());
+
+    auto generator = jgaa::mysqlpool::BindTupleGenerator(actions.actions(),
+                                                         [&] (const auto& v) {
+        LOG_TRACE_N << "Binding action: " << v.id() << " " << v.name();
+        return ToAction::prepareBindingArgs(v, *rctx.uctx, v.id(), v.node(), cuser);
+    });
+
+    co_await dbh.exec(sql, generator);
 }
 
 
