@@ -7,6 +7,8 @@
 #include "logging.h"
 #include "util.h"
 
+using namespace std;
+
 namespace {
 
 
@@ -21,6 +23,7 @@ void WriteNextapp(const nextapp::pb::Status& msg, QFile& file) {
         const size_t len = sizeof(ImportExportModel::FileHeader);
         assert(len == 8);
         file.write(ptr, len);
+        first_record = false;
     }
 
     QProtobufSerializer serializer;
@@ -28,10 +31,15 @@ void WriteNextapp(const nextapp::pb::Status& msg, QFile& file) {
 
     // Save the length of the next protobuf message in big-endian format.
     quint32 be_len = qToBigEndian<quint32>(data.size());
-    const auto be_ptr = reinterpret_cast<const char*>(&be_len);
-    LOG_TRACE_N << "Writing " << data.size() << " bytes to file.";
-    file.write(be_ptr, sizeof(be_ptr));
-    file.write(data.data(), data.size());
+    const string_view be_ptr{reinterpret_cast<const char*>(&be_len), sizeof(be_len)};
+    LOG_TRACE_N << "Writing " << be_ptr.size() << " bytes segment-length " << data.size() << " at position " << file.pos();
+    file.write(be_ptr.data(), be_ptr.size());
+    LOG_TRACE_N << "Writing " << data.size() << " bytes to file. at position " << file.pos();
+    if (file.write(data.data(), data.size()) != data.size()) {
+        LOG_ERROR_N << "Failed to write data to file at position " << file.pos();
+        throw runtime_error("Failed to write data to file");
+    }
+    LOG_TRACE_N << "File-position after write: " << file.pos();
 }
 
 
@@ -231,7 +239,7 @@ void ImportExportModel::importData(const QUrl &url)
     const auto path = url.toLocalFile();
     LOG_INFO_N << "Importing data from " << path;
 
-    doExport(path);
+    doImport(path);
 }
 
 void ImportExportModel::setWorking(bool working)
@@ -245,6 +253,7 @@ void ImportExportModel::setWorking(bool working)
 QCoro::Task<void> ImportExportModel::doExport(QString fileName)
 {
     LOG_DEBUG_N << "Exporting data to " << fileName;
+    first_record = true; // Reset for each export
 
     setWorking(true);
     ScopedExit workingGuard([this]() {
@@ -325,12 +334,16 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
 
         // Read message-length
         quint32 binary_len{};
+        const auto segment_len_read_position = file.pos();
         if (file.read(reinterpret_cast<char*>(&binary_len), sizeof(binary_len)) != sizeof(binary_len)) {
-            LOG_ERROR_N << "Failed to read message length from file.";
+            LOG_ERROR_N << "Failed to read message length from file at position "
+                        << segment_len_read_position;
             state = ERROR;
             return false;
         }
         const auto len = qFromBigEndian<quint32>(binary_len);
+        LOG_TRACE_N << "Read " << len << " bytes segment-length at position "
+                    << segment_len_read_position;
         constexpr decltype(len) ten_megabytes = 1024u * 1024u * 10u;
         if (len > ten_megabytes) {
             LOG_ERROR_N << "Message-length is too large: " << len;
@@ -341,15 +354,23 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
         QByteArray data;
         if (len > 0) {
             data.resize(len);
+            const auto read_position = file.pos();
             if (file.read(data.data(), len) != len) {
-                LOG_ERROR_N << "Failed to read message data from file.";
+                LOG_ERROR_N << "Failed to read message data from file at position "
+                            << read_position;
                 state = ERROR;
                 return false;
             }
 
+            LOG_TRACE_N << "Read " << len << " bytes of data at position "
+                        << read_position;
+
+            assert(data.size() == len);
+
             QProtobufSerializer serializer;
             if (!msg.deserialize(&serializer, data)) {
-                LOG_ERROR_N << "Failed to parse protobuf message.";
+                LOG_ERROR_N << "Failed to parse protobuf message at position "
+                            << read_position << " : " << serializer.lastErrorString();
                 state = ERROR;
                 return false;
             }

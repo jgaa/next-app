@@ -22,6 +22,7 @@ struct GrpcConfig {
     std::string tls_mode = "ca"; // ca | none
 
     // Keepalive options
+    bool disable_keepalive = false;
     unsigned keepalive_time_sec = 10;
     unsigned keepalive_timeout_sec = 20;
     unsigned min_recv_ping_interval_without_data_sec = 5;

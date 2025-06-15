@@ -764,12 +764,17 @@ void GrpcServer::start() {
     }
 
     // Set up keepalive options
-    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, config().keepalive_time_sec * 1000);
-    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, config().keepalive_timeout_sec * 1000);
-    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
-    builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, config().min_recv_ping_interval_without_data_sec * 1000);
-    builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
-    builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, config().max_ping_strikes);
+    if (!config().disable_keepalive) {
+        LOG_DEBUG << "Setting up gRPC keepalive options";
+        builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, config().keepalive_time_sec * 1000);
+        builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, config().keepalive_timeout_sec * 1000);
+        builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+        builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, config().min_recv_ping_interval_without_data_sec * 1000);
+        builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
+        builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, config().max_ping_strikes);
+    } else {
+        LOG_WARN_N << "gRPC keepalive is disabled.";
+    }
 
     // Feed gRPC our implementation of the RPC's
     service_ = std::make_unique<NextappImpl>(*this);

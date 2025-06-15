@@ -118,6 +118,7 @@ boost::asio::awaitable<void> GrpcServer::saveNodes(jgaa::mysqlpool::Mysqlpool::H
 
     size_t index = 0;
     for(const auto& node : items) {
+        LOG_TRACE_N << "Saving node " << node.uuid() << " for user " << cuser;
         assert(index < values.rows());
         values.set(index, ID, node.uuid());
         values.set(index, USER, cuser);

@@ -661,11 +661,11 @@ ORDER BY t.id;
 
         auto clear_user_data = [&] () -> boost::asio::awaitable<void> {
             co_await rctx.dbh->exec("DELETE FROM time_block WHERE user = ?", cuser);
-            co_await rctx.dbh->exec("DELETE FROM actions WHERE user = ?", cuser);
-            co_await rctx.dbh->exec("DELETE FROM nodes WHERE user = ?", cuser);
-            co_await rctx.dbh->exec("DELETE FROM days WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM action WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM node WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM day WHERE user = ?", cuser);
             co_await rctx.dbh->exec("DELETE FROM request_state WHERE userid = ?", cuser);
-            co_await rctx.dbh->exec("DELETE FROM action_categories WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM action_category WHERE user = ?", cuser);
             co_await rctx.dbh->exec("DELETE FROM user_settings WHERE user = ?", cuser);
         };
 

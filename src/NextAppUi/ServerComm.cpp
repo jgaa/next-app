@@ -985,12 +985,6 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
         finished = true;
     });
 
-    const auto status = co_await qCoro(stream.get(), &QGrpcServerStream::finished);
-    if (status.isOk()) {
-        LOG_DEBUG_N << "Import stream finished successfully.";
-        co_return;
-    }
-
     while(!finished) {
         nextapp::pb::ImportDataMsg req;
         nextapp::pb::Status status;
@@ -1003,6 +997,8 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
                     req.setUserGlobalSettings(status.userGlobalSettings());
                 } else if (status.hasDayColorDefinitions()) {
                     req.setDayColorDefinitions(status.dayColorDefinitions());
+                } else if (status.hasDays()) {
+                    req.setDays(status.days());
                 } else if (status.hasNodes()) {
                     req.setNodes(status.nodes());
                 } else if (status.hasActionCategories()) {
@@ -1013,6 +1009,10 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
                     req.setWorkSessions(status.workSessions());
                 } else if (status.hasTimeBlocks()) {
                     req.setTimeBlocks(status.timeBlocks());
+                } else if (static_cast<int>(status.whatField()) == 0) {
+                    // Probably a message with only a HasMore value set to false.
+                    // we will ignore it and keep reading until read() returns false.
+                    continue;
                 } else {
                     LOG_WARN_N << "Received unexpected field# in import stream: "
                                << static_cast<int>(status.whatField());
@@ -1022,6 +1022,7 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
             } else {
                 req.setCompleted(true);
                 stream->writesDone();
+                break;
             }
         } catch (const std::exception &e) {
             LOG_ERROR_N << "Failed to read data from file: " << e.what();

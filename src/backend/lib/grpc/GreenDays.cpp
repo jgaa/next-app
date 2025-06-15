@@ -259,8 +259,8 @@ boost::asio::awaitable<void> GrpcServer::saveDays(jgaa::mysqlpool::Mysqlpool::Ha
     size_t index = 0;
     for(const auto& row : items) {
         assert(index < values.rows());
-        values.set(index, USER, cuser);
         values.copy(index, DATE, toAnsiDate(row.day().date()));
+        values.set(index, USER, cuser);
         values.set(index, COLOR, toStringViewOrNull(row.day().color()));
         string_view notes, report;
         if (row.has_notes()) notes = row.notes();
@@ -270,7 +270,7 @@ boost::asio::awaitable<void> GrpcServer::saveDays(jgaa::mysqlpool::Mysqlpool::Ha
         ++index;
     }
 
-    auto res = co_await dbh.exec(sql, values);
+    auto res = co_await dbh.exec(sql, rctx.uctx->dbOptions(), values);
 }
 
 ::grpc::ServerWriteReactor< ::nextapp::pb::Status>*
