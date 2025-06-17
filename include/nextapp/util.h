@@ -179,6 +179,9 @@ boost::uuids::uuid newUuid();
 std::string newUuidStr();
 const std::string& validatedUuid(const std::string& uuid);
 boost::uuids::uuid toUuid(std::string_view uuid);
+inline std::string toString(const boost::uuids::uuid& uuid) {
+    return boost::uuids::to_string(uuid);
+}
 
 struct UuidHash {
     size_t operator()(const boost::uuids::uuid& uuid) const {
