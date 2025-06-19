@@ -375,6 +375,7 @@ public:
                       rctx.session().touch();
                       rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
                       co_await fn(stream, rctx);
+                      co_await stream->finish();
                       if (!rctx.updates.empty()) {
                           LOG_TRACE << std::format("Publishing {} delayed updates to user {} for {}.",
                                                    rctx.updates.size(), name, rctx.uctx->userUuid());
@@ -517,7 +518,8 @@ public:
         const uint64_t since,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
-        RequestCtx& rctx);
+        RequestCtx& rctx,
+        bool removeDeleted = false);
 
     boost::asio::awaitable<uint64_t> exportDays(
         const uint64_t since,
@@ -529,19 +531,22 @@ public:
         const uint64_t since,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
-        RequestCtx& rctx);
+        RequestCtx& rctx,
+        bool removeDeleted = false);
 
     boost::asio::awaitable<uint64_t> exportWork(
         const uint64_t since,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
-        RequestCtx& rctx);
+        RequestCtx& rctx,
+        bool removeDeleted = false);
 
     boost::asio::awaitable<uint64_t> exportTimeBlocks(
         const uint64_t since,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
-        RequestCtx& rctx);
+        RequestCtx& rctx,
+        bool removeDeleted = false);
 
     boost::asio::awaitable<pb::User> getUser(jgaa::mysqlpool::Mysqlpool::Handle& dbh, std::string_view uuid);
     boost::asio::awaitable<pb::DayColorDefinitions> getDayColorDefinitions(jgaa::mysqlpool::Mysqlpool::Handle& dbh,

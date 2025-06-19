@@ -117,8 +117,8 @@ struct ToAction {
 
             // due
             pb::ActionDueKind_Name(action.due().kind()),
-            toAnsiTime(action.due().start(), uctx.tz()),
-            toAnsiTime(action.due().due(),  uctx.tz()),
+            toAnsiTime(action.due().start()),
+            toAnsiTime(action.due().due()),
             toStringViewOrNull(action.due().timezone()),
 
             toAnsiTime(action.completedtime(),  uctx.tz()),
@@ -131,7 +131,7 @@ struct ToAction {
             toStringViewOrNull(pb::Action::RepeatWhen_Name(action.repeatwhen())),
             action.repeatafter(),
             action.timespent(),
-            toStringViewOrNull(tags)
+            toStringOrNull(tags)
             );
 
         if constexpr (sizeof...(Args) > 0) {
@@ -498,8 +498,8 @@ void sanitize(pb::Action& action) {
 
             optional<string> startspan_start, startspan_end;
             if (req->has_startspan()) {
-                startspan_start = toAnsiTime(req->startspan().start(), uctx->tz());
-                startspan_end = toAnsiTime(req->startspan().end(), uctx->tz());
+                startspan_start = toAnsiTime(req->startspan().start());
+                startspan_end = toAnsiTime(req->startspan().end());
                 query += " AND (( a.start_time >= ? AND a.start_time < ? ) ";
                 args.emplace_back(*startspan_start);
                 args.emplace_back(*startspan_end);
@@ -511,8 +511,8 @@ void sanitize(pb::Action& action) {
 
             optional<string> duespan_start, duespan_end;
             if (req->has_duespan()) {
-                duespan_start = toAnsiTime(req->duespan().start(), uctx->tz());
-                duespan_end = toAnsiTime(req->duespan().end(), uctx->tz());
+                duespan_start = toAnsiTime(req->duespan().start());
+                duespan_end = toAnsiTime(req->duespan().end());
                 query += " AND (( a.due_by_time >= ? AND a.due_by_time < ?) ";
                 args.emplace_back(*duespan_start);
                 args.emplace_back(*duespan_end);
@@ -642,12 +642,17 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
                             ToAction::allSelectCols());
 
     auto generator = jgaa::mysqlpool::BindTupleGenerator(actions.actions(),
-                                                         [&] (const auto& v) {
-        LOG_TRACE_N << "Binding action: " << v.id() << " " << v.name();
-        return ToAction::prepareBindingArgs(v, *rctx.uctx, v.id(), v.node(), cuser);
+                                                         [cuser, &rctx] (const auto& v) {
+        string_view id = v.id();
+        string_view node = v.node();
+        string_view user = cuser;
+
+        LOG_TRACE_N << "Binding action: " << v.id() << " " << v.name() << ", category: " << v.category();
+        return ToAction::prepareBindingArgs(v, *rctx.uctx, id, node, user);
     });
 
     co_await dbh.exec(sql, generator);
+    LOG_TRACE_N << "done saving action batch";
 }
 
 
@@ -792,7 +797,7 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
                     auto d = req->due();
                     sanitize(d);
                     if (d.has_start()) {
-                        if (start = toAnsiTime(d.start(), rctx.uctx->tz()); start.has_value()) {
+                        if (start = toAnsiTime(d.start()); start.has_value()) {
                             args.emplace_back(*start);
                         } else {
                             args.emplace_back(nullptr);
@@ -801,7 +806,7 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
                         args.emplace_back(nullptr);
                     }
                     if (d.has_due()) {
-                        if (due = toAnsiTime(d.due(), rctx.uctx->tz()); due.has_value()) {
+                        if (due = toAnsiTime(d.due()); due.has_value()) {
                             args.emplace_back(*due);
                         } else {
                             args.emplace_back(nullptr);
@@ -1612,9 +1617,9 @@ boost::asio::awaitable<void> GrpcServer::saveActionCategories(jgaa::mysqlpool::M
     const auto &cats = categories.categories();
     const size_t items = cats.size();
 
-    auto sql = "INSERT INTO action_category (USER, NAME, DESCR, COLOR, ICON) VALUES (?,?,?,?,?)";
+    auto sql = "INSERT INTO action_category (id, user, name, descr, color, icon) VALUES (?,?,?,?,?,?)";
     enum Cols {
-        USER, NAME, DESCR, COLOR, ICON, COLS_
+        ID, USER, NAME, DESCR, COLOR, ICON, COLS_
     };
 
     jgaa::mysqlpool::FieldViewMatrix values{items, COLS_};
@@ -1622,6 +1627,8 @@ boost::asio::awaitable<void> GrpcServer::saveActionCategories(jgaa::mysqlpool::M
     size_t index = 0;
     for(const auto& row : cats) {
         assert(index < values.rows());
+        assert(!row.id().empty() && "ActionCategory id must not be empty");
+        values.set(index, ID, row.id());
         values.set(index, USER, cuser);
         values.set(index, NAME, row.name());
         values.set(index, DESCR, toStringViewOrNull(row.descr()));
@@ -1734,7 +1741,8 @@ GrpcServer::NextappImpl::GetNewActions(::grpc::CallbackServerContext *ctx, const
 boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const uint64_t since,
                                                            jgaa::mysqlpool::Mysqlpool::Handle& dbh,
                                                            const export_flush_fn_t& flush_fn,
-                                                           RequestCtx& rctx) {
+                                                           RequestCtx& rctx,
+                                                           bool removeDeleted) {
 
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
@@ -1744,7 +1752,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const uint64_t since,
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     co_await  dbh.start_exec(
-        format("SELECT {} from action WHERE user=? AND updated > ?", ToAction::allSelectCols()),
+        format("SELECT {} from action WHERE user=? AND updated > ? {} ORDER BY created_date",
+               ToAction::allSelectCols(),
+               removeDeleted ? "AND status != 'deleted'" : ""),
         uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));
 
     nextapp::pb::Status reply;

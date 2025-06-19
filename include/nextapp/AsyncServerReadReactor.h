@@ -29,7 +29,7 @@ public:
     };
 
     AsyncServerReadReactor(::grpc::CallbackServerContext* ctx, A& asio, G& grpc)
-        : context_(ctx), asio_(asio), timer_(asio), grpc_(grpc)
+        : context_{ctx}, asio_{asio}, timer_{asio}, done_timer_{asio}, grpc_{grpc}
     {
         LOG_TRACE_N << "Read‐stream " << uuid_ << " created";
         this->StartRead(&temp_msg_);
@@ -71,6 +71,13 @@ public:
     // Called by user to begin the lifecycle
     void start() { self_ = this->shared_from_this(); }
 
+    boost::asio::awaitable<void> finish(const ::grpc::Status& status = ::grpc::Status::OK) {
+        this->Finish(status);
+        done_timer_.expires_after(std::chrono::minutes(1)); // It should not take this long to finish
+        co_await done_timer_.async_wait(boost::asio::use_awaitable);
+        co_return;
+    }
+
     // gRPC callback: end of RPC
     void OnDone() override {
         {
@@ -78,6 +85,7 @@ public:
             done_ = true;
         }
         timer_.cancel();
+        done_timer_.cancel();
         self_.reset();
     }
 
@@ -97,6 +105,7 @@ private:
     A&                                         asio_;
     G&                                         grpc_;
     boost::asio::steady_timer                  timer_;
+    boost::asio::steady_timer                  done_timer_;
     std::recursive_mutex                       mutex_;
 
     std::optional<boost::asio::any_io_executor> pending_exec_;

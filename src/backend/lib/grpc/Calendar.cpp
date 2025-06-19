@@ -313,7 +313,8 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
     const uint64_t since,
     jgaa::mysqlpool::Mysqlpool::Handle& dbh,
     const export_flush_fn_t& flush_fn,
-    RequestCtx& rctx) {
+    RequestCtx& rctx,
+    bool removeDeleted) {
 
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
@@ -324,7 +325,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
     co_await  rctx.dbh->start_exec(
-        format("SELECT {} from time_block WHERE user=? AND updated > ?", ToTimeBlock::columns),
+        format("SELECT {} from time_block WHERE user=? AND updated > ? {}",
+               ToTimeBlock::columns,
+               removeDeleted ? "AND kind != 'deleted'" : ""),
         uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));
 
     nextapp::pb::Status reply;

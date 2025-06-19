@@ -1021,12 +1021,18 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
                 stream->writeMessage(req);
             } else {
                 req.setCompleted(true);
+                stream->writeMessage(req);
                 stream->writesDone();
                 break;
             }
         } catch (const std::exception &e) {
             LOG_ERROR_N << "Failed to read data from file: " << e.what();
-            req.setCompleted(false);
+            if (!stream->isFinished()) {
+                req.setCompleted(false);
+                stream->writeMessage(req);
+                stream->writesDone();
+            }
+
             finished = true;
             break;
         }

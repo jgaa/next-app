@@ -1,4 +1,6 @@
 
+#include <deque>
+
 #include "shared_grpc_server.h"
 #include "nextapp/logging.h"
 
@@ -678,6 +680,7 @@ ORDER BY t.id;
 
             string addActionCategory(string_view category) {
                 const auto newid = newUuid();
+                LOG_TRACE << "Mapping old category " << category << " to new id " << newid;
                 action_categories_[toUuid(category)] = newid;
                 return toString(newid);
             }
@@ -694,16 +697,28 @@ ORDER BY t.id;
             string addNode(string_view node) {
                 const auto newid = newUuid();
                 nodes_[toUuid(node)] = newid;
+                LOG_TRACE_N << "Mapping old node-id " << node << " to new node-id " << newid;
                 return toString(newid);
             }
 
-            string node(string_view node) {
+            string node(string_view node, bool doThrow = true) {
                 const auto uid = toUuid(node);
                 if (auto it = nodes_.find(uid); it != nodes_.end()) {
                     return toString(it->second);
                 }
-                LOG_DEBUG_EX(rctx_) << "Node " << node << " not found in mapping-table.";
-                throw server_err{pb::Error::NOT_FOUND, format("Node {} not found in mapping-table.", node)};
+                if (doThrow) {
+                    LOG_DEBUG_EX(rctx_) << "Node " << node << " not found in mapping-table.";
+                    throw server_err{pb::Error::NOT_FOUND, format("Node {} not found in mapping-table.", node)};
+                }
+                return {};
+            }
+
+            string node(const boost::uuids::uuid& id) {
+                if (auto it = nodes_.find(id); it != nodes_.end()) {
+                    return toString(it->second);
+                }
+                LOG_DEBUG_EX(rctx_) << "Node " << id << " not found in mapping-table.";
+                throw server_err{pb::Error::NOT_FOUND, format("Node {} not found in mapping-table.", toString(id))};
             }
 
             string addAction(string_view action) {
@@ -722,6 +737,14 @@ ORDER BY t.id;
                     throw server_err{pb::Error::NOT_FOUND, format("Action {} not found in mapping-table.", action)};
                 }
                 return {};
+            }
+
+            string action(const boost::uuids::uuid& uid) {
+                if (auto it = actions_.find(uid); it != actions_.end()) {
+                    return toString(it->second);
+                }
+                LOG_DEBUG_EX(rctx_) << "Action " << uid << " not found in mapping-table.";
+                throw server_err{pb::Error::NOT_FOUND, format("Action {} not found in mapping-table.", toString(uid))};
             }
 
             string addWorkSession(string_view session) {
@@ -765,7 +788,8 @@ ORDER BY t.id;
         }
 
         mapper{rctx};
-
+        deque<pair<boost::uuids::uuid, boost::uuids::uuid>> node_parent;
+        deque<pair<boost::uuids::uuid, boost::uuids::uuid>> action_origin;
 
         // Delete the users current data
         const auto& cuser = rctx.uctx->userUuid();
@@ -788,120 +812,193 @@ ORDER BY t.id;
 
         co_await clear_user_data();
 
-        while(true) {
-            auto msg = co_await stream->read();
-            if (!msg) {
-                // Unexpected end of stream
-                LOG_WARN_N << "Unexpected end of stream while importing data for user " << cuser;
-                co_await clear_user_data();
-                throw server_err{pb::Error::GENERIC_ERROR, "Unexpected end of stream"};
-            }
+        std::exception_ptr eptr;
 
-            if (msg->has_user()) {
-                const auto& u = msg->user();
-                mapper.addUser(u.uuid());
-                LOG_TRACE_N << "Importing user " << u.uuid() << " as user " << cuser;
-            } else if (msg->has_userglobalsettings()) {
-                auto res = owner_.saveUserGlobalSettings(rctx.dbh.value(), msg->userglobalsettings(), rctx);
-            } else if (msg->has_daycolordefinitions()) {
-                // Currently set globally
-                //co_await owner_.saveDayColorDefinitions(rctx.dbh.value(), msg->daycolordefinitions(), rctx);
-            } else if (msg->has_actioncategories()) {
-                if (auto *items = msg->mutable_actioncategories()) {
-                    if (auto *rows = items->mutable_categories()) {
-                        for(auto& item : *rows) {
-                            item.set_id(mapper.actionCategory(item.id()));
-                        }
-                        co_await owner_.saveActionCategories(rctx.dbh.value(), *items, rctx);
-                    }
+        try {
+            while(true) {
+                auto msg = co_await stream->read();
+                if (!msg) {
+                    // Unexpected end of stream
+                    LOG_WARN_N << "Unexpected end of stream while importing data for user " << cuser;
+                    co_await clear_user_data();
+                    throw server_err{pb::Error::GENERIC_ERROR, "Unexpected end of stream"};
                 }
-            } else if (msg->has_days()) {
-                co_await owner_.saveDays(rctx.dbh.value(), msg->days(), rctx);
-            } else if (msg->has_nodes()) {
-                if (auto *items = msg->mutable_nodes()) {
-                    if (auto *rows = items->mutable_nodes()) {
-                        for(auto& item : *rows) {
-                            if (item.deleted()) {
-                                continue;
-                            }
-                            item.set_user(mapper.user(item.user()));
-                            item.set_uuid(mapper.addNode(item.uuid()));
-                            if (!item.parent().empty()) {
-                                item.set_parent(mapper.node(item.parent()));
-                            }
-                        }
-                        co_await owner_.saveNodes(rctx.dbh.value(), msg->nodes(), rctx);
-                    }
-                }
-            } else if (msg->has_actions()) {
-                if (auto *items = msg->mutable_actions()) {
-                    if (auto *rows = items->mutable_actions()) {
-                        for(auto& item : *rows) {
-                            if (item.status()  == pb::ActionStatus::DELETED) {
-                                continue;
-                            }
-                            item.set_id(mapper.addActionCategory(item.id()));
-                            item.set_node(mapper.node(item.node()));
-                            if (item.has_origin() && !item.origin().empty()) {
-                                item.set_origin(mapper.action(item.origin()));
-                            }
-                            if (!item.category().empty()) {
-                                item.set_category(mapper.actionCategory(item.category()));
-                            }
-                        }
-                        co_await owner_.saveActions(rctx.dbh.value(), msg->actions(), rctx);
-                    }
-                }
-            } else if (msg->has_worksessions()) {
-                if (auto * item = msg->mutable_worksessions() ) {
-                    if (auto * rows = item->mutable_sessions()) {
-                        for(auto& ws : *rows) {
-                            ws.set_id(mapper.addWorkSession(ws.id()));
-                            ws.set_user(mapper.user(ws.user()));
-                            ws.set_action(mapper.action(ws.action(), false));
-                        }
-                        co_await owner_.saveWorkSessions(rctx.dbh.value(), msg->worksessions(), rctx);
-                    }
-                }
-            } else if (msg->has_timeblocks()) {
-                if (auto * items = msg->mutable_timeblocks()) {
-                    if (auto *rows = items->mutable_blocks()) {
-                        for(auto& tb : *rows) {
-                            tb.set_id(mapper.addTimeBlock(tb.id()));
-                            tb.set_user(mapper.user(tb.user()));
-                            tb.set_category(mapper.actionCategory(tb.category()));
 
-                            // The actions in a time-block are just a list of uuid-strings.
-                            pb::StringList actions;
-                            if (auto *adder = actions.mutable_list()) {
-                                for(const auto& action : tb.actions().list()) {
-                                    adder->Add(mapper.action(action));
+                if (!action_origin.empty() && !msg->has_actions()) {
+                    auto sql = "UPDATE action SET origin=? WHERE id=?";
+
+                    auto generator = jgaa::mysqlpool::BindTupleGenerator(action_origin,
+                                                                         [&] (const auto& ao) {
+                                                                             return make_tuple (
+                                                                                 toString(ao.first),
+                                                                                 mapper.action(ao.second)
+                                                                                 );
+                                                                         });
+                    try {
+                        co_await rctx.dbh->exec(sql, generator);
+                    } catch (const std::exception& ex) {
+                        LOG_ERROR_EX(rctx) << "Failed to update actions origin: " << ex.what();
+                        throw server_err{pb::Error::GENERIC_ERROR, "Failed to actions origin"};
+                    }
+                    action_origin.clear();
+                };
+
+                if (msg->has_user()) {
+                    const auto& u = msg->user();
+                    mapper.addUser(u.uuid());
+                    LOG_TRACE_N << "Importing user " << u.uuid() << " as user " << cuser;
+                } else if (msg->has_userglobalsettings()) {
+                    auto res = owner_.saveUserGlobalSettings(rctx.dbh.value(), msg->userglobalsettings(), rctx);
+                } else if (msg->has_daycolordefinitions()) {
+                    // Currently set globally
+                    //co_await owner_.saveDayColorDefinitions(rctx.dbh.value(), msg->daycolordefinitions(), rctx);
+                } else if (msg->has_actioncategories()) {
+                    if (auto *items = msg->mutable_actioncategories()) {
+                        if (auto *rows = items->mutable_categories()) {
+                            for(auto& item : *rows) {
+                                item.set_id(mapper.addActionCategory(item.id()));
+                            }
+                            co_await owner_.saveActionCategories(rctx.dbh.value(), *items, rctx);
+                        }
+                    }
+                } else if (msg->has_days()) {
+                    co_await owner_.saveDays(rctx.dbh.value(), msg->days(), rctx);
+                } else if (msg->has_nodes()) {
+                    if (auto *items = msg->mutable_nodes()) {
+                        if (auto *rows = items->mutable_nodes()) {
+                            for(auto& item : *rows) {
+                                item.set_user(mapper.user(item.user()));
+                                item.set_uuid(mapper.addNode(item.uuid()));
+                                if (!item.parent().empty()) {
+                                    const auto parent = mapper.node(item.parent(), false);
+                                    if (parent.empty()) {
+                                        // Delay until all nodes are imported
+                                        node_parent.emplace_back(toUuid(item.uuid()), toUuid(item.parent()));
+                                    } else {
+                                        item.set_parent(parent);
+                                    }
                                 }
                             }
-                            if (auto *a = tb.mutable_actions() ) {
-                                a->CopyFrom(std::move(actions));
-                            };
-                        }
 
-                        co_await owner_.saveTimeBlocks(rctx.dbh.value(), msg->timeblocks(), rctx);
+                            co_await owner_.saveNodes(rctx.dbh.value(), msg->nodes(), rctx);
+                        }
                     }
+                } else if (msg->has_actions()) {
+                    if (auto *items = msg->mutable_actions()) {
+                        if (auto *rows = items->mutable_actions()) {
+                            for(auto& item : *rows) {
+                                item.set_id(mapper.addAction(item.id()));
+                                item.set_node(mapper.node(item.node()));
+                                if (item.has_origin() && !item.origin().empty()) {
+                                    auto origin = mapper.action(item.origin(), false);
+                                    if (!origin.empty()) {
+                                        item.set_origin(mapper.action(item.origin()));
+                                    } else {
+                                        // Delay until all actions are imported
+                                        action_origin.emplace_back(toUuid(item.id()), toUuid(item.origin()));
+                                    }
+                                }
+                                if (!item.category().empty()) {
+                                    item.set_category(mapper.actionCategory(item.category()));
+                                }
+                            }
+                            co_await owner_.saveActions(rctx.dbh.value(), msg->actions(), rctx);
+                        }
+                    }
+                } else if (msg->has_worksessions()) {
+                    if (auto * item = msg->mutable_worksessions() ) {
+                        if (auto * rows = item->mutable_sessions()) {
+                            for(auto& ws : *rows) {
+                                ws.set_id(mapper.addWorkSession(ws.id()));
+                                ws.set_user(mapper.user(ws.user()));
+                                ws.set_action(mapper.action(ws.action()));
+                            }
+                            co_await owner_.saveWorkSessions(rctx.dbh.value(), msg->worksessions(), rctx);
+                        }
+                    }
+                } else if (msg->has_timeblocks()) {
+                    if (auto * items = msg->mutable_timeblocks()) {
+                        if (auto *rows = items->mutable_blocks()) {
+                            for(auto& tb : *rows) {
+                                tb.set_id(mapper.addTimeBlock(tb.id()));
+                                tb.set_user(mapper.user(tb.user()));
+                                tb.set_category(mapper.actionCategory(tb.category()));
+
+                                // The actions in a time-block are just a list of uuid-strings.
+                                pb::StringList actions;
+                                if (auto *adder = actions.mutable_list()) {
+                                    for(const auto& action : tb.actions().list()) {
+                                        auto mapped_action = mapper.action(action, false);
+                                        if (!mapped_action.empty()) {
+                                            adder->Add(std::move(mapped_action));
+                                        } else {
+                                            LOG_DEBUG_EX(rctx) << "Action " << action << " not found in mapping-table while adding time-block actions. Skipping.";
+                                        }
+                                    }
+                                }
+                                if (auto *a = tb.mutable_actions() ) {
+                                    a->CopyFrom(std::move(actions));
+                                };
+                            }
+
+                            co_await owner_.saveTimeBlocks(rctx.dbh.value(), msg->timeblocks(), rctx);
+                        }
+                    }
+                } else if (msg->has_completed()) {
+                    // We'll get to it...
+                } else {
+                    LOG_WARN_N << "Unexpected message type in ImportData stream for user " << cuser
+                               << ", what=" << static_cast<int>(msg->what_case());
+
+                    throw server_err{pb::Error::GENERIC_ERROR,
+                                     format("Unexpected message type {} in ImportData stream",
+                                            static_cast<int>(msg->what_case()))};
                 }
-            } else if (msg->has_completed()) {
-                if (!msg->completed()) {
-                    LOG_INFO_N << "ImportData stream for user " << cuser
-                               << " was aborted by the user.";
-                    co_await clear_user_data();
+
+                if (msg->has_completed()) {
+                    if (!msg->completed()) {
+                        LOG_INFO_N << "ImportData stream for user " << cuser
+                                   << " was aborted by the user.";
+                        co_await clear_user_data();
+                    }
+                    auto last = co_await stream->read();
+                    if (last) {
+                        LOG_WARN_N << "Unexpected message after completed in ImportData stream for user " << cuser
+                                   << ", what=" << static_cast<int>(last->what_case());
+                    }
+
+                    LOG_DEBUG_EX(rctx) << "ImportData stream completed successfully. Now proceeding with post-linking steps...";
+                    break;
                 }
-                auto last = co_await stream->read();
-                if (last) {
-                    LOG_WARN_N << "Unexpected message after completed in ImportData stream for user " << cuser
-                               << ", what=" << static_cast<int>(last->what_case());
+            } // while ...
+
+            // Link nodes that failed early lookup to their parents
+            if (!node_parent.empty()) {
+                auto sql = "UPDATE node SET parent=? WHERE id=?";
+
+                auto generator = jgaa::mysqlpool::BindTupleGenerator(node_parent,
+                    [&] (const auto& np) {
+                        return make_tuple (
+                            mapper.node(np.second),
+                            toString(np.first)
+                        );
+                    });
+
+                try {
+                    co_await rctx.dbh->exec(sql, generator);
+                } catch (const std::exception& ex) {
+                    LOG_ERROR_EX(rctx) << "Failed to update node parents: " << ex.what();
+                    throw server_err{pb::Error::GENERIC_ERROR, "Failed to update node parents"};
                 }
-                co_return;
-             } else {
-                LOG_WARN_N << "Unexpected message type in ImportData stream for user " << cuser
-                           << ", what=" << static_cast<int>(msg->what_case());
             }
+        } catch (const exception& ex) {
+            LOG_DEBUG_EX(rctx) << "Exception while importing data: " << ex.what();
+            eptr = std::current_exception();
+        }
+
+        if (eptr) {
+            co_await clear_user_data();
+            std::rethrow_exception(eptr);
         }
 
         co_return;
@@ -944,22 +1041,23 @@ ORDER BY t.id;
         co_await owner_.exportDays(0, dbh, flush, rctx);
 
         // Nodes
-        co_await owner_.exportNodes(0, dbh, flush, rctx);
+        co_await owner_.exportNodes(0, dbh, flush, rctx, true);
 
         // Categories
         msg.Clear();
         msg.set_error(pb::Error::OK);
         msg.mutable_actioncategories()->CopyFrom(
             co_await owner_.getActionCategories(dbh, rctx.uctx->userUuid()));
+        co_await stream->sendMessage(std::move(msg), boost::asio::use_awaitable);
 
         // Actions
-        co_await owner_.exportActions(0, dbh, flush, rctx);
+        co_await owner_.exportActions(0, dbh, flush, rctx, true);
 
         // Work sessions
-        co_await owner_.exportWork(0, dbh, flush, rctx);
+        co_await owner_.exportWork(0, dbh, flush, rctx, true);
 
         // Time blocks
-        co_await owner_.exportTimeBlocks(0, dbh, flush, rctx);
+        co_await owner_.exportTimeBlocks(0, dbh, flush, rctx, true);
 
         msg.Clear();
         msg.set_error(pb::Error::OK);
