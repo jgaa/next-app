@@ -245,6 +245,15 @@ Rectangle {
             RoundButton {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillWidth: true
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/file-export.svg"
+                checkable: false
+                text: qsTr("Import/Export")
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/ImportExport.qml", appWindow, {});
+            }
+
+            RoundButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
                 text: NaComm.connected ? qsTr("Disconnect") : qsTr("Connect")
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/cloud-bolt.svg"
                 checkable: false

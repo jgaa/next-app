@@ -367,7 +367,6 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
         qml/styling/SplitterStyle.qml
-    RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Solid-900.otf"
@@ -386,6 +385,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/circle.svg
         icons/fontawsome/clock.svg
         icons/fontawsome/cloud-bolt.svg
+        icons/fontawsome/file-export.svg
         icons/fontawsome/file-lines.svg
         icons/fontawsome/flag.svg
         icons/fontawsome/folder-tree.svg
@@ -419,6 +419,7 @@ qt_add_qml_module(${PROJECT_NAME}
         sounds/387351__cosmicembers__simple-ding.wav
         sounds/515643__mashedtatoes2__ding2_edit.wav
         sounds/611112__5ro4__bell-ding-2.wav
+    RESOURCES
     SOURCES
         ActionCategoriesModel.cpp
         ActionCategoriesModel.h

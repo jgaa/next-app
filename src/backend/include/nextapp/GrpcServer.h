@@ -36,14 +36,24 @@ public:
 
     std::optional<jgaa::mysqlpool::Mysqlpool::Handle> dbh;
     UserContext *uctx{};
-    std::vector<std::shared_ptr<nextapp::pb::Update>> updates;
 
-    void publishLater(std::shared_ptr<nextapp::pb::Update> update) {
-        updates.emplace_back(update);
+    struct Update {
+        Update(std::shared_ptr<nextapp::pb::Update> update, bool send_on_fail = false)
+            : update{std::move(update)}, send_on_fail{send_on_fail} {}
+
+        std::shared_ptr<nextapp::pb::Update> update;
+        bool send_on_fail = false;
+    };
+
+    std::vector<Update> updates;
+
+    void publishLater(std::shared_ptr<nextapp::pb::Update> update, bool sendOnFail = false) {
+        updates.emplace_back(update, sendOnFail);
     }
 
-    nextapp::pb::Update& publishLater(pb::Update::Operation op) {
-        return *updates.emplace_back(newUpdate(op));
+    nextapp::pb::Update& publishLater(pb::Update::Operation op, bool sendOnFail = false) {
+        auto& up = updates.emplace_back(newUpdate(op), sendOnFail);
+        return *up.update;
     }
 
     UserContext::Session& session() const noexcept {
@@ -211,18 +221,19 @@ public:
             boost::asio::co_spawn(owner_.server().ctx(),
                                   [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name, restrictedToAdmin]
                                   () mutable -> boost::asio::awaitable<void> {
+                    std::optional<RequestCtx> rctx;
                     try {
                         // Start measuring latency for this request
                         const auto latency = owner_.server().metrics().grpc_request_latency().scoped();
 
-                        RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx, allowNewSession)};
-                        LOG_TRACE_EX(rctx) << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
-                        rctx.session().touch();
+                        rctx.emplace(co_await owner_.sessionManager().getSession(ctx, allowNewSession));
+                        LOG_TRACE_EX(*rctx) << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
+                        rctx->session().touch();
 
                         if (restrictedToAdmin) {
-                            if (!rctx.uctx->isAdmin()) {
+                            if (!rctx->uctx->isAdmin()) {
                                 LOG_WARN << "Request [" << name << "] Restricted to admin. User "
-                                         << rctx.uctx->userUuid() <<  " is not an admin.";
+                                         << rctx->uctx->userUuid() <<  " is not an admin.";
                                 if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
                                     reply->Clear();
                                     reply->set_error(nextapp::pb::Error::PERMISSION_DENIED);
@@ -239,7 +250,7 @@ public:
 
                         // We only provide reply-protection for standard rpc calls returning a Status object.
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
-                            if (co_await owner_.isReplay(ctx, rctx)) {
+                            if (co_await owner_.isReplay(ctx, *rctx)) {
                                 LOG_DEBUG << "Request [" << name << "] is a replay.";
                                 reply->Clear();
                                 reply->set_error(nextapp::pb::Error::REPLAY_DETECTED);
@@ -252,16 +263,9 @@ public:
                         if constexpr (UnaryFnWithoutContext<FnT, ReplyT>) {
                             co_await fn(reply);
                         } else if constexpr (UnaryFnWithContext<FnT, ReplyT>) {
-                            rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
-                            co_await fn(reply, rctx);
-                            if (!rctx.updates.empty()) {
-                                LOG_TRACE << std::format("Publishing {} delayed updates to user {} for {}.",
-                                                         rctx.updates.size(), name, rctx.uctx->userUuid());
-
-                                for (auto& update : rctx.updates) {
-                                    rctx.uctx->publish(update);
-                                }
-                            }
+                            rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
+                            co_await fn(reply, *rctx);
+                            owner_.publishUpdates(*rctx);
                         } else if constexpr (!UnaryFnWithoutContext<FnT, ReplyT *> && !UnaryFnWithContext<FnT, ReplyT *>) {
                             static_assert(false, "Invalid unary handler function");
                         }
@@ -270,23 +274,35 @@ public:
                     } catch (const server_err& ex) {
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
                             LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
+                            if (rctx) {
+                                owner_.publishUpdates(*rctx, true);
+                            }
                             reply->Clear();
                             reply->set_error(ex.error());
                             reply->set_message(ex.what());
                             reactor->Finish(::grpc::Status::OK);
                         } else {
                             LOG_WARN << "Request [" << name << "] Caught server_err exception while handling grpc request coro: " << ex.what();
+                            if (rctx) {
+                                owner_.publishUpdates(*rctx, true);
+                            }
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
                     } catch (const std::exception& ex) {
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
                             LOG_DEBUG << "Request [" << name << "] Caught exception while handling grpc request: " << ex.what();
+                            if (rctx) {
+                                owner_.publishUpdates(*rctx, true);
+                            }
                             reply->Clear();
                             reply->set_error(nextapp::pb::Error::GENERIC_ERROR);
                             reply->set_message(ex.what());
                             reactor->Finish(::grpc::Status::OK);
                         } else {
                             LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
+                            if (rctx) {
+                                owner_.publishUpdates(*rctx, true);
+                            }
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
                     }
@@ -312,30 +328,28 @@ public:
               () mutable -> boost::asio::awaitable<void> {
                   nextapp::pb::Status err_reply;
                   ::grpc::Status finish_status;
+                  std::optional<RequestCtx> rctx;
                   try {
                       LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
-                      RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx)};
-                      rctx.session().touch();
-                      rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
-                      co_await fn(stream, rctx);
-                      if (!rctx.updates.empty()) {
-                          LOG_TRACE << std::format("Publishing {} delayed updates to user {} for {}.",
-                                                   rctx.updates.size(), name, rctx.uctx->userUuid());
-
-                          for (auto& update : rctx.updates) {
-                              rctx.uctx->publish(update);
-                          }
-                      }
+                      rctx.emplace(co_await owner_.sessionManager().getSession(ctx));
+                      rctx->session().touch();
+                      rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
+                      co_await fn(stream, *rctx);
+                      owner_.publishUpdates(*rctx);
                       LOG_TRACE << "Finished reply stream [" << name << "]: ";
                       goto done;
                   } catch (const server_err& ex) {
                       LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
+                      if (rctx) {
+                          owner_.publishUpdates(*rctx, true);
+                      }
                       err_reply.set_error(ex.error());
                       err_reply.set_message(ex.what());
                       finish_status = {::grpc::Status::CANCELLED};
                   } catch (const std::exception& ex) {
                       LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
+
                       err_reply.set_error(nextapp::pb::Error::GENERIC_ERROR);
                       err_reply.set_message(ex.what());
                       finish_status = {::grpc::Status::CANCELLED};
@@ -363,37 +377,36 @@ public:
 
             auto stream = make_client_streamer<ReqT>(ctx, owner_.server().ctx(), owner_);
             stream->start();
-
             boost::asio::co_spawn(owner_.server().ctx(),
               [this, reply, ctx, stream, fn=std::move(fn), name]
               () mutable -> boost::asio::awaitable<void> {
                   ::grpc::Status finish_status;
+                  std::optional<RequestCtx> rctx;
                   try {
                       LOG_TRACE << "Request [" << name << "]";
 
-                      RequestCtx rctx{co_await owner_.sessionManager().getSession(ctx)};
-                      rctx.session().touch();
-                      rctx.dbh.emplace(co_await owner_.server().db().getConnection(rctx.uctx->dbOptions()));
-                      co_await fn(stream, rctx);
+                      rctx.emplace(co_await owner_.sessionManager().getSession(ctx));
+                      rctx->session().touch();
+                      rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
+                      co_await fn(stream, *rctx);
                       co_await stream->finish();
-                      if (!rctx.updates.empty()) {
-                          LOG_TRACE << std::format("Publishing {} delayed updates to user {} for {}.",
-                                                   rctx.updates.size(), name, rctx.uctx->userUuid());
-
-                          for (auto& update : rctx.updates) {
-                              rctx.uctx->publish(update);
-                          }
-                      }
+                      owner_.publishUpdates(*rctx);
                       LOG_TRACE << "Finished client stream [" << name << "]: ";
                       goto done;
                   } catch (const server_err& ex) {
                       LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
+                      if (rctx) {
+                          owner_.publishUpdates(*rctx, true);
+                      }
                       reply->Clear();
                       reply->set_error(ex.error());
                       reply->set_message(ex.what());
                       finish_status = {::grpc::Status::OK};
                   } catch (const std::exception& ex) {
                       LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
+                      if (rctx) {
+                          owner_.publishUpdates(*rctx, true);
+                      }
                       reply->Clear();
                       reply->set_error(nextapp::pb::Error::GENERIC_ERROR);
                       reply->set_message(ex.what());
@@ -403,7 +416,7 @@ public:
                   assert(reply->error() != nextapp::pb::Error::OK);
               done:
                   // Ignored if the stream is already closed.
-                  LOG_TRACE << "Request [" << name << "] Exiting unary handler.";
+                  LOG_TRACE << "Request [" << name << "] Exiting client-stream handler.";
 
               }, boost::asio::detached);
 
@@ -563,6 +576,21 @@ public:
     boost::asio::awaitable<void> saveTimeBlocks(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::TimeBlocks& timeblocks, RequestCtx& rctx);
 
 private:
+
+    void publishUpdates(RequestCtx& rctx, bool failed = false) {
+        try {
+            LOG_TRACE_EX(rctx) << "Publishing updates.";
+            for (auto& update : rctx.updates) {
+                if (failed && !update.send_on_fail) {
+                    LOG_TRACE_EX(rctx) << "Skipping update on failure: " << update.update->DebugString();
+                    continue;
+                }
+                rctx.uctx->publish(update.update);
+            }
+        } catch (const std::exception& ex) {
+            LOG_ERROR_EX(rctx) << "Failed to publish updates: " << ex.what();
+        }
+    }
 
     // The Server instance where we get objects in the application, like config and database
     Server& server_;

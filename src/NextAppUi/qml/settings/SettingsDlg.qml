@@ -15,6 +15,29 @@ Dialog {
     standardButtons: Dialog.Ok | Dialog.Cancel
     title: qsTr("Settings")
 
+    Connections {
+        target: NaComm
+        function onResynching() {
+            //root.close()
+            fadeOut.start()
+        }
+    }
+
+    SequentialAnimation {
+        id: fadeOut
+        NumberAnimation {
+            target: root;
+            property: "opacity";
+            to: 0.0;
+            duration: 300
+        }
+        ScriptAction { script: root.close() }
+    }
+
+    onClosed: {
+        root.opacity = 1.0
+    }
+
     ColumnLayout {
         anchors.margins: 20
         anchors.fill: parent

@@ -399,7 +399,13 @@ boost::asio::awaitable<bool> GrpcServer::saveUserGlobalSettings(
         "ON DUPLICATE KEY UPDATE settings = ?",
         rctx.uctx->dbOptions(), rctx.uctx->userUuid(), blob, blob);
 
-    co_return res.affected_rows() == 1 ;
+    if (res.affected_rows() > 0) {
+        pb::UserGlobalSettings settings;
+        co_await getGlobalSettings(settings, rctx);
+        sessionManager().setUserSettings(toUuid(rctx.uctx->userUuid()), settings);
+    }
+
+    co_return res.affected_rows() > 0;
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetOtpForNewDevice(
@@ -810,6 +816,9 @@ ORDER BY t.id;
             co_await rctx.dbh->exec("DELETE FROM user_settings WHERE user = ?", cuser);
         };
 
+        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED, true);
+        update.set_resync(true);
+
         co_await clear_user_data();
 
         std::exception_ptr eptr;
@@ -848,7 +857,7 @@ ORDER BY t.id;
                     mapper.addUser(u.uuid());
                     LOG_TRACE_N << "Importing user " << u.uuid() << " as user " << cuser;
                 } else if (msg->has_userglobalsettings()) {
-                    auto res = owner_.saveUserGlobalSettings(rctx.dbh.value(), msg->userglobalsettings(), rctx);
+                    co_await owner_.saveUserGlobalSettings(rctx.dbh.value(), msg->userglobalsettings(), rctx);
                 } else if (msg->has_daycolordefinitions()) {
                     // Currently set globally
                     //co_await owner_.saveDayColorDefinitions(rctx.dbh.value(), msg->daycolordefinitions(), rctx);
@@ -1063,7 +1072,6 @@ ORDER BY t.id;
         msg.set_error(pb::Error::OK);
         msg.set_hasmore(false); // No more messages to send
         co_await stream->sendMessage(std::move(msg), boost::asio::use_awaitable);
-
     }, __func__);
 }
 

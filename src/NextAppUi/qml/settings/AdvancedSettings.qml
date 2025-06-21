@@ -119,10 +119,23 @@ ScrollView {
             color: "red"
         }
 
-        CheckBox {
-            id: resync
-            text: qsTr("Do a full re-synch when\nconnecting to the server")
-            checked: settings.value("sync/resync") === "true"
+        ColumnLayout {
+
+            CheckBox {
+                id: resync
+                text: qsTr("Do a full resynch when\nconnecting to the server")
+                checked: settings.value("sync/resync") === "true"
+            }
+
+            Button {
+                id: resynchNow
+                text: qsTr(qsTr("Resynch Now"))
+                onClicked: {
+                    NaComm.resync()
+                    resynchNow.enabled = false
+                    resync.enabled = false
+                }
+            }
         }
 
         Label {

@@ -715,7 +715,7 @@ message Update {
     }
 
     Operation op = 2;
-    uint32 messageId = 3; // An incremental id for the message. Resets to 1 when teh server starts.
+    uint32 messageId = 3; // An incremental id for the message. Resets to 1 when the server starts.
 
     oneof what {
         PingResp ping = 10;
@@ -733,6 +733,7 @@ message Update {
         uint32 lastReadNotificationId = 23;
         Reload reload = 24;
         bool accountDeleted = 25; // The user account has been deleted
+        bool resync = 26; // The client should resync the data
     }
 }
 

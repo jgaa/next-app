@@ -14,6 +14,29 @@ Dialog {
     width: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.width, 450) : 100
     height: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.height - 10, 650) : 100
 
+    Connections {
+        target: NaComm
+        function onResynching() {
+            //root.close()
+            fadeOut.start()
+        }
+    }
+
+    SequentialAnimation {
+        id: fadeOut
+        NumberAnimation {
+            target: root;
+            property: "opacity";
+            to: 0.0;
+            duration: 300
+        }
+        ScriptAction { script: root.close() }
+    }
+
+    onClosed: {
+        root.opacity = 1.0
+    }
+
     ColumnLayout {
         id: contentLayout
         anchors.fill: parent

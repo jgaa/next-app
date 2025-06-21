@@ -1365,6 +1365,13 @@ void ServerComm::onUpdateMessage()
                 });
             }
 
+            if (msg->hasResync() && msg->resync()) {
+                LOG_INFO_N << "Received resync request from server";
+                QTimer::singleShot(500ms, [this]() {
+                    resync();
+                });
+            }
+
             emit onUpdate(std::move(msg));
         }
     } catch (const exception& ex) {
@@ -1693,7 +1700,7 @@ failed:
         }
 
         LOG_DEBUG_N << "Fetching global settings...";
-        if (!co_await getGlobalSetings()) {
+        if (!co_await fetchGlobalSettings(full_sync)) {
             LOG_WARN_N << "Failed to get global settings.";
             goto failed;
         }
@@ -1961,12 +1968,12 @@ QCoro::Task<bool> ServerComm::getDataVersions()
     co_return false;
 }
 
-QCoro::Task<bool> ServerComm::getGlobalSetings()
+QCoro::Task<bool> ServerComm::fetchGlobalSettings(bool overwrite)
 {
     auto res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetUserGlobalSettings);
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasUserGlobalSettings()) {
-            if (res.userGlobalSettings().version() >= userGlobalSettings_.version()) {
+            if (overwrite || (res.userGlobalSettings().version() >= userGlobalSettings_.version())) {
                 userGlobalSettings_ = res.userGlobalSettings();
                 LOG_DEBUG_N << "Received global user-settings";
                 emit globalSettingsChanged();
@@ -2400,6 +2407,23 @@ void ServerComm::resetSignupStatus() {
     signup_status_ = SIGNUP_NOT_STARTED;
     stop();
     emit signupStatusChanged();
+}
+
+void ServerComm::resync()
+{
+    LOG_INFO_N << tr("Resynching with the server.");
+    clearMessages();
+    addMessage(tr("Initiating full resynch with the server"));
+    emit resynching();
+    stop();
+
+    QSettings settings;
+    settings.setValue("sync/resync", "true");
+
+    QTimer::singleShot(1000, this, [this]() {
+        LOG_DEBUG_N << "Starting resynch with the server.";
+        start();
+    });
 }
 
 bool ServerComm::canConnect() const noexcept

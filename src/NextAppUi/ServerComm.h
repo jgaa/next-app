@@ -184,6 +184,10 @@ public:
     }
     Q_INVOKABLE QStringList getRegionsForSignup() const;
 
+    /*! Resynch with the server */
+    Q_INVOKABLE void resync();
+
+
     static ServerComm& instance() noexcept {
         assert(instance_);
         return *instance_;
@@ -320,6 +324,7 @@ signals:
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void signupStatusChanged();
     void messagesChanged();
+    void resynching();
 
 private:
     void onReachabilityChanged(QNetworkInformation::Reachability reachability);
@@ -622,7 +627,7 @@ private:
 
     QCoro::Task<void> startNextappSession();
     QCoro::Task<bool> getDataVersions();
-    QCoro::Task<bool> getGlobalSetings();
+    QCoro::Task<bool> fetchGlobalSettings(bool overwrite = false);
     std::pair<QString, QString> createCsr();
     QCoro::Task<std::optional<std::pair<QString, QString>>> createCsrAsync();
     QString toString(const QGrpcStatus& ex);

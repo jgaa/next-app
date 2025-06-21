@@ -314,7 +314,7 @@ int main(int argc, char *argv[])
 
         qInstallMessageHandler(logQtMessages);
         LOG_INFO << app_name << ' ' << NEXTAPP_UI_VERSION << " starting up.";
-        LOG_DEBUG << "Configuration from '" << settings.fileName() << "'";
+        LOG_INFO << "Configuration from '" << settings.fileName() << "'";
 
 #ifdef USE_ANDROID_UI
         if (style.empty()) {
