@@ -17,7 +17,7 @@ VERSION="$(grep -oP 'VERSION \\K[0-9]+\\.[0-9]+\\.[0-9]+' "$CMAKEFILE" || true)"
 cat << 'EOF' > eu.lastviking.NextApp.desktop
 [Desktop Entry]
 Name=NextApp
-Comment=Example Flatpak of NextApp
+Comment=Your Personal Organizer
 Exec=nextapp
 Icon=eu.lastviking.NextApp
 Terminal=false
