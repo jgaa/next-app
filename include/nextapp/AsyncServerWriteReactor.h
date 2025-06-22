@@ -125,7 +125,7 @@ public:
     void OnDone() override {
         {
             std::lock_guard lock{mutex_};
-            if (state_ == IoState::WAITING_ON_DONE) {
+            if (state_ != IoState::WAITING_ON_DONE) {
                 LOG_WARN_N << "OnDone() called while state is not WAITING_ON_DONE. state="
                          << static_cast<int>(state_);
             }
