@@ -32,8 +32,10 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT ON)
+    set(NEXTAPP_APP_NAME "NextAppDebug")
 else()
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT OFF)
+    set(NEXTAPP_APP_NAME "NextApp")
 endif()
 
 option(NEXTAPP_DEVEL_SETTINGS "Use '-devel' postfix for the settings location to use a different profile than normal." ${NEXTAPP_DEVEL_SETTINGS_DEFAULT})
@@ -75,6 +77,32 @@ find_package(Qt6 REQUIRED COMPONENTS
     ProtobufQtCoreTypes
     ProtobufWellKnownTypes
 )
+
+if(ANDROID)
+    message(STATUS "Compiling for Android")
+    set(APP_LABEL "${NEXTAPP_APP_NAME}")
+    set(APP_LIB "${PROJECT_NAME}")
+    set(PACKAGE_NAME "eu.lastviking.${APP_LABEL}")
+    set(ANDROID_OUT_DIR    "${CMAKE_BINARY_DIR}/android")
+    file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
+
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
+      "${ANDROID_OUT_DIR}/AndroidManifest.xml"
+      @ONLY
+    )
+
+    file(COPY
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/res"
+      DESTINATION ${ANDROID_OUT_DIR}
+    )
+
+    set(QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_OUT_DIR}")
+    set(ANDROID_MIN_SDK_VERSION 31)  # Android 12
+    set(ANDROID_TARGET_SDK_VERSION 35)
+    add_definitions(-DQT_NO_STATX)
+endif()
+
 
 qt_standard_project_setup()
 
@@ -186,15 +214,6 @@ qt_add_executable(${PROJECT_NAME}
     logging.h
 )
 
-if(ANDROID)
-    set(ANDROID_MIN_SDK_VERSION 31)  # Android 12
-    set(ANDROID_TARGET_SDK_VERSION 35)
-    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android")
-    set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_PACKAGE_SOURCE_DIR}")
-    add_definitions(-DQT_NO_STATX)
-endif()
-
-
 target_include_directories(${PROJECT_NAME} PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<INSTALL_INTERFACE:include>
@@ -261,6 +280,10 @@ else()
     FetchContent_MakeAvailable(android_openssl)
     set(OPENSSL_INCLUDE "${android_openssl_SOURCE_DIR}/ssl_3/include")
     include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
+    add_android_openssl_libraries(${PROJECT_NAME})
+    get_target_property(QT_ANDROID_EXTRA_LIBS_VALUE ${PROJECT_NAME} QT_ANDROID_EXTRA_LIBS)
+    message("OPENSSL_INCLUDE: ${OPENSSL_INCLUDE}")
+    target_include_directories(${PROJECT_NAME} PRIVATE ${OPENSSL_INCLUDE})
 endif()
 
 set_source_files_properties(qml/Colors.qml
@@ -519,8 +542,11 @@ elseif (WIN32)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
 elseif (ANDROID)
-    set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
+    # set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+    #              ${CMAKE_CURRENT_SOURCE_DIR}/android)
+
+    set_property(TARGET ${PROJECT_NAME}
+          PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_OUT_DIR}")
 
     target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
     include(GNUInstallDirs)
@@ -542,16 +568,6 @@ else()
 endif()
 
 if (ANDROID)
-    message(STATUS "Compiling for Android")
-    # QT_ANDROID_BUILD_ALL_ABI=ON
-    # set(CMAKE_ANDROID_ABI arm64-v8a;armeabi-v7a;x86;x86_64)
-
-
-    add_android_openssl_libraries(${PROJECT_NAME})
-    get_target_property(QT_ANDROID_EXTRA_LIBS_VALUE ${PROJECT_NAME} QT_ANDROID_EXTRA_LIBS)
-
-    message("OPENSSL_INCLUDE: ${OPENSSL_INCLUDE}")
-    target_include_directories(${PROJECT_NAME} PRIVATE ${OPENSSL_INCLUDE})
     set(OPEN_SSL_DEPS ${QT_ANDROID_EXTRA_LIBS_VALUE})
 else ()
     set(OPEN_SSL_DEPS OpenSSL::SSL OpenSSL::Crypto)
@@ -631,50 +647,3 @@ elseif(WIN32)
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )
 endif()
-
-
-# if(ANDROID)
-#     # set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-#     #              ${CMAKE_CURRENT_SOURCE_DIR}/android)
-#     # 
-#     # target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
-#     # include(GNUInstallDirs)
-#     # install(TARGETS ${PROJECT_NAME}
-#     #     BUNDLE DESTINATION .
-#     #     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-#     #     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-#     # )
-# elseif(APPLE)
-#     # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-#     # If you are developing for iOS or macOS you should consider setting an
-#     # explicit, fixed bundle identifier manually though.
-#     # set_target_properties(${PROJECT_NAME} PROPERTIES
-#     #     MACOSX_BUNDLE_GUI_IDENTIFIER eu.lastviking.nextapp
-#     #     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-#     #     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-#     #     MACOSX_BUNDLE TRUE
-#     # )
-# elseif (WIN32)
-#     set_target_properties(${PROJECT_NAME} PROPERTIES
-#         WIN32_EXECUTABLE TRUE
-#     )
-# else()
-#     include(GNUInstallDirs)
-# 
-#     install(
-#         TARGETS ${PROJECT_NAME}
-#         COMPONENT Application
-#         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-#     )
-#     # include(InstallRequiredSystemLibraries)
-#     # set(CPACK_GENERATOR "TGZ")
-#     # set(CPACK_PACKAGE_NAME "nextapp")
-#     # set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-#     # set(CPACK_PACKAGE_CONTACT "jgaa@jgaa.com")
-#     #
-#     # install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
-#     # install(DIRECTORY ${CMAKE_PREFIX_PATH}/lib DESTINATION lib)
-#     #
-#     # include(CPack)
-# endif()
-

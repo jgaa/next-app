@@ -1,27 +1,37 @@
 <?xml version="1.0"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="eu.lastviking.appNextAppUi" android:versionCode="-- %%INSERT_VERSION_CODE%% --" android:versionName="">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="@PACKAGE_NAME@"
+    android:versionCode="-- %%INSERT_VERSION_CODE%% --"
+    android:versionName="">
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.CAMERA"/>
-    <uses-permission android:name="android.permission.READ_CONTACTS"/>
-    <uses-permission android:name="android.permission.SEND_SMS"/>
 
     <!-- %%INSERT_PERMISSIONS -->
 
     <!-- %%INSERT_FEATURES -->
 
     <!-- Required Qt metadata -->
-    <application android:name="org.qtproject.qt.android.bindings.QtApplication" android:hardwareAccelerated="true" android:label="appNextAppUi" android:requestLegacyExternalStorage="true" android:allowBackup="true" android:fullBackupOnly="false" android:icon="@drawable/icon">
-            <activity android:name="org.qtproject.qt.android.bindings.QtActivity" android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density" android:launchMode="singleTop" android:screenOrientation="unspecified" android:exported="true" android:label="">
+    <application android:name="org.qtproject.qt.android.bindings.QtApplication"
+        android:hardwareAccelerated="true"
+        android:label="@APP_LABEL@"
+        android:requestLegacyExternalStorage="true"
+        android:allowBackup="true"
+        android:fullBackupOnly="false"
+        android:icon="@drawable/icon">
+        <activity android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:launchMode="singleTop"
+            android:screenOrientation="unspecified"
+            android:exported="true" android:label="@APP_LABEL@">
             <intent-filter>
                     <action android:name="android.intent.action.MAIN"/>
                     <category android:name="android.intent.category.LAUNCHER"/>
                 </intent-filter>
-            <meta-data android:name="android.app.lib_name" android:value="appNextAppUi"/>
+            <meta-data android:name="android.app.lib_name" android:value="@APP_LIB@"/>
             <meta-data android:name="android.app.arguments" android:value=""/>
         </activity>
 

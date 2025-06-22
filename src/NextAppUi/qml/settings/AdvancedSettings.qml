@@ -33,9 +33,9 @@ ScrollView {
     }
 
     GridLayout {
-        width: parent.width
+        width: root.width - 15
         rowSpacing: 4
-        columns: 2
+        columns: width >= 350 ? 2 : 1
 
         Label {
             text: qsTr("Log Level\n(Application)")

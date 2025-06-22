@@ -124,7 +124,6 @@ ColumnLayout  {
 
         Button {
             text: qsTr("Connect")
-            visible: !nextBtn.visible
             onClicked: {
                 settings.serverAddress = address.text
                 NaComm.setSignupServerAddress(settings.serverAddress)
