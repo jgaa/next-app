@@ -42,7 +42,7 @@ ScrollView {
         Label { text: qsTr("Page Size")}
         DlgInputField {
             id: pageSize
-            text: settings.value("pagination/page_size", 100)
+            text: settings.value("pagination/page_size", 500)
             //placeholderText: qsTr("20 - 200");
             Layout.preferredWidth: 80
         }

@@ -98,9 +98,12 @@ private:
     };
 
     nextapp::pb::TimeBlock *getTb();
+    nextapp::pb::TimeBlock *getTb() const;
     void reSync();
     void resetState();
     void onSynched();
+
+    QString toString() const;
 
     QUuid uuid_;
     QQuickItem* timeBox_{};

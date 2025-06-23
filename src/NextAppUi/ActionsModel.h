@@ -129,7 +129,7 @@ class ActionsModel : public QAbstractListModel
 
     private:
         static constexpr int first_page_val_  = 1;
-        uint page_size_ = QSettings{}.value("pagination/page_size", 100).toInt();
+        uint page_size_ = QSettings{}.value("pagination/page_size", 500).toInt();
     };
 
     enum Roles {

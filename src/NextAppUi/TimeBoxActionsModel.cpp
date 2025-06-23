@@ -70,10 +70,10 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
     });
 
     connect(this, &TimeBoxActionsModel::modelAboutToBeReset, this, [this] {
-        LOG_TRACE << "TimeBoxActionsModel: modelAboutToBeReset";
+        LOG_TRACE << toString() << "TimeBoxActionsModel: modelAboutToBeReset";
     });
-    connect(this, &TimeBoxActionsModel::modelAboutToBeReset, this, [this] {
-        LOG_TRACE << "TimeBoxActionsModel: modelReset";
+    connect(this, &TimeBoxActionsModel::modelReset, this, [this] {
+        LOG_TRACE << toString() << "TimeBoxActionsModel: modelReset";
     });
 }
 
@@ -105,9 +105,16 @@ nextapp::pb::TimeBlock *TimeBoxActionsModel::getTb()
     return day_->lookupTimeBlock(uuid_);
 }
 
+nextapp::pb::TimeBlock *TimeBoxActionsModel::getTb() const
+{
+    return day_->lookupTimeBlock(uuid_);
+}
+
 void TimeBoxActionsModel::reSync()
 {
+    LOG_TRACE_N << toString() << ": Resynching ";
     if (state_ && state_->isSynching()) {
+        LOG_WARN_N << toString() << ": Resychning while resynching!";
         resetState();
     }
 
@@ -115,11 +122,13 @@ void TimeBoxActionsModel::reSync()
     state_->invalidate();
 
     // sync() may return before the synch is actually done, so we will call begin/reste state again when it has finished.
+    LOG_TRACE_N << toString() << ": Calling sync()";
     state_->sync();
 }
 
 void TimeBoxActionsModel::resetState()
 {
+    LOG_TRACE_N << toString() << ": Resetting state";
     beginResetModel();
     if (state_) {
         state_->cancel();
@@ -131,9 +140,19 @@ void TimeBoxActionsModel::resetState()
 void TimeBoxActionsModel::onSynched()
 {
     // The data has changed. Emit the signal.
+    LOG_TRACE_N << toString() << ": data changed";
     beginResetModel();
     endResetModel();
     emit actionsChanged();
+}
+
+QString TimeBoxActionsModel::toString() const
+{
+    QString date;
+    if (day_) {
+        date = day_->date().toString(Qt::ISODate);
+    }
+    return QString("TimeBoxActionsModel{uuid=%1, date=%2}").arg(uuid_.toString()).arg(date);
 }
 
 
@@ -145,7 +164,7 @@ int TimeBoxActionsModel::rowCount(const QModelIndex &parent) const
         rows = state_->tb().actions().list().size();
     }
 
-    LOG_TRACE_N << "rows: " << rows;
+    LOG_TRACE_N << toString() << " rows: " << rows;
     return rows;
 }
 

@@ -22,7 +22,7 @@ class WorkModel: public WorkModelBase
         bool more = false;
 
         void reset() {
-            page_size = QSettings{}.value("pagination/page_size", 100).toInt();
+            page_size = QSettings{}.value("pagination/page_size", 500).toInt();
             prev = 0;
             page = first_page_val_;
             more = false;

@@ -483,26 +483,10 @@ QColor ActionInfoCache::getScoreColor(double score)
 QCoro::Task<void> ActionInfoCache::updateAllScores()
 {
     auto cache_copy = hot_cache_;
+    QElapsedTimer timer;
 
-    /*  TODO: Implement batch update in the future
-        QVariantList scores, ids;
-        for (auto& [uuid, action] : cache_copy) {
-          if (…) continue;
-          scores << getScore(*action);
-          ids    << action->id_proto();
-        }
-
-        QSqlQuery q(db);
-        q.prepare("UPDATE action SET score = ? WHERE id = ?");
-        q.addBindValue(scores);
-        q.addBindValue(ids);
-
-        db.transaction();
-        if (!q.execBatch()) {
-          qWarning() << "batch update failed:" << q.lastError();
-        }
-        db.commit();
-*/
+    timer.start();
+    deque<pair<QString, float>> values;
 
     if (updating_scores_.exchange(true)) {
         for (auto& [uuid, action] : cache_copy) {
@@ -517,11 +501,28 @@ QCoro::Task<void> ActionInfoCache::updateAllScores()
             action->setScore(getScore(*action));
 
             // save to db
-            auto& db = NextAppCore::instance()->db();
-            co_await db.query("UPDATE action SET score=? WHERE id=?", new_score, action->id_proto());
+            //auto& db = NextAppCore::instance()->db();
+            //co_await db.query("UPDATE action SET score=? WHERE id=?", new_score, action->id_proto());
+            values.emplace_back(action->id_proto(), new_score);
         }
+
+        auto& db = NextAppCore::instance()->db();
+        co_await db.queryBatch("UPDATE action SET score=? WHERE id=?", "", values, [&](const auto& v) -> QList<QVariant> {
+                QList<QVariant> p;
+                p << v.second << v.first;
+                return p;
+            },
+            [](const auto&) { return false;},
+            [](const auto&) {assert(false); return ""; }
+            );
+
         updating_scores_.store(false);
     }
+
+    LOG_DEBUG_N << "Updated " << values.size() << " scores in "
+                << timer.elapsed() << "ms. Cache size: " << hot_cache_.size();
+
+    co_return;
 }
 
 QCoro::Task<std::shared_ptr<pb::ActionInfo> > ActionInfoCache::get(const QString &action_uuid, bool fetch)
