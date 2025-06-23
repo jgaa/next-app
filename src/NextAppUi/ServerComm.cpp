@@ -2292,7 +2292,11 @@ QCoro::Task<void> ServerComm::retryRequests()
             co_return;
         }
         if (rval.value().isEmpty()) {
-            LOG_DEBUG_N << "No [more] requests to retry.";
+            if (current) {
+                LOG_DEBUG_N << "No more requests to retry.";
+            } else {
+                LOG_TRACE_N << "No requests to retry.";
+            }
             co_return;
         }
 
