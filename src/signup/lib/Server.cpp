@@ -323,9 +323,11 @@ boost::asio::awaitable<void> Server::connectToInstances()
                                 LOG_ERROR << "Failed to get server-id from the instance " << instance->uuid;
                             } else {
                                 instance->server_id = server_id;
-                                co_await initializeInstance(region, *instance);
+                                //co_await initializeInstance(region, *instance);
                             }
                         }
+                        // TODO: delete and enable commented out code above when the synchronization with nextapp is done
+                        co_await initializeInstance(region, *instance);
                     }
                 }
             }
@@ -382,6 +384,13 @@ boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& r
     auto stream = conn->stub().ListTenants(&ctx, {});
     nextapp::pb::Status status;
     unsigned tenants{}, users{};
+
+    auto dbh = co_await db().getConnection();
+    auto trx = co_await dbh.transaction();
+
+    // TODO: Remove when we have proper syncronization with the instances
+    co_await dbh.exec("DELETE from tenant where instance=?", instance.uuid);
+
     while(stream->Read(&status)) {
         if (status.error() != nextapp::pb::Error::OK) {
             LOG_ERROR_N << "Failed to get tenants from the instance " << instance.uuid
@@ -398,13 +407,13 @@ boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& r
 
         ++tenants;
         LOG_TRACE << "Adding tenant " << tenant.uuid() << " from instance " << instance.uuid;
-        co_await db().exec( R"(INSERT INTO tenant (id, state, instance, region)
+        co_await dbh.exec( R"(INSERT INTO tenant (id, state, instance, region)
      VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        state    = VALUES(state),
        instance = VALUES(instance),
        region   = VALUES(region))",
-                           tenant.uuid(), tenant.state(), instance.uuid, region.uuid);
+                           tenant.uuid(), "active", instance.uuid, region.uuid);
 
         for(const auto& user : tenant.users()) {
             ++users;
@@ -412,7 +421,7 @@ boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& r
             const auto email_hash = getEmailHash(user.email());
             const string_view state = user.active() ? "active" : "inactive";
 
-            co_await db().exec(R"(INSERT INTO `user` (id, email_hash, tenant, state)
+            co_await dbh.exec(R"(INSERT INTO `user` (id, email_hash, tenant, state)
       VALUES (?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       email_hash = VALUES(email_hash),
@@ -424,7 +433,9 @@ boost::asio::awaitable<void> Server::initializeInstance(const Cluster::Region& r
 
     LOG_INFO << "Added " << tenants << " tenants and " << users << " users from instance "
              << instance.uuid << " in region " << region.uuid << ' ' << region.name;
-    co_await db().exec("UPDATE instance SET server_id = ? WHERE id = ?", instance.server_id, instance.uuid);
+    co_await dbh.exec("UPDATE instance SET server_id = ? WHERE id = ?", instance.server_id, instance.uuid);
+
+    co_await trx.commit();
 
     co_return;
 }
@@ -867,7 +878,7 @@ boost::asio::awaitable<void> Server::createDefaultNextappInstance()
 
 boost::asio::awaitable<std::optional<boost::uuids::uuid> > Server::getRegionFromUserEmail(std::string_view email)
 {
-    auto hash = getEmailHash(email);;
+    auto hash = getEmailHash(email);
 
     auto conn = co_await db().getConnection();
     auto res = co_await conn.exec("SELECT t.region FROM tenant t JOIN user u ON u.tenant = t.id WHERE u.email_hash = ?", hash);
@@ -879,7 +890,7 @@ boost::asio::awaitable<std::optional<boost::uuids::uuid> > Server::getRegionFrom
 }
 
 boost::asio::awaitable<std::optional<Server::AssignedInstance>> Server::getInstanceFromUserEmail(std::string_view email) {
-    auto hash = getEmailHash(email);;
+    auto hash = getEmailHash(email);
 
     auto conn = co_await db().getConnection();
     auto res = co_await conn.exec("SELECT t.instance FROM tenant t JOIN user u ON u.tenant = t.id WHERE u.email_hash = ?", hash);

@@ -166,6 +166,34 @@ GrpcServer::GrpcServer(Server &server)
         // replaced wit the new one. The only stable identifiers at this time is the device uuid
         // and the email.
 
+        // TODO: Remove when we have a proper way to handle this
+        // Add the tenant and user to the database
+        auto dbh = co_await owner_.server().db().getConnection();
+        auto trx = co_await dbh.transaction();
+        const auto email_hash = owner_.server().getEmailHash(req->email());
+        const auto user_id = newTenant.users(0).uuid();
+        const string_view state = "active";
+        co_await dbh.exec(
+            R"(INSERT INTO tenant (id, state, instance, region) VALUES (?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+        state = VALUES(state),
+        instance = VALUES(instance),
+        region = VALUES(region))",
+            newTenant.uuid(),
+            "active",
+            assigned_instance.instance,
+            assigned_instance.region);
+        co_await dbh.exec("DELETE FROM user WHERE email_hash = ?", email_hash);
+        co_await dbh.exec(R"(INSERT INTO `user` (id, email_hash, tenant, state)
+      VALUES (?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      email_hash = VALUES(email_hash),
+      tenant     = VALUES(tenant),
+      state      = VALUES(state))",
+            user_id, email_hash, newTenant.uuid(), state);
+
+        co_await trx.commit();
+
         co_return;
     }, __func__);
 }
