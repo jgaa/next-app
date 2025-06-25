@@ -92,10 +92,21 @@ if(ANDROID)
       @ONLY
     )
 
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/src/eu/lastviking/nextapp/QtAndroidService.java.in"
+      "${ANDROID_OUT_DIR}/src/eu/lastviking/${APP_LABEL}/QtAndroidService.java"
+      @ONLY
+    )
+
     file(COPY
       "${CMAKE_CURRENT_SOURCE_DIR}/android/res"
       DESTINATION ${ANDROID_OUT_DIR}
     )
+
+    # file(COPY
+    #   "${CMAKE_CURRENT_SOURCE_DIR}/android/src"
+    #   DESTINATION ${ANDROID_OUT_DIR}
+    # )
 
     set(QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_OUT_DIR}")
     set(ANDROID_MIN_SDK_VERSION 31)  # Android 12
@@ -608,6 +619,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Sql
         $<$<OR:$<BOOL:${WINDOWS_BUILD}>,$<BOOL:${LINUX_BUILD}>>:gRPC::grpc++>
         $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
+        $<$<BOOL:${ANDROID_BUILD}>:Qt6::CorePrivate>
         $<$<AND:$<BOOL:${USE_STATIC_QT}>,$<BOOL:${LINUX_BUILD}>>:dl>
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}

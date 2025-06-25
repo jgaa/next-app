@@ -8,10 +8,16 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QGuiApplication>
 
 #ifdef LINUX_BUILD
 #include <QDBusConnection>
 #include <QDBusInterface>
+#endif
+
+#ifdef ANDROID_BUILD
+#include <QJniObject>
+#include <QCoreApplication>
 #endif
 
 #include "SoundPlayer.h"
@@ -420,6 +426,22 @@ QCoro::Task<void> NextAppCore::modelsAreCreated()
             ServerComm::instance().start();
         }
     });
+
+#ifdef ANDROID_BUILD
+    auto context = QNativeInterface::QAndroidApplication::context();
+    if (context.isValid()) {
+        QJniObject::callStaticMethod<void>(
+            "eu.lastviking.NextAppDebug.QtAndroidService",   // TODO: dynamic!
+            "startQtAndroidService",
+            "(Landroid/content/Context;)V",
+            context.object<jobject>()
+            );
+    } else {
+        LOG_WARN_N << "No valid Android context, cannot start service";
+    }
+#else
+static_assert(false, "Android build requires QtAndroidService to be defined in AndroidManifest.xml");
+#endif
 
     co_return;
 }

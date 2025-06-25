@@ -10,6 +10,13 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <!--<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>-->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+
     <!-- %%INSERT_PERMISSIONS -->
 
     <!-- %%INSERT_FEATURES -->
@@ -41,5 +48,15 @@
 
         <!-- force software renderer -->
         <!-- <meta-data android:name="qt.environment" android:value="QML_SCENE_GRAPH_RENDERER=software"/> -->
+
+        <service
+            android:name="@PACKAGE_NAME@.QtAndroidService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback|dataSync">
+            <meta-data android:name="android.app.lib_name" android:value="service"/>
+            <meta-data android:name="android.app.background_running" android:value="true"/>
+        </service>
+
+
     </application>
 </manifest>

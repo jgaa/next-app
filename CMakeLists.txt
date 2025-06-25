@@ -21,18 +21,21 @@ endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(LINUX_BUILD ON)
   message(STATUS "Linux build")
+  add_definitions(-DLINUX_BUILD)
 endif()
 
 # Windows
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
   set(WINDOWS_BUILD ON)
   message(STATUS "Windows build")
+  add_definitions(-DWINDOWS_BUILD)
 endif()
 
 # Android
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   set(ANDROID_BUILD ON)
   message(STATUS "Android build")
+  add_definitions(-DANDROID_BUILD)
 endif()
 
 # Apple platforms (macOS vs. iOS)
@@ -41,9 +44,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   if (CMAKE_OSX_SYSROOT MATCHES "^(iphoneos|iphonesimulator)")
     set(IOS_BUILD ON)
     message(STATUS "iOS build")
+    add_definitions(-DIOS_BUILD)
   else()
     set(MACOS_BUILD ON)
     message(STATUS "macOS build")
+    add_definitions(-DMACOS_BUILD)
   endif()
 endif()
 
