@@ -392,6 +392,7 @@ QCoro::Task<void> WorkCache::remove(const QUuid &id)
 WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
 {
     using namespace nextapp;
+    const auto now = time({});
 
     // First event *must* be a start event
     if (work.events().empty()) {
@@ -490,7 +491,7 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
     if (pause_from) {
         // If we are paused, we need to account for the time between the last pause and now
         pb::WorkEvent event;
-        event.setTime(time({}));
+        event.setTime(now);
         end_pause(event);
     }
 
@@ -506,12 +507,11 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
                 work.setDuration(std::max<long>(0, duration - work.paused()));
             }
     } else {
-        const auto now = time({});
         if (now <= work.start()) {
-                work.setDuration(0);
-            } else {
-                work.setDuration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));
-            }
+            work.setDuration(0);
+        } else {
+            work.setDuration(std::min<long>(std::max<long>(0, (now - work.start()) - work.paused()), 3600 * 24 *7));
+        }
     }
 
     if (orig_state == pb::WorkSession::State::DONE) {
@@ -519,14 +519,15 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
     }
 
     Outcome outcome;
-    outcome.start = orig_start != work.start() / 60;
+    outcome.start = orig_start != (work.start() / 60);
     outcome.end = orig_end != (work.hasEnd() ? work.end() / 60 : 0);
-    outcome.duration = orig_duration != work.duration() / 60;
-    outcome.paused= orig_paused != work.paused() / 60;
+    outcome.duration = orig_duration != (work.duration() / 60);
+    outcome.paused= orig_paused != (work.paused() / 60);
     outcome.name = orig_name != work.name();
 
     LOG_TRACE << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
               << work.duration()
+              << "(" << orig_duration << "!=" << (work.duration() / 60) << ")"
               << " outcome.duration= " << outcome.duration;
 
     return outcome;
