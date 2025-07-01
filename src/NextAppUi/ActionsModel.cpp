@@ -1477,6 +1477,15 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
         return {};
     };
 
+    bool add_completed = false;
+    auto completed_if = [&]() -> string_view {
+        if (sort_ != SORT_CATEGORY_NAME) {
+            add_completed = true;
+            return " OR (a.completed_time >= ? AND a.completed_time < ?) ";
+        }
+        return {};
+    };
+
 
     // // TODO: Remove this when we consistently end a time-span at the end of a day in stad of the start of the next day.
     // const QDateTime end_of_today = QDateTime{date.addDays(1), QTime{0, 0}}.addSecs(-1);
@@ -1485,7 +1494,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     switch(mode_) {
     case FetchWhat::FW_ACTIVE:
         // Fetch all active actions with start-time before tomorrow.
-        sql = nextapp::format(R"(SELECT DISTINCT a.id FROM action a {}{} WHERE a.status={} AND a.start_time <= ? {}
+        sql = nextapp::format(R"(SELECT DISTINCT a.id FROM action a {}{} WHERE a.status={} AND a.start_time < ? {}
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
@@ -1502,40 +1511,44 @@ LIMIT {} OFFSET {})",
         // Only show todays actions and actions completed today.
         sql = nextapp::format(R"(SELECT DISTINCT a.id,
 CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a {}{}
-WHERE (a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?)
-OR a.completed_time >= ? AND a.completed_time < ?
-ORDER BY {}
-LIMIT {} OFFSET {})",
-                    join_action_name_if(),
-                    join_tags_if(),
-                    static_cast<uint>(a_status_t::ACTIVE),
-                              match,
-                    nextapp::format("{}{}", sort_completed, sorting.at(sort_)),
-                    pagination_.pageSize(), pagination_.nextOffset());
-        pushMatch();
-        params << date.startOfDay();
-        params << date.startOfDay().addDays(1);
-        params << date.startOfDay();
-        params << date.startOfDay().addDays(1);
-        break;
-
-    case FetchWhat::FW_TODAY_AND_OVERDUE:
-        sql = nextapp::format(R"(SELECT DISTINCT a.id,
-CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a {}{}
-WHERE (a.status={} {} AND a.due_by_time < ?)
-OR a.completed_time >= ? AND a.completed_time <= ?
+WHERE (a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?) {}
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
                     join_tags_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
                     match,
+                    completed_if(),
+                    nextapp::format("{}{}", sort_completed, sorting.at(sort_)),
+                    pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
+        params << date.startOfDay();
+        params << date.startOfDay().addDays(1);
+        if (add_completed) {
+            params << date.startOfDay();
+            params << date.startOfDay().addDays(1);
+        }
+        break;
+
+    case FetchWhat::FW_TODAY_AND_OVERDUE:
+        sql = nextapp::format(R"(SELECT DISTINCT a.id,
+CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a {}{}
+WHERE (a.status={} {} AND a.due_by_time < ?) {}
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                    join_action_name_if(),
+                    join_tags_if(),
+                    static_cast<uint>(a_status_t::ACTIVE),
+                    match,
+                    completed_if(),
                     nextapp::format("{}{}", sort_completed, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
         pushMatch();
         params.push_back(date.addDays(1).startOfDay());
-        params << date.startOfDay();
-        params << date.startOfDay().addDays(1);
+        if (add_completed) {
+            params << date.startOfDay();
+            params << date.startOfDay().addDays(1);
+        }
         break;
 
     case FetchWhat::FW_TOMORROW:
