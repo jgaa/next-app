@@ -21,18 +21,21 @@ endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(LINUX_BUILD ON)
   message(STATUS "Linux build")
+  add_definitions(-DLINUX_BUILD)
 endif()
 
 # Windows
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
   set(WINDOWS_BUILD ON)
   message(STATUS "Windows build")
+  add_definitions(-DWINDOWS_BUILD)
 endif()
 
 # Android
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   set(ANDROID_BUILD ON)
   message(STATUS "Android build")
+  add_definitions(-DANDROID_BUILD)
 endif()
 
 # Apple platforms (macOS vs. iOS)
@@ -41,9 +44,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   if (CMAKE_OSX_SYSROOT MATCHES "^(iphoneos|iphonesimulator)")
     set(IOS_BUILD ON)
     message(STATUS "iOS build")
+    add_definitions(-DIOS_BUILD)
   else()
     set(MACOS_BUILD ON)
     message(STATUS "macOS build")
+    add_definitions(-DMACOS_BUILD)
   endif()
 endif()
 
@@ -159,8 +164,6 @@ if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP)
     set(MYSQLPOOL_DATABASE NEXTAPP_DATABASE CACHE INTERNAL "")
     set(MYSQLPOOL_DBHOST NEXTAPP_DBHOST CACHE INTERNAL "")
     set(MYSQLPOOL_DBPORT NEXTAPP_DBPORT CACHE INTERNAL "")
-    # set(DEFAULT_MYSQLPOOL_DBUSER nextapp CACHE INTERNAL "")
-    # set(DEFAULT_MYSQLPOOL_DATABASE nextapp CACHE INTERNAL "")
     set(MYSQLPOOL_WITH_TESTS OFF CACHE INTERNAL "")
     set(MYSQLPOOL_WITH_EXAMPLES OFF CACHE INTERNAL "")
     add_subdirectory(dependencies/mysqlpool-cpp)
@@ -199,7 +202,7 @@ message(STATUS "CMake generator: ${CMAKE_GENERATOR}")
 file(WRITE "${CMAKE_BINARY_DIR}/VERSION.txt" "${NEXTAPP_VERSION}")
 file(WRITE "${CMAKE_BINARY_DIR}/GIT_COMMIT_ID.txt" "${GIT_COMMIT_ID}")
 
-if(WIN32)
+if(WINDOWS_BUILD)
     include(InstallRequiredSystemLibraries)
 
     # List of runtime DLLs to install with the app
@@ -263,7 +266,7 @@ if(WIN32)
     include(CPack)
 endif()
 
-if(APPLE)
+if(MACOS_BUILD OR IOS_BUILD)
   message("Packing for macos. SIGN_ID: ${SIGN_ID}")
   include(InstallRequiredSystemLibraries)  # for any system libs (zlib, etc.)
 
@@ -286,15 +289,5 @@ if(APPLE)
   
   set(CPACK_BUNDLE_APPLE_CERT_APP "${SIGN_ID}")
   
-# # (Optional) also have CPack sign the resulting .dmg
-# set(CPACK_DMG_SIGN            ON)
-# set(CPACK_DMG_SIGNING_IDENTITY "${SIGN_ID}")
-# set(CPACK_DMG_SIGNING_OPTIONS "--deep --verbose")
-
-
-  # (Optional) Custom background image & icon positions
-  # set(CPACK_DMG_BACKGROUND_IMAGE "${CMAKE_SOURCE_DIR}/mac/dmg_background.png")
-  # set(CPACK_DMG_DS_STORE_SETUP  "${CMAKE_SOURCE_DIR}/mac/dmg_dsstore")
-
   include(CPack)
 endif()
