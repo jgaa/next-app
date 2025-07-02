@@ -107,17 +107,6 @@ if(ANDROID)
     set(ANDROID_OUT_DIR    "${CMAKE_BINARY_DIR}/android")
     file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
 
-    configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
-      "${ANDROID_OUT_DIR}/AndroidManifest.xml"
-      @ONLY
-    )
-
-    file(COPY
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/res"
-      DESTINATION ${ANDROID_OUT_DIR}
-    )
-
 if (NEXTAPP_WITH_FCM)
     set(FCM_SERVICE
     "<service
@@ -159,6 +148,18 @@ if (NEXTAPP_WITH_FCM)
         "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
         "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h")
 endif()
+
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
+      "${ANDROID_OUT_DIR}/AndroidManifest.xml"
+      @ONLY
+    )
+
+    file(COPY
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/res"
+      DESTINATION ${ANDROID_OUT_DIR}
+    )
+
 
     set(QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_OUT_DIR}")
     set(ANDROID_MIN_SDK_VERSION 31)  # Android 12
