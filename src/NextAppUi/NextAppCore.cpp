@@ -14,6 +14,10 @@
 #include <QDBusInterface>
 #endif
 
+#ifdef WITH_FCM
+#   include "AndroidFcmBridge.h"
+#endif
+
 #include "SoundPlayer.h"
 #include "WeeklyWorkReportModel.h"
 #include "ActionCategoriesModel.h"
@@ -128,6 +132,20 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
 
     LOG_INFO << "Installing event-listener for wakup.";
     qApp->installNativeEventFilter(pef);
+#endif
+
+#ifdef WITH_FCM
+    auto &bridge = AndroidFcmBridge::instance();
+    QObject::connect(&bridge, &AndroidFcmBridge::tokenRefreshed,
+                     [](const QString &token){
+                         LOG_DEBUG_N << "New FCM token:" << token;
+                         // send to your server…
+                     });
+    QObject::connect(&bridge, &AndroidFcmBridge::messageReceived,
+                     [](const QString &id, const QString &notif, const QString &data){
+                         LOG_DEBUG_N << "Push arrived:" << id << notif << data;
+                         // show an in-app UI or fire a local notification
+                     });
 #endif
 
     connect(qApp, &QGuiApplication::applicationStateChanged, [this](Qt::ApplicationState state) {

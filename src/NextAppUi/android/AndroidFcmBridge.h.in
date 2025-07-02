@@ -1,0 +1,33 @@
+#include <QtCore/QObject>
+#include <QtCore/QDebug>
+#include <QtCore/QCoreApplication>
+
+// A simple QObject to emit signals
+class AndroidFcmBridge : public QObject {
+    Q_OBJECT
+public:
+    static AndroidFcmBridge &instance() {
+        static AndroidFcmBridge inst;
+        return inst;
+    }
+
+signals:
+    void tokenRefreshed(const QString &token);
+    void messageReceived(const QString &messageId,
+                         const QString &notification,
+                         const QString &data);
+};
+
+extern "C" {
+
+// Called when onNewToken fires
+JNIEXPORT void JNICALL
+Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnNewToken(
+    JNIEnv *env, jobject /*thiz*/, jstring jtoken);
+
+// Called when onMessageReceived fires
+JNIEXPORT void JNICALL
+Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnMessage(
+    JNIEnv *env, jobject /*thiz*/,
+    jstring jmsgId, jstring jnotif, jstring jdata);
+} // extern "C"

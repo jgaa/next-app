@@ -1,0 +1,42 @@
+package @PACKAGE_NAME@;
+
+import @PACKAGE_NAME@.R;
+
+import android.util.Log;
+import com.google.firebase.messaging.FirebaseMessagingService;
+import com.google.firebase.messaging.RemoteMessage;
+
+public class NextappFirebaseMessagingService extends FirebaseMessagingService {
+    private static final String TAG = "@APP_LABEL@FcmService";
+
+    static {
+        // Qt loads your native library automatically, but to be safe:
+        System.loadLibrary("@APP_LIB@");
+    }
+
+    @Override
+    public void onNewToken(String token) {
+        Log.d(TAG, "FCM token refreshed: " + token);
+        nativeOnNewToken(token);
+    }
+
+    @Override
+    public void onMessageReceived(RemoteMessage remoteMessage) {
+        // You can extract notification and/or data payload:
+        String notification = remoteMessage.getNotification() != null
+                ? remoteMessage.getNotification().getTitle() + "|" +
+                  remoteMessage.getNotification().getBody()
+                : "";
+        String data = remoteMessage.getData().toString();
+        Log.d(TAG, "Message received. notification=" + notification + " data=" + data);
+        nativeOnMessage(remoteMessage.getMessageId(),
+                        notification,
+                        data);
+    }
+
+    // Declare native methods—Qt will link them to your C++ functions
+    private native void nativeOnNewToken(String token);
+    private native void nativeOnMessage(String messageId,
+                                        String notification,
+                                        String data);
+}
