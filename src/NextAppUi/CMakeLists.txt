@@ -32,7 +32,7 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT ON)
-    set(NEXTAPP_APP_NAME "NextAppDebug")
+    set(NEXTAPP_APP_NAME "NextAppDevel")
 else()
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT OFF)
     set(NEXTAPP_APP_NAME "NextApp")
@@ -45,6 +45,25 @@ endif()
 option(NEXTAPP_USE_ANDROID_UI "Use Android UI. Enable to develop Android UI on the Desktop." OFF)
 if (NEXTAPP_USE_ANDROID_UI)
     add_definitions(-DUSE_ANDROID_UI)
+endif()
+
+if (ANDROID_BUILD)
+    set(NEXTAPP_APP_DOMAIN "eu.lastviking" CACHE INTERNAL "")
+    # Note, this require you to specify the location to this projects `google-services.json` in GOOGLE_SERVICES_PATH
+    # This file contains secrets, and should never be checked in as part of the source code.
+    # If you make your own version of the app, make sure you have set `NEXTAPP_APP_NAME` and `NEXTAPP_APP_DOMAIN` to
+    # the same values as the package in you `google-services.json` file.
+    option(NEXTAPP_WITH_FCM "Enable Google Firebase support" OFF)
+    if (NEXTAPP_WITH_FCM)
+        add_definitions(-DWITH_FCM)
+        if (NOT GOOGLE_SERVICES_PATH)
+            if(DEFINED ENV{GOOGLE_SERVICES_PATH})
+                set(GOOGLE_SERVICES_PATH "$ENV{GOOGLE_SERVICES_PATH}")
+            else()
+                message(FATAL_ERROR "You must specify the path to google-services.json using -DGOOGLE_SERVICES_PATH=/path/to/google-services.json")
+            endif()
+        endif()
+    endif()
 endif()
 
 if(USE_STATIC_QT)
@@ -80,9 +99,10 @@ find_package(Qt6 REQUIRED COMPONENTS
 
 if(ANDROID)
     message(STATUS "Compiling for Android")
-    set(APP_LABEL "${NEXTAPP_APP_NAME}")
+    string(TOLOWER "${NEXTAPP_APP_NAME}" APP_LABEL)
+    message(STATUS "APP_LABEL (lowercase): ${APP_LABEL}")
     set(APP_LIB "${PROJECT_NAME}")
-    set(PACKAGE_NAME "eu.lastviking.${APP_LABEL}")
+    set(PACKAGE_NAME "${NEXTAPP_APP_DOMAIN}.${APP_LABEL}")
     set(ANDROID_OUT_DIR    "${CMAKE_BINARY_DIR}/android")
     file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
 
@@ -96,6 +116,17 @@ if(ANDROID)
       "${CMAKE_CURRENT_SOURCE_DIR}/android/res"
       DESTINATION ${ANDROID_OUT_DIR}
     )
+
+if (NEXTAPP_WITH_FCM)
+    file(COPY
+      "${GOOGLE_SERVICES_PATH}"
+      DESTINATION ${ANDROID_OUT_DIR}
+    )
+    file(COPY
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/build.gradle.fcm"
+      DESTINATION ${ANDROID_OUT_DIR}/build.gradle
+    )
+endif()
 
     set(QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_OUT_DIR}")
     set(ANDROID_MIN_SDK_VERSION 31)  # Android 12
