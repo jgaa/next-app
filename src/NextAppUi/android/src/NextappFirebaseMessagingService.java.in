@@ -10,8 +10,13 @@ public class NextappFirebaseMessagingService extends FirebaseMessagingService {
     private static final String TAG = "@APP_LABEL@FcmService";
 
     static {
-        // Qt loads your native library automatically, but to be safe:
-        System.loadLibrary("@APP_LIB@");
+        Log.d(TAG, "The NextappFirebaseMessagingService class is available");
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        Log.d(TAG, "NextappFirebaseMessagingService instantiated (onCreate)");
     }
 
     @Override
@@ -34,7 +39,6 @@ public class NextappFirebaseMessagingService extends FirebaseMessagingService {
                         data);
     }
 
-    // Declare native methods—Qt will link them to your C++ functions
     private native void nativeOnNewToken(String token);
     private native void nativeOnMessage(String messageId,
                                         String notification,

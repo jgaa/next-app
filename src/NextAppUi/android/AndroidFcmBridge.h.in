@@ -6,10 +6,7 @@
 class AndroidFcmBridge : public QObject {
     Q_OBJECT
 public:
-    static AndroidFcmBridge &instance() {
-        static AndroidFcmBridge inst;
-        return inst;
-    }
+    static AndroidFcmBridge &instance();
 
 signals:
     void tokenRefreshed(const QString &token);

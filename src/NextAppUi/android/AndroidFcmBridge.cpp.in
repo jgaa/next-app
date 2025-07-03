@@ -1,16 +1,22 @@
 #include "AndroidFcmBridge.h"
+#include "logging.h"
 
+AndroidFcmBridge &AndroidFcmBridge::instance() {
+    static AndroidFcmBridge inst;
+    return inst;
+}
 
-extern "C" {
 
 // Called when onNewToken fires
 JNIEXPORT void JNICALL
 Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnNewToken(
     JNIEnv *env, jobject /*thiz*/, jstring jtoken)
 {
+    LOG_DEBUG_N << "Fcm Called";
     const char *token = env->GetStringUTFChars(jtoken, nullptr);
     QMetaObject::invokeMethod(&AndroidFcmBridge::instance(),
                               [token]() {
+                                  LOG_DEBUG_N << "Token: " <<  token;
                                   emit AndroidFcmBridge::instance().tokenRefreshed(QString::fromUtf8(token));
                               },
                               Qt::QueuedConnection);
@@ -23,6 +29,7 @@ Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnMessage(
     JNIEnv *env, jobject /*thiz*/,
     jstring jmsgId, jstring jnotif, jstring jdata)
 {
+    LOG_DEBUG_N << "Fcm Called";
     auto getString = [&](jstring js) {
         const char *s = env->GetStringUTFChars(js, nullptr);
         QString qs = QString::fromUtf8(s);
@@ -35,9 +42,12 @@ Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnMessage(
 
     QMetaObject::invokeMethod(&AndroidFcmBridge::instance(),
                               [msgId,notif,data]() {
+                              LOG_DEBUG_N << "Message received: "
+                                          << "msgId: " << msgId
+                                          << ", notif: " << notif
+                                          << ", data: " << data;
                                   emit AndroidFcmBridge::instance().messageReceived(msgId, notif, data);
                               },
                               Qt::QueuedConnection);
 }
 
-} // extern "C"

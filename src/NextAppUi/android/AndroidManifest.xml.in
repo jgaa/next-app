@@ -17,12 +17,12 @@
     <!-- Required Qt metadata -->
     <application android:name="org.qtproject.qt.android.bindings.QtApplication"
         android:hardwareAccelerated="true"
-        android:label="@APP_LABEL@"
+        android:label="@NEXTAPP_APP_NAME@"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
         android:fullBackupOnly="false"
         android:icon="@drawable/icon">
-        <activity android:name="org.qtproject.qt.android.bindings.QtActivity"
+        <activity android:name="@APP_ACTIVITY@"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:launchMode="singleTop"
             android:screenOrientation="unspecified"
@@ -39,8 +39,6 @@
                 <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/qtprovider_paths"/>
             </provider>
 
-        <!-- force software renderer -->
-        <!-- <meta-data android:name="qt.environment" android:value="QML_SCENE_GRAPH_RENDERER=software"/> -->
         @FCM_SERVICE@
     </application>
 </manifest>

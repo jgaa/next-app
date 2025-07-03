@@ -106,48 +106,56 @@ if(ANDROID)
     string(REPLACE "." "_" PACKAGE_NAME_UNDERSCORES ${PACKAGE_NAME})
     set(ANDROID_OUT_DIR    "${CMAKE_BINARY_DIR}/android")
     file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
+    set(APP_ACTIVITY "org.qtproject.qt.android.bindings.QtActivity")
 
-if (NEXTAPP_WITH_FCM)
-    set(FCM_SERVICE
-    "<service
-        android:name=\"${PACKAGE_NAME}.NextappFirebaseMessagingService\"
-        android:exported=\"false\">
-        <intent-filter>
-            <action android:name=\"com.google.firebase.MESSAGING_EVENT\" />
-        </intent-filter>
-    </service>")
+    if (NEXTAPP_WITH_FCM)
+        set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivity")
+        set(FCM_SERVICE
+        "<service
+            android:name=\"${PACKAGE_NAME}.NextappFirebaseMessagingService\"
+            android:exported=\"false\">
+            <intent-filter>
+                <action android:name=\"com.google.firebase.MESSAGING_EVENT\" />
+            </intent-filter>
+        </service>")
 
-    file(COPY
-      "${GOOGLE_SERVICES_PATH}"
-      DESTINATION ${ANDROID_OUT_DIR}
-    )
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/android/build.gradle.fcm"
-        "${ANDROID_OUT_DIR}/build.gradle"
-        COPYONLY
-    )
-    configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/src/NextappFirebaseMessagingService.java.in"
-      "${ANDROID_OUT_DIR}/src/eu/lastviking/${APP_LABEL}/NextappFirebaseMessagingService.java"
-      @ONLY
-    )
+        file(COPY
+          "${GOOGLE_SERVICES_PATH}"
+          DESTINATION ${ANDROID_OUT_DIR}
+        )
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/android/build.gradle.fcm"
+            "${ANDROID_OUT_DIR}/build.gradle"
+            COPYONLY
+        )
+        configure_file(
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivity.java.in"
+          "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivity.java"
+          @ONLY
+        )
 
-    configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.h.in"
-      "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h"
-      @ONLY
-    )
+        configure_file(
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/src/NextappFirebaseMessagingService.java.in"
+          "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/NextappFirebaseMessagingService.java"
+          @ONLY
+        )
 
-    configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.cpp.in"
-      "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
-      @ONLY
-    )
+        configure_file(
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.h.in"
+          "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h"
+          @ONLY
+        )
 
-    set (FCM_SOURCES
-        "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
-        "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h")
-endif()
+        configure_file(
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.cpp.in"
+          "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
+          @ONLY
+        )
+
+        set (FCM_SOURCES
+            "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
+            "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h")
+    endif()
 
     configure_file(
       "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
