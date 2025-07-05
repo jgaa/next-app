@@ -16,3 +16,6 @@
 [submodule "dependencies/yahat-cpp"]
 	path = dependencies/yahat-cpp
 	url = https://github.com/jgaa/yahat-cpp.git
+[submodule "dependencies/RESTinCurl"]
+	path = dependencies/RESTinCurl
+	url = https://github.com/jgaa/RESTinCurl.git
