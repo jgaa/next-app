@@ -737,7 +737,29 @@ message Update {
     }
 }
 
-message UpdatesReq{}
+message UpdatesReq{
+    message WithPush {
+        enum Kind {
+            DISABLE = 0;
+            GOOGLE = 1;
+            APPLE = 2;
+        }
+
+        Kind kind = 1;
+        string token = 2; // The push notification token
+    }
+
+    optional WithPush withPush = 1; // Optional push notification token. If unset, no push notifications are sent
+}
+
+// Some updates will be sent as push-notifications if the device has no active connection to the server.
+// This is limited to updates that relates to sounds i.e. calendar
+// events and locations that the client must be aware of.
+message PushNotification {
+    oneof what {
+        Update update = 1; // The update to send
+    }
+}
 
 message CreateTenantReq {
     Tenant tenant = 1; // Template

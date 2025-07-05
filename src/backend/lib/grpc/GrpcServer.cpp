@@ -158,7 +158,8 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
     }, __func__);
 }
 
-::grpc::ServerWriteReactor<pb::Update> *GrpcServer::NextappImpl::SubscribeToUpdates(::grpc::CallbackServerContext *context, const pb::UpdatesReq *request)
+::grpc::ServerWriteReactor<pb::Update> *GrpcServer::NextappImpl::SubscribeToUpdates(::grpc::CallbackServerContext *context,
+                                                                                    const pb::UpdatesReq *request)
 {
     if (!owner_.active()) {
         LOG_WARN << "Rejecting subscription. We are shutting down.";
@@ -185,7 +186,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             LOG_DEBUG_N << "Remote client " << uuid() << " is going...";
         }
 
-        void start() {
+        void start(const pb::UpdatesReq *req) {
             self_ = shared_from_this();
 
             try {
@@ -201,6 +202,12 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                     }
                 });
                 session->user().addPublisher(self_);
+                if (req && req->has_withpush()) {
+                    LOG_TRACE_N << "Remote client " << context_->peer()
+                              << " is subscribing to updates with push: "
+                                << owner_.toJsonForLog(*req);
+                    session->handlePushState(req->withpush());
+                }
                 session_ = session;
                 LOG_DEBUG << "Remote client " << context_->peer() << " is subscribing to updates as subscriber " << uuid()
                           << " from session " << session->sessionId()
@@ -310,7 +317,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
 
     try {
         auto handler = make_shared<ServerWriteReactorImpl>(owner_, context);
-        handler->start();
+        handler->start(request);
         return handler.get(); // The object maintains ownership over itself
     } catch (const exception& ex) {
         LOG_ERROR_N << "Caught exception while adding subscriber to update: " << ex.what();

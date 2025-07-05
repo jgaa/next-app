@@ -226,7 +226,7 @@ void UserContext::publish(std::shared_ptr<pb::Update> &update)
                 << " update to " << publishers_.size() << " subscribers, Json: "
                 << toJsonForLog(*update);
 
-    //purgeExpiredPublishers();
+    purgeExpiredPublishers();
 
     for(auto& weak_pub: publishers_) {
         if (auto pub = weak_pub.lock()) {
@@ -372,6 +372,44 @@ void UserContext::saveReplayStateForDevice(const boost::uuids::uuid &deviceId)
     boost::asio::co_spawn(Server::instance().ctx(), [self = shared_from_this(), deviceId] () -> boost::asio::awaitable<void> {
         co_await self->saveLastReqIds(deviceId);
     }, boost::asio::detached);
+}
+
+void UserContext::Session::handlePushState(const pb::UpdatesReq::WithPush &wp)
+{
+    boost::asio::co_spawn(Server::instance().ctx(), [&]() -> boost::asio::awaitable<void> {
+        co_await processPushState(wp);
+    }, boost::asio::detached);
+}
+
+boost::asio::awaitable<void> UserContext::Session::processPushState(pb::UpdatesReq::WithPush wp)
+{
+    auto db = co_await Server::instance().db().getConnection();
+    switch(wp.kind()) {
+    case pb::UpdatesReq::WithPush::Kind::UpdatesReq_WithPush_Kind_DISABLE:
+disable:
+        LOG_DEBUG_N << "Disabling push notifications for device " << deviceid_ << " for user " << user().userUuid();
+        co_await db.exec("UPDATE device SET pushType=NULL, pushToken=NULL WHERE id=? AND user=?",
+                deviceid_, user().userUuid());
+        break;
+    case pb::UpdatesReq::WithPush::Kind::UpdatesReq_WithPush_Kind_GOOGLE:
+        LOG_DEBUG_N << "Enabling Google push notifications for device " << deviceid_ << " for user " << user().userUuid();
+        if (wp.token().empty()) {
+            LOG_INFO_N << "Google push token is empty. Disabling push notifications for device " << deviceid_ << " for user " << user().userUuid();
+            goto disable;
+        }
+        co_await db.exec("UPDATE device SET pushType='google', pushToken=? WHERE id=? AND user=?",
+                wp.token(), deviceid_, user().userUuid());
+        break;
+    case pb::UpdatesReq::WithPush::Kind::UpdatesReq_WithPush_Kind_APPLE:
+        LOG_WARN_N << "Apple not supported for push notifications yet.";
+        goto disable;
+        break;
+    default:
+        LOG_WARN_N << "Unknown push notification kind: " << pb::UpdatesReq::WithPush::Kind_Name(wp.kind());
+        throw server_err{pb::Error::INVALID_ARGUMENT, "Unknown push notification kind"};
+    }
+
+    co_return;
 }
 
 void UserContext::setLastReadNotification(uint32_t id) noexcept {

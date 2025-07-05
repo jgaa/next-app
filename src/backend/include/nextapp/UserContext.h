@@ -110,11 +110,45 @@ private:
 
 class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
+
+    /*! \brief A base class for push notifications.
+     *
+     * This class is used to send push notifications to a user on a specific device.
+     * It is expected that the derived classes implement the actual push notification logic.
+     */
+    class PushNotifications {
+    public:
+        PushNotifications(boost::uuids::uuid userid, boost::uuids::uuid deviceid)
+            : userid_{std::move(userid)}, deviceid_{std::move(deviceid)} {}
+
+        virtual ~PushNotifications() = default;
+        PushNotifications(const PushNotifications&) = delete;
+        PushNotifications& operator=(const PushNotifications&) = delete;
+
+        virtual void setToken(const std::string& token) = 0;
+        virtual std::string getToken() const = 0;
+        virtual void sendNotification(const nextapp::pb::PushNotification& pn) = 0;
+        virtual void close() = 0;
+
+        const boost::uuids::uuid& userId() const noexcept {
+            return userid_;
+        }
+
+        const boost::uuids::uuid& deviceId() const noexcept {
+            return deviceid_;
+        }
+
+    private:
+        boost::uuids::uuid userid_;
+        boost::uuids::uuid deviceid_;
+    };
+
     class Device {
     public:
         using value_t = std::optional<uint32_t>;
         using values_t = ValueContainer<value_t, 10>;
         values_t last_request_id;
+        std::shared_ptr<PushNotifications> push_notifications_;
     };
 
     class Session : public std::enable_shared_from_this<Session> {
@@ -169,7 +203,11 @@ public:
             return std::chrono::steady_clock::now() - created;
         };
 
+        void handlePushState(const nextapp::pb::UpdatesReq::WithPush& wp);
+
     private:
+        boost::asio::awaitable<void> processPushState(nextapp::pb::UpdatesReq::WithPush wp);
+
         std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
         const boost::uuids::uuid sessionid_;
         const boost::uuids::uuid deviceid_;

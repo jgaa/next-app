@@ -1211,6 +1211,20 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v22_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(ALTER TABLE device
+            ADD COLUMN pushType ENUM('google', 'apple') NULL,
+            ADD COLUMN pushToken VARCHAR(512) NULL,
+            ADD COLUMN pushTokenUpdated TIMESTAMP NULL,
+            ADD COLUMN lastPushStatus VARCHAR(64) NULL,
+            ADD COLUMN lastPushTimestamp TIMESTAMP NULL;
+        )",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
@@ -1233,7 +1247,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v18_upgrade,
         v19_upgrade,
         v20_upgrade,
-        v21_upgrade
+        v21_upgrade,
+        v22_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

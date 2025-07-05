@@ -39,6 +39,10 @@
 #include "AppInstanceMgr.h"
 #include "NotificationsModel.h"
 
+#if ANDROID_BUILD
+#include "AndroidFcmBridge.h"
+#endif
+
 using namespace std;
 
 ostream& operator << (ostream&o, const ServerComm::Status& v) {
@@ -1672,10 +1676,23 @@ failed:
         LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
     }
 
+    nextapp::pb::UpdatesReq ureq;
+#if ANDROID_BUILD
+    // TODO: Check if push is enabled in config
+    if (auto token = AndroidFcmBridge::instance().getToken(); !token.isEmpty()) {
+        nextapp::pb::UpdatesReq::WithPush wp;
+        wp.setToken(token);
+        wp.setKind(nextapp::pb::UpdatesReq::WithPush::Kind::Google);
+        LOG_DEBUG_N << "Sending Android FCM token: " << token;
+        ureq.setWithPush(std::move(wp));
+    } else {
+        LOG_WARN_N << "Not sending Android FCM token as it is empty.";
+    }
+#endif
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-    updates_ = client_->streamSubscribeToUpdates({});
+    updates_ = client_->streamSubscribeToUpdates(ureq);
 #else
-    updates_ = client_->SubscribeToUpdates({});
+    updates_ = client_->SubscribeToUpdates(ureq);
 #endif
 
     connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);

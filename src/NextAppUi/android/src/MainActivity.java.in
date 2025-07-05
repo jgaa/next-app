@@ -6,7 +6,8 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import org.qtproject.qt.android.bindings.QtActivity;
 
 public class MainActivity extends QtActivity {
-    private static final String TAG = "@PACKAGE_NAME@FCM-INIT";
+    private static final String TAG = "@PACKAGE_NAME@-FCM-INIT";
+    private static String sFcmToken;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -17,10 +18,15 @@ public class MainActivity extends QtActivity {
             .getToken()
             .addOnCompleteListener(task -> {
                 if (task.isSuccessful()) {
-                    Log.d(TAG, "Initial token: " + task.getResult());
+                    sFcmToken = task.getResult();
+                    Log.d(TAG, "Initial token: " + sFcmToken);
                 } else {
                     Log.e(TAG, "Token fetch failed", task.getException());
                 }
             });
+    }
+
+    public static String getFcmToken() {
+        return sFcmToken;
     }
 }
