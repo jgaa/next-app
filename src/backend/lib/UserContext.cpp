@@ -584,8 +584,16 @@ void SessionManager::removeSession_(const boost::uuids::uuid &sessionId)
                 co_await Server::instance().db().exec("UPDATE device SET lastSeen=NOW() WHERE id=?", devid);
             }, boost::asio::detached);
 
+            // Store user UUID before erasing session
+            const auto userUuid = toUuid(session->user().userUuid());
             sessions_.erase(it);
             session->user().removeSession(sessionId);
+            
+            // Check if UserContext has no more sessions and remove it from memory
+            if (session->user().hasNoSessions()) {
+                LOG_DEBUG_N << "Removing UserContext for user " << userUuid << " as it has no more sessions";
+                users_.erase(userUuid);
+            }
         }
     } else {
         LOG_WARN_N << "Session " << sessionId << " not found.";
