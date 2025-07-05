@@ -241,9 +241,14 @@ public:
     }
 
     void removeSession(const boost::uuids::uuid& sessionId) {
-        std::shared_lock lock(mutex_);
+        std::unique_lock lock(mutex_);
         std::erase_if(sessions_, [&sessionId](const auto& s) { return s->sessionId() == sessionId; });
         purgeExpiredPublishers();
+    }
+
+    bool hasNoSessions() const {
+        std::shared_lock lock(mutex_);
+        return sessions_.empty();
     }
 
     void setSettings(pb::UserGlobalSettings settings) {
