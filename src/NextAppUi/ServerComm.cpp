@@ -1682,7 +1682,7 @@ failed:
     if (auto token = AndroidFcmBridge::instance().getToken(); !token.isEmpty()) {
         nextapp::pb::UpdatesReq::WithPush wp;
         wp.setToken(token);
-        wp.setKind(nextapp::pb::UpdatesReq::WithPush::Kind::Google);
+        wp.setKind(nextapp::pb::UpdatesReq::WithPush::Kind::GOOGLE);
         LOG_DEBUG_N << "Sending Android FCM token: " << token;
         ureq.setWithPush(std::move(wp));
     } else {

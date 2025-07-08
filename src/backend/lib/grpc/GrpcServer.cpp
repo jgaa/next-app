@@ -282,6 +282,10 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             Finish(::grpc::Status::OK);
         }
 
+        std::weak_ptr<UserContext::Session>& getSessionWeakPtr() override {
+            return session_;
+        }
+
     private:
         void reply() {
             scoped_lock lock{mutex_};

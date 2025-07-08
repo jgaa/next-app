@@ -73,6 +73,15 @@ void Server::run()
 
             co_await loadServerId();
             co_await loadCertAuthority();
+            if (pushIsEnabled()) {
+                LOG_INFO << "Push notifications are enabled.";
+                if (config().push.google.config_file.empty()) {
+                    LOG_WARN_N << "Push notifications are enabled, but no config file for Google is specified. "
+                               << "Pushing to Android will not work.";
+                } else {
+                    google_pusher_ = jgaa::cpp_push::createPusherForGoogle(config().push, ctx_);
+                }
+            }
             co_await startGrpcService();
             co_await prepareMetricsAuth();
             co_await onMetricsTimer();

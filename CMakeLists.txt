@@ -177,7 +177,8 @@ if (NEXTAPP_WITH_BACKEND)
     set(USE_SYSTEM_TZ_DB ON CACHE INTERNAL "")
     set(BUILD_TZ_LIB ON CACHE INTERNAL "")
     add_subdirectory(dependencies/date)
-    add_subdirectory(dependencies/RESTinCurl)
+    add_subdirectory(dependencies/cpp-push)
+
     include_directories(${NEXTAPP_ROOT}/dependencies/date/include)
 
     add_subdirectory(src/backend)

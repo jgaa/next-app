@@ -19,3 +19,6 @@
 [submodule "dependencies/RESTinCurl"]
 	path = dependencies/RESTinCurl
 	url = https://github.com/jgaa/RESTinCurl.git
+[submodule "dependencies/cpp-push"]
+	path = dependencies/cpp-push
+	url = https://github.com/jgaa/cpp-push.git
