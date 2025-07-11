@@ -96,6 +96,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     ProtobufQtCoreTypes
     ProtobufWellKnownTypes
 )
+find_package(Qt6 REQUIRED COMPONENTS Core)
 
 if(ANDROID)
     message(STATUS "Compiling for Android")
@@ -113,7 +114,7 @@ if(ANDROID)
         set(FCM_SERVICE
         "<service
             android:name=\"${PACKAGE_NAME}.NextappFirebaseMessagingService\"
-            android:exported=\"false\">
+            android:exported=\"true\">
             <intent-filter>
                 <action android:name=\"com.google.firebase.MESSAGING_EVENT\" />
             </intent-filter>
@@ -139,6 +140,13 @@ if(ANDROID)
           "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/NextappFirebaseMessagingService.java"
           @ONLY
         )
+
+        ## The QtAndroidService.java is not currently being used. Kept here for further experimentation
+        # configure_file(
+        #   "${CMAKE_CURRENT_SOURCE_DIR}/android/src/QtAndroidService.java.in"
+        #   "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/QtAndroidService.java"
+        #   @ONLY
+        # )
 
         configure_file(
           "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.h.in"
@@ -286,6 +294,8 @@ qt_add_executable(${PROJECT_NAME}
     logging.h
 )
 
+
+target_link_libraries(appNextAppUi PRIVATE Qt6::Core)
 target_include_directories(${PROJECT_NAME} PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<INSTALL_INTERFACE:include>
@@ -599,6 +609,8 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
+        EventScheduler.h
+        EventScheduler.cpp
 )
 
 

@@ -52,6 +52,7 @@ public:
     };
 
     LogModel();
+    ~LogModel() override;
 
     // QAbstractItemModel interface
     int rowCount(const QModelIndex &parent) const override;
