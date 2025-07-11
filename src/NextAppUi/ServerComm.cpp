@@ -224,7 +224,8 @@ ServerComm::ServerComm()
             (const QString &messageId, const QString &notification, const QString &data) {
         LOG_DEBUG_N << "Got push message from Android FCM bridge: "
                     << "id=" << messageId
-                    << ", notification=" << notification;
+                    << ", notification=" << notification
+                    << ", data=" << data;
 
         // Try to deserialize a base-64 encoded Update message
         if (data.isEmpty()) {
@@ -232,12 +233,50 @@ ServerComm::ServerComm()
             return;
         }
 
+
+        const auto str = data.toUtf8();
+
+        string_view v{ str }, kind, message;
+        const string_view kind_token = "kind=", message_token = "message=";
+
+        if (v.starts_with('{')) {
+            v = v.substr(1);
+        }
+        if (v.ends_with('}')) {
+            v = v.substr(0, v.size() - 1);
+        }
+
+        static const auto get_value = [](const string_view v, const string_view token) -> string_view {
+            if (auto pos = v.find(token); pos != string_view::npos) {
+                auto value = v.substr(pos + token.size());
+                if (auto end_pos = value.find(','); end_pos != string_view::npos) {
+                    value = value.substr(0, end_pos);
+                }
+                return value;
+            }
+            return {};
+        };
+
+        kind = get_value(v, kind_token);
+        message = get_value(v, message_token);
+
+        if (message.empty()) {
+            LOG_DEBUG_N  << "Push message does not contain a 'message' field: " << data;
+            return;
+        }
+
+        LOG_DEBUG_N << "kind=" << kind << ", message=" << message;
+
         // Decode the base-64 encoded data
-        QByteArray decodedData = QByteArray::fromBase64(data.toUtf8());
+        // Unfortunately, QT does not provide a way to decode base64 directly from a memory view.
+        // So we have to convert it to a QByteArray and then decode it.
+        const QByteArray qmessage{message.data(), static_cast<qlonglong>(message.size())};
+        auto decoded_data = QByteArray::fromBase64(qmessage);
         auto update = make_shared<nextapp::pb::Update>();
         QProtobufSerializer serializer;
-        if (!update->deserialize(&serializer, decodedData)) {
-            LOG_ERROR_N << "Failed to deserialize Update message from push data.";
+        if (!update->deserialize(&serializer, decoded_data)) {
+            LOG_ERROR_N << "Failed to deserialize Update message from push data: "
+                        << serializer.lastErrorString();
             return;
         }
 

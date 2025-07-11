@@ -30,6 +30,7 @@ void SoundPlayer::playSound(const QString &resourcePath, double volume)
         adjusted_path = adjusted_path.mid(3);  // Remove "qrc"
     }
 
+    LOG_DEBUG_N << "Playing sound from resource:" << adjusted_path << " with volume: " << volume;
     auto result = QtConcurrent::run(playSoundAsync, adjusted_path, volume);
     Q_UNUSED(result);
 }
