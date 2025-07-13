@@ -4,6 +4,8 @@
 #include <QProtobufSerializer>
 #include "CalendarCache.h"
 
+using namespace std;
+
 namespace {
 
     static const QString insert_query = R"(INSERT INTO time_block (id, start_time, end_time, kind, data, updated)
@@ -35,6 +37,14 @@ CalendarCache::CalendarCache() {
         [this](const std::shared_ptr<nextapp::pb::Update>& update) {
             onUpdate(update);
         });
+
+    connect(NextAppCore::instance(), &NextAppCore::settingsChanged, this, [this]{
+        setAudioTimers();
+    });
+
+    connect(NextAppCore::instance(), &NextAppCore::currentDateChanged, this, [this]{
+        setAudioTimers();
+    });
 }
 
 CalendarCache *CalendarCache::instance() noexcept
@@ -47,10 +57,18 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
 {
     const auto op = update->op();
 
+    bool need_to_update_alarms = false;
+    const auto todays_date = QDate::currentDate();
+
     if (update->hasCalendarEvents()) {
         const auto& ce_list = update->calendarEvents().events();
 
         for (const auto& ce : ce_list) {
+            const auto when = ce.timeBlock().timeSpan().start();
+            const bool is_relevant_for_audio =
+                todays_date == QDateTime::fromSecsSinceEpoch(ce.timeBlock().timeSpan().start()).date()
+                                               || todays_date == QDateTime::fromSecsSinceEpoch(ce.timeBlock().timeSpan().end()).date();
+
             const QUuid id{ce.id_proto()};
 
             if (ce.hasTimeBlock()) {
@@ -60,6 +78,9 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
                     events_.erase(id);
                     co_await save_(tb); // deletes the time block
                     emit eventRemoved(id);
+                    if (is_relevant_for_audio) {
+                        need_to_update_alarms = true;
+                    }
                     continue;
                 }
                 assert(tb.kind() != nextapp::pb::TimeBlock::Kind::DELETED);
@@ -77,8 +98,17 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
                     emit eventAdded(id);
                 }
 
+                if (is_relevant_for_audio) {
+                    need_to_update_alarms = true;
+                }
+
             } // if timeblock
         }
+    }
+
+    if (need_to_update_alarms) {
+        LOG_DEBUG_N << "Updating audio timers after calendar update.";
+        co_await setAudioTimers();
     }
 }
 
@@ -200,6 +230,147 @@ QCoro::Task<bool> CalendarCache::loadFromCache()
 {
     // Nothing to read by default.
     co_return true;
+}
+
+QCoro::Task<void> CalendarCache::setAudioTimers()
+{
+    // For now, find the next audio-event and set a timer for that.
+    // In the future, we may want to set a timer for all audio-events.
+
+    // Make sure we only enter once.
+    static std::atomic_bool in_progress{false};
+    if (in_progress.exchange(true)) {
+        LOG_DEBUG_N << "Audio timers are already being set.";
+
+        // Try again after 2 seconds.
+        // There may have happened something after the current setAudioTimers() call fectched the data.
+        QTimer::singleShot(2000, this, [this] {
+            setAudioTimers();
+        });
+        co_return;
+    }
+
+    ScopedExit exit_scope{[&] {
+        in_progress.store(false);
+    }};
+
+    LOG_TRACE_N << "Setting audio timers...";
+
+    QSettings settings{};
+
+    if (!settings.value("alarms/calendarEvent.enabled", true).toBool()) {
+        LOG_TRACE_N << "Audio events are disabled.";
+        co_return;
+    }
+
+    const auto now = time(nullptr);
+
+    // Find the next event to end
+
+    next_event_.reset();
+    time_t next_time{};
+
+    const auto pre_ending_mins = settings.value("alarms/calendarEvent.SoonToEndMinutes", 5).toInt();
+    const auto pre_start_mins = settings.value("alarms/calendarEvent.SoonToStartMinutes", 1).toInt();
+
+    // Get the next enevts that either start or ends after now.
+    auto& db = NextAppCore::instance()->db();
+    QList<QVariant> params;
+
+    auto ae = make_unique<AudioEvent>();
+    const auto all_events = co_await getCalendarEvents(QDate::currentDate(), QDate::currentDate().addDays(2));
+
+    for(const auto &ev_p : all_events) {
+        const auto& ev = *ev_p;
+        if (ev.hasTimeSpan()) {
+            const auto starting = ev.timeSpan().start();
+
+            // Check actual start time AE_START
+            if (starting > now && (!next_time || starting < next_time)) {
+                next_time = starting;
+                ae->event = ev_p;
+                ae->kind = AudioEvent::Kind::AE_START;
+            }
+
+            // Check if the AE_SOON_START event is the next to start
+            if (pre_start_mins > 0) {
+                const auto pre_start = starting - (pre_start_mins * 60);
+                if (pre_start > now && (!next_time || pre_start < next_time)) {
+                    next_time = pre_start;
+                    ae->event = ev_p;
+                    ae->kind = AudioEvent::Kind::AE_PRE;
+                }
+            }
+
+            // Break the loop if we are done with the relevant items
+            if (next_time && starting > now) {
+                break;
+            }
+
+            // Check actual end-time AE_END
+            const auto ending = ev.timeSpan().end();
+            if (ending > now && (!next_time || ending < next_time)) {
+                next_time = ending;
+                ae->event = ev_p;
+                ae->kind = AudioEvent::Kind::AE_END;
+            }
+
+            // Check if the AE_SOON_ENDING event is the next to end
+            if (pre_ending_mins > 0) {
+                const auto pre_ending = ending - (pre_ending_mins * 60);
+                if (pre_ending > now && (!next_time || pre_ending < next_time)) {
+                    next_time = pre_ending;
+                    ae->event = ev_p;
+                    ae->kind = AudioEvent::Kind::AE_SOON_ENDING;
+                }
+            }
+        }
+    }
+
+    if (next_time) {
+        auto delay = max<int>(next_time - time(nullptr), 1);
+        ae->timer.setSingleShot(true);
+        ae->timer.start(delay * 1000);
+        LOG_TRACE_N << "Next audio event is in " << delay << " seconds and of type " << static_cast<int>(ae->kind);
+        next_event_ = std::move(ae);
+        connect(&next_event_->timer, &QTimer::timeout, this, &CalendarCache::onAudioEvent, Qt::SingleShotConnection);
+    } else {
+        LOG_TRACE_N << "No future audio events found for today.";
+    }
+}
+
+void CalendarCache::onAudioEvent()
+{
+    QSettings settings{};
+    if (next_event_) {
+        LOG_TRACE_N << "Audio event: " << next_event_->event->id_proto()
+        << " at " << QDateTime::fromSecsSinceEpoch(next_event_->event->timeSpan().start()).toString();
+
+        QString audio_file;
+        switch(next_event_->kind) {
+        case AudioEvent::Kind::AE_START:
+            audio_file = "qrc:/qt/qml/NextAppUi/sounds/387351__cosmicembers__simple-ding.wav";
+            break;
+        case AudioEvent::Kind::AE_PRE:
+        case AudioEvent::Kind::AE_SOON_ENDING:
+            audio_file = "qrc:/qt/qml/NextAppUi/sounds/515643__mashedtatoes2__ding2_edit.wav";
+            break;
+        case AudioEvent::Kind::AE_END:
+            audio_file = "qrc:/qt/qml/NextAppUi/sounds/611112__5ro4__bell-ding-2.wav";
+            break;
+        }
+
+        const auto volume = settings.value("alarms/calendarEvent.volume", 0.4).toDouble();
+        LOG_DEBUG_N << "Playing audio: " << audio_file << " of type " << next_event_->kind << " at volume "
+                    << volume;
+
+        NextAppCore::instance()->playSound(volume, audio_file);
+    } else {
+        LOG_DEBUG_N << "Called, but there is no event to play audio for.";
+    }
+
+    // Set the timer for the next event
+    setAudioTimers();
 }
 
 std::shared_ptr<GrpcIncomingStream> CalendarCache::openServerStream(nextapp::pb::GetNewReq req)
