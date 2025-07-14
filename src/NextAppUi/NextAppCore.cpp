@@ -221,6 +221,8 @@ NextAppCore::~NextAppCore()
         db_->close();
         db_.reset();
     }
+
+    SoundPlayer::instance().close();
 }
 
 
@@ -367,7 +369,7 @@ void NextAppCore::playSound(double volume, const QString &soundFile)
     LOG_DEBUG_N << "Playing sound " << soundFile
                 << " at volume " << volume;
 
-    SoundPlayer::playSound(soundFile, volume);
+    SoundPlayer::instance().playSound(soundFile, volume);
 }
 
 void NextAppCore::playSoundDelayed(int delayMs, double volume, const QString &soundFile)
