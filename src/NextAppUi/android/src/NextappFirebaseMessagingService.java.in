@@ -1,0 +1,46 @@
+package @PACKAGE_NAME@;
+
+import @PACKAGE_NAME@.R;
+
+import android.util.Log;
+import com.google.firebase.messaging.FirebaseMessagingService;
+import com.google.firebase.messaging.RemoteMessage;
+
+public class NextappFirebaseMessagingService extends FirebaseMessagingService {
+    private static final String TAG = "@APP_LABEL@FcmService";
+
+    static {
+        Log.d(TAG, "The NextappFirebaseMessagingService class is available");
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        Log.d(TAG, "NextappFirebaseMessagingService instantiated (onCreate)");
+    }
+
+    @Override
+    public void onNewToken(String token) {
+        Log.d(TAG, "FCM token refreshed: " + token);
+        nativeOnNewToken(token);
+    }
+
+    @Override
+    public void onMessageReceived(RemoteMessage remoteMessage) {
+        // You can extract notification and/or data payload:
+        String notification = remoteMessage.getNotification() != null
+                ? remoteMessage.getNotification().getTitle() + "|" +
+                  remoteMessage.getNotification().getBody()
+                : "";
+        String data = remoteMessage.getData().toString();
+        Log.d(TAG, "Message received. notification=" + notification + " data=" + data);
+        nativeOnMessage(remoteMessage.getMessageId(),
+                        notification,
+                        data);
+    }
+
+    private native void nativeOnNewToken(String token);
+    private native void nativeOnMessage(String messageId,
+                                        String notification,
+                                        String data);
+}

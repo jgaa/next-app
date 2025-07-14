@@ -7,6 +7,8 @@
 #include <boost/asio.hpp>
 #include <boost/uuid.hpp>
 
+#include <cpp-push/cpp-push.h>
+
 #include "nextapp/nextapp.h"
 #include "nextapp/config.h"
 #include "nextapp/util.h"
@@ -23,7 +25,7 @@ class GrpcServer;
 
 class Server {
 public:
-    static constexpr uint latest_version = 21;
+    static constexpr uint latest_version = 22;
 
     struct BootstrapOptions {
         bool drop_old_db = false;
@@ -114,6 +116,15 @@ public:
     // Called from main()
     void createGrpcCert();
 
+    bool pushIsEnabled() const noexcept {
+        return config_.push_enabled;
+    }
+
+    std::shared_ptr<jgaa::cpp_push::Pusher> getGooglePusher() {
+        assert(google_pusher_);
+        return google_pusher_;
+    }
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
@@ -150,6 +161,7 @@ private:
     const time_t instance_tag_{time({})};
     std::string server_id_;
     std::string metrics_auth_hash_;
+    std::shared_ptr<jgaa::cpp_push::Pusher> google_pusher_;
 };
 
 template <ProtoMessage T>

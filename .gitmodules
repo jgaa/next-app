@@ -1,9 +1,9 @@
 [submodule "dependencies/mysqlpool-cpp"]
 	path = dependencies/mysqlpool-cpp
-	url = git@github.com:jgaa/mysqlpool-cpp.git
+	url = https://github.com/jgaa/mysqlpool-cpp.git
 [submodule "dependencies/logfault"]
 	path = dependencies/logfault
-	url = git@github.com:jgaa/logfault.git
+	url = https://github.com/jgaa/logfault.git
 [submodule "dependencies/date"]
 	path = dependencies/date
 	url = https://github.com/HowardHinnant/date.git
@@ -16,3 +16,9 @@
 [submodule "dependencies/yahat-cpp"]
 	path = dependencies/yahat-cpp
 	url = https://github.com/jgaa/yahat-cpp.git
+[submodule "dependencies/RESTinCurl"]
+	path = dependencies/RESTinCurl
+	url = https://github.com/jgaa/RESTinCurl.git
+[submodule "dependencies/cpp-push"]
+	path = dependencies/cpp-push
+	url = https://github.com/jgaa/cpp-push.git

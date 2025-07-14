@@ -39,6 +39,10 @@
 #include "AppInstanceMgr.h"
 #include "NotificationsModel.h"
 
+#if ANDROID_BUILD
+#include "AndroidFcmBridge.h"
+#endif
+
 using namespace std;
 
 ostream& operator << (ostream&o, const ServerComm::Status& v) {
@@ -192,9 +196,12 @@ ServerComm::ServerComm()
     });
 
     connect(NextAppCore::instance(), &NextAppCore::wokeFromSleep, [this] {
-        if (status_ == Status::ONLINE) {
+        if (status_ != Status::MANUAL_OFFLINE) {
             LOG_DEBUG << "ServerComm: Woke up from sleep.";
-            QTimer::singleShot(0, this, &ServerComm::stop);
+            if (status_ == Status::ONLINE) {
+                LOG_DEBUG << "ServerComm: Already online. Need to stop before going online again.";
+                QTimer::singleShot(0, this, &ServerComm::stop);
+            }
 
             const bool reconnect = shouldReconnect();
             auto delay = reconnect ? 100ms : 3s;
@@ -210,6 +217,85 @@ ServerComm::ServerComm()
                 start();
             });
         }
+    });
+
+#if ANDROID_BUILD
+    connect(&AndroidFcmBridge::instance(), &AndroidFcmBridge::messageReceived, [this]
+            (const QString &messageId, const QString &notification, const QString &data) {
+        LOG_DEBUG_N << "Got push message from Android FCM bridge: "
+                    << "id=" << messageId
+                    << ", notification=" << notification
+                    << ", data=" << data;
+
+        // Try to deserialize a base-64 encoded Update message
+        if (data.isEmpty()) {
+            LOG_DEBUG_N << "No data in the push message.";
+            return;
+        }
+
+
+        const auto str = data.toUtf8();
+
+        string_view v{ str }, kind, message;
+        const string_view kind_token = "kind=", message_token = "message=";
+
+        if (v.starts_with('{')) {
+            v = v.substr(1);
+        }
+        if (v.ends_with('}')) {
+            v = v.substr(0, v.size() - 1);
+        }
+
+        static const auto get_value = [](const string_view v, const string_view token) -> string_view {
+            if (auto pos = v.find(token); pos != string_view::npos) {
+                auto value = v.substr(pos + token.size());
+                if (auto end_pos = value.find(','); end_pos != string_view::npos) {
+                    value = value.substr(0, end_pos);
+                }
+                return value;
+            }
+            return {};
+        };
+
+        kind = get_value(v, kind_token);
+        message = get_value(v, message_token);
+
+        if (message.empty()) {
+            LOG_DEBUG_N  << "Push message does not contain a 'message' field: " << data;
+            return;
+        }
+
+        LOG_DEBUG_N << "kind=" << kind << ", message=" << message;
+
+        // Decode the base-64 encoded data
+        // Unfortunately, QT does not provide a way to decode base64 directly from a memory view.
+        // So we have to convert it to a QByteArray and then decode it.
+        const QByteArray qmessage{message.data(), static_cast<qlonglong>(message.size())};
+        auto decoded_data = QByteArray::fromBase64(qmessage);
+        auto update = make_shared<nextapp::pb::Update>();
+        QProtobufSerializer serializer;
+        if (!update->deserialize(&serializer, decoded_data)) {
+            LOG_ERROR_N << "Failed to deserialize Update message from push data: "
+                        << serializer.lastErrorString();
+            return;
+        }
+
+        // Only handle the update if it it has events we expect from push messages
+        if (update->hasCalendarEvents()) {
+            LOG_DEBUG_N << "Received Update from push message. Processing...";
+            try {
+                emit onUpdate(update);
+            } catch (const std::exception &e) {
+                LOG_ERROR_N << "Failed to process Update from push message: " << e.what();
+            }
+        }
+
+    });
+#endif
+
+    connect(NextAppCore::instance(), &NextAppCore::suspending, [this] {
+        LOG_INFO_N << "ServerComm: Suspending...";
+        stop();
     });
 
     if (QNetworkInformation::loadDefaultBackend()) {
@@ -1672,10 +1758,23 @@ failed:
         LOG_WARN << "We are connected to a server, but it did not send ServerInfo.";
     }
 
+    nextapp::pb::UpdatesReq ureq;
+#if ANDROID_BUILD
+    // TODO: Check if push is enabled in config
+    if (auto token = AndroidFcmBridge::instance().getToken(); !token.isEmpty()) {
+        nextapp::pb::UpdatesReq::WithPush wp;
+        wp.setToken(token);
+        wp.setKind(nextapp::pb::UpdatesReq::WithPush::Kind::GOOGLE);
+        LOG_DEBUG_N << "Sending Android FCM token: " << token;
+        ureq.setWithPush(std::move(wp));
+    } else {
+        LOG_WARN_N << "Not sending Android FCM token as it is empty.";
+    }
+#endif
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-    updates_ = client_->streamSubscribeToUpdates({});
+    updates_ = client_->streamSubscribeToUpdates(ureq);
 #else
-    updates_ = client_->SubscribeToUpdates({});
+    updates_ = client_->SubscribeToUpdates(ureq);
 #endif
 
     connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);

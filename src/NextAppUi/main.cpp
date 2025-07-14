@@ -29,11 +29,34 @@
 #include "LogModel.h"
 #include "nextapp.qpb.h"
 
+#ifdef __ANDROID__
+    #include <QtCore/private/qandroidextras_p.h>
+#endif
+
 #include "logging.h"
 
 extern void qml_register_types_nextapp_pb();
 
 using namespace std;
+
+#ifdef __ANDROID__
+
+namespace nextapp::logging {
+void initAndroidLogging(logfault::LogLevel level) {
+    static bool initialized = false;
+    if (initialized) {
+        return;
+    }
+    initialized = true;
+
+    logfault::LogManager::Instance().AddHandler(
+        make_unique<logfault::AndroidHandler>("NextApp", static_cast<logfault::LogLevel>(level)));
+
+}
+} // ns
+
+#endif
+
 
 namespace {
 optional<logfault::LogLevel> toLogLevel(string_view name) {
@@ -158,6 +181,32 @@ int main(int argc, char *argv[])
 {
     //qRegisterProtobufTypes();
 
+#ifdef __ANDROID__
+    nextapp::logging::initAndroidLogging(logfault::LogLevel::DEBUGGING);
+    // Check it it's a service
+
+    for(auto i = 0; i < argc; ++i) {
+        LOG_DEBUG_N << "Argument " << i << ": " << argv[i];
+    }
+
+    if (argc > 1 && strcmp(argv[1], "-service") == 0) {
+        try {
+        LOG_INFO_N << "Running as a service";
+        QAndroidService app(argc, argv);
+
+        LOG_DEBUG_N << "Handing the service thread over to QT";
+        return app.exec();
+        LOG_INFO_N << "Service thread finished";
+        } catch (const std::exception& e) {
+            LOG_ERROR_N << "Service thread failed: " << e.what();
+            return -1;
+        }
+    }
+    else {
+        LOG_INFO_N << "Running as a regular application";
+    }
+#endif
+
     // volatile auto registration = &qml_register_types_nextapp_pb;
     // Q_UNUSED(registration);
     std::string log_level_qt =
@@ -279,12 +328,13 @@ int main(int argc, char *argv[])
 
 #if defined(LINUX_BUILD) || defined(__ANDROID__)
         if (const auto level = settings.value("logging/applevel", 4).toInt()) {
-            logfault::LogManager::Instance().AddHandler(
 #ifdef __ANDROID__
-                make_unique<logfault::AndroidHandler>("NextApp", static_cast<logfault::LogLevel>(level)));
+            nextapp::logging::initAndroidLogging(static_cast<logfault::LogLevel>(level));
 #else
+            logfault::LogManager::Instance().AddHandler(
                 make_unique<logfault::StreamHandler>(clog, static_cast<logfault::LogLevel>(level)));
 #endif
+
             LOG_INFO << "Logging to system";
         }
 #endif

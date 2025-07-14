@@ -22,6 +22,20 @@ class CalendarCache : public QObject
 {
     Q_OBJECT
 public:
+    struct AudioEvent {
+        enum Kind {
+            AE_PRE,
+            AE_START,
+            AE_SOON_ENDING,
+            AE_END,
+        };
+
+        std::shared_ptr<nextapp::pb::CalendarEvent> event;
+        Kind kind{Kind::AE_START};
+        QTimer timer;
+    };
+
+
     CalendarCache();
 
     static CalendarCache *instance() noexcept;
@@ -39,6 +53,7 @@ signals:
     void eventRemoved(const QUuid& id);
     void eventUpdated(const QUuid& id);
     void stateChanged();
+    void audioEvent(const QUuid& id, AudioEvent::Kind kind);
 
 private:
     bool haveBatch() const noexcept override { return true; }
@@ -47,6 +62,8 @@ private:
     QCoro::Task<bool> save(const QProtobufMessage& item) override;
     QCoro::Task<bool> save_(const nextapp::pb::TimeBlock& block);
     QCoro::Task<bool> loadFromCache() override;
+    QCoro::Task<void> setAudioTimers();
+    void onAudioEvent();
 
     bool hasItems(const nextapp::pb::Status& status) const noexcept override {
         return status.hasTimeBlocks();
@@ -65,5 +82,5 @@ private:
     QCoro::Task<bool> remove(const nextapp::pb::TimeBlock& tb);
 
     std::map<QUuid, std::shared_ptr<nextapp::pb::CalendarEvent>> events_;
-
+    std::unique_ptr<AudioEvent> next_event_;
 };

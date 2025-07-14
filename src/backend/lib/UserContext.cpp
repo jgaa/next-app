@@ -55,11 +55,13 @@ boost::asio::awaitable<pb::UserSessions> SessionManager::listSessions()
                 std::chrono::duration_cast<std::chrono::seconds>(s->durationSinceLastAccess()).count());
 
             if (auto d = ux->getDevice(s->deviceId()); d.has_value()) {
-                for(auto ix = 0u; ix < d->last_request_id.size(); ++ix) {
-                    if (auto lri = d->last_request_id.get(ix)) {
-                        session->add_lastreqids(*lri);
-                    } else {
-                        session->add_lastreqids(-1);
+                if ( d->last_request_id) {
+                    for(auto ix = 0u; ix < d->last_request_id->size(); ++ix) {
+                        if (auto lri = d->last_request_id->get(ix)) {
+                            session->add_lastreqids(*lri);
+                        } else {
+                            session->add_lastreqids(-1);
+                        }
                     }
                 }
             }
@@ -90,7 +92,7 @@ boost::asio::awaitable<void> SessionManager::publishNotification(const pb::Notif
 
         if (u) {
             LOG_DEBUG_N << "Publishing notification #" << notification.id() << " to user " << u->userUuid();
-            u->publish(msg);
+            co_await u->publish(msg);
         } else {
             LOG_TRACE_N << "User " << notification.touser().uuid() << " not found in cache";
         };
@@ -140,7 +142,7 @@ boost::asio::awaitable<void> SessionManager::publishNotification(const pb::Notif
 
     for(auto& u: users) {
         LOG_DEBUG_N << "Publishing mass-notification #" << notification.id() << " to user " << u->userUuid();
-        u->publish(msg);
+        co_await u->publish(msg);
 
         // co_await on a asio timer for a short period of time
         // to avoid server overload.
@@ -217,25 +219,79 @@ void UserContext::removePublisher(const boost::uuids::uuid &uuid)
     });
 }
 
-void UserContext::publish(std::shared_ptr<pb::Update> &update)
+void UserContext::publishUpdates(std::shared_ptr<pb::Update> &update, set<boost::uuids::uuid>* devices) {
+    {
+        update->set_messageid(++publish_message_id_);
+        LOG_TRACE_N << "Publishing "
+                    << pb::Update::Operation_Name(update->op())
+                    << " update to " << publishers_.size() << " subscribers, Json: "
+                    << toJsonForLog(*update);
+
+        shared_lock lock{mutex_};
+        purgeExpiredPublishers();
+        for(auto& weak_pub: publishers_) {
+            if (auto pub = weak_pub.lock()) {
+                if (auto session = pub->getSessionWeakPtr().lock()) {
+                    LOG_TRACE_N << "Publish #" << update->messageid() << " to " << pub->uuid();
+                    pub->publish(update);
+                    if (devices) {
+                        devices->emplace(session->deviceId());
+                    }
+                } else {
+                    LOG_TRACE_N << "Publisher " << pub->uuid() << " has no valid session. Skipping.";
+                }
+            } else {
+                LOG_WARN_N << "Failed to get a pointer to a publisher."
+                           << " for user " << userUuid();
+            }
+        }
+    } // unlock
+}
+
+boost::asio::awaitable<void> UserContext::publish(std::shared_ptr<pb::Update> &update)
 {
-    shared_lock lock{mutex_};
-    update->set_messageid(++publish_message_id_);
-    LOG_TRACE_N << "Publishing "
-                << pb::Update::Operation_Name(update->op())
-                << " update to " << publishers_.size() << " subscribers, Json: "
-                << toJsonForLog(*update);
+    set<boost::uuids::uuid> devices;
 
-    //purgeExpiredPublishers();
+    publishUpdates(update, &devices);
 
-    for(auto& weak_pub: publishers_) {
-        if (auto pub = weak_pub.lock()) {
-            LOG_TRACE_N << "Publish #" << update->messageid()
-                        << " to " << pub->uuid();
-            pub->publish(update);
-        } else {
-            LOG_WARN_N << "Failed to get a pointer to a publisher."
-                       << " for user " << userUuid();
+    vector<std::shared_ptr<PushNotifications>> pn;
+    {
+        unique_lock lock{mutex_};
+        // Remove all publishers that are no longer valid
+        ranges::remove_if(publishers_, [&](const auto& weak_pub) {
+            if (auto pub = weak_pub.lock()) {
+                return false; // Keep valid publishers
+            } else {
+                return true; // Remove expired weak_ptrs
+            }
+        });
+    }
+
+    // Filter out updates that are not for push notifications
+    if (!update->has_calendarevents()) {
+        co_return;
+    }
+
+    // Briefly lock the instance and copy any push notification handlers
+    // for devices that are not already published to in the `pn` set.
+    {
+        unique_lock lock{instance_mutex_};
+        for(auto& [id, dev] : devices_) {
+            if (dev.push_notifications_ && ! devices.contains(id)) {
+                pn.emplace_back(dev.push_notifications_);
+            }
+        }
+    }  // unlock
+
+    // Publish to push notification handlers
+    // Currently we do this on a "best effort" basis with no queuing or retry.
+    // TODO: Apply rate limiting here
+    for(auto handler : pn) {
+        try {
+            co_await handler->sendNotification(update);
+        } catch (const std::exception& e) {
+            LOG_WARN_N << "Failed to send push notification for update #" << update->messageid()
+                       << " to device " << handler->deviceId() << ": " << e.what();
         }
     }
 }
@@ -292,15 +348,17 @@ UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId,
     {
         lock_guard lock{instance_mutex_};
         auto& device = devices_[deviceId];
-        last_req_id = device.last_request_id.get(index);
+        if ( device.last_request_id) {
+            last_req_id = device.last_request_id->get(index);
 
-        // If we have a value in memory, use it now. We don't want to aquire the
-        // lock twice, but we need to do that if we access the db.
-        if (last_req_id.has_value()) {
-            process();
-            device.last_request_id.set(index, max(*last_req_id, reqId));
-            co_return rval;
-        };
+            // If we have a value in memory, use it now. We don't want to aquire the
+            // lock twice, but we need to do that if we access the db.
+            if (last_req_id.has_value()) {
+                process();
+                device.last_request_id->set(index, max(*last_req_id, reqId));
+                co_return rval;
+            };
+        }
     }
 
     // Get the value from the database
@@ -316,7 +374,10 @@ UserContext::checkForReplay(const boost::uuids::uuid &deviceId, uint instanceId,
     {
         lock_guard lock{instance_mutex_};
         auto& device = devices_[deviceId];
-        device.last_request_id.set(index, max(*last_req_id, reqId));
+        if (!device.last_request_id) {
+            device.last_request_id.emplace();
+        }
+        device.last_request_id->set(index, max(*last_req_id, reqId));
     }
 
     co_return rval;
@@ -330,9 +391,10 @@ UserContext::getLastReqId(const boost::uuids::uuid &deviceId, uint instanceId, b
     if (!lookupInDbOnly) {
         lock_guard lock{instance_mutex_};
         auto& device = devices_[deviceId];
-
-        if (auto value = device.last_request_id.get(index); value.has_value()) {
-            co_return value;
+        if (device.last_request_id) {
+            if (auto value = device.last_request_id->get(index); value.has_value()) {
+                co_return value;
+            }
         }
     }
 
@@ -345,7 +407,10 @@ UserContext::getLastReqId(const boost::uuids::uuid &deviceId, uint instanceId, b
         {
             lock_guard lock{instance_mutex_};
             auto& device = devices_[deviceId];
-            device.last_request_id.set(index, last_req_id);
+            if (!device.last_request_id) {
+                device.last_request_id.emplace();
+            }
+            device.last_request_id->set(index, last_req_id);
         }
 
         co_return last_req_id;
@@ -362,7 +427,10 @@ boost::asio::awaitable<void> UserContext::resetReplay(const boost::uuids::uuid &
         validateInstanceId(instanceId);
 
         const auto index = instanceId - 1; // Instance start at 1
-        device.last_request_id.set(index, 0);
+        if (!device.last_request_id) {
+            device.last_request_id.emplace();
+        }
+        device.last_request_id->set(index, 0);
     }
     co_await saveLastReqIds(deviceId);
 }
@@ -372,6 +440,100 @@ void UserContext::saveReplayStateForDevice(const boost::uuids::uuid &deviceId)
     boost::asio::co_spawn(Server::instance().ctx(), [self = shared_from_this(), deviceId] () -> boost::asio::awaitable<void> {
         co_await self->saveLastReqIds(deviceId);
     }, boost::asio::detached);
+}
+
+boost::asio::awaitable<void> UserContext::reloadPushers() {
+
+    if (!Server::instance().config().push_enabled) {
+        co_return;
+    }
+
+    auto db = co_await Server::instance().db().getConnection();
+    const auto res = co_await db.exec("SELECT id, pushType, pushToken FROM device WHERE user=? AND pushType IS NOT NULL", userUuid());
+
+    enum Cols {
+        ID,
+        TYPE,
+        TOKEN
+    };
+
+    {
+        unique_lock lock{instance_mutex_};
+
+        // Remove all existing push handlers
+        for(auto & [_, device] : devices_) {
+            device.push_notifications_.reset();
+        }
+
+        // Add new push handlers
+        for(const auto& row : res.rows()) {
+            const auto deviceId = toUuid(row[ID].as_string());
+            const auto type = row[TYPE].as_string();
+            const auto token = row[TOKEN].as_string();
+
+            if (type.empty() || token.empty()) {
+                LOG_TRACE_N << "Skipping device " << deviceId << " with empty type or token";
+                continue;
+            }
+
+            auto& device = devices_[deviceId];
+            std::shared_ptr<jgaa::cpp_push::Pusher> pusher;
+            if (type == "google") {
+                pusher = Server::instance().getGooglePusher();
+            }
+
+            if (pusher) {
+                LOG_TRACE_N << "Creating push notifications handler for device "
+                            << deviceId << " with type " << type << " and token " << token.substr(0, 16) << "...";
+                device.push_notifications_ = make_shared<PushNotifications>(toUuid(userUuid()), deviceId, token, pusher);
+            } else {
+                LOG_WARN_N << "No pusher found for device " << deviceId
+                            << " with type " << type << " and token " << token;
+            }
+        }
+    }
+}
+
+void UserContext::Session::handlePushState(const pb::UpdatesReq::WithPush &wp)
+{
+    boost::asio::co_spawn(Server::instance().ctx(), [&]() -> boost::asio::awaitable<void> {
+        co_await processPushState(wp);
+    }, boost::asio::detached);
+}
+
+boost::asio::awaitable<void> UserContext::Session::processPushState(pb::UpdatesReq::WithPush wp)
+{
+    {
+        auto db = co_await Server::instance().db().getConnection();
+        switch(wp.kind()) {
+        case pb::UpdatesReq::WithPush::Kind::UpdatesReq_WithPush_Kind_DISABLE:
+    disable:
+            LOG_DEBUG_N << "Disabling push notifications for device " << deviceid_ << " for user " << user().userUuid();
+            co_await db.exec("UPDATE device SET pushType=NULL, pushToken=NULL WHERE id=? AND user=?",
+                    deviceid_, user().userUuid());
+            break;
+        case pb::UpdatesReq::WithPush::Kind::UpdatesReq_WithPush_Kind_GOOGLE:
+            LOG_DEBUG_N << "Enabling Google push notifications for device " << deviceid_ << " for user " << user().userUuid();
+            if (wp.token().empty()) {
+                LOG_INFO_N << "Google push token is empty. Disabling push notifications for device " << deviceid_ << " for user " << user().userUuid();
+                goto disable;
+            }
+            co_await db.exec("UPDATE device SET pushType='google', pushToken=? WHERE id=? AND user=?",
+                    wp.token(), deviceid_, user().userUuid());
+            break;
+        case pb::UpdatesReq::WithPush::Kind::UpdatesReq_WithPush_Kind_APPLE:
+            LOG_WARN_N << "Apple not supported for push notifications yet.";
+            goto disable;
+            break;
+        default:
+            LOG_WARN_N << "Unknown push notification kind: " << pb::UpdatesReq::WithPush::Kind_Name(wp.kind());
+            throw server_err{pb::Error::INVALID_ARGUMENT, "Unknown push notification kind"};
+        }
+    }
+
+    co_await user_->reloadPushers();
+
+    co_return;
 }
 
 void UserContext::setLastReadNotification(uint32_t id) noexcept {
@@ -388,8 +550,8 @@ boost::asio::awaitable<void> UserContext::saveLastReqIds(const boost::uuids::uui
         Device::values_t values;
         {
             lock_guard lock{instance_mutex_};
-            if (auto it = devices_.find(deviceId); it != devices_.end()) {
-                values = it->second.last_request_id;
+            if (auto it = devices_.find(deviceId); it != devices_.end() && it->second.last_request_id.has_value()) {
+                values = it->second.last_request_id.value();
             } else {
                 co_return;
             }
@@ -806,6 +968,8 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
             users_[toUuid(uid)] = ucx;
         }
 
+        co_await ucx->reloadPushers();
+
         co_return ucx;
     }
 
@@ -824,6 +988,55 @@ void UserContext::Session::touch() {
 std::chrono::steady_clock::time_point UserContext::Session::touched() const {
     //return last_access_.load(std::memory_order_relaxed);
     return last_access_;
+}
+
+boost::asio::awaitable<bool> UserContext::PushNotifications::sendNotification(std::shared_ptr<nextapp::pb::Update>& message)
+{
+    assert(pusher_);
+    if (!pusher_->isReady()) {
+        LOG_WARN_N << "Push notification pusher is closed. Cannot send notification.";
+        co_return false;
+    }
+
+    enum DataSlots{
+        KIND, MESSAGE, _NUM_SLOTS
+    };
+
+    // Note that the data is just a view of the values. They are not copied.
+    array<pair<string_view, string_view>, _NUM_SLOTS> data;
+
+    if (message->has_calendarevents()) {
+        data[KIND] = {"kind", "calendar-event"};
+    }
+
+    if (data[KIND].first.empty()) {
+        LOG_TRACE_N << "Push notification has no data to send.";
+        co_return false;
+    }
+
+    // Serialize the message to protobuf binary and base-64 encode it.
+    string serialized;
+    if (!message->SerializeToString(&serialized)) {
+        LOG_WARN_N << "Failed to serialize message";
+        co_return false;
+    }
+    const auto value = Base64Encode(serialized);
+
+    // TODO encrypt so Google can't snoop on this
+    data[MESSAGE] = {"message", value};
+
+    jgaa::cpp_push::PushMessage pm;
+    pm.to = token_;
+    pm.data = data;
+    pm.type = jgaa::cpp_push::PushMessage::PushType::DATA;
+
+    auto res = co_await pusher_->push(pm);
+    if (!res) {
+        LOG_WARN_N << "Failed to send push notification: " << res.message();
+        co_return false;
+    }
+
+    co_return true;
 }
 
 

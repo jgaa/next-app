@@ -13,26 +13,14 @@
 #include "nextapp.pb.h"
 #include "nextapp/util.h"
 #include "nextapp/Metrics.h"
+#include "cpp-push/cpp-push.h"
 //#include "nextapp/logging.h"
 
 namespace nextapp {
 
 class Server;
+class Publisher;
 
-class Publisher {
-public:
-    virtual ~Publisher() = default;
-
-    virtual void publish(const std::shared_ptr<pb::Update>& message) = 0;
-    virtual void close() = 0;
-
-    auto& uuid() const noexcept {
-        return uuid_;
-    }
-
-private:
-    const boost::uuids::uuid uuid_ = newUuid();
-};
 
 /*! \brief A container that can hold either a single value or a vector of values.
  *
@@ -110,11 +98,51 @@ private:
 
 class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
+
+    /*! \brief Sends push notifications to a user on a specific device.
+     *
+     */
+    class PushNotifications {
+    public:
+        PushNotifications(boost::uuids::uuid userid, boost::uuids::uuid deviceid, std::string token,
+                          std::shared_ptr<jgaa::cpp_push::Pusher> pusher)
+            : userid_{std::move(userid)}, deviceid_{std::move(deviceid)}
+            , token_{std::move(token)}, pusher_{std::move(pusher)} {}
+
+        PushNotifications(const PushNotifications&) = delete;
+        PushNotifications& operator=(const PushNotifications&) = delete;
+
+        /*! \brief Sends a push notification to the device.
+         *
+         *  In the current implementation, the push notifications is sent immediately.
+         *  If it fails, there is no retry logic.
+         *
+         * @param pn The push notification to send.
+         * @return true if the notification was sent successfully, false otherwise.
+         */
+        [[nodiscard]] boost::asio::awaitable<bool> sendNotification(std::shared_ptr<nextapp::pb::Update>& message);
+
+        const boost::uuids::uuid& userId() const noexcept {
+            return userid_;
+        }
+
+        const boost::uuids::uuid& deviceId() const noexcept {
+            return deviceid_;
+        }
+
+    private:
+        boost::uuids::uuid userid_;
+        boost::uuids::uuid deviceid_;
+        std::string token_;
+        std::shared_ptr<jgaa::cpp_push::Pusher> pusher_;
+    };
+
     class Device {
     public:
         using value_t = std::optional<uint32_t>;
         using values_t = ValueContainer<value_t, 10>;
-        values_t last_request_id;
+        std::optional<values_t> last_request_id;
+        std::shared_ptr<PushNotifications> push_notifications_;
     };
 
     class Session : public std::enable_shared_from_this<Session> {
@@ -141,6 +169,8 @@ public:
         auto userPtr() const noexcept {
             return user_;
         }
+
+        void addPublisher(const std::shared_ptr<Publisher>& publisher);
 
         void touch();
 
@@ -169,7 +199,11 @@ public:
             return std::chrono::steady_clock::now() - created;
         };
 
+        void handlePushState(const nextapp::pb::UpdatesReq::WithPush& wp);
+
     private:
+        boost::asio::awaitable<void> processPushState(nextapp::pb::UpdatesReq::WithPush wp);
+
         std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
         const boost::uuids::uuid sessionid_;
         const boost::uuids::uuid deviceid_;
@@ -257,12 +291,12 @@ public:
 
     void addPublisher(const std::shared_ptr<Publisher>& publisher);
     void removePublisher(const boost::uuids::uuid& uuid);
-    void publish(std::shared_ptr<pb::Update>& message);
-
-    boost::asio::awaitable<bool> checkForReplay(const boost::uuids::uuid& deviceId, uint instanceId, uint reqId);
-    boost::asio::awaitable<void> resetReplay(const boost::uuids::uuid& deviceId, uint instanceId);
+    [[nodiscard]] boost::asio::awaitable<void> publish(std::shared_ptr<pb::Update>& message);
+    void publishUpdates(std::shared_ptr<pb::Update> &update, std::set<boost::uuids::uuid>* devices = {});
+    [[nodiscard]] boost::asio::awaitable<bool> checkForReplay(const boost::uuids::uuid& deviceId, uint instanceId, uint reqId);
+    [[nodiscard]] boost::asio::awaitable<void> resetReplay(const boost::uuids::uuid& deviceId, uint instanceId);
     void saveReplayStateForDevice(const boost::uuids::uuid& deviceId);
-    boost::asio::awaitable<Device::value_t>getLastReqId(const boost::uuids::uuid& deviceId,
+    [[nodiscard]] boost::asio::awaitable<Device::value_t>getLastReqId(const boost::uuids::uuid& deviceId,
                                                                         uint instanceId,
                                                                         bool lookupInDbOnly = false);
     // boost::asio::awaitable<void> setLastReqId(const boost::uuids::uuid& deviceId, uint instanceId, Device::value_t value);
@@ -297,6 +331,18 @@ public:
         valid_ = false;
     }
 
+    /*! Reloads the pushers for all the devices for this user.
+     *
+     *  Makes sure that the pusher's in memory corresponds with the
+     *  database state.
+     */
+    boost::asio::awaitable<void> reloadPushers();
+
+    // boost::asio::awaitable<void> addPusher(const boost::uuids::uuid& deviceId,
+    //                                        const std::string& token,
+    //                                        std::shared_ptr<jgaa::cpp_push::Pusher> pusher);
+    // boost::asio::awaitable<void> removePusher(const boost::uuids::uuid& deviceId);
+
 private:
     static boost::uuids::uuid newUuid();
     void validateInstanceId(uint instanceId);
@@ -319,6 +365,21 @@ private:
     std::atomic_bool valid_{true}; // Indicates if the user context is still valid.
 };
 
+class Publisher {
+public:
+    virtual ~Publisher() = default;
+
+    virtual void publish(const std::shared_ptr<pb::Update>& message) = 0;
+    virtual void close() = 0;
+    virtual std::weak_ptr<UserContext::Session>& getSessionWeakPtr() = 0;
+
+    auto& uuid() const noexcept {
+        return uuid_;
+    }
+
+private:
+    const boost::uuids::uuid uuid_ = newUuid();
+};
 
 class SessionManager {
 public:

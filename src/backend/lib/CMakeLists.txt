@@ -31,16 +31,19 @@ add_library(${PROJECT_NAME}
 # clang complains about unknown g++ warnings enabled by the date library
 target_compile_options(${PROJECT_NAME} PRIVATE -Wno-unknown-warning-option)
 
-target_include_directories(${PROJECT_NAME} PUBLIC
-    $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
-    $<BUILD_INTERFACE:${NEXTAPP_ROOT}/include>
-    $<BUILD_INTERFACE:${NEXTAPP_BACKEND}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    $<BUILD_INTERFACE:${PROTO_GENERATED_INCLUDE_PATH}>
-    $<INSTALL_INTERFACE:include>
-    PRIVATE $Boost_INCLUDE_DIR
-    PRIVATE src)
+target_include_directories(${PROJECT_NAME}
+    PUBLIC
+        $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
+        $<BUILD_INTERFACE:${NEXTAPP_ROOT}/include>
+        $<BUILD_INTERFACE:${NEXTAPP_BACKEND}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+        $<BUILD_INTERFACE:${PROTO_GENERATED_INCLUDE_PATH}>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        $Boost_INCLUDE_DIR
+        src
+    )
 
 message("PROTO_GENERATED_INCLUDE_PATH: ${PROTO_GENERATED_INCLUDE_PATH}")
 
@@ -58,6 +61,7 @@ target_link_libraries(${PROJECT_NAME}
         $<BUILD_INTERFACE:proto>
         $<BUILD_INTERFACE:mysqlpool>
         $<BUILD_INTERFACE:yahat>
+        $<BUILD_INTERFACE:CppPush::CppPush>
     )
 
 message(STATUS "Components to pack (${PROJECT_NAME}): ${CPACK_COMPONENTS_ALL}")

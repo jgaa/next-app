@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!--<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>-->
 
     <!-- %%INSERT_PERMISSIONS -->
 
@@ -17,29 +20,38 @@
     <!-- Required Qt metadata -->
     <application android:name="org.qtproject.qt.android.bindings.QtApplication"
         android:hardwareAccelerated="true"
-        android:label="@APP_LABEL@"
+        android:label="@NEXTAPP_APP_NAME@"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
         android:fullBackupOnly="false"
         android:icon="@drawable/icon">
-        <activity android:name="org.qtproject.qt.android.bindings.QtActivity"
+        <activity android:name="@APP_ACTIVITY@"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:launchMode="singleTop"
             android:screenOrientation="unspecified"
-            android:exported="true" android:label="@APP_LABEL@">
+            android:exported="true" android:label="@NEXTAPP_APP_NAME@">
             <intent-filter>
                     <action android:name="android.intent.action.MAIN"/>
                     <category android:name="android.intent.category.LAUNCHER"/>
                 </intent-filter>
             <meta-data android:name="android.app.lib_name" android:value="@APP_LIB@"/>
             <meta-data android:name="android.app.arguments" android:value=""/>
+
+            <!-- We need the main message-loop running in order to process updates trouygh push notifications -->
+            <meta-data android:name="android.app.background_running" android:value="true"/>
+
         </activity>
 
-            <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.qtprovider" android:exported="false" android:grantUriPermissions="true">
-                <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/qtprovider_paths"/>
-            </provider>
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.qtprovider" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/qtprovider_paths"/>
+        </provider>
 
-        <!-- force software renderer -->
-        <!-- <meta-data android:name="qt.environment" android:value="QML_SCENE_GRAPH_RENDERER=software"/> -->
+<!--        <service android:process=":qt_service" android:name=".QtAndroidService" android:exported="true" android:foregroundServiceType="dataSync">
+            <meta-data android:name="android.app.background_running" android:value="true"/>
+            <meta-data android:name="android.app.lib_name" android:value="@APP_LIB@"/>
+            <meta-data android:name="android.app.arguments" android:value="-service"/>
+        </service>-->
+
+        @FCM_SERVICE@
     </application>
 </manifest>

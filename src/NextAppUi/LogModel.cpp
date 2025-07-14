@@ -22,6 +22,8 @@ const array<QString, 7> color_names = {
     "pink", "red", "orangered", "navy", "blue", "teal", "gray"
 };
 
+static const string handler_name = "LogModel";
+
 #include <QString>
 #include <QRegularExpression>
 
@@ -93,7 +95,8 @@ void showToast(const QString &message) {
 LogModel::LogModel()
 {
     logfault::LogManager::Instance().AddHandler(
-        make_unique<logfault::ProxyHandler>([this](const logfault::Message& msg) -> void {
+        make_unique<logfault::ProxyHandler>(handler_name,
+            [this](const logfault::Message& msg) -> void {
             emit messageAdded(LogMessage{static_cast<int>(msg.level_), msg.when_, msg.msg_});
         }, logfault::LogLevel::DEBUGGING));
 
@@ -118,6 +121,12 @@ LogModel::LogModel()
     clearMessageTimer_.callOnTimeout([this]() {
         setMessage({});
     });
+}
+
+LogModel::~LogModel()
+{
+    LOG_DEBUG_N << "Removing LogModel handler";
+    logfault::LogManager::Instance().RemoveHandler(handler_name);
 }
 
 int LogModel::rowCount(const QModelIndex &parent) const

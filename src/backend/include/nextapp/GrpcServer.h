@@ -265,7 +265,7 @@ public:
                         } else if constexpr (UnaryFnWithContext<FnT, ReplyT>) {
                             rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
                             co_await fn(reply, *rctx);
-                            owner_.publishUpdates(*rctx);
+                            co_await owner_.publishUpdates(*rctx);
                         } else if constexpr (!UnaryFnWithoutContext<FnT, ReplyT *> && !UnaryFnWithContext<FnT, ReplyT *>) {
                             static_assert(false, "Invalid unary handler function");
                         }
@@ -275,7 +275,7 @@ public:
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
                             LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
                             if (rctx) {
-                                owner_.publishUpdates(*rctx, true);
+                                owner_.publishUpdatesAfterFailure(*rctx);
                             }
                             reply->Clear();
                             reply->set_error(ex.error());
@@ -284,7 +284,7 @@ public:
                         } else {
                             LOG_WARN << "Request [" << name << "] Caught server_err exception while handling grpc request coro: " << ex.what();
                             if (rctx) {
-                                owner_.publishUpdates(*rctx, true);
+                                owner_.publishUpdatesAfterFailure(*rctx);
                             }
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
@@ -292,7 +292,7 @@ public:
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
                             LOG_DEBUG << "Request [" << name << "] Caught exception while handling grpc request: " << ex.what();
                             if (rctx) {
-                                owner_.publishUpdates(*rctx, true);
+                                owner_.publishUpdatesAfterFailure(*rctx);
                             }
                             reply->Clear();
                             reply->set_error(nextapp::pb::Error::GENERIC_ERROR);
@@ -301,7 +301,7 @@ public:
                         } else {
                             LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
                             if (rctx) {
-                                owner_.publishUpdates(*rctx, true);
+                                owner_.publishUpdatesAfterFailure(*rctx);
                             }
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
@@ -336,13 +336,13 @@ public:
                       rctx->session().touch();
                       rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
                       co_await fn(stream, *rctx);
-                      owner_.publishUpdates(*rctx);
+                      co_await owner_.publishUpdates(*rctx);
                       LOG_TRACE << "Finished reply stream [" << name << "]: ";
                       goto done;
                   } catch (const server_err& ex) {
                       LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
                       if (rctx) {
-                          owner_.publishUpdates(*rctx, true);
+                          owner_.publishUpdatesAfterFailure(*rctx);
                       }
                       err_reply.set_error(ex.error());
                       err_reply.set_message(ex.what());
@@ -390,13 +390,13 @@ public:
                       rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
                       co_await fn(stream, *rctx);
                       co_await stream->finish();
-                      owner_.publishUpdates(*rctx);
+                      co_await owner_.publishUpdates(*rctx);
                       LOG_TRACE << "Finished client stream [" << name << "]: ";
                       goto done;
                   } catch (const server_err& ex) {
                       LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
                       if (rctx) {
-                          owner_.publishUpdates(*rctx, true);
+                          owner_.publishUpdatesAfterFailure(*rctx);
                       }
                       reply->Clear();
                       reply->set_error(ex.error());
@@ -405,7 +405,7 @@ public:
                   } catch (const std::exception& ex) {
                       LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
                       if (rctx) {
-                          owner_.publishUpdates(*rctx, true);
+                          owner_.publishUpdatesAfterFailure(*rctx);
                       }
                       reply->Clear();
                       reply->set_error(nextapp::pb::Error::GENERIC_ERROR);
@@ -577,7 +577,18 @@ public:
 
 private:
 
-    void publishUpdates(RequestCtx& rctx, bool failed = false) {
+    boost::asio::awaitable<void> publishUpdates(RequestCtx& rctx) {
+        try {
+            LOG_TRACE_EX(rctx) << "Publishing updates.";
+            for (auto& update : rctx.updates) {
+                co_await rctx.uctx->publish(update.update);
+            }
+        } catch (const std::exception& ex) {
+            LOG_ERROR_EX(rctx) << "Failed to publish updates: " << ex.what();
+        }
+    }
+
+    void publishUpdatesAfterFailure(RequestCtx& rctx, bool failed = false) {
         try {
             LOG_TRACE_EX(rctx) << "Publishing updates.";
             for (auto& update : rctx.updates) {
@@ -585,7 +596,8 @@ private:
                     LOG_TRACE_EX(rctx) << "Skipping update on failure: " << update.update->DebugString();
                     continue;
                 }
-                rctx.uctx->publish(update.update);
+                // Calls non-awaitable publish without push support
+                rctx.uctx->publishUpdates(update.update);
             }
         } catch (const std::exception& ex) {
             LOG_ERROR_EX(rctx) << "Failed to publish updates: " << ex.what();

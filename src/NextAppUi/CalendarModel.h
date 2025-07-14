@@ -90,22 +90,16 @@ signals:
     void targetChanged();
 
 private:
-    //void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
-    //void onCalendarEventUpdated(const nextapp::pb::CalendarEvents& events, nextapp::pb::Update::Operation op);
-    QCoro::Task<void> onCalendarEventAddedOrUpdated(const QUuid id);
     QCoro::Task<void> onCalendarEventRemoved(const QUuid id);
-    //QCoro::Task<void> onCalendarEventUpdated(const QUuid& id);
+    QCoro::Task<void> onCalendarEventAddedOrUpdated(const QUuid id);
     QCoro::Task<void> fetchIf();
     void setOnline(bool online);
-    //void onReceivedCalendarData(nextapp::pb::CalendarEvents& data);
     void updateDayModels();
     void sort();
     void updateDayModelsDates();
     void alignDates();
     void onMinuteTimer();
     void updateToday();
-    void setAudioTimers();
-    void onAudioEvent();
     void updateIfPrimary();
     void updateActionsOnCalendarCache();
     CategoryUseModel::list_t getCategoryUsage();
@@ -120,10 +114,5 @@ private:
     QList<std::shared_ptr<nextapp::pb::CalendarEvent>> all_events_;
     std::unordered_map<const QObject *, std::unique_ptr<CalendarDayModel>> day_models_;
     std::unique_ptr<QTimer> minute_timer_;
-    // QAudioOutput audio_output_;
-    // QMediaPlayer player_;
-    QTimer next_audio_event_;
-    const nextapp::pb::CalendarEvent *audio_event_{};
-    AudioEventType audio_event_type_{AudioEventType::AE_PRE};
     bool is_primary_ = false;
 };

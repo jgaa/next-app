@@ -7,6 +7,7 @@
 #include "mysqlpool/conf.h"
 #include "nextapp/certs.h"
 #include "yahat/HttpServer.h"
+#include "cpp-push/cpp-push.h"
 
 namespace nextapp {
 
@@ -99,6 +100,8 @@ struct Config {
     ServerOptions options;
     CaOptions ca;
     yahat::HttpConfig http;
+    jgaa::cpp_push::Config push;
+    bool push_enabled = false;
 };
 
 } // ns

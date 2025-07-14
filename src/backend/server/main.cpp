@@ -241,6 +241,10 @@ int main(int argc, char* argv[]) {
              "Number of milliseconds to wait between publishing each notification for mass notifications")
             ("disable-grpc-keepalive", po::bool_switch(&config.grpc.disable_keepalive),
              "Disable gRPC keep-alive settings. Do not use this is production.")
+            ("enable-push-notifications", po::bool_switch(&config.push_enabled), "Enable push notifications.")
+            ("google-push-service-file", po::value(&config.push.google.config_file),
+             "Path to the service-file.json that provide credentials from Google to push-notifications for the app. "
+             "Required if --enable-push-notifications is provided.")
             ;
 
         po::options_description metrics("Metrics");

@@ -32,7 +32,7 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT ON)
-    set(NEXTAPP_APP_NAME "NextAppDebug")
+    set(NEXTAPP_APP_NAME "NextAppDevel")
 else()
     set(NEXTAPP_DEVEL_SETTINGS_DEFAULT OFF)
     set(NEXTAPP_APP_NAME "NextApp")
@@ -45,6 +45,25 @@ endif()
 option(NEXTAPP_USE_ANDROID_UI "Use Android UI. Enable to develop Android UI on the Desktop." OFF)
 if (NEXTAPP_USE_ANDROID_UI)
     add_definitions(-DUSE_ANDROID_UI)
+endif()
+
+if (ANDROID_BUILD)
+    set(NEXTAPP_APP_DOMAIN "eu.lastviking" CACHE INTERNAL "")
+    # Note, this require you to specify the location to this projects `google-services.json` in GOOGLE_SERVICES_PATH
+    # This file contains secrets, and should never be checked in as part of the source code.
+    # If you make your own version of the app, make sure you have set `NEXTAPP_APP_NAME` and `NEXTAPP_APP_DOMAIN` to
+    # the same values as the package in you `google-services.json` file.
+    option(NEXTAPP_WITH_FCM "Enable Google Firebase support" OFF)
+    if (NEXTAPP_WITH_FCM)
+        add_definitions(-DWITH_FCM)
+        if (NOT GOOGLE_SERVICES_PATH)
+            if(DEFINED ENV{GOOGLE_SERVICES_PATH})
+                set(GOOGLE_SERVICES_PATH "$ENV{GOOGLE_SERVICES_PATH}")
+            else()
+                message(FATAL_ERROR "You must specify the path to google-services.json using -DGOOGLE_SERVICES_PATH=/path/to/google-services.json")
+            endif()
+        endif()
+    endif()
 endif()
 
 if(USE_STATIC_QT)
@@ -77,14 +96,74 @@ find_package(Qt6 REQUIRED COMPONENTS
     ProtobufQtCoreTypes
     ProtobufWellKnownTypes
 )
+find_package(Qt6 REQUIRED COMPONENTS Core)
 
 if(ANDROID)
     message(STATUS "Compiling for Android")
-    set(APP_LABEL "${NEXTAPP_APP_NAME}")
+    string(TOLOWER "${NEXTAPP_APP_NAME}" APP_LABEL)
+    message(STATUS "APP_LABEL (lowercase): ${APP_LABEL}")
     set(APP_LIB "${PROJECT_NAME}")
-    set(PACKAGE_NAME "eu.lastviking.${APP_LABEL}")
+    set(PACKAGE_NAME "${NEXTAPP_APP_DOMAIN}.${APP_LABEL}")
+    string(REPLACE "." "_" PACKAGE_NAME_UNDERSCORES ${PACKAGE_NAME})
     set(ANDROID_OUT_DIR    "${CMAKE_BINARY_DIR}/android")
     file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
+    set(APP_ACTIVITY "org.qtproject.qt.android.bindings.QtActivity")
+
+    if (NEXTAPP_WITH_FCM)
+        set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivity")
+        set(FCM_SERVICE
+        "<service
+            android:name=\"${PACKAGE_NAME}.NextappFirebaseMessagingService\"
+            android:exported=\"true\">
+            <intent-filter>
+                <action android:name=\"com.google.firebase.MESSAGING_EVENT\" />
+            </intent-filter>
+        </service>")
+
+        file(COPY
+          "${GOOGLE_SERVICES_PATH}"
+          DESTINATION ${ANDROID_OUT_DIR}
+        )
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/android/build.gradle.fcm"
+            "${ANDROID_OUT_DIR}/build.gradle"
+            COPYONLY
+        )
+        configure_file(
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivity.java.in"
+          "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivity.java"
+          @ONLY
+        )
+
+        configure_file(
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/src/NextappFirebaseMessagingService.java.in"
+          "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/NextappFirebaseMessagingService.java"
+          @ONLY
+        )
+
+        ## The QtAndroidService.java is not currently being used. Kept here for further experimentation
+        # configure_file(
+        #   "${CMAKE_CURRENT_SOURCE_DIR}/android/src/QtAndroidService.java.in"
+        #   "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/QtAndroidService.java"
+        #   @ONLY
+        # )
+
+        configure_file(
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.h.in"
+          "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h"
+          @ONLY
+        )
+
+        configure_file(
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.cpp.in"
+          "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
+          @ONLY
+        )
+
+        set (FCM_SOURCES
+            "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
+            "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h")
+    endif()
 
     configure_file(
       "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
@@ -96,6 +175,7 @@ if(ANDROID)
       "${CMAKE_CURRENT_SOURCE_DIR}/android/res"
       DESTINATION ${ANDROID_OUT_DIR}
     )
+
 
     set(QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_OUT_DIR}")
     set(ANDROID_MIN_SDK_VERSION 31)  # Android 12
@@ -214,6 +294,8 @@ qt_add_executable(${PROJECT_NAME}
     logging.h
 )
 
+
+target_link_libraries(appNextAppUi PRIVATE Qt6::Core)
 target_include_directories(${PROJECT_NAME} PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<INSTALL_INTERFACE:include>
@@ -283,7 +365,11 @@ else()
     add_android_openssl_libraries(${PROJECT_NAME})
     get_target_property(QT_ANDROID_EXTRA_LIBS_VALUE ${PROJECT_NAME} QT_ANDROID_EXTRA_LIBS)
     message("OPENSSL_INCLUDE: ${OPENSSL_INCLUDE}")
-    target_include_directories(${PROJECT_NAME} PRIVATE ${OPENSSL_INCLUDE})
+    target_include_directories(${PROJECT_NAME}
+        PRIVATE
+        ${OPENSSL_INCLUDE}
+        ${CMAKE_BINARY_DIR}
+    )
 endif()
 
 set_source_files_properties(qml/Colors.qml
@@ -317,6 +403,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/EditActionView.qml
         qml/EditNodeDlg.qml
         qml/EditWorkSession.qml
+        qml/ImportExport.qml
         qml/MainTree.qml
         qml/MyMenu.qml # x
         qml/MyMenuBar.qml # x
@@ -390,6 +477,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
         qml/styling/SplitterStyle.qml
+    RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Regular-400.otf"
         "fonts/Font Awesome 6 Free-Solid-900.otf"
@@ -442,8 +530,9 @@ qt_add_qml_module(${PROJECT_NAME}
         sounds/387351__cosmicembers__simple-ding.wav
         sounds/515643__mashedtatoes2__ding2_edit.wav
         sounds/611112__5ro4__bell-ding-2.wav
-    RESOURCES
     SOURCES
+        ${EXTRA_SOURCE_FILES}
+        ${FCM_SOURCES}
         ActionCategoriesModel.cpp
         ActionCategoriesModel.h
         ActionInfoCache.cpp
@@ -480,6 +569,7 @@ qt_add_qml_module(${PROJECT_NAME}
         GreenMonthModel.cpp
         GreenMonthModel.h
         GrpcIncomingStream.h
+        ImportExportModel.cpp
         LogModel.cpp
         LogModel.h
         MainTreeModel.cpp
@@ -519,9 +609,8 @@ qt_add_qml_module(${PROJECT_NAME}
         nextapp.h
         util.cpp
         util.h
-        ${EXTRA_SOURCE_FILES}
-        QML_FILES qml/ImportExport.qml
-        SOURCES ImportExportModel.h ImportExportModel.cpp
+        EventScheduler.h
+        EventScheduler.cpp
 )
 
 

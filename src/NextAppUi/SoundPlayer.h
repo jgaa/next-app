@@ -13,8 +13,40 @@ class SoundPlayer
         ma_device device;
     };
 public:
-    static void playSound(const QString& resourcePath, double volume);
+    enum class State {
+        UNINITIALIZED,
+        INITIALIZED,
+        CLOSED
+    };
+
+    SoundPlayer();
+
+    void playSound(const QString& resourcePath, double volume);
+    void setState(State state) {
+        state_ = state;
+    }
+
+    State state() const noexcept {
+        return state_;
+    }
+
+    ma_engine& engine() noexcept {
+        return engine_;
+    }
+
+    ~SoundPlayer();
+
+    void close();
+
+    QByteArrayView getSoundData(const QString& resourcePath);
+
+    static SoundPlayer& instance() noexcept;
 
 private:
-    static void playSoundAsync(QString resourcePath, double volume);
+    State state_{State::UNINITIALIZED};
+    ma_vfs *vfs_{};
+    std::map<QString, QByteArray> sounds_;
+    ma_resource_manager resource_manager_{};
+    ma_engine engine_{};
+    std::mutex mutex_;
 };

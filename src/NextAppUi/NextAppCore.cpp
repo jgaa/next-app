@@ -14,6 +14,10 @@
 #include <QDBusInterface>
 #endif
 
+#ifdef WITH_FCM
+#   include "AndroidFcmBridge.h"
+#endif
+
 #include "SoundPlayer.h"
 #include "WeeklyWorkReportModel.h"
 #include "ActionCategoriesModel.h"
@@ -130,6 +134,20 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
     qApp->installNativeEventFilter(pef);
 #endif
 
+#ifdef WITH_FCM
+    auto &bridge = AndroidFcmBridge::instance();
+    QObject::connect(&bridge, &AndroidFcmBridge::tokenRefreshed,
+                     [](const QString &token){
+                         LOG_DEBUG_N << "New FCM token:" << token;
+                         // send to your server…
+                     });
+    QObject::connect(&bridge, &AndroidFcmBridge::messageReceived,
+                     [](const QString &id, const QString &notif, const QString &data){
+                         LOG_DEBUG_N << "Push arrived:" << id << notif << data;
+                         // show an in-app UI or fire a local notification
+                     });
+#endif
+
     connect(qApp, &QGuiApplication::applicationStateChanged, [this](Qt::ApplicationState state) {
         const auto old_state = state_;
 
@@ -203,6 +221,8 @@ NextAppCore::~NextAppCore()
         db_->close();
         db_.reset();
     }
+
+    SoundPlayer::instance().close();
 }
 
 
@@ -349,7 +369,7 @@ void NextAppCore::playSound(double volume, const QString &soundFile)
     LOG_DEBUG_N << "Playing sound " << soundFile
                 << " at volume " << volume;
 
-    SoundPlayer::playSound(soundFile, volume);
+    SoundPlayer::instance().playSound(soundFile, volume);
 }
 
 void NextAppCore::playSoundDelayed(int delayMs, double volume, const QString &soundFile)

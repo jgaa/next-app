@@ -1,0 +1,105 @@
+// package @PACKAGE_NAME@;
+//
+// import @PACKAGE_NAME@.R;
+// import android.content.Context;
+// import android.content.Intent;
+// import android.util.Log;
+// import org.qtproject.qt.android.bindings.QtService;
+// import com.google.firebase.messaging.FirebaseMessaging;
+// import org.qtproject.qt.android.bindings.QtActivity;
+// import com.google.firebase.FirebaseApp;
+// import android.app.Service;                    // if you extend Service
+// import android.app.Notification;               // Notification class
+// import android.app.NotificationChannel;        // For Oreo+ channels
+// import android.app.NotificationManager;        // To create channels
+// import android.content.Context;                // getSystemService(...)
+// import android.os.Build;                       // Build.VERSION.SDK_INT, VERSION_CODES
+// import androidx.core.app.NotificationCompat;   // NotificationCompat.Builder
+// import android.widget.Toast;
+//
+// public class QtAndroidService extends QtService
+// {
+//     private static String sFcmToken;
+//     private static final String TAG = "@PACKAGE_NAME@-QtAndroidService";
+//     private static final String CHANNEL_ID = "nextapp_service_channel";
+//
+//     public void createTestChannel() {
+//         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//             NotificationChannel channel = new NotificationChannel(
+//                     CHANNEL_ID,
+//                     "Test Foreground Service Channel",
+//                     NotificationManager.IMPORTANCE_LOW
+//             );
+//             channel.setDescription("Channel for testing foreground service notifications");
+//
+//             NotificationManager nm = getSystemService(NotificationManager.class);
+//             nm.createNotificationChannel(channel);
+//         }
+//     }
+//
+//     @Override
+//     public void onCreate() {
+//         super.onCreate();
+//         Log.i(TAG, "Creating Service");
+//
+//         createTestChannel();
+//         FirebaseApp.initializeApp(this);
+//
+//         // This forces Firebase to initialize and call the firebase messaging service.
+//         FirebaseMessaging.getInstance()
+//             .getToken()
+//             .addOnCompleteListener(task -> {
+//                 if (task.isSuccessful()) {
+//                     sFcmToken = task.getResult();
+//                     Log.d(TAG, "Initial token: " + sFcmToken);
+//                 } else {
+//                     Log.e(TAG, "Token fetch failed", task.getException());
+//                 }
+//             });
+//     }
+//
+//     @Override
+//     public void onDestroy() {
+//         super.onDestroy();
+//         Log.i(TAG, "Destroying Service");
+//         Toast.makeText(this, "NextApp service done", Toast.LENGTH_SHORT).show();
+//     }
+//
+//     @Override
+//     public int onStartCommand(Intent intent, int flags, int startId) {
+//         int ret = super.onStartCommand(intent, flags, startId);
+//
+//         // Do some work
+//         Log.i(TAG, "onStartCommand called");
+//
+//         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//           NotificationChannel chan = new NotificationChannel(
+//               CHANNEL_ID,
+//               "NextApp Service Channel",
+//               NotificationManager.IMPORTANCE_LOW
+//           );
+//           chan.setDescription("Shows that NextApp service is running");
+//           NotificationManager mgr = getSystemService(NotificationManager.class);
+//           mgr.createNotificationChannel(chan);
+//       }
+//
+//       // 2) Build the notification
+//       Notification n = new NotificationCompat.Builder(this, CHANNEL_ID)
+//           .setContentTitle("NextApp Service")
+//           .setContentText("Running in background")
+//           .setSmallIcon(R.drawable.icon)   // your service icon
+//           .setOngoing(true)                      // user can’t swipe it away
+//           .build();
+//
+//         //return ret;
+//          // promote to foreground — this must happen within ~5s on O+
+//         startForeground(1, n);
+//
+//         // your existing logic…
+//         return START_STICKY;
+//     }
+//
+//     public static void startQtAndroidService(Context context) {
+//         context.startService(new Intent(context, QtAndroidService.class));
+//     }
+// }

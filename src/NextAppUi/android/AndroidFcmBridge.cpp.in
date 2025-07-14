@@ -1,0 +1,90 @@
+#include "AndroidFcmBridge.h"
+#include "logging.h"
+#include "QCoreApplication"
+
+namespace {
+QString fetchFcmTokenFromJava() {
+// Make sure the JVM is up and the activity is created:
+    QJniEnvironment env;
+    // Call the static Java method you added:
+    QJniObject tokenObj = QJniObject::callStaticObjectMethod(
+        "eu/lastviking/nextappdevel/MainActivity",  // Java class FQN
+        "getFcmToken",                              // method name
+        "()Ljava/lang/String;"                      // JNI signature
+    );
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return {};
+    }
+    if (tokenObj.isValid()){
+        return tokenObj.toString();
+    }
+    LOG_WARN_N << "Failed to fetch FCM token from Java";
+    return {};
+}
+} // ns
+
+AndroidFcmBridge &AndroidFcmBridge::instance() {
+    static AndroidFcmBridge inst;
+    return inst;
+}
+
+QString AndroidFcmBridge::getToken() {
+    if (token_.isEmpty()) {
+        LOG_TRACE_N << "Fetching FCM token from Java";
+        token_ = fetchFcmTokenFromJava();
+    }
+
+    return token_;
+}
+
+// Called when onNewToken fires
+JNIEXPORT void JNICALL
+Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnNewToken(
+    JNIEnv *env, jobject /*thiz*/, jstring jtoken)
+{
+    nextapp::logging::initAndroidLogging();
+    LOG_DEBUG_N << "Fcm Called";
+    const char *token = env->GetStringUTFChars(jtoken, nullptr);
+    QMetaObject::invokeMethod(&AndroidFcmBridge::instance(),
+                              [token]() {
+                                  LOG_DEBUG_N << "Token: " <<  token;
+                                  //emit AndroidFcmBridge::instance().tokenRefreshed(QString::fromUtf8(token));
+                                  AndroidFcmBridge::instance().setToken(QString::fromUtf8(token));
+                              },
+                              Qt::QueuedConnection);
+    env->ReleaseStringUTFChars(jtoken, token);
+}
+
+// Called when onMessageReceived fires
+JNIEXPORT void JNICALL
+Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnMessage(
+    JNIEnv *env, jobject /*thiz*/,
+    jstring jmsgId, jstring jnotif, jstring jdata)
+{
+    nextapp::logging::initAndroidLogging();
+    LOG_DEBUG_N << "Fcm Called. "
+        << (QCoreApplication::instance() ? "Have QCoreApplication" : "No QCoreApplication");
+
+    auto getString = [&](jstring js) {
+        const char *s = env->GetStringUTFChars(js, nullptr);
+        QString qs = QString::fromUtf8(s);
+        env->ReleaseStringUTFChars(js, s);
+        return qs;
+    };
+    QString msgId = getString(jmsgId);
+    QString notif = getString(jnotif);
+    QString data  = getString(jdata);
+
+    QMetaObject::invokeMethod(&AndroidFcmBridge::instance(),
+                              [msgId,notif,data]() {
+                              LOG_DEBUG_N << "Message received: "
+                                          << "msgId: " << msgId
+                                          << ", notif: " << notif
+                                          << ", data: " << data;
+                                  emit AndroidFcmBridge::instance().messageReceived(msgId, notif, data);
+                              },
+                              Qt::QueuedConnection);
+}
+
