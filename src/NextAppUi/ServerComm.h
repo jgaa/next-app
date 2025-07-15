@@ -621,7 +621,6 @@ private:
     QCoro::Task<bool> deleteRequestFromDb(uint id);
     QCoro::Task<void> housekeeping();
 
-
     bool shouldReconnect() const noexcept;
     bool canConnect() const noexcept;
 

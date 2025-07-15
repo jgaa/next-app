@@ -233,9 +233,13 @@ void UserContext::publishUpdates(std::shared_ptr<pb::Update> &update, set<boost:
             if (auto pub = weak_pub.lock()) {
                 if (auto session = pub->getSessionWeakPtr().lock()) {
                     LOG_TRACE_N << "Publish #" << update->messageid() << " to " << pub->uuid();
-                    pub->publish(update);
-                    if (devices) {
-                        devices->emplace(session->deviceId());
+                    if (pub->publish(update)) {
+                        // The device-list will exclude the sessions device device from push notification for this update.
+                        // We only add the device to the list if publish() succeeded and the update was
+                        // accepted for delivery over gRPC.
+                        if (devices) {
+                            devices->emplace(session->deviceId());
+                        }
                     }
                 } else {
                     LOG_TRACE_N << "Publisher " << pub->uuid() << " has no valid session. Skipping.";
@@ -254,7 +258,6 @@ boost::asio::awaitable<void> UserContext::publish(std::shared_ptr<pb::Update> &u
 
     publishUpdates(update, &devices);
 
-    vector<std::shared_ptr<PushNotifications>> pn;
     {
         unique_lock lock{mutex_};
         // Remove all publishers that are no longer valid
@@ -262,15 +265,18 @@ boost::asio::awaitable<void> UserContext::publish(std::shared_ptr<pb::Update> &u
             if (auto pub = weak_pub.lock()) {
                 return false; // Keep valid publishers
             } else {
+                LOG_TRACE_N << "Removing expired publisher for user " << userUuid();
                 return true; // Remove expired weak_ptrs
             }
         });
     }
 
     // Filter out updates that are not for push notifications
-    if (!update->has_calendarevents()) {
+    if (!isForPush(*update)) {
         co_return;
     }
+
+    vector<std::shared_ptr<PushNotifications>> pn;
 
     // Briefly lock the instance and copy any push notification handlers
     // for devices that are not already published to in the `pn` set.
@@ -442,6 +448,58 @@ void UserContext::saveReplayStateForDevice(const boost::uuids::uuid &deviceId)
     }, boost::asio::detached);
 }
 
+void UserContext::Session::push(const std::shared_ptr<pb::Update> &message)
+{
+    if (!hasPush()) {
+        LOG_TRACE_N << "Skipping push notification for update #" << message->messageid()
+                    << " for user " << user().userUuid() << " on device " << deviceId()
+                    << " because push notifications are assumed disabled on this device.";
+        return;
+    }
+
+    boost::asio::co_spawn(Server::instance().ctx(), [user = user_, msg=message, devid=deviceId()] () -> boost::asio::awaitable<void> {
+        try {
+            co_await user->push(msg, devid);
+        } catch (const std::exception& e) {
+            LOG_WARN_N << "Failed to push notification for update #" << msg->messageid()
+                       << " for user " << user->userUuid() << " on device " << devid
+                       << ": " << e.what();
+        }
+    }, boost::asio::detached);
+}
+
+boost::asio::awaitable<void> UserContext::push(const std::shared_ptr<pb::Update> &message, const boost::uuids::uuid deviceId)
+{
+    std::shared_ptr<PushNotifications> handler;
+
+    // Briefly lock the instance and copy any push notification handlers
+    // for devices that are not already published to in the `pn` set.
+    {
+        unique_lock lock{instance_mutex_};
+        for(auto& [id, dev] : devices_) {
+            if (dev.push_notifications_ && id == deviceId) {
+                handler= dev.push_notifications_;
+                break;
+            }
+        }
+    }  // unlock
+
+    if (handler) {
+        try {
+            // TODO: Apply rate limiting here
+            co_await handler->sendNotification(message);
+        } catch (const std::exception& e) {
+            LOG_WARN_N << "Failed to send push notification for update #" << message->messageid()
+            << " to device " << handler->deviceId() << ": " << e.what();
+        }
+    }
+    co_return;
+};
+
+bool UserContext::isForPush(const pb::Update &update) {
+    return update.has_calendarevents();
+}
+
 boost::asio::awaitable<void> UserContext::reloadPushers() {
 
     if (!Server::instance().config().push_enabled) {
@@ -503,11 +561,13 @@ void UserContext::Session::handlePushState(const pb::UpdatesReq::WithPush &wp)
 
 boost::asio::awaitable<void> UserContext::Session::processPushState(pb::UpdatesReq::WithPush wp)
 {
+    bool enabled = true;
     {
         auto db = co_await Server::instance().db().getConnection();
         switch(wp.kind()) {
         case pb::UpdatesReq::WithPush::Kind::UpdatesReq_WithPush_Kind_DISABLE:
     disable:
+            enabled = false;
             LOG_DEBUG_N << "Disabling push notifications for device " << deviceid_ << " for user " << user().userUuid();
             co_await db.exec("UPDATE device SET pushType=NULL, pushToken=NULL WHERE id=? AND user=?",
                     deviceid_, user().userUuid());
@@ -532,6 +592,7 @@ boost::asio::awaitable<void> UserContext::Session::processPushState(pb::UpdatesR
     }
 
     co_await user_->reloadPushers();
+    setHasPush(enabled);
 
     co_return;
 }
@@ -990,7 +1051,7 @@ std::chrono::steady_clock::time_point UserContext::Session::touched() const {
     return last_access_;
 }
 
-boost::asio::awaitable<bool> UserContext::PushNotifications::sendNotification(std::shared_ptr<nextapp::pb::Update>& message)
+boost::asio::awaitable<bool> UserContext::PushNotifications::sendNotification(const std::shared_ptr<nextapp::pb::Update>& message)
 {
     assert(pusher_);
     if (!pusher_->isReady()) {

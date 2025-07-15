@@ -174,6 +174,8 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         enum class State {
             READY,
             WAITING_ON_WRITE,
+            FAILED,
+            FINISHING,
             DONE
         };
 
@@ -192,6 +194,9 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             try {
                 auto session = owner_.sessionManager().getExistingSession(context_);
                 assert(session);
+                device_uuid_ = session->deviceId();
+                session_has_push_ = session->hasPush();
+                user_ = session->userPtr();
                 session->addCleanup([w=weak_from_this(), sid=session->sessionId(), when=session->createdTime()] {
                     if (auto self = w.lock()) {
                         LOG_TRACE << "Session " << sid
@@ -240,46 +245,78 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             self_.reset();
         }
 
+        void finish(const ::grpc::Status s) {
+            {
+                scoped_lock lock{mutex_};
+                if (state_ >=  State::FINISHING) {
+                    LOG_DEBUG_N << "Publisher " << uuid()
+                                << " is already in state " << static_cast<int>(state_)
+                                << ". Not finishing again.";
+                    return;
+                }
+                state_ = State::FINISHING;
+            }
+            Finish(s);
+        }
+
 
         /*! Callback event when a write operation is complete */
         void OnWriteDone(bool ok) override {
             if (!ok) [[unlikely]] {
-                LOG_WARN << "The write-operation failed.";
+                LOG_DEBUG_N << "The write-operation failed for publisher " << uuid()
+                         << " with device id " << device_uuid_
+                         << ". Closing subscription.";
+
+                failedToPublish();
 
                 // We still need to call Finish or the request will remain stuck!
-                Finish({::grpc::StatusCode::UNKNOWN, "stream write failed"});
-                scoped_lock lock{mutex_};
-                state_ = State::DONE;
+                finish({::grpc::StatusCode::UNKNOWN, "stream write failed"});
                 return;
             }
 
+            // Happy path
             {
                 scoped_lock lock{mutex_};
-                state_ = State::READY;
-                updates_.pop();
+                if (state_ == State::WAITING_ON_WRITE) {
+                    state_ = State::READY;
+                    updates_.pop();
+                } else {
+                    LOG_ERROR_N << "Unexpected state in OnWriteDone: "
+                                << static_cast<int>(state_);
+                    goto failed;
+                }
             }
 
             reply();
+            return;
+
+failed:
+            close();
         }
 
-        void publish(const std::shared_ptr<pb::Update>& message) override {
+        bool publish(const std::shared_ptr<pb::Update>& message) override {
             if (auto session = session_.lock()) {
                 LOG_TRACE_N << "Queued message for subscriber " << uuid() << " from session " << session->sessionId() << " for user " << session->user().userUuid();
                 scoped_lock lock{mutex_};
+                if (state_ >= State::FAILED) {
+                    LOG_DEBUG_N << "Subscription " << uuid() << " is in a failed state. Not queuing message.";
+                    return false;
+                }
                 updates_.emplace(message);
                 session->touch();
             } else {
                 LOG_DEBUG_N << "Session is gone for subscriber " << uuid() << ". Closing subscription.";
                 close();
-                return;
+                return false;
             }
 
             reply();
+            return true;
         }
 
         void close() override {
-            LOG_TRACE << "Closing subscription " << uuid();
-            Finish(::grpc::Status::OK);
+            LOG_TRACE << "Closing subscription " << uuid() << " with device " << device_uuid_;
+            finish(::grpc::Status::OK);
         }
 
         std::weak_ptr<UserContext::Session>& getSessionWeakPtr() override {
@@ -306,7 +343,69 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             }
 
             // TODO: Implement finish if the server shuts down.
-            //Finish(::grpc::Status::OK);
+            //finish(::grpc::Status::OK);
+        }
+
+        // Tries to publish all the queued messages to push notifications
+        // if they are pushable, even if the session is gone.
+        void failedToPublish() {
+            decltype (updates_) updates;
+            {
+                scoped_lock lock{mutex_};
+                if (state_ < State::FAILED) {
+                    state_ = State::FAILED;
+                }
+
+                if (!session_has_push_ || updates_.empty()) {
+                    LOG_TRACE_N << "Subscription " << uuid()
+                                << " with device " << device_uuid_
+                                << " has "
+                                << updates_.size() << " updates queued and push "
+                                << (session_has_push_ ? "enabled" : "disabled");
+
+                    return;
+                }
+
+                updates = std::move(updates_);
+            }
+
+            assert(!updates.empty());
+
+            LOG_TRACE_N << "Failed to publish #" << updates.size() << " updates for subscriber " << uuid()
+                        << " for device " << device_uuid_;
+
+            if (const auto user = user_.lock()) {
+                vector<shared_ptr<pb::Update>> push_queue;
+                for(; !updates.empty(); updates.pop()) {
+                    const auto& message = updates.front();
+                    if (UserContext::isForPush(*message)) {
+                        push_queue.emplace_back(message);
+                    }
+                }
+
+                if (!push_queue.empty()) {
+                    boost::asio::co_spawn(Server::instance().ctx(),
+                                          [suid = uuid(), user=user, push_queue=std::move(push_queue), devid=device_uuid_]
+                                          () -> boost::asio::awaitable<void> {
+                        for(auto& msg : push_queue) {
+                            LOG_DEBUG_N << "Pushing update #" << msg->messageid()
+                            << " for subscriber " << suid
+                            << " for user " << user->userUuid()
+                            << " after I failed to publish an update over gRPC.";
+
+                            try {
+                                co_await user->push(msg, devid);
+                            } catch (const std::exception& ex) {
+                                LOG_WARN_N << "Failed to push update #" << msg->messageid()
+                                           << " for subscriber " << suid
+                                           << " for user " << user->userUuid()
+                                           << ": " << ex.what();
+                                break; // No need to continue pushing if one failed
+                            }
+                        }
+                    }, boost::asio::detached);
+                }
+            }
         }
 
         GrpcServer& owner_;
@@ -316,7 +415,10 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
         std::shared_ptr<ServerWriteReactorImpl> self_;
         ::grpc::CallbackServerContext *context_;
         std::weak_ptr<UserContext::Session> session_;
+        std::weak_ptr<UserContext> user_;
         Metrics::gauge_scoped_t session_subscriptions_{owner_.server().metrics().session_subscriptions().scoped()};
+        boost::uuids::uuid device_uuid_;
+        bool session_has_push_{false};
     };
 
     try {

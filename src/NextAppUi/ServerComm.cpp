@@ -280,6 +280,14 @@ ServerComm::ServerComm()
             return;
         }
 
+        // Check if the current message-id from grpc updates is greater than the one we received
+        if (update->messageId() <= last_seen_update_id_) {
+            LOG_DEBUG_N << "Received Update from push message with id #"
+                        << update->messageId() << " <= last_seen_update_id_=" << last_seen_update_id_
+                        << ". Ignoring it.";
+            return;
+        }
+
         // Only handle the update if it it has events we expect from push messages
         if (update->hasCalendarEvents()) {
             LOG_DEBUG_N << "Received Update from push message. Processing...";

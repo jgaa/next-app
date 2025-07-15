@@ -120,7 +120,7 @@ public:
          * @param pn The push notification to send.
          * @return true if the notification was sent successfully, false otherwise.
          */
-        [[nodiscard]] boost::asio::awaitable<bool> sendNotification(std::shared_ptr<nextapp::pb::Update>& message);
+        [[nodiscard]] boost::asio::awaitable<bool> sendNotification(const std::shared_ptr<nextapp::pb::Update>& message);
 
         const boost::uuids::uuid& userId() const noexcept {
             return userid_;
@@ -201,6 +201,22 @@ public:
 
         void handlePushState(const nextapp::pb::UpdatesReq::WithPush& wp);
 
+        void push(const std::shared_ptr<pb::Update>& message);
+
+        /*! Indicates if the session has push notifications enabled.
+         *
+         *  This is used to determine if the session should handle push notifications.
+         *  It does not guarantee that the session's device is currently ready to receive
+         *  push notifications.
+         */
+        bool hasPush() const noexcept {
+            return has_push_;
+        }
+
+        void setHasPush(bool enabled) {
+            has_push_ = enabled;
+        }
+
     private:
         boost::asio::awaitable<void> processPushState(nextapp::pb::UpdatesReq::WithPush wp);
 
@@ -211,6 +227,7 @@ public:
         std::vector<cleanup_t> cleanup_;
         std::atomic<std::chrono::steady_clock::time_point> last_access_{std::chrono::steady_clock::now()};
         std::chrono::steady_clock::time_point created_{std::chrono::steady_clock::now()};
+        bool has_push_{false}; // Indicates if the session has push enabled.
     };
 
 
@@ -299,8 +316,8 @@ public:
     [[nodiscard]] boost::asio::awaitable<Device::value_t>getLastReqId(const boost::uuids::uuid& deviceId,
                                                                         uint instanceId,
                                                                         bool lookupInDbOnly = false);
-    // boost::asio::awaitable<void> setLastReqId(const boost::uuids::uuid& deviceId, uint instanceId, Device::value_t value);
-    // boost::asio::awaitable<void> resetLastReqId(const boost::uuids::uuid& deviceId, uint instanceId);
+    [[nodiscard]] boost::asio::awaitable<void> push(const std::shared_ptr<pb::Update>& message,
+                                                    const boost::uuids::uuid deviceId);
 
     const auto& sessions() const {
         return sessions_;
@@ -343,6 +360,8 @@ public:
     //                                        std::shared_ptr<jgaa::cpp_push::Pusher> pusher);
     // boost::asio::awaitable<void> removePusher(const boost::uuids::uuid& deviceId);
 
+    static bool isForPush(const pb::Update& update) ;
+
 private:
     static boost::uuids::uuid newUuid();
     void validateInstanceId(uint instanceId);
@@ -369,7 +388,13 @@ class Publisher {
 public:
     virtual ~Publisher() = default;
 
-    virtual void publish(const std::shared_ptr<pb::Update>& message) = 0;
+    /*! Returns false if the publisher is not able to publish messages.
+     *
+     *  If it returns true, the message is accepted for delivery.
+     *  If delivery fails, the publisher will try to send pushable
+     *  messages to the device trough push notifications.
+     */
+    [[nodiscard]] virtual bool publish(const std::shared_ptr<pb::Update>& message) = 0;
     virtual void close() = 0;
     virtual std::weak_ptr<UserContext::Session>& getSessionWeakPtr() = 0;
 
