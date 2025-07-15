@@ -194,8 +194,11 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             try {
                 auto session = owner_.sessionManager().getExistingSession(context_);
                 assert(session);
+
+                // Ugly, but avoids extra lokcks and lookups when we change push state on a session/device.
+                session->setPublisher(shared_from_this());
                 device_uuid_ = session->deviceId();
-                session_has_push_ = session->hasPush();
+                setHasPush(session->hasPush());
                 user_ = session->userPtr();
                 session->addCleanup([w=weak_from_this(), sid=session->sessionId(), when=session->createdTime()] {
                     if (auto self = w.lock()) {
@@ -243,6 +246,15 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
             }
 
             self_.reset();
+        }
+
+        void setHasPush(bool enable) override {
+            LOG_TRACE_N << "Setting hasPush for subscriber " << uuid()
+                        << " with device " << device_uuid_
+                        << " to " << (enable ? "true" : "false");
+
+            scoped_lock lock{mutex_};
+            session_has_push_ = enable;
         }
 
         void finish(const ::grpc::Status s) {

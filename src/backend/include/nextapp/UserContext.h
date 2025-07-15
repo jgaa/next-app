@@ -213,8 +213,10 @@ public:
             return has_push_;
         }
 
-        void setHasPush(bool enabled) {
-            has_push_ = enabled;
+        void setHasPush(bool enabled);
+
+        void setPublisher(const std::shared_ptr<Publisher>& publisher) {
+            publisher_ = publisher;
         }
 
     private:
@@ -228,6 +230,7 @@ public:
         std::atomic<std::chrono::steady_clock::time_point> last_access_{std::chrono::steady_clock::now()};
         std::chrono::steady_clock::time_point created_{std::chrono::steady_clock::now()};
         bool has_push_{false}; // Indicates if the session has push enabled.
+        std::weak_ptr<Publisher> publisher_; // The publisher for this session, if any.
     };
 
 
@@ -397,6 +400,7 @@ public:
     [[nodiscard]] virtual bool publish(const std::shared_ptr<pb::Update>& message) = 0;
     virtual void close() = 0;
     virtual std::weak_ptr<UserContext::Session>& getSessionWeakPtr() = 0;
+    virtual void setHasPush(bool enable) = 0;
 
     auto& uuid() const noexcept {
         return uuid_;

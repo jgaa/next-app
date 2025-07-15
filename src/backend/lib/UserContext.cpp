@@ -448,6 +448,13 @@ void UserContext::saveReplayStateForDevice(const boost::uuids::uuid &deviceId)
     }, boost::asio::detached);
 }
 
+void UserContext::Session::setHasPush(bool enabled) {
+    has_push_ = enabled;
+    if (auto p = publisher_.lock()) {
+        p->setHasPush(enabled);
+    }
+}
+
 void UserContext::Session::push(const std::shared_ptr<pb::Update> &message)
 {
     if (!hasPush()) {
