@@ -7,7 +7,6 @@ import NextAppUi
 import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
 
-pragma ComponentBehavior: Bound
 
 ScrollView {
     id: root
@@ -18,10 +17,13 @@ ScrollView {
     }
 
     function commit() {
-        settings.setValue("alarms/calendarEvent.enabled", alarmsEnabled.checked)
+        settings.setValue("alarms/calendarEvent.enabled", alarmsEnabled.checked ? "true" : "false")
         settings.setValue("alarms/calendarEvent.SoonToStartMinutes", alarmsBeforeStart.value)
         settings.setValue("alarms/calendarEvent.SoonToEndMinutes", alarmsBeforeEnd.value)
         settings.setValue("alarms/calendarEvent.volume", alarmsVolume.value)
+        if (NaCore.hasPushNotifications) {
+            settings.setValue("push/updates", pushUpdatesEnabled.checked ? "true" : "false")
+        }
         settings.sync()
     }
 
@@ -36,10 +38,11 @@ ScrollView {
             rowSpacing: 4
             columns: 2
 
-            Label { text: qsTr("Enabled")}
+            Label { text: qsTr("Alarms")}
             Switch {
                 id: alarmsEnabled
-                checked: settings.value("alarms/calendarEvent.enabled", true)
+                checked: settings.value("alarms/calendarEvent.enabled", "true") === "true"
+                text: qsTr("Enabled")
             }
 
             Label { text: qsTr("Before start")}
@@ -75,6 +78,29 @@ ScrollView {
                     // Used delayed play to avoid sound being cut off by the next sound during sliding
                     NaCore.playSoundDelayed(400, alarmsVolume.value, "")
                 }
+            }
+        }
+
+        Label {
+            id: pushNotificationsLabel
+            enabled: NaCore.hasPushNotifications
+            text: qsTr("Push notifications")
+        }
+
+        GridLayout {
+            enabled: pushNotificationsLabel.enabled
+            Layout.leftMargin: 20
+            Layout.fillWidth: true
+            rowSpacing: 4
+            columns: 2
+
+            Label {
+                text: qsTr("Important updates")
+            }
+
+            Switch {
+                id: pushUpdatesEnabled
+                checked: settings.value("push/updates", "true") === "true"
             }
         }
 

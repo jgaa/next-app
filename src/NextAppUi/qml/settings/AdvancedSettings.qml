@@ -8,8 +8,6 @@ import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
 import "../common.js" as Common
 
-pragma ComponentBehavior: Bound
-
 ScrollView {
     id: root
     anchors.fill: parent

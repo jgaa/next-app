@@ -26,6 +26,8 @@ class NextAppCore : public QObject
 
     Q_PROPERTY(QString qtVersion READ qtVersion CONSTANT)
     Q_PROPERTY(bool isMobile READ isMobile CONSTANT)
+    Q_PROPERTY(bool isDebugBuild READ isDebugBuild CONSTANT)
+    Q_PROPERTY(bool hasPushNotifications READ hasPushNotifications CONSTANT)
     Q_PROPERTY(bool isMobileSimulation READ isMobileSimulation CONSTANT)
     Q_PROPERTY(int width READ width NOTIFY widthChanged FINAL)
     Q_PROPERTY(int height READ height NOTIFY heightChanged FINAL)
@@ -64,6 +66,7 @@ public:
     Q_INVOKABLE void emitSettingsChanged();
     Q_INVOKABLE void setProperty(const QString& name, const QVariant& value);
     Q_INVOKABLE QVariant getProperty(const QString& name) const noexcept;
+    static Q_INVOKABLE void debugLog(const QString message);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
@@ -95,6 +98,22 @@ public:
         return false;
 #endif
 }
+
+    bool isDebugBuild() const noexcept {
+#if defined (_DEBUG)
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    bool hasPushNotifications() const noexcept {
+#if defined (WITH_FCM)
+        return true;
+#else
+        return isMobileSimulation();
+#endif
+    }
 
     static constexpr bool isDevelBuild() {
 #if defined(DEVEL_SETTINGS)

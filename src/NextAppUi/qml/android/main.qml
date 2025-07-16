@@ -29,6 +29,7 @@ ApplicationWindow {
     // Toolbar
     header: ToolBar {
         width: parent.width
+
         RowLayout {
             anchors.fill: parent
             // ToolButton {
@@ -72,10 +73,18 @@ ApplicationWindow {
             }
 
             Label {
+                id: nextappLabelDebug
+                text: qsTr("NextAppDbg")
+                Layout.alignment: Qt.AlignCenter
+                visible: !notificationIcon.visible && NaCore.isDebugBuild
+                color: "pink"
+            }
+
+            Label {
                 id: nextappLabel
                 text: qsTr("NextApp")
                 Layout.alignment: Qt.AlignCenter
-                visible: !notificationIcon.visible
+                visible: !notificationIcon.visible && !NaCore.isDebugBuild
             }
 
             CheckBoxWithFontIcon {

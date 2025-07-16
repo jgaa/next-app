@@ -325,6 +325,11 @@ QVariant NextAppCore::getProperty(const QString &name) const noexcept {
     return {};
 }
 
+void NextAppCore::debugLog(const QString message)
+{
+    LOG_DEBUG_N << message;
+}
+
 time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)
 {
     try {

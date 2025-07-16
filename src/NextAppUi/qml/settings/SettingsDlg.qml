@@ -99,6 +99,7 @@ Dialog {
     }
 
     onAccepted: {
+        NaCore.debugLog("Saving all settings...")
         //server.commit()
         global.commit()
         preferences.commit()

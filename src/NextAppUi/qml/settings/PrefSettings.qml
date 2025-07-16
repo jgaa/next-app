@@ -7,8 +7,6 @@ import NextAppUi
 import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
 
-pragma ComponentBehavior: Bound
-
 ScrollView {
     anchors.fill: parent
     Settings {
