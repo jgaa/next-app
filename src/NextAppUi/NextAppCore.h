@@ -63,10 +63,11 @@ public:
     static Q_INVOKABLE ReviewModel *getReviewModel();
     static Q_INVOKABLE DevicesModel *getDevicesModel();
     Q_INVOKABLE void openFile(const QString& path);
-    Q_INVOKABLE void emitSettingsChanged();
+    //Q_INVOKABLE void emitSettingsChanged();
     Q_INVOKABLE void setProperty(const QString& name, const QVariant& value);
     Q_INVOKABLE QVariant getProperty(const QString& name) const noexcept;
     static Q_INVOKABLE void debugLog(const QString message);
+    static Q_INVOKABLE void settingsWasChanged();
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
@@ -189,6 +190,7 @@ private:
     void setState(State state);
     void resetTomorrowTimer();
     QCoro::Task<void> doDeleteAccount();
+    void emitSettingsChanged();
 
     static NextAppCore *instance_;
     State state_{State::STARTING_UP};

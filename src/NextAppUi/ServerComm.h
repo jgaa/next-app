@@ -620,6 +620,7 @@ private:
     QCoro::Task<void> retryRequests();
     QCoro::Task<bool> deleteRequestFromDb(uint id);
     QCoro::Task<void> housekeeping();
+    QCoro::Task<void> changePushConfigOnServer();
 
     bool shouldReconnect() const noexcept;
     bool canConnect() const noexcept;
@@ -631,6 +632,7 @@ private:
     QCoro::Task<std::optional<std::pair<QString, QString>>> createCsrAsync();
     QString toString(const QGrpcStatus& ex);
     void updateVisualStatus();
+    nextapp::pb::PushNotificationConfig getPushConfig(const QSettings& settings);
 
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     std::unique_ptr<signup::pb::SignUp::Client> signup_client_;
@@ -661,6 +663,9 @@ private:
     uint last_seen_update_id_{0};
     uint64_t last_seen_server_instance_{};
     bool closed_{false};
+#if defined(ANDROID_BUILD) && defined(WITH_FCM)
+    bool fcm_requested_{false};
+#endif
 };
 
 

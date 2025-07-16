@@ -308,6 +308,7 @@ void NextAppCore::openFile(const QString &path)
 }
 
 void NextAppCore::emitSettingsChanged() {
+    LOG_DEBUG_N << "Emitting settingsChanged()";
     emit settingsChanged();
 }
 
@@ -328,6 +329,11 @@ QVariant NextAppCore::getProperty(const QString &name) const noexcept {
 void NextAppCore::debugLog(const QString message)
 {
     LOG_DEBUG_N << message;
+}
+
+void NextAppCore::settingsWasChanged()
+{
+    instance()->emitSettingsChanged();
 }
 
 time_t NextAppCore::parseDateOrTime(const QString &str, time_t defaultDate)

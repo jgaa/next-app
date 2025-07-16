@@ -652,6 +652,19 @@ ORDER BY t.id;
         }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetPushNotificationConfig(
+    ::grpc::CallbackServerContext *ctx, const pb::PushNotificationConfig *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            LOG_DEBUG_EX(rctx) << "Setting push notification kind to " << static_cast<int>(req->kind());
+            co_await rctx.session().processPushState(*req);
+            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+            update.set_push(rctx.session().hasPush());
+            co_return;
+        }, __func__);
+}
+
 ::grpc::ServerReadReactor<pb::ImportDataMsg> *GrpcServer::NextappImpl::ImportData(
     ::grpc::CallbackServerContext *ctx, pb::Status *reply)
 {

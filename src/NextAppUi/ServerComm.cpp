@@ -220,6 +220,18 @@ ServerComm::ServerComm()
     });
 
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
+    connect (NextAppCore::instance(), &NextAppCore::settingsChanged,
+            this, [this]() {
+
+        QSettings settings{};
+        const auto fcm_enabled = settings.value("push/updates", false).toBool();
+        if (fcm_enabled != fcm_requested_) {
+            if (status() == Status::ONLINE) {
+                changePushConfigOnServer();
+            }
+        }
+    });
+
     connect(&AndroidFcmBridge::instance(), &AndroidFcmBridge::messageReceived, [this]
             (const QString &messageId, const QString &notification, const QString &data) {
         LOG_DEBUG_N << "Got push message from Android FCM bridge: "
@@ -1768,16 +1780,12 @@ failed:
 
     nextapp::pb::UpdatesReq ureq;
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
-    if (settings.value("push/updates", true).toBool()) {
-        if (auto token = AndroidFcmBridge::instance().getToken(); !token.isEmpty()) {
-            nextapp::pb::UpdatesReq::WithPush wp;
-            wp.setToken(token);
-            wp.setKind(nextapp::pb::UpdatesReq::WithPush::Kind::GOOGLE);
-            LOG_DEBUG_N << "Sending Android FCM token: " << token;
-            ureq.setWithPush(std::move(wp));
-        } else {
-            LOG_WARN_N << "Not sending Android FCM token as it is empty.";
-        }
+    auto fcn_config = getPushConfig(settings);
+    fcm_requested_ = fcn_config.kind() != nextapp::pb::PushNotificationConfig::Kind::DISABLE;
+    ureq.setWithPush(std::move(fcn_config));
+
+    if (fcm_requested_) {
+        LOG_DEBUG_N << "Sending Android FCM token: " << ureq.withPush().token();
     }
 #endif
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
@@ -2588,4 +2596,35 @@ void ServerComm::updateVisualStatus()
 
     status_text_ = names.at(static_cast<int>(status_));
     status_color_ = colors.at(static_cast<int>(status_));
+}
+
+nextapp::pb::PushNotificationConfig ServerComm::getPushConfig(const QSettings& settings)
+{
+    nextapp::pb::PushNotificationConfig config;
+#if defined(ANDROID_BUILD) && defined(WITH_FCM)
+    if (settings.value("push/updates", true).toBool()) {
+        if (auto token = AndroidFcmBridge::instance().getToken(); !token.isEmpty()) {
+            config.setToken(token);
+            config.setKind(nextapp::pb::PushNotificationConfig::Kind::GOOGLE);
+            return config;
+        } else {
+            LOG_WARN_N << "Push is enabled, but I have no FCM token, so can't enable it with the server.";
+        }
+    }
+#endif
+
+    config.setKind(nextapp::pb::PushNotificationConfig::Kind::DISABLE);
+    return config;
+}
+
+QCoro::Task<void> ServerComm::changePushConfigOnServer()
+{
+#if defined(ANDROID_BUILD) && defined(WITH_FCM)
+    QSettings settings{};
+    auto config = getPushConfig(settings);
+    LOG_DEBUG_N << "Setting push notification config on the server to kind  : "
+                << static_cast<int>(config.kind());
+    co_await rpc(config, &nextapp::pb::Nextapp::Client::SetPushNotificationConfig);
+    fcm_requested_ = config.kind() != nextapp::pb::PushNotificationConfig::Kind::DISABLE;
+#endif
 }

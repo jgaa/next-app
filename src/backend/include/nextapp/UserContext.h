@@ -199,7 +199,7 @@ public:
             return std::chrono::steady_clock::now() - created;
         };
 
-        void handlePushState(const nextapp::pb::UpdatesReq::WithPush& wp);
+        void handlePushState(const nextapp::pb::PushNotificationConfig& wp);
 
         void push(const std::shared_ptr<pb::Update>& message);
 
@@ -219,8 +219,9 @@ public:
             publisher_ = publisher;
         }
 
+        boost::asio::awaitable<void> processPushState(nextapp::pb::PushNotificationConfig wp);
+
     private:
-        boost::asio::awaitable<void> processPushState(nextapp::pb::UpdatesReq::WithPush wp);
 
         std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
         const boost::uuids::uuid sessionid_;

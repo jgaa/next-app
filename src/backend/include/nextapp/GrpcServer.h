@@ -204,6 +204,7 @@ public:
         ::grpc::ServerUnaryReactor *DeleteAccount(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* ExportData(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::ExportDataReq *req) override;
         ::grpc::ServerReadReactor< ::nextapp::pb::ImportDataMsg>* ImportData(::grpc::CallbackServerContext* ctx, ::nextapp::pb::Status* reply) override;
+        ::grpc::ServerUnaryReactor *SetPushNotificationConfig(::grpc::CallbackServerContext *ctx, const pb::PushNotificationConfig *req, pb::Status *reply) override;
 
 
     private:

@@ -734,22 +734,23 @@ message Update {
         Reload reload = 24;
         bool accountDeleted = 25; // The user account has been deleted
         bool resync = 26; // The client should resync the data
+        bool push = 27; // Push notifications has been enabled or disabled at the server
     }
 }
 
-message UpdatesReq{
-    message WithPush {
-        enum Kind {
-            DISABLE = 0;
-            GOOGLE = 1;
-            APPLE = 2;
-        }
-
-        Kind kind = 1;
-        string token = 2; // The push notification token
+message PushNotificationConfig {
+    enum Kind {
+        DISABLE = 0; // Disable push notifications
+        GOOGLE = 1;
+        APPLE = 2;
     }
 
-    optional WithPush withPush = 1; // Optional push notification token. If unset, no push notifications are sent
+    Kind kind = 1; // The kind of request
+    string token = 2; // The push notification token
+}
+
+message UpdatesReq{
+    optional PushNotificationConfig withPush = 1; // Optional push notification token. If unset, no push notifications are sent
 }
 
 // Some updates will be sent as push-notifications if the device has no active connection to the server.
@@ -1106,4 +1107,5 @@ service Nextapp {
     rpc DeleteAccount(Empty) returns (Status) {} // Deletes the user account and the tenant account if the user is tenant admin
     rpc ExportData(ExportDataReq) returns (stream Status) {}
     rpc ImportData(stream ImportDataMsg) returns (Status) {}
+    rpc SetPushNotificationConfig(PushNotificationConfig) returns (Status) {}
 }

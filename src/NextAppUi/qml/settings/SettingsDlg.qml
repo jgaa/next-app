@@ -105,6 +105,7 @@ Dialog {
         preferences.commit()
         advanced.commit()
         notifications.commit()
+        NaCore.settingsWasChanged()
         close()
     }
 

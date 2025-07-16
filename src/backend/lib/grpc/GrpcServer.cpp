@@ -212,7 +212,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 session->user().addPublisher(self_);
                 if (req && req->has_withpush()) {
                     LOG_TRACE_N << "Remote client " << context_->peer()
-                              << " is subscribing to updates with push: "
+                                << " is subscribing to updates with push config: "
                                 << owner_.toJsonForLog(*req);
                     session->handlePushState(req->withpush());
                 }
