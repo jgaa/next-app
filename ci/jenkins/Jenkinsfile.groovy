@@ -39,7 +39,7 @@ pipeline {
           )
         """
 
-        dir("%VCPKG_ROOT%") {
+        dir(env.VCPKG_ROOT) {
           bat 'git fetch --unshallow || echo Already a full clone'
           bat 'git pull'
         }
