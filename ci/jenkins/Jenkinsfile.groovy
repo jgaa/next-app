@@ -19,6 +19,8 @@ pipeline {
 
         // ────────────────────────────────────────────────────────
         // 2. Set up MSVC developer environment (with vswhere + fallback)
+        //    Assumes nsis is installed
+        //      >> choco install nsis --no-progress -y
         // ────────────────────────────────────────────────────────
         bat """
           @echo off
@@ -36,10 +38,6 @@ pipeline {
             call "%ProgramFiles%\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
           )
         """
-
-        // …the rest of your steps…
-        bat 'choco install nsis --no-progress -y'
-        bat 'refreshenv'
 
         dir("%VCPKG_ROOT%") {
           bat 'git fetch --unshallow || echo Already a full clone'
