@@ -6,7 +6,6 @@ pipeline {
   stages {
    stage('Windows Build') {
       agent { label 'windows' }
-
       environment {
         BUILD_DIR               = "${WORKSPACE}\\build"
         QT_TARGET_DIR           = "${WORKSPACE}\\qt-target"
@@ -14,35 +13,29 @@ pipeline {
         VCPKG_DEFAULT_TRIPLET   = "x64-windows-release"
         CMAKE_GENERATOR_PLATFORM= "x64"
       }
-
       steps {
         checkout scm
         bat 'git submodule update --init'
 
-        // … your VS-vars setup here …
+        // … your VS env-setup here …
 
-        // ───────────────────────────────────────────────────
         // 4. Update vcpkg safely
-        // ───────────────────────────────────────────────────
         dir(env.VCPKG_ROOT) {
-          // Use PowerShell for cleaner logic, or you can do this in `bat` if you prefer cmd
-          powershell """
-            \$shallow = Test-Path -Path .git\\shallow
-            if (\$shallow) {
-              Write-Host '🔄 Shallow clone detected – fetching full history…'
-              git fetch --unshallow
-            }
-            else {
-              Write-Host '✅ Full clone already – skipping unshallow.'
-            }
+          bat """
+            @echo off
+            echo 🔄 Stashing any local vcpkg changes…
+            git stash push --include-untracked -m "ci-auto-stash" || echo No local changes
+            echo 🔄 Pulling latest vcpkg…
             git pull
+            echo 🗑️ Clearing stash…
+            git stash clear
           """
         }
 
-        // 5. Build Qt statically + your app
+        // 5. Build Qt + your app
         bat 'building\\static-qt-windows\\build-nextapp.bat'
 
-        // 6. Extract version
+        // 6. Read NEXTAPP_VERSION
         script {
           def ver = powershell(
             returnStdout: true,
@@ -52,9 +45,10 @@ pipeline {
           echo "✅ NEXTAPP_VERSION=${ver}"
         }
 
-        // 7. Archive your installer
+        // 7. Archive installer
         archiveArtifacts artifacts: "${env.BUILD_DIR}\\*.exe", fingerprint: true
       }
     } // win
+
   } // stages
 }
