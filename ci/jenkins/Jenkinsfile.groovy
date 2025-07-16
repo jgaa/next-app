@@ -6,6 +6,7 @@ pipeline {
   stages {
    stage('Windows Build') {
       agent { label 'windows' }
+
       environment {
         BUILD_DIR               = "${WORKSPACE}\\build"
         QT_TARGET_DIR           = "${WORKSPACE}\\qt-target"
@@ -13,51 +14,47 @@ pipeline {
         VCPKG_DEFAULT_TRIPLET   = "x64-windows-release"
         CMAKE_GENERATOR_PLATFORM= "x64"
       }
+
       steps {
         checkout scm
         bat 'git submodule update --init'
 
-        // ────────────────────────────────────────────────────────
-        // 2. Set up MSVC developer environment (with vswhere + fallback)
-        //    Assumes nsis is installed
-        //      >> choco install nsis --no-progress -y
-        // ────────────────────────────────────────────────────────
-        bat """
-          @echo off
-          REM path to vswhere.exe
-          set "VSWHERE=%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+        // … your VS-vars setup here …
 
-          if exist "%VSWHERE%" (
-            REM query latest VS install path into VSINSTALL
-            for /f "delims=" %%I in ('"%VSWHERE%" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') do (
-              set "VSINSTALL=%%I"
-            )
-            call "%%VSINSTALL%%\\VC\\Auxiliary\\Build\\vcvars64.bat"
-          ) else (
-            REM fallback: direct call to the known path
-            call "%ProgramFiles%\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
-          )
-        """
-
+        // ───────────────────────────────────────────────────
+        // 4. Update vcpkg safely
+        // ───────────────────────────────────────────────────
         dir(env.VCPKG_ROOT) {
-          bat 'git fetch --unshallow || echo Already a full clone'
-          bat 'git pull'
+          // Use PowerShell for cleaner logic, or you can do this in `bat` if you prefer cmd
+          powershell """
+            \$shallow = Test-Path -Path .git\\shallow
+            if (\$shallow) {
+              Write-Host '🔄 Shallow clone detected – fetching full history…'
+              git fetch --unshallow
+            }
+            else {
+              Write-Host '✅ Full clone already – skipping unshallow.'
+            }
+            git pull
+          """
         }
 
+        // 5. Build Qt statically + your app
         bat 'building\\static-qt-windows\\build-nextapp.bat'
 
+        // 6. Extract version
         script {
           def ver = powershell(
             returnStdout: true,
             script: "Get-Content \"${env.BUILD_DIR}\\nextapp\\VERSION.txt\" -Raw"
           ).trim()
           env.NEXTAPP_VERSION = ver
-          echo "✅ NEXTAPP_VERSION=${env.NEXTAPP_VERSION}"
+          echo "✅ NEXTAPP_VERSION=${ver}"
         }
 
+        // 7. Archive your installer
         archiveArtifacts artifacts: "${env.BUILD_DIR}\\*.exe", fingerprint: true
       }
     } // win
-
   } // stages
 }
