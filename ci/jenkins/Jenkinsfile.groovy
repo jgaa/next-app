@@ -4,36 +4,40 @@ pipeline {
   agent none
 
   stages {
-    stage('Windows Build') {
+   stage('Windows Build') {
       agent { label 'windows' }
       environment {
-        BUILD_DIR              = "${WORKSPACE}\\build"
-        QT_TARGET_DIR          = "${WORKSPACE}\\qt-target"
-        VCPKG_ROOT             = "C:\\src\\vcpkg"
-        VCPKG_DEFAULT_TRIPLET  = "x64-windows-release"
-        CMAKE_GENERATOR_PLATFORM = "x64"
+        BUILD_DIR               = "${WORKSPACE}\\build"
+        QT_TARGET_DIR           = "${WORKSPACE}\\qt-target"
+        VCPKG_ROOT              = "C:\\src\\vcpkg"
+        VCPKG_DEFAULT_TRIPLET   = "x64-windows-release"
+        CMAKE_GENERATOR_PLATFORM= "x64"
       }
       steps {
         checkout scm
         bat 'git submodule update --init'
 
-        // Use vswhere to find the real VS install path, then invoke VsDevCmd.bat
+        // ────────────────────────────────────────────────────────
+        // 2. Set up MSVC developer environment (with vswhere + fallback)
+        // ────────────────────────────────────────────────────────
         bat """
           @echo off
-          for /f "usebackq delims=" %%I in (
-            \"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\"
-            -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64
-            -property installationPath
-          ) do (
-            set "VSINSTALL=%%I"
+          REM path to vswhere.exe
+          set "VSWHERE=%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe"
+
+          if exist "%VSWHERE%" (
+            REM query latest VS install path into VSINSTALL
+            for /f "delims=" %%I in ('"%VSWHERE%" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') do (
+              set "VSINSTALL=%%I"
+            )
+            call "%%VSINSTALL%%\\VC\\Auxiliary\\Build\\vcvars64.bat"
+          ) else (
+            REM fallback: direct call to the known path
+            call "%ProgramFiles%\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
           )
-          if not defined VSINSTALL (
-            echo ERROR: vswhere failed to locate Visual Studio!
-            exit /b 1
-          )
-          call "%%VSINSTALL%%\\Common7\\Tools\\VsDevCmd.bat" -arch x64
         """
 
+        // …the rest of your steps…
         bat 'choco install nsis --no-progress -y'
         bat 'refreshenv'
 
@@ -55,6 +59,7 @@ pipeline {
 
         archiveArtifacts artifacts: "${env.BUILD_DIR}\\*.exe", fingerprint: true
       }
-    } // windows
+    } // win
+
   } // stages
 }
