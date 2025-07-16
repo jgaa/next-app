@@ -3,6 +3,11 @@ pipeline {
   /* no global agent: pick per-stage */
   agent none
 
+  // Assumes cmake, nsis, ninja and exists
+  //
+  //   choco install nsis
+  //   choco install ninja
+
   stages {
    stage('Windows Build') {
       agent { label 'windows' }
@@ -12,14 +17,29 @@ pipeline {
         VCPKG_ROOT              = "C:\\src\\vcpkg"
         VCPKG_DEFAULT_TRIPLET   = "x64-windows-release"
         CMAKE_GENERATOR_PLATFORM= "x64"
+        CMAKE_GENERATOR          = "Ninja"
       }
       steps {
         checkout scm
         bat 'git submodule update --init'
 
-        // … your VS env-setup here …
+       bat """
+          @echo off
+          REM path to vswhere.exe
+          set "VSWHERE=%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe"
 
-        // 4. Update vcpkg safely
+          if exist "%VSWHERE%" (
+            REM query latest VS install path into VSINSTALL
+            for /f "delims=" %%I in ('"%VSWHERE%" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') do (
+              set "VSINSTALL=%%I"
+            )
+            call "%%VSINSTALL%%\\VC\\Auxiliary\\Build\\vcvars64.bat"
+          ) else (
+            REM fallback: direct call to the known path
+            call "%ProgramFiles%\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
+          )
+        """
+
         dir(env.VCPKG_ROOT) {
           bat """
             @echo off
@@ -32,10 +52,8 @@ pipeline {
           """
         }
 
-        // 5. Build Qt + your app
         bat 'building\\static-qt-windows\\build-nextapp.bat'
 
-        // 6. Read NEXTAPP_VERSION
         script {
           def ver = powershell(
             returnStdout: true,
@@ -45,7 +63,6 @@ pipeline {
           echo "✅ NEXTAPP_VERSION=${ver}"
         }
 
-        // 7. Archive installer
         archiveArtifacts artifacts: "${env.BUILD_DIR}\\*.exe", fingerprint: true
       }
     } // win
