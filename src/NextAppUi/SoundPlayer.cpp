@@ -8,6 +8,11 @@
 #include "logging.h"
 #include "util.h"
 
+#ifdef min
+//  Thank you so much Microsoft. We all love polluted namespaces.
+#   undef min
+#endif
+
 using namespace std;
 
 namespace {
