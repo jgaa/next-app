@@ -70,7 +70,8 @@ pipeline {
           echo "✅ NEXTAPP_VERSION=${ver}"
         }
 
-        archiveArtifacts artifacts: "${env.BUILD_DIR}\\*.exe", fingerprint: true
+        //archiveArtifacts artifacts: "${env.BUILD_DIR}\\*.exe", fingerprint: true
+        archiveArtifacts artifacts: "${env.BUILD_DIR}\\nextapp\\*.exe", fingerprint: true
       }
     } // win
 
