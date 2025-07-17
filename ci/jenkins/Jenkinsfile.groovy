@@ -39,12 +39,8 @@ pipeline {
           )
 
           pushd %VCPKG_ROOT%
-          echo 🔄 Stashing any local vcpkg changes…
-          git stash push --include-untracked -m "ci-auto-stash" || echo No local changes
           echo 🔄 Pulling latest vcpkg…
           git pull
-          echo 🗑️ Clearing stash…
-          git stash clear
           popd
 
           echo "Starting build..."
