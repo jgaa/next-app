@@ -13,7 +13,6 @@ pipeline {
       agent { label 'windows' }
       environment {
         BUILD_DIR               = "${WORKSPACE}\\build"
-        QT_TARGET_DIR           = "${WORKSPACE}\\qt-target"
         VCPKG_ROOT              = "C:\\src\\vcpkg"
         VCPKG_DEFAULT_TRIPLET   = "x64-windows-release"
         CMAKE_GENERATOR_PLATFORM= "x64"
