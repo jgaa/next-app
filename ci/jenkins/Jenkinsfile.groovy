@@ -47,20 +47,6 @@ pipeline {
           building\\static-qt-windows\\build-nextapp.bat
         """
 
-//         dir(env.VCPKG_ROOT) {
-//           bat """
-//             @echo off
-//             echo 🔄 Stashing any local vcpkg changes…
-//             git stash push --include-untracked -m "ci-auto-stash" || echo No local changes
-//             echo 🔄 Pulling latest vcpkg…
-//             git pull
-//             echo 🗑️ Clearing stash…
-//             git stash clear
-//           """
-//         }
-//
-//         bat 'building\\static-qt-windows\\build-nextapp.bat'
-
         script {
           def ver = powershell(
             returnStdout: true,
@@ -71,7 +57,7 @@ pipeline {
         }
 
         //archiveArtifacts artifacts: "${env.BUILD_DIR}\\*.exe", fingerprint: true
-        archiveArtifacts artifacts: "${env.BUILD_DIR}\\nextapp\\*.exe", fingerprint: true
+        archiveArtifacts artifacts: "build/*.exe", fingerprint: true
       }
     } // win
 
