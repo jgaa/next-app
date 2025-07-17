@@ -38,21 +38,33 @@ pipeline {
             REM fallback: direct call to the known path
             call "%ProgramFiles%\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
           )
+
+          pushd %VCPKG_ROOT%
+          echo 🔄 Stashing any local vcpkg changes…
+          git stash push --include-untracked -m "ci-auto-stash" || echo No local changes
+          echo 🔄 Pulling latest vcpkg…
+          git pull
+          echo 🗑️ Clearing stash…
+          git stash clear
+          popd
+
+          echo "Starting build..."
+          building\\static-qt-windows\\build-nextapp.bat
         """
 
-        dir(env.VCPKG_ROOT) {
-          bat """
-            @echo off
-            echo 🔄 Stashing any local vcpkg changes…
-            git stash push --include-untracked -m "ci-auto-stash" || echo No local changes
-            echo 🔄 Pulling latest vcpkg…
-            git pull
-            echo 🗑️ Clearing stash…
-            git stash clear
-          """
-        }
-
-        bat 'building\\static-qt-windows\\build-nextapp.bat'
+//         dir(env.VCPKG_ROOT) {
+//           bat """
+//             @echo off
+//             echo 🔄 Stashing any local vcpkg changes…
+//             git stash push --include-untracked -m "ci-auto-stash" || echo No local changes
+//             echo 🔄 Pulling latest vcpkg…
+//             git pull
+//             echo 🗑️ Clearing stash…
+//             git stash clear
+//           """
+//         }
+//
+//         bat 'building\\static-qt-windows\\build-nextapp.bat'
 
         script {
           def ver = powershell(
