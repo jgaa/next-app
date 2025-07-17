@@ -2627,4 +2627,5 @@ QCoro::Task<void> ServerComm::changePushConfigOnServer()
     co_await rpc(config, &nextapp::pb::Nextapp::Client::SetPushNotificationConfig);
     fcm_requested_ = config.kind() != nextapp::pb::PushNotificationConfig::Kind::DISABLE;
 #endif
+    co_return;
 }
