@@ -1,5 +1,8 @@
 #pragma once
 
+#include <mutex>
+#include <map>
+
 #include <QObject>
 
 #include "miniaudio.h"
