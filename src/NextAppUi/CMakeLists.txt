@@ -360,7 +360,10 @@ else()
     set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_88_0"
         CACHE STRING
         "Boost location if set manually (required for Android/ QT Creator)")
-    target_include_directories(${PROJECT_NAME} PRIVATE ${NEXTAPP_BOOST_ROOT})
+
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        ANDROID_PACKAGE_NAME "${ANDROID_PACKAGE_NAME}"
+    )
 
     FetchContent_Declare(
         android_openssl
@@ -377,6 +380,7 @@ else()
         PRIVATE
         ${OPENSSL_INCLUDE}
         ${CMAKE_BINARY_DIR}
+        ${NEXTAPP_BOOST_ROOT}
     )
 endif()
 
