@@ -66,8 +66,6 @@ pipeline {
           stage('Android arm64 Build') {
             agent { label 'linux' }
 
-            checkout scm
-
             environment {
                 // Qt settings
                 KEY_ALIAS        = "eu.lastviking.app"
@@ -77,6 +75,8 @@ pipeline {
             }
 
             steps {
+
+                checkout scm
 
                 withCredentials([
                   file(credentialsId: 'GOOGLE_SERVICES_NEXTAPP_ANDROID', variable: 'GOOGLE_SERVICES_PATH'),
