@@ -11,9 +11,6 @@ pipeline {
             //
             //   choco install nsis
             //   choco install ninja
-
-            when { expression { false } }
-
             agent { label 'windows' }
             environment {
               BUILD_DIR               = "${WORKSPACE}\\build"
@@ -91,7 +88,7 @@ pipeline {
               }
             }
         } // android arm64
-      } parallel
+      } //parallel
     } // Build
   } // stages
 }
