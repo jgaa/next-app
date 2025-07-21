@@ -105,9 +105,15 @@ if(ANDROID)
     set(APP_LIB "${PROJECT_NAME}")
     set(PACKAGE_NAME "${NEXTAPP_APP_DOMAIN}.${APP_LABEL}")
     string(REPLACE "." "_" PACKAGE_NAME_UNDERSCORES ${PACKAGE_NAME})
+    string(REPLACE "." "/" PACKAGE_NAME_SLASHES ${PACKAGE_NAME})
     set(ANDROID_OUT_DIR    "${CMAKE_BINARY_DIR}/android")
     file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
     set(APP_ACTIVITY "org.qtproject.qt.android.bindings.QtActivity")
+
+    set(QT_ANDROID_PACKAGE_NAME
+        "${PACKAGE_NAME}"
+        CACHE STRING
+        "Android applicationId / package name")
 
     if (NEXTAPP_WITH_FCM)
         set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivity")
@@ -120,15 +126,18 @@ if(ANDROID)
             </intent-filter>
         </service>")
 
-        file(COPY
-          "${GOOGLE_SERVICES_PATH}"
-          DESTINATION ${ANDROID_OUT_DIR}
+        configure_file(
+             "${GOOGLE_SERVICES_PATH}"
+            "${ANDROID_OUT_DIR}/google-services.json"
+            COPYONLY
         )
+
         configure_file(
             "${CMAKE_CURRENT_SOURCE_DIR}/android/build.gradle.fcm"
             "${ANDROID_OUT_DIR}/build.gradle"
             COPYONLY
         )
+
         configure_file(
           "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivity.java.in"
           "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivity.java"
@@ -352,7 +361,10 @@ else()
     set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_88_0"
         CACHE STRING
         "Boost location if set manually (required for Android/ QT Creator)")
-    target_include_directories(${PROJECT_NAME} PRIVATE ${NEXTAPP_BOOST_ROOT})
+
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        QT_ANDROID_PACKAGE_NAME "${QT_ANDROID_PACKAGE_NAME}"
+    )
 
     FetchContent_Declare(
         android_openssl
@@ -369,6 +381,7 @@ else()
         PRIVATE
         ${OPENSSL_INCLUDE}
         ${CMAKE_BINARY_DIR}
+        ${NEXTAPP_BOOST_ROOT}
     )
 endif()
 
