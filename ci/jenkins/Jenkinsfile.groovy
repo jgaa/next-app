@@ -76,7 +76,6 @@ pipeline {
                 SDK_PATH          = "${WORKSPACE}/android-sdk"
                 QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
                 BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
-                APK_DST           = "${WORKSPACE}/build/apk"
             }
 
             steps {
@@ -99,7 +98,7 @@ pipeline {
                     ./building/android/build-nextapp.sh arm64_v8a
                   '''
 
-                  archiveArtifacts artifacts: "${APK_DST}/*.apk", fingerprint: true
+                  archiveArtifacts artifacts: "build/apk/*.apk", fingerprint: true
               }
             }
         } // android arm64
@@ -114,7 +113,6 @@ pipeline {
                 SDK_PATH          = "${WORKSPACE}/android-sdk"
                 QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
                 BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
-                APK_DST           = "${WORKSPACE}/build/apk"
             }
 
             steps {
@@ -137,7 +135,7 @@ pipeline {
                     ./building/android/build-nextapp.sh x86_64
                   '''
 
-                  archiveArtifacts artifacts: "${APK_DST}/*.apk", fingerprint: true
+                  archiveArtifacts artifacts: "build/apk/*.apk", fingerprint: true
               }
             }
         } // android x86_64
