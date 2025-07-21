@@ -109,6 +109,11 @@ if(ANDROID)
     file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
     set(APP_ACTIVITY "org.qtproject.qt.android.bindings.QtActivity")
 
+    set(ANDROID_PACKAGE_NAME
+        "${PACKAGE_NAME}"
+        CACHE STRING
+        "Android applicationId / package name")
+
     if (NEXTAPP_WITH_FCM)
         set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivity")
         set(FCM_SERVICE
