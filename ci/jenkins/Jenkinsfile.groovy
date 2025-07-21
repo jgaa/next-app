@@ -66,6 +66,8 @@ pipeline {
           stage('Android arm64 Build') {
             agent { label 'linux' }
 
+            checkout scm
+
             environment {
                 // Qt settings
                 KEY_ALIAS        = "eu.lastviking.app"
@@ -83,6 +85,8 @@ pipeline {
                 ]) {
                   sh '''
                     set -e
+                    git submodule update --init
+                    chmod +x building/android/build-nextapp.sh
                     ./building/android/build-nextapp.sh arm64_v8a
                   '''
               }
