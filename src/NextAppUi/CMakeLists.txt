@@ -120,15 +120,18 @@ if(ANDROID)
             </intent-filter>
         </service>")
 
-        file(COPY
-          "${GOOGLE_SERVICES_PATH}"
-          DESTINATION ${ANDROID_OUT_DIR}
+        configure_file(
+             "${GOOGLE_SERVICES_PATH}"
+            "${ANDROID_OUT_DIR}/google-services.json"
+            COPYONLY
         )
+
         configure_file(
             "${CMAKE_CURRENT_SOURCE_DIR}/android/build.gradle.fcm"
             "${ANDROID_OUT_DIR}/build.gradle"
             COPYONLY
         )
+
         configure_file(
           "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivity.java.in"
           "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivity.java"
