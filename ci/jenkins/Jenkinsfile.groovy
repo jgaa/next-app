@@ -79,8 +79,7 @@ pipeline {
                 withCredentials([
                   file(credentialsId: 'GOOGLE_SERVICES_NEXTAPP_ANDROID', variable: 'GOOGLE_SERVICES_PATH'),
                   file(credentialsId: 'KEYSTORE_PATH',  variable: 'KEYSTORE_PATH'),
-                  string(credentialsId: 'KEYSTORE_PASSWORD',      variable: 'KEYSTORE_PASSWORD'),
-                  string(credentialsId: 'key-alias-password',    variable: 'KEY_PASS')
+                  string(credentialsId: 'KEYSTORE_PASSWORD',      variable: 'KEYSTORE_PASSWORD')
                 ]) {
                   sh '''
                     set -e
