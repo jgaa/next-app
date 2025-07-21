@@ -76,18 +76,12 @@ pipeline {
                 SDK_PATH          = "${WORKSPACE}/android-sdk"
                 QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
                 BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
-                APK_DST           = "${WORKSPACE}/apk"
+                APK_DST           = "${WORKSPACE}/build/apk"
             }
 
             steps {
 
                 checkout scm
-
-                sh '''
-                  echo "Preparing APK dir: ${APK_DST}"
-                  mkdir -p ${APK_DST}
-                  rm -rf ${APK_DST}/*
-                '''
 
                 withCredentials([
                   file(credentialsId: 'GOOGLE_SERVICES_NEXTAPP_ANDROID', variable: 'GOOGLE_SERVICES_PATH'),
@@ -120,18 +114,12 @@ pipeline {
                 SDK_PATH          = "${WORKSPACE}/android-sdk"
                 QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
                 BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
-                APK_DST           = "${WORKSPACE}/apk"
+                APK_DST           = "${WORKSPACE}/build/apk"
             }
 
             steps {
 
                 checkout scm
-
-                sh '''
-                  echo "Preparing APK dir: ${APK_DST}"
-                  mkdir -p ${APK_DST}
-                  rm -rf ${APK_DST}/*
-                '''
 
                 withCredentials([
                   file(credentialsId: 'GOOGLE_SERVICES_NEXTAPP_ANDROID', variable: 'GOOGLE_SERVICES_PATH'),
