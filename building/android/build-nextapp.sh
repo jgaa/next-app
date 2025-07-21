@@ -164,7 +164,7 @@ cmake -S ${SOURCE_DIR} \
   -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${ANDROID_NDK}/build/cmake/android.toolchain.cmake \
   -DANDROID_SDK_ROOT:PATH=${ANDROID_SDK_ROOT} \
   -DCMAKE_SYSTEM_NAME=Android \
-  -DBoost_INCLUDE_DIRS=${BOOST_INSTALL_DIR} \
+  -DNEXTAPP_BOOST_ROOT=${BOOST_INSTALL_DIR} \
   -DNEXTAPP_WITH_FCM=ON
 
 # —————————————————————————————
