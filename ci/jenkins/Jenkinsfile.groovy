@@ -6,6 +6,19 @@
 pipeline {
   agent { label 'main' }
 
+  options {
+    // Keep only the last 10 builds and delete older ones…
+    // …but also only keep artifacts for those builds for 7 days
+    buildDiscarder(
+      logRotator(
+        daysToKeepStr:        '30',   // delete build records older than 30 days
+        numToKeepStr:         '10',   // or when there are more than 10 builds
+        artifactDaysToKeepStr:'7',    // delete archived artifacts older than 7 days
+        artifactNumToKeepStr: '5'     // keep artifacts only for the last 5 builds
+      )
+    )
+  }
+
   stages {
     stage('Parallel build') {
       parallel {
