@@ -85,6 +85,10 @@ pipeline {
                 ]) {
                   sh '''
                     set -e
+                    echo "Beginning..."
+                    pwd
+                    ls -la
+
                     git submodule update --init
                     chmod +x building/android/build-nextapp.sh
                     ./building/android/build-nextapp.sh arm64_v8a
