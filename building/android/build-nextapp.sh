@@ -186,11 +186,17 @@ NEXTAPP_APK=apk/nextapp_${ANDROID_ABI}.apk
 mkdir apk
 cp -v ${APK} ${NEXTAPP_APK}
 
-echo "Signing NEXTAPP_APK..."
+echo "Signing ${NEXTAPP_APK} ..."
+echo "${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner" sign \
+  --ks "${KEYSTORE_PATH}" \
+  --ks-key-alias "{$KEY_ALIAS}" \
+  --ks-pass "pass:${KEYSTORE_PASSWORD}" \
+  "${NEXTAPP_APK}"
+
 "${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner" sign \
-  --ks "$KEYSTORE_PATH" \
-  --ks-key-alias "$KEY_ALIAS" \
-  --ks-pass "pass:$KEYSTORE_PASSWORD" \
+  --ks "${KEYSTORE_PATH}" \
+  --ks-key-alias "{$KEY_ALIAS}" \
+  --ks-pass "pass:${KEYSTORE_PASSWORD}" \
   "${NEXTAPP_APK}"
 
 # echo "✔ Successfully built & signed: ${NEXTAPP_APK}"
