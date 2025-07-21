@@ -8,7 +8,7 @@ QString fetchFcmTokenFromJava() {
     QJniEnvironment env;
     // Call the static Java method you added:
     QJniObject tokenObj = QJniObject::callStaticObjectMethod(
-        "eu/lastviking/nextappdevel/MainActivity",  // Java class FQN
+        "@PACKAGE_NAME_SLASHES@/MainActivity",  // Java class FQN
         "getFcmToken",                              // method name
         "()Ljava/lang/String;"                      // JNI signature
     );
