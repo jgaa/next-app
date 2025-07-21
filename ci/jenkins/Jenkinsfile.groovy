@@ -1,5 +1,8 @@
 #!/usr/bin/env groovy
 
+// Android builds assume:
+//    apt install protobuf-compiler-grpc unzip cmake ninja-build
+
 pipeline {
   agent { label 'main' }
 
@@ -7,7 +10,7 @@ pipeline {
     stage('Parallel build') {
       parallel {
         stage('Windows Build') {
-            when { expression { false } }
+            //when { expression { false } }
             // Assumes cmake, nsis, ninja and exists
             //
             //   choco install nsis
@@ -73,16 +76,23 @@ pipeline {
                 SDK_PATH          = "${WORKSPACE}/android-sdk"
                 QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
                 BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
+                APK_DST           = "${WORKSPACE}/apk"
             }
 
             steps {
 
                 checkout scm
 
+                sh '''
+                  echo "Preparing APK dir: ${APK_DST}"
+                  mkdir -p ${APK_DST}
+                  rm -rf ${APK_DST}/*
+                '''
+
                 withCredentials([
                   file(credentialsId: 'GOOGLE_SERVICES_NEXTAPP_ANDROID', variable: 'GOOGLE_SERVICES_PATH'),
                   file(credentialsId: 'KEYSTORE_PATH',  variable: 'KEYSTORE_PATH'),
-                  string(credentialsId: 'KEYSTORE_PASSWORD',      variable: 'KEYSTORE_PASSWORD')
+                  string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD')
                 ]) {
                   sh '''
                     set -e
@@ -95,10 +105,54 @@ pipeline {
                     ./building/android/build-nextapp.sh arm64_v8a
                   '''
 
-                  archiveArtifacts artifacts: "build/apk/*.apk", fingerprint: true
+                  archiveArtifacts artifacts: "${APK_DST}/*.apk", fingerprint: true
               }
             }
         } // android arm64
+
+        stage('Android x86_64 Build') {
+            agent { label 'linux' }
+
+            environment {
+                // Qt settings
+                KEY_ALIAS         = "eu.lastviking.app"
+                BUILD_DIR         = "${WORKSPACE}/build"
+                SDK_PATH          = "${WORKSPACE}/android-sdk"
+                QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
+                BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
+                APK_DST           = "${WORKSPACE}/apk"
+            }
+
+            steps {
+
+                checkout scm
+
+                sh '''
+                  echo "Preparing APK dir: ${APK_DST}"
+                  mkdir -p ${APK_DST}
+                  rm -rf ${APK_DST}/*
+                '''
+
+                withCredentials([
+                  file(credentialsId: 'GOOGLE_SERVICES_NEXTAPP_ANDROID', variable: 'GOOGLE_SERVICES_PATH'),
+                  file(credentialsId: 'KEYSTORE_PATH',  variable: 'KEYSTORE_PATH'),
+                  string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD')
+                ]) {
+                  sh '''
+                    set -e
+                    echo "Beginning..."
+                    pwd
+                    ls -la
+
+                    git submodule update --init
+                    chmod +x building/android/build-nextapp.sh
+                    ./building/android/build-nextapp.sh x86_64
+                  '''
+
+                  archiveArtifacts artifacts: "${APK_DST}/*.apk", fingerprint: true
+              }
+            }
+        } // android x86_64
       } //parallel
     } // Build
   } // stages

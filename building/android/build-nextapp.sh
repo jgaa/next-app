@@ -51,6 +51,7 @@ QT_VERSION="${QT_VERSION:-6.9.1}"
 QT_ARCHIVE="qt-${QT_VERSION}.tar"
 QT_DOWNLOAD_URL="${QT_DOWNLOAD_URL:-http://192.168.1.95/ci/${QT_ARCHIVE}}"
 QT_INSTALL_DIR="${QT_INSTALL_DIR-/var/local/build/qt-${QT_VERSION}}"
+APK_DST="${APK_DST:-apk}"
 
 export SOURCE_DIR="${SOURCE_DIR:-${SCRIPT_DIR}/../../}"
 export BUILD_DIR="${BUILD_DIR:-/var/local/build/nextapp-android}"
@@ -182,7 +183,7 @@ if [ -z "$APK" ]; then
   exit 1
 fi
 
-NEXTAPP_APK=apk/nextapp_${ANDROID_ABI}.apk
+NEXTAPP_APK=${APK_DST}/nextapp_${ANDROID_ABI}.apk
 mkdir apk
 cp -v ${APK} ${NEXTAPP_APK}
 
