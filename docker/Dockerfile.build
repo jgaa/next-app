@@ -6,7 +6,8 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     DEBIAN_FRONTEND="noninteractive" apt-get install -y -q cmake \
     build-essential clang-18 git vim curl libssl-dev zlib1g-dev libprotobuf-dev \
     protobuf-compiler libicu-dev libbz2-dev libsnappy-dev gcc libgtest-dev libgflags-dev \
-    liblz4-dev libgrpc-dev libgrpc++-dev protobuf-compiler-grpc file dpkg-dev language-pack-en &&\
+    liblz4-dev libgrpc-dev libgrpc++-dev protobuf-compiler-grpc file dpkg-dev language-pack-en \
+    libcurl4-openssl-dev &&\
     locale-gen en_US.UTF-8
 
 RUN mkdir -p /tmp/boost &&\
