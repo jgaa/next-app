@@ -30,8 +30,8 @@ ApplicationWindow {
     Connections {
         target: NaCore
 
-        function onAccountDeleted() {
-            // If the account has just been deleted,
+        function onFactoryResetDone() {
+            // If the account has just been deleted, or reset
             // re‐open the onboarding wizard immediately:
             settings.onboarding = false
             console.log("Account was deleted – re‐launching onboarding wizard")

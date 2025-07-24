@@ -38,7 +38,6 @@ Dialog {
 
 
     onAccepted: {
-        settings.setValue("onboarding", false);
-        Qt.callLater(Qt.quit)
+        NaCore.factoryReset()
     }
 }

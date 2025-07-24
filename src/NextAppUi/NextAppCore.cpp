@@ -428,6 +428,11 @@ void NextAppCore::deleteLocalData()
     onAccountDeleted();
 }
 
+void NextAppCore::factoryReset()
+{
+    doFactoryReset();
+}
+
 time_t NextAppCore::parseHourMin(const QString &str)
 {
     try {
@@ -546,11 +551,7 @@ void NextAppCore::onWokeFromSleep()
 
 QCoro::Task<void> NextAppCore::onAccountDeleted()
 {
-    co_await db().closeAndDeleteDb();
-    QSettings settings;
-    settings.clear(); // Clear all settings
-    settings.sync();
-    ServerComm::instance().resetSignupStatus();
+    co_await doFactoryReset();
     emit accountDeleted();
 }
 
@@ -638,4 +639,14 @@ QCoro::Task<void> NextAppCore::doDeleteAccount()
     }
 
     emit accountDeletionFailed("Failed to delete the account: Unknown error. Please try again later.");
+}
+
+QCoro::Task<void> NextAppCore::doFactoryReset()
+{
+    co_await db().closeAndDeleteDb();
+    QSettings settings;
+    settings.clear(); // Clear all settings
+    settings.sync();
+    ServerComm::instance().resetSignupStatus();
+    emit factoryResetDone();
 }

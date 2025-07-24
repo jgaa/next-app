@@ -80,6 +80,7 @@ public:
     Q_INVOKABLE void bootstrapDevice(bool newUser);
     Q_INVOKABLE void deleteAccount();
     Q_INVOKABLE void deleteLocalData();
+    Q_INVOKABLE void factoryReset();
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseHourMin(const QString& str);
@@ -184,12 +185,14 @@ signals:
     void suspending();
     void currentDateChanged(); // Should happen just after midnight
     void accountDeleted();
+    void factoryResetDone();
     void accountDeletionFailed(const QString& message);
 
 private:
     void setState(State state);
     void resetTomorrowTimer();
     QCoro::Task<void> doDeleteAccount();
+    QCoro::Task<void> doFactoryReset();
     void emitSettingsChanged();
 
     static NextAppCore *instance_;
