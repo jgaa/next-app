@@ -36,7 +36,7 @@
             <meta-data android:name="android.app.lib_name" android:value="@APP_LIB@"/>
             <meta-data android:name="android.app.arguments" android:value=""/>
 
-            <!-- We need the main message-loop running in order to process updates trouygh push notifications -->
+            <!-- We need the main message-loop running in order to process updates trough push notifications -->
             <meta-data android:name="android.app.background_running" android:value="true"/>
 
         </activity>
@@ -44,12 +44,6 @@
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.qtprovider" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/qtprovider_paths"/>
         </provider>
-
-<!--        <service android:process=":qt_service" android:name=".QtAndroidService" android:exported="true" android:foregroundServiceType="dataSync">
-            <meta-data android:name="android.app.background_running" android:value="true"/>
-            <meta-data android:name="android.app.lib_name" android:value="@APP_LIB@"/>
-            <meta-data android:name="android.app.arguments" android:value="-service"/>
-        </service>-->
 
         @FCM_SERVICE@
     </application>

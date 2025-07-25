@@ -108,7 +108,9 @@ if(ANDROID)
     string(REPLACE "." "/" PACKAGE_NAME_SLASHES ${PACKAGE_NAME})
     set(ANDROID_OUT_DIR    "${CMAKE_BINARY_DIR}/android")
     file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
-    set(APP_ACTIVITY "org.qtproject.qt.android.bindings.QtActivity")
+    set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivity")
+
+    add_definitions(-DNEXTAPP_PACKAGE_NAME=\"${PACKAGE_NAME}\")
 
     set(QT_ANDROID_PACKAGE_NAME
         "${PACKAGE_NAME}"
@@ -116,7 +118,7 @@ if(ANDROID)
         "Android applicationId / package name")
 
     if (NEXTAPP_WITH_FCM)
-        set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivity")
+        set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivityFcm")
         set(FCM_SERVICE
         "<service
             android:name=\"${PACKAGE_NAME}.NextappFirebaseMessagingService\"
@@ -139,8 +141,8 @@ if(ANDROID)
         )
 
         configure_file(
-          "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivity.java.in"
-          "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivity.java"
+          "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivityFcm.java.in"
+          "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivityFcm.java"
           @ONLY
         )
 
@@ -173,6 +175,12 @@ if(ANDROID)
             "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
             "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h")
     endif()
+
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivity.java.in"
+      "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivity.java"
+      @ONLY
+    )
 
     configure_file(
       "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
@@ -583,6 +591,7 @@ qt_add_qml_module(${PROJECT_NAME}
         GreenMonthModel.h
         GrpcIncomingStream.h
         ImportExportModel.cpp
+        ImportExportModel.h
         LogModel.cpp
         LogModel.h
         MainTreeModel.cpp

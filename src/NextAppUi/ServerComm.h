@@ -272,7 +272,7 @@ public:
     // Special stream functions. These will do everything in the main thread to speed up the transfer.
     using write_export_fn_t = std::function<void(const nextapp::pb::Status& msg, QFile& file)>;
     using read_export_fn_t = std::function<bool(nextapp::pb::Status& msg)>;
-    QCoro::Task<void> exportData(const QString &fileName, const write_export_fn_t& write);
+    QCoro::Task<void> exportData(std::shared_ptr<QFile> file, const write_export_fn_t& write);
     QCoro::Task<void> importData(const read_export_fn_t& read);
 
     static QString getDefaultServerAddress() {

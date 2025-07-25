@@ -1,5 +1,19 @@
+#include <memory>
+
 #include <QDir>
 #include <QProtobufJsonSerializer>
+#include <QQmlFile>
+#include <QStandardPaths>
+#include <QFile>
+#include <QUrl>
+#include <QFileDevice>
+#include <QDesktopServices>
+
+#ifdef ANDROID_BUILD
+#include <QJniObject>
+#include <QJniEnvironment>
+#include <QCoreApplication>
+#endif
 
 #include "ImportExportModel.h"
 #include "ServerComm.h"
@@ -11,6 +25,45 @@ using namespace std;
 
 namespace {
 
+QString getMobileExportName(bool json)
+{
+    const QString base_name = json ? "nextapp_export.json" : "export.nextapp";
+
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+
+    const QString filePath = dir + QDir::separator() + base_name;
+    return filePath;
+}
+
+#ifdef ANDROID_BUILD
+
+void sharePrivateFile(const QString &filePath, const QString &mimeType)
+{
+    // Grab your QtActivity instance
+    QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    // Call your Java: void shareFile(String path, String mimeType)
+    activity.callMethod<void>(
+        "shareFile",
+        // no signature string here: Qt6 will infer "(Ljava/lang/String;Ljava/lang/String;)V"
+        QJniObject::fromString(filePath).object<jstring>(),
+        QJniObject::fromString(mimeType).object<jstring>()
+        );
+}
+
+// Likewise, to pop up “Open with…”
+void viewPrivateFile(const QString &filePath, const QString &mimeType)
+{
+    QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    // Call your Java: void viewFile(String path, String mimeType)
+    activity.callMethod<void>(
+        "viewFile",
+        QJniObject::fromString(filePath).object<jstring>(),
+        QJniObject::fromString(mimeType).object<jstring>()
+        );
+}
+
+#endif
 
 // Static variables are OK here, as exports are not called concurrently.
 bool first_record = true;
@@ -224,14 +277,37 @@ ImportExportModel::ImportExportModel() {
     if (!QDir{actual_path}.exists()) {
         QDir{}.mkpath(actual_path);
     }
+
+    scanFiles();
 }
 
 void ImportExportModel::exportData(const QUrl &url)
 {
-    const auto path = url.toLocalFile();
-    LOG_INFO_N << "Exporting data to " << path;
 
-    doExport(path);
+    LOG_DEBUG_N << "Exporting data to " << url.toString();
+
+    const auto local = url.toLocalFile();
+    auto file = make_shared<QFile>(local);
+    LOG_DEBUG_N << "Opening file for export: " << file->fileName();
+    if (!file->open(QIODevice::WriteOnly | QFileDevice::Truncate)) {
+        LOG_WARN_N << "Failed to open file for export: " << file->errorString();
+        return;
+    }
+    doExport(file);
+}
+
+void ImportExportModel::exportDataMobile(bool json)
+{
+    const auto filePath = getMobileExportName(json);
+    auto file = std::make_shared<QFile>(filePath);
+    LOG_DEBUG_N << "Opening file for export: " << file->fileName();
+    if (!file->open(QIODevice::WriteOnly | QFileDevice::Truncate)) {
+        LOG_WARN_N << "Failed to open private file:" << file->errorString();
+        return;
+    }
+
+    doExport(file);
+    scanFiles();
 }
 
 void ImportExportModel::importData(const QUrl &url)
@@ -242,6 +318,53 @@ void ImportExportModel::importData(const QUrl &url)
     doImport(path);
 }
 
+void ImportExportModel::shareDataMobile(bool json)
+{
+#ifdef ANDROID_BUILD
+    const auto path = getMobileExportName(json);
+
+    if (json) {
+        sharePrivateFile(path, "application/json");
+    } else {
+        sharePrivateFile(path, "application/octet-stream");
+    }
+#endif
+}
+
+void ImportExportModel::viewDataMobile(bool json)
+{
+    const auto path = getMobileExportName(json);
+    QUrl url = QUrl::fromLocalFile(path);
+    QDesktopServices::openUrl(url);
+
+// #ifdef ANDROID_BUILD
+//     const auto path = getMobileExportName(json);
+//     if (json) {
+//         viewPrivateFile(path, "application/json");
+//     } else {
+//         viewPrivateFile(path, "application/octet-stream");
+//     }
+// #endif
+}
+
+void ImportExportModel::deleteDataMobile()
+{
+#ifdef ANDROID_BUILD
+    auto remove = [](QString path) {
+        QFile file(path);
+        if (file.exists()) {
+            if (file.remove()) {
+                LOG_INFO_N << "Deleted file: " << path;
+            }
+        }
+    };
+
+    remove(getMobileExportName(false));
+    remove(getMobileExportName(true));
+    scanFiles();
+#endif
+}
+
 void ImportExportModel::setWorking(bool working)
 {
     if (working_ != working) {
@@ -250,9 +373,38 @@ void ImportExportModel::setWorking(bool working)
     }
 }
 
-QCoro::Task<void> ImportExportModel::doExport(QString fileName)
+void ImportExportModel::setHaveBackup(bool haveBackup)
 {
-    LOG_DEBUG_N << "Exporting data to " << fileName;
+    if (have_backup_ != haveBackup) {
+        have_backup_ = haveBackup;
+        emit fileChanged();
+    }
+}
+
+void ImportExportModel::setHaveJson(bool haveJson)
+{
+    if (have_json_ != haveJson) {
+        have_json_ = haveJson;
+        emit fileChanged();
+    }
+}
+
+void ImportExportModel::scanFiles()
+{
+#ifdef ANDROID_BUILD
+    const auto backup_path = getMobileExportName(false);
+    QFile backupFile(backup_path);
+    setHaveBackup(backupFile.exists());
+
+    const auto json_path = getMobileExportName(true);
+    QFile jsonFile(json_path);
+    setHaveJson(jsonFile.exists());
+#endif
+}
+
+QCoro::Task<void> ImportExportModel::doExport(file_t file)
+{
+    LOG_INFO_N << "Exporting data to " << file->fileName();
     first_record = true; // Reset for each export
 
     setWorking(true);
@@ -261,11 +413,11 @@ QCoro::Task<void> ImportExportModel::doExport(QString fileName)
     });
 
     try {
-        if (fileName.endsWith(".json", Qt::CaseInsensitive)) {
+        if (file->fileName().endsWith(".json", Qt::CaseInsensitive)) {
             json_current_section = JsonSections::BEGIN;
-            co_await ServerComm::instance().exportData(fileName, WriteJson);
+            co_await ServerComm::instance().exportData(file, WriteJson);
         } else {
-            co_await ServerComm::instance().exportData(fileName, WriteNextapp);
+            co_await ServerComm::instance().exportData(file, WriteNextapp);
         }
     } catch (const std::exception &e) {
         LOG_ERROR_N << "Export failed: " << e.what();

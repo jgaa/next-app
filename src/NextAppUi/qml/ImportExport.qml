@@ -7,7 +7,7 @@ import Nextapp.Models
 
 Dialog {
     id: root
-    title: "Import / Export Data"
+    title: NaCore.isMobile ? qsTr("Export data") : qsTr("Import / Export Data")
     standardButtons: Dialog.Close
     x: NaCore.isMobile ? 0 : (ApplicationWindow.window.width - width) / 3
     y: NaCore.isMobile ? 0 : (ApplicationWindow.window.height - height) / 3
@@ -43,12 +43,16 @@ Dialog {
         spacing: 20
 
         Label {
-            text: qsTr("For backups or when migrating to another server, export your data to a .nextapp file, which you can then import on the target server. If you want to inspect your data or migrate it to a different application, export it with a .json extension; it will be saved in standard JSON format.")
+            text: NaCore.isMobile
+                   ? qsTr("For backups or when migrating to another server. Use json for inspecting your data or migrating data to a different application.")
+                   : qsTr("For backups or when migrating to another server, export your data to a .nextapp file, which you can then import on the target server. If you want to inspect your data or migrate it to a different application, export it with a .json extension; it will be saved in standard JSON format.")
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
 
         Button {
+            // I wish we have #ifdef in this language
+            visible: !NaCore.isMobile
             text: qsTr("Export Data")
 
             onClicked: {
@@ -56,13 +60,73 @@ Dialog {
             }
         }
 
+        Button {
+            visible: NaCore.isMobile
+            text: qsTr("Export Data for backup")
+
+            onClicked: {
+                ImportExportModel.exportDataMobile(false)
+            }
+        }
+
+        Button {
+            visible: NaCore.isMobile
+            text: qsTr("Export Data as Json")
+
+            onClicked: {
+                ImportExportModel.exportDataMobile(true)
+            }
+        }
+
+        Button {
+            visible: NaCore.isMobile
+            enabled: ImportExportModel.hasBackup
+            text: qsTr("Share backup")
+
+            onClicked: {
+                ImportExportModel.shareDataMobile(false)
+            }
+        }
+
+        Button {
+            visible: NaCore.isMobile
+            enabled: ImportExportModel.hasJson
+            text: qsTr("Share Json")
+
+            onClicked: {
+                ImportExportModel.shareDataMobile(true)
+            }
+        }
+
+        Button {
+            visible: NaCore.isMobile
+            enabled: ImportExportModel.hasJson
+            text: qsTr("View Json")
+
+            onClicked: {
+                ImportExportModel.viewDataMobile(true)
+            }
+        }
+
+        Button {
+            visible: NaCore.isMobile
+            enabled: ImportExportModel.hasJson || ImportExportModel.hasBackup
+            text: qsTr("Delete exports")
+
+            onClicked: {
+                ImportExportModel.deleteDataMobile()
+            }
+        }
+
         Label {
+            visible: !NaCore.isMobile
             text: qsTr("Note: Importing data will replace all existing data in the application on all devices connected to this user account.\nThis feature is intended to help you migrate your data when creating a new user account on a different server.\n\nFor example, you can use it if you initially signed up on a public server and have since set up your own server.")
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
 
         Button {
+            visible: !NaCore.isMobile
             text: qsTr("Import / Restore Data")
 
             onClicked: {

@@ -988,18 +988,12 @@ QCoro::Task<nextapp::pb::Status> ServerComm::deleteAccount()
     co_return co_await rpc({}, &nextapp::pb::Nextapp::Client::DeleteAccount);
 }
 
-QCoro::Task<void> ServerComm::exportData(const QString &fileName, const write_export_fn_t& write)
+QCoro::Task<void> ServerComm::exportData(std::shared_ptr<QFile> file, const write_export_fn_t& write)
 {
     nextapp::pb::ExportDataReq req;
     auto stream = client_->ExportData(req);
     if (!stream) {
         throw std::runtime_error("Failed to export data: Unable to create stream from server");
-    }
-
-    QFile file(fileName);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        LOG_ERROR_N << "Could not open" << fileName << " for writing: " << file.errorString();
-        throw std::runtime_error("Failed to open export file for writing");
     }
 
     bool done = false;
@@ -1027,7 +1021,7 @@ QCoro::Task<void> ServerComm::exportData(const QString &fileName, const write_ex
                 if (status->error() == nextapp::pb::ErrorGadget::Error::OK) {
                     // Happy path
                     try {
-                        write(*status, file);
+                        write(*status, *file);
                     } catch (const std::exception& e) {
                         LOG_ERROR_N << "Failed to write data to file: " << e.what();
                         ok = false;
@@ -1054,7 +1048,7 @@ QCoro::Task<void> ServerComm::exportData(const QString &fileName, const write_ex
 
     // Wait for the stream to end
     const auto status = co_await qCoro(stream.get(), &QGrpcServerStream::finished);
-    file.close();
+    file->close();
     if (status.isOk()) {
         LOG_DEBUG_N << "Export stream finished successfully.";
         done = true;
@@ -1062,7 +1056,9 @@ QCoro::Task<void> ServerComm::exportData(const QString &fileName, const write_ex
     }
 
     LOG_ERROR_N << "Export stream finished with error: " << status.message();
-    QFile::remove(fileName);
+#ifndef ANDROID_BUILD
+    QFile::remove(file->fileName());
+#endif
     throw std::runtime_error("Export stream was not successful");
 }
 

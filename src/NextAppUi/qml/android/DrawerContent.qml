@@ -247,7 +247,7 @@ Rectangle {
                 Layout.fillWidth: true
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/file-export.svg"
                 checkable: false
-                text: qsTr("Import/Export")
+                text: qsTr("Export data")
                 onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/ImportExport.qml", appWindow, {});
             }
 
