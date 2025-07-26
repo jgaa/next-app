@@ -313,7 +313,13 @@ void ImportExportModel::exportDataMobile(bool json)
 void ImportExportModel::importData(const QUrl &url)
 {
     const auto path = url.toLocalFile();
-    LOG_INFO_N << "Importing data from " << path;
+    LOG_INFO_N << "Importing data from path=" << path
+               << " url=" << url.toString();
+
+    if (path.isEmpty()) {
+        LOG_WARN_N << "Import path is empty.";
+        return;
+    }
 
     doImport(path);
 }

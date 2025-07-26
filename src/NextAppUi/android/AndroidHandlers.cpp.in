@@ -1,0 +1,24 @@
+
+#include <QDebug>
+
+#include "QCoreApplication"
+
+#include "NextAppCore.h"
+#include "logging.h"
+
+extern "C" JNIEXPORT void JNICALL
+Java_@PACKAGE_NAME_UNDERSCORES@_MainActivity_nativeOnSharedNextapp(
+        JNIEnv *env,
+        jobject /* activity */,
+        jstring jPath)
+{
+    LOG_DEBUG_N << "Got a shared-file event.";
+    qDebug() << "Got a shared-file event.";
+    const char *cPath = env->GetStringUTFChars(jPath, nullptr);
+    QString qPath = QString::fromUtf8(cPath);
+    env->ReleaseStringUTFChars(jPath, cPath);
+
+    LOG_DEBUG_N << "Got a shared-file event for " << qPath;
+
+    NextAppCore::handleSharedFile(qPath);
+}

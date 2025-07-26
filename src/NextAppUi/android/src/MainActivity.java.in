@@ -16,11 +16,16 @@ import org.qtproject.qt.android.bindings.QtActivity;
 import java.io.File;
 import android.net.Uri;
 import androidx.core.content.FileProvider;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.util.ArrayList;
 
 
 public class MainActivity extends QtActivity {
     private static final String TAG = "@PACKAGE_NAME@-MainActivity";
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 1001;
+
+    private native void nativeOnSharedNextapp(String absolutePath);
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -45,6 +50,32 @@ public class MainActivity extends QtActivity {
         //     // catch-all for any other unexpected errors
         //     Log.e(TAG, "Unexpected exception starting QtAndroidService", e);
         // }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // update the “current” Intent so getIntent() returns this one in onResume()
+        setIntent(intent);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        // grab whatever Intent launched or re-launched us
+        Intent intent = getIntent();
+        if (intent != null) {
+            Log.i(TAG, "onResume called with intent: " + intent.toString());
+            handleIncoming(intent);
+
+            // clear it so if the user hits home/back and then returns,
+            // we don’t re-process the same Intent over and over
+            setIntent(null);
+        } else {
+            Log.w(TAG, "onResume called with null intent");
+        }
+
     }
 
     // share a file via the system share sheet
@@ -79,6 +110,90 @@ public class MainActivity extends QtActivity {
         view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
         startActivity(Intent.createChooser(view, "Open file with"));
+    }
+
+    // private void handleIncoming(Intent intent) {
+    //     String action = intent.getAction();
+
+    //     if (Intent.ACTION_SEND.equals(action)) {
+    //         // single-file share
+    //         Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+    //         if (uri != null) {
+    //             copyAndHandle(uri);
+    //         }
+    //     }
+    //     else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+    //         // multi-file share (even if it's really just one)
+    //         ArrayList<Uri> uris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+    //         if (uris != null && !uris.isEmpty()) {
+    //             // for now, just handle the first .nextapp file:
+    //             copyAndHandle(uris.get(0));
+    //             //—or loop through all:
+    //             // for (Uri u : uris) copyAndHandle(u);
+    //         }
+    //     }
+    // }
+    private void handleIncoming(Intent intent) {
+        String action = intent.getAction();
+
+        if (action == null) {
+            Log.w(TAG, "Received intent with null action, nothing to handle.");
+            return;
+        }
+        Log.i(TAG, "Handling incoming intent with action: " + action.toString());
+
+        Uri uri = null;
+
+        if (Intent.ACTION_VIEW.equals(action)) {
+            uri = intent.getData();
+            Log.i(TAG, "Received ACTION_VIEW with URI: " + uri);
+        }
+        else if (Intent.ACTION_SEND.equals(action)) {
+            uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            Log.i(TAG, "Received ACTION_SEND with URI: " + uri);
+        }
+        else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            ArrayList<Uri> uris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (uris != null && !uris.isEmpty()) {
+                Log.i(TAG, "Received ACTION_SEND_MULTIPLE with " + uris.size() + " URIs");
+                uri = uris.get(0);
+            }
+        }
+
+        if (uri != null) {
+            Log.i(TAG, "Processing URI: " + uri.toString());
+            copyAndHandle(uri);
+        } else {
+            Log.w(TAG, "No valid URI found in intent, nothing to process.");
+        }
+    }
+
+    private void copyAndHandle(Uri src) {
+        File dst = new File(getFilesDir(), "shared.nextapp");
+        boolean success = false;
+        try (InputStream in = getContentResolver().openInputStream(src);
+             FileOutputStream out = new FileOutputStream(dst)) {
+
+            byte[] buf = new byte[4096];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+            out.getFD().sync();
+            success = true;
+            Log.i(TAG, "Copied shared file to: " + dst.getAbsolutePath());
+            nativeOnSharedNextapp(dst.getAbsolutePath());
+        } catch (Exception e) {
+            Log.e(TAG, "Error handling shared .nextapp", e);
+        } finally {
+            if (!success && dst.exists()) {
+                if (dst.delete()) {
+                    Log.i(TAG, "Deleted partial file: " + dst.getAbsolutePath());
+                } else {
+                    Log.w(TAG, "Failed to delete partial file: " + dst.getAbsolutePath());
+                }
+            }
+        }
     }
 
 }

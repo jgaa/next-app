@@ -39,6 +39,28 @@
             <!-- We need the main message-loop running in order to process updates trough push notifications -->
             <meta-data android:name="android.app.background_running" android:value="true"/>
 
+            <intent-filter>
+                <!-- user taps a .nextapp file or clicks “Open” -->
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <!-- lets the file manager include “Open with…” -->
+                <category android:name="android.intent.category.OPENABLE"/>
+                <!-- lets web-links also open, if you ever expose HTTP URLs -->
+                <category android:name="android.intent.category.BROWSABLE"/>
+
+                <!-- match classic file:// URIs ending in .nextapp -->
+                <data
+                    android:scheme="file"
+                    android:pathPattern=".*\\.nextapp"
+                    android:mimeType="*/*"/>
+
+                <!-- match Storage Access Framework (content://…) docs ending in .nextapp -->
+                <data
+                    android:scheme="content"
+                    android:host="*"
+                    android:pathSuffix=".nextapp"
+                    android:mimeType="*/*"/>
+            </intent-filter>
         </activity>
 
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.qtprovider" android:exported="false" android:grantUriPermissions="true">

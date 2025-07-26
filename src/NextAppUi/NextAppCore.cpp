@@ -8,6 +8,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QDebug>
 
 #ifdef LINUX_BUILD
 #include <QDBusConnection>
@@ -66,6 +67,7 @@ private:
 } // anon ns
 
 NextAppCore *NextAppCore::instance_;
+std::deque<std::function<void()>> NextAppCore::pre_instance_callbacks_;
 
 NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
     : engine_{&engine}
@@ -555,6 +557,74 @@ QCoro::Task<void> NextAppCore::onAccountDeleted()
     emit accountDeleted();
 }
 
+void NextAppCore::handleSharedFile(const QString &path) {
+    qDebug() << "NextAppCore::handleSharedFile: Handling shared file: " << path;
+    LOG_DEBUG_N << "Handling shared file: " << path.toStdString();
+    if (path.isEmpty()) {
+        LOG_ERROR_N << "Empty shared path";
+        return;
+    }
+
+    runOrQueueFunction([path=path]() {
+        LOG_DEBUG_N << "Scheduling tryImportWhenReady for path: " << path.toStdString();
+        QTimer::singleShot(
+            0,
+            QCoreApplication::instance(),
+            [path]() { tryImportWhenReady(path); }
+            );
+    });
+}
+
+void NextAppCore::tryImportWhenReady(const QString &path)
+{
+    qDebug() << "NextAppCore::tryImportWhenReady: Trying to import file from path:" << path;
+    LOG_DEBUG_N << "Trying to import file from path:" << path.toStdString();
+
+    auto *core = NextAppCore::instance();
+    if (core && core->state() >= State::SHUTTING_DOWN) {
+        LOG_WARN_N << "Nextapp is shutting down, skipping import for path:" << path.toStdString();
+        return;
+    }
+
+    if (core && core->state() > State::STARTING_UP) {
+        // safe to emit now
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            [path]() {
+                qDebug() << "NextAppCore::tryImportWhenReady: Importing event from path:" << path;
+                LOG_DEBUG_N << "Importing event from path:" << path.toStdString();
+                auto fileUrl = QUrl::fromLocalFile(path).toString();
+                emit NextAppCore::instance()->importEvent(fileUrl);
+            },
+            Qt::QueuedConnection
+            );
+    } else {
+        // not ready yet — check again in 100 ms
+        LOG_DEBUG_N << "Nextapp is not ready yet, will retry import in 100 ms for path:" << path.toStdString();
+        qDebug() << "NextAppCore::tryImportWhenReady: Not ready yet, will retry import in 100 ms for path:" << path;
+        QTimer::singleShot(
+            100,
+            QCoreApplication::instance(),
+            [path]() { tryImportWhenReady(path); }
+            );
+    }
+}
+
+void NextAppCore::runOrQueueFunction(std::function<void ()> fn)
+{
+    if (instance_ && instance_->state() >= State::ACTIVE) {
+        if (instance_->state() >= State::SHUTTING_DOWN) {
+            LOG_WARN_N << "Nextapp is shutting down, skipping function call.";
+            return;
+        }
+        LOG_DEBUG_N << "Running function immediately.";
+        fn();
+    } else {
+        LOG_DEBUG_N << "Queuing function to run later.";
+        pre_instance_callbacks_.emplace_back(std::move(fn));
+    }
+}
+
 void NextAppCore::handlePrepareForSleep(bool sleep)
 {
     LOG_DEBUG_N << "Prepare for sleep: " << sleep;
@@ -575,6 +645,21 @@ void NextAppCore::handlePrepareForSleep(bool sleep)
 
 void NextAppCore::setState(State state)
 {
+    if (state_ == State::STARTING_UP && state != state_) {
+        LOG_DEBUG_N << "STARTING_UP has finished";
+        if (!pre_instance_callbacks_.empty()) {
+            for(auto& fn : pre_instance_callbacks_) {
+                LOG_DEBUG_N << "Running queued function";
+                try {
+                    fn();
+                } catch (const std::exception &e) {
+                    LOG_ERROR_N << "Error while running queued function: " << e.what();
+                }
+            }
+            pre_instance_callbacks_.clear();
+        }
+    }
+
     if (state_ != state) {
         LOG_DEBUG_N << "State changed to " << static_cast<int>(state) << " from " << static_cast<int>(state_);
         state_ = state;

@@ -188,6 +188,13 @@ if(ANDROID)
       @ONLY
     )
 
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidHandlers.cpp.in"
+      "${CMAKE_BINARY_DIR}/AndroidHandlers.cpp"
+      @ONLY
+    )
+    set (EXTRA_SOURCE_FILES ${EXTRA_SOURCE_FILES} ${CMAKE_BINARY_DIR}/AndroidHandlers.cpp)
+
     file(COPY
       "${CMAKE_CURRENT_SOURCE_DIR}/android/res"
       DESTINATION ${ANDROID_OUT_DIR}

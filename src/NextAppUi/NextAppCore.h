@@ -169,6 +169,14 @@ public:
     void onWokeFromSleep();
     QCoro::Task<void> onAccountDeleted();
 
+    static void handleSharedFile(const QString& path);
+    static void tryImportWhenReady(const QString& path);
+
+    /*! Run the function is the app is instattiated and in ACTIVE state, otherwise queue it to run later.
+     *  This is useful for functions that need to be run after the app is fully initialized.
+     */
+    static void runOrQueueFunction(std::function<void()> fn);
+
 public slots:
     void handlePrepareForSleep(bool sleep);
 
@@ -187,6 +195,7 @@ signals:
     void accountDeleted();
     void factoryResetDone();
     void accountDeletionFailed(const QString& message);
+    void importEvent(const QUrl& url);
 
 private:
     void setState(State state);
@@ -215,4 +224,5 @@ private:
     std::unique_ptr<QDBusConnection> dbus_connection_;
 #endif
     QQmlApplicationEngine *engine_{};
+    static std::deque<std::function<void()>> pre_instance_callbacks_;
 };

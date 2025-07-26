@@ -3,6 +3,7 @@ import QtCore
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
+import QtQuick.Dialogs
 import NextAppUi
 import Nextapp.Models
 import "../common.js" as Common
@@ -23,6 +24,32 @@ ApplicationWindow {
         if (!settings.onboarding) {
             console.log("Opening onboarding")
             openWindow("onboard/OnBoardingWizard.qml");
+        }
+    }
+
+    Connections {
+        target: NaCore
+        function onImportEvent(url) {
+            console.log("Got .nextapp to open:", url)
+            confirmImport.fileUrl = url;
+            confirmImport.open();
+        }
+    }
+
+    MessageDialog {
+        id: confirmImport
+        property url fileUrl: ""
+
+        title: qsTr("Danger Zone")
+        text: qsTr("All your existing data will be replaced with the data from this file.\nThis action cannot be undone.\n\nAre you sure you want to continue?")
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        onAccepted: {
+           ImportExportModel.importData(fileUrl);
+           confirmImport.close()
+        }
+
+        onRejected: {
+            confirmImport.close()
         }
     }
 
