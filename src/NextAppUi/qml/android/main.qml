@@ -31,25 +31,11 @@ ApplicationWindow {
         target: NaCore
         function onImportEvent(url) {
             console.log("Got .nextapp to open:", url)
-            confirmImport.fileUrl = url;
-            confirmImport.open();
-        }
-    }
-
-    MessageDialog {
-        id: confirmImport
-        property url fileUrl: ""
-
-        title: qsTr("Danger Zone")
-        text: qsTr("All your existing data will be replaced with the data from this file.\nThis action cannot be undone.\n\nAre you sure you want to continue?")
-        buttons: MessageDialog.Ok | MessageDialog.Cancel
-        onAccepted: {
-           ImportExportModel.importData(fileUrl);
-           confirmImport.close()
-        }
-
-        onRejected: {
-            confirmImport.close()
+            // confirmImport.fileUrl = url;
+            // confirmImport.open();
+            Common.openDialog("qrc:/qt/qml/NextAppUi/qml/android/ImportDataDlg.qml", appWindow, {
+                              fileUrl: url
+                              });
         }
     }
 
@@ -136,7 +122,7 @@ ApplicationWindow {
                 text: "\uf0c2"
                 font.family: ce.faSolidName
                 font.styleName: ce.faSolidStyle
-                color: NaComm.connected ? "green" : "red"
+                color: NaComm.statusColor
             }
         }
     }
@@ -181,4 +167,6 @@ ApplicationWindow {
         var win = component.createObject(appWindow, args);
         win.show()
     }
+
+
 }

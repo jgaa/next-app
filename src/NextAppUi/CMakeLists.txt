@@ -640,6 +640,7 @@ qt_add_qml_module(${PROJECT_NAME}
         util.h
         EventScheduler.h
         EventScheduler.cpp
+        QML_FILES qml/android/ImportDataDlg.qml
 )
 
 
