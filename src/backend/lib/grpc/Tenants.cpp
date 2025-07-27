@@ -807,8 +807,8 @@ ORDER BY t.id;
         }
 
         mapper{rctx};
-        deque<pair<boost::uuids::uuid, boost::uuids::uuid>> node_parent;
         deque<pair<boost::uuids::uuid, boost::uuids::uuid>> action_origin;
+        deque<pair<boost::uuids::uuid, boost::uuids::uuid>> node_parent;
 
         // Delete the users current data
         const auto& cuser = rctx.uctx->userUuid();
@@ -836,6 +836,49 @@ ORDER BY t.id;
 
         std::exception_ptr eptr;
 
+        auto post_updates = [&](const nextapp::pb::ImportDataMsg *msg = nullptr) -> boost::asio::awaitable<void> {
+
+            if (!node_parent.empty() && (!msg || !msg->has_nodes())) {
+                auto sql = "UPDATE node SET parent=? WHERE id=?";
+
+                auto generator = jgaa::mysqlpool::BindTupleGenerator(node_parent,
+                                                                     [&] (const auto& np) {
+                                                                         return make_tuple (
+                                                                             mapper.node(np.second),
+                                                                             toString(np.first)
+                                                                             );
+                                                                     });
+
+                try {
+                    co_await rctx.dbh->exec(sql, generator);
+                    node_parent.clear();
+                } catch (const std::exception& ex) {
+                    LOG_ERROR_EX(rctx) << "Failed to update node parents: " << ex.what();
+                    throw server_err{pb::Error::GENERIC_ERROR, "Failed to update node parents"};
+                }
+            }
+
+            if (!action_origin.empty() && (!msg || msg->has_actions())) {
+                auto sql = "UPDATE action SET origin=? WHERE id=?";
+
+                auto generator = jgaa::mysqlpool::BindTupleGenerator(action_origin,
+                                                                     [&] (const auto& ao) {
+                                                                         return make_tuple (
+                                                                             toString(ao.first),
+                                                                             mapper.action(ao.second)
+                                                                             );
+                                                                     });
+                try {
+                    co_await rctx.dbh->exec(sql, generator);
+                    action_origin.clear();
+                } catch (const std::exception& ex) {
+                    LOG_ERROR_EX(rctx) << "Failed to update actions origin: " << ex.what();
+                    throw server_err{pb::Error::GENERIC_ERROR, "Failed to actions origin"};
+                }
+            };
+
+        };
+
         try {
             while(true) {
                 auto msg = co_await stream->read();
@@ -846,24 +889,7 @@ ORDER BY t.id;
                     throw server_err{pb::Error::GENERIC_ERROR, "Unexpected end of stream"};
                 }
 
-                if (!action_origin.empty() && !msg->has_actions()) {
-                    auto sql = "UPDATE action SET origin=? WHERE id=?";
-
-                    auto generator = jgaa::mysqlpool::BindTupleGenerator(action_origin,
-                                                                         [&] (const auto& ao) {
-                                                                             return make_tuple (
-                                                                                 toString(ao.first),
-                                                                                 mapper.action(ao.second)
-                                                                                 );
-                                                                         });
-                    try {
-                        co_await rctx.dbh->exec(sql, generator);
-                    } catch (const std::exception& ex) {
-                        LOG_ERROR_EX(rctx) << "Failed to update actions origin: " << ex.what();
-                        throw server_err{pb::Error::GENERIC_ERROR, "Failed to actions origin"};
-                    }
-                    action_origin.clear();
-                };
+                co_await post_updates(&msg.value());
 
                 if (msg->has_user()) {
                     const auto& u = msg->user();
@@ -892,12 +918,12 @@ ORDER BY t.id;
                                 item.set_user(mapper.user(item.user()));
                                 item.set_uuid(mapper.addNode(item.uuid()));
                                 if (!item.parent().empty()) {
-                                    const auto parent = mapper.node(item.parent(), false);
-                                    if (parent.empty()) {
+                                    if (auto node = mapper.node(item.parent(), false); !node.empty()) {
+                                        item.set_parent(node);
+                                    } else {
                                         // Delay until all nodes are imported
                                         node_parent.emplace_back(toUuid(item.uuid()), toUuid(item.parent()));
-                                    } else {
-                                        item.set_parent(parent);
+                                        item.clear_parent();
                                     }
                                 }
                             }
@@ -944,7 +970,9 @@ ORDER BY t.id;
                             for(auto& tb : *rows) {
                                 tb.set_id(mapper.addTimeBlock(tb.id()));
                                 tb.set_user(mapper.user(tb.user()));
-                                tb.set_category(mapper.actionCategory(tb.category()));
+                                if (!tb.category().empty()) {
+                                    tb.set_category(mapper.actionCategory(tb.category()));
+                                }
 
                                 // The actions in a time-block are just a list of uuid-strings.
                                 pb::StringList actions;
@@ -994,25 +1022,27 @@ ORDER BY t.id;
                 }
             } // while ...
 
-            // Link nodes that failed early lookup to their parents
-            if (!node_parent.empty()) {
-                auto sql = "UPDATE node SET parent=? WHERE id=?";
+            co_await post_updates();
 
-                auto generator = jgaa::mysqlpool::BindTupleGenerator(node_parent,
-                    [&] (const auto& np) {
-                        return make_tuple (
-                            mapper.node(np.second),
-                            toString(np.first)
-                        );
-                    });
+            // // Link nodes that failed early lookup to their parents
+            // if (!node_parent.empty()) {
+            //     auto sql = "UPDATE node SET parent=? WHERE id=?";
 
-                try {
-                    co_await rctx.dbh->exec(sql, generator);
-                } catch (const std::exception& ex) {
-                    LOG_ERROR_EX(rctx) << "Failed to update node parents: " << ex.what();
-                    throw server_err{pb::Error::GENERIC_ERROR, "Failed to update node parents"};
-                }
-            }
+            //     auto generator = jgaa::mysqlpool::BindTupleGenerator(node_parent,
+            //         [&] (const auto& np) {
+            //             return make_tuple (
+            //                 mapper.node(np.second),
+            //                 toString(np.first)
+            //             );
+            //         });
+
+            //     try {
+            //         co_await rctx.dbh->exec(sql, generator);
+            //     } catch (const std::exception& ex) {
+            //         LOG_ERROR_EX(rctx) << "Failed to update node parents: " << ex.what();
+            //         throw server_err{pb::Error::GENERIC_ERROR, "Failed to update node parents"};
+            //     }
+            // }
         } catch (const exception& ex) {
             LOG_DEBUG_EX(rctx) << "Exception while importing data: " << ex.what();
             eptr = std::current_exception();
