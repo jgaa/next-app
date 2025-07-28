@@ -4,17 +4,20 @@ trap 'echo "[ERROR] Line $LINENO: \"$BASH_COMMAND\" exited with code $?. Abortin
 
 echo Building NextApp for Android
 
-if [ $# -ne 1 ]; then
-  echo "Usage: $0 <ABI>"
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+  echo "Usage: $0 <ABI> [aab]"
   echo "  ABI must be one of: arm64_v8a | armeabi_v7a | x86 | x86_64"
+  echo "  Optional second argument: 'aab' to also generate an Android App Bundle"
   exit 1
 fi
+
 ABI=$1
+BUILD_AAB=${2:-false}
 case "$ABI" in
   arm64_v8a)   ANDROID_ABI="arm64-v8a" ;;
-  armeabi_v7a) ANDROID_ABI="armeabi-v7a"   ;;
-  x86)         ANDROID_ABI="x86"   ;;
-  x86_64)      ANDROID_ABI="x86_64"   ;;
+  armeabi_v7a) ANDROID_ABI="armeabi-v7a" ;;
+  x86)         ANDROID_ABI="x86" ;;
+  x86_64)      ANDROID_ABI="x86_64" ;;
   *)
     echo "Unsupported ABI: $ABI"
     exit 1
@@ -201,4 +204,32 @@ ${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner sign \
   ${NEXTAPP_APK}
 
 # echo "✔ Successfully built & signed: ${NEXTAPP_APK}"
+
+# —————————————————————————————
+# Optionally: Create .aab bundle for this ABI
+# —————————————————————————————
+if [ "$BUILD_AAB" = "aab" ]; then
+  echo "Building Android App Bundle (.aab) for ${ANDROID_ABI}..."
+  PATH="${QT_INSTALL_DIR}/gcc_64/bin:${PATH}"
+
+  mkdir -p aab
+
+  androiddeployqt \
+    --input "${BUILD_DIR}/android-project/android-lib-deployment-settings.json" \
+    --output "${BUILD_DIR}/android-build" \
+    --release \
+    --aab \
+    --no-gdbserver \
+    --no-strip \
+    --sign \
+    --storepath "${KEYSTORE_PATH}" \
+    --storepass "${KEYSTORE_PASSWORD}" \
+    --alias "${KEY_ALIAS}" \
+    --gradle \
+    --jdk "${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+
+  cp -v "${BUILD_DIR}/android-build/build/outputs/bundle/release/"*.aab "aab/nextapp_${ANDROID_ABI}.aab"
+
+  echo "✔ AAB built and stored in aab/nextapp_${ANDROID_ABI}.aab"
+fi
 
