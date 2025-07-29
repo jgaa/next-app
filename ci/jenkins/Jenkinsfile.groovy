@@ -108,10 +108,11 @@ pipeline {
 
                     git submodule update --init
                     chmod +x building/android/build-nextapp.sh
-                    ./building/android/build-nextapp.sh arm64_v8a
+                    ./building/android/build-nextapp.sh arm64_v8a aab
                   '''
 
                   archiveArtifacts artifacts: "build/apk/*.apk", fingerprint: true
+                  archiveArtifacts artifacts: "build/aab/*.aab", fingerprint: true
               }
             }
         } // android arm64
@@ -145,10 +146,11 @@ pipeline {
 
                     git submodule update --init
                     chmod +x building/android/build-nextapp.sh
-                    ./building/android/build-nextapp.sh x86_64
+                    ./building/android/build-nextapp.sh x86_64 aab
                   '''
 
                   archiveArtifacts artifacts: "build/apk/*.apk", fingerprint: true
+                  archiveArtifacts artifacts: "build/aab/*.aab", fingerprint: true
               }
             }
         } // android x86_64

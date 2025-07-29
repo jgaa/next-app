@@ -214,21 +214,19 @@ if [ "$BUILD_AAB" = "aab" ]; then
 
   mkdir -p aab
 
-  androiddeployqt \
-    --input "${BUILD_DIR}/android-project/android-lib-deployment-settings.json" \
-    --output "${BUILD_DIR}/android-build" \
-    --release \
-    --aab \
-    --no-gdbserver \
-    --no-strip \
-    --sign \
-    --storepath "${KEYSTORE_PATH}" \
-    --storepass "${KEYSTORE_PASSWORD}" \
-    --alias "${KEY_ALIAS}" \
-    --gradle \
-    --jdk "${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+  gradle_dir=$(find -name gradlew | grep NextApp | xargs -r dirname)
 
-  cp -v "${BUILD_DIR}/android-build/build/outputs/bundle/release/"*.aab "aab/nextapp_${ANDROID_ABI}.aab"
+  if [[ -z "$gradle_dir" ]]; then
+    echo "ERROR: no gradlew found under $(pwd)" >&2
+    exit 1
+  fi
+
+  echo "Gradle found in: ${gradle_dir}"
+  pushd "${gradle_dir}"
+  ./gradlew bundleRelease
+  popd
+
+  cp -v $(find -type f -name '*.aab' | grep outputs) aab/nextapp_${ANDROID_ABI}.aab
 
   echo "✔ AAB built and stored in aab/nextapp_${ANDROID_ABI}.aab"
 fi
