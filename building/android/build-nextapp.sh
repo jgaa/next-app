@@ -177,6 +177,8 @@ cmake -S ${SOURCE_DIR} \
 echo "Building Nextapp for Android..."
 cmake --build . --target apk --config Release --parallel
 
+app_version=$(cat VERSION.txt)
+
 # —————————————————————————————
 # Locate & sign the APK
 # —————————————————————————————
@@ -186,7 +188,7 @@ if [ -z "$APK" ]; then
   exit 1
 fi
 
-NEXTAPP_APK=${APK_DST}/nextapp_${ANDROID_ABI}.apk
+NEXTAPP_APK=${APK_DST}/nextapp-${app_version}_${ANDROID_ABI}.apk
 mkdir apk
 cp -v ${APK} ${NEXTAPP_APK}
 
@@ -226,7 +228,7 @@ if [ "$BUILD_AAB" = "aab" ]; then
   ./gradlew bundleRelease
   popd
 
-  cp -v $(find -type f -name '*.aab' | grep outputs) aab/nextapp_${ANDROID_ABI}.aab
+  cp -v $(find -type f -name '*.aab' | grep outputs) aab/nextapp-${app_version}_${ANDROID_ABI}.aab
 
   echo "✔ AAB built and stored in aab/nextapp_${ANDROID_ABI}.aab"
 fi
