@@ -228,13 +228,7 @@ grep -q '^qtTargetAbiList=' "gradle.properties" \
   && sed -i 's/^qtTargetAbiList=.*/qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64/' "gradle.properties" \
   || echo 'qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64' >> "gradle.properties"
 
-IFS='.' read -r MAJOR MINOR PATCH <<< "$app_version"
-VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
-
-echo "VersionName=$app_version"
-echo "VersionCode=$VERSION_CODE"
-
-./gradlew bundleRelease -PversionCode=$VERSION_CODE -PversionName=$app_version
+./gradlew bundleRelease
 
 aab_dst=${ASSETS_PATH}/nextapp-${app_version}.aab
 
@@ -253,7 +247,7 @@ jarsigner \
   "${KEY_ALIAS}"
 
   # (Optional) Verify the signature:
-  jarsigner -verify -verbose -certs "${aab_dst}"
+  jarsigner -verify -certs "${aab_dst}"
 
 echo "✔ AAB built and stored in ${aab_dst}"
 

@@ -243,7 +243,7 @@ if [ "$BUILD_AAB" = "aab" ]; then
   "${KEY_ALIAS}"
 
   # (Optional) Verify the signature:
-  jarsigner -verify -verbose -certs "${aab_dst}"
+  jarsigner -verify -certs "${aab_dst}"
 
   echo "✔ AAB built and stored in ${aab_dst}"
 fi
