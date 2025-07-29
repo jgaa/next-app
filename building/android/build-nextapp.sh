@@ -228,8 +228,24 @@ if [ "$BUILD_AAB" = "aab" ]; then
   ./gradlew bundleRelease
   popd
 
-  cp -v $(find -type f -name '*.aab' | grep outputs) aab/nextapp-${app_version}_${ANDROID_ABI}.aab
+  aab_dst=aab/nextapp-${app_version}_${ANDROID_ABI}.aab
 
-  echo "✔ AAB built and stored in aab/nextapp_${ANDROID_ABI}.aab"
+  cp -v $(find -type f -name '*.aab' | grep outputs) ${aab_dst}
+
+  echo "Signing ${aab_dst} with keystore ${KEYSTORE_PATH}…"
+  jarsigner \
+  -verbose \
+  -sigalg SHA256withRSA \
+  -digestalg SHA-256 \
+  -keystore "${KEYSTORE_PATH}" \
+  -storepass "${KEYSTORE_PASSWORD}" \
+  -tsa http://timestamp.digicert.com \
+  "${aab_dst}" \
+  "${KEY_ALIAS}"
+
+# (Optional) Verify the signature:
+jarsigner -verify -verbose -certs "${aab_dst}"
+
+  echo "✔ AAB built and stored in ${aab_dst}"
 fi
 
