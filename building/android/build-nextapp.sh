@@ -6,7 +6,7 @@ echo Building NextApp for Android
 
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
   echo "Usage: $0 <ABI> [aab]"
-  echo "  ABI must be one of: arm64_v8a | armeabi_v7a | x86 | x86_64"
+  echo "  ABI must be one of: arm64_v8a | armv7 | x86 | x86_64"
   echo "  Optional second argument: 'aab' to also generate an Android App Bundle"
   exit 1
 fi
@@ -15,7 +15,7 @@ ABI=$1
 BUILD_AAB=${2:-false}
 case "$ABI" in
   arm64_v8a)   ANDROID_ABI="arm64-v8a" ;;
-  armeabi_v7a) ANDROID_ABI="armeabi-v7a" ;;
+  armv7) ANDROID_ABI="armeabi-v7a" ;;
   x86)         ANDROID_ABI="x86" ;;
   x86_64)      ANDROID_ABI="x86_64" ;;
   *)
@@ -234,7 +234,6 @@ if [ "$BUILD_AAB" = "aab" ]; then
 
   echo "Signing ${aab_dst} with keystore ${KEYSTORE_PATH}…"
   jarsigner \
-  -verbose \
   -sigalg SHA256withRSA \
   -digestalg SHA-256 \
   -keystore "${KEYSTORE_PATH}" \
@@ -243,8 +242,8 @@ if [ "$BUILD_AAB" = "aab" ]; then
   "${aab_dst}" \
   "${KEY_ALIAS}"
 
-# (Optional) Verify the signature:
-jarsigner -verify -verbose -certs "${aab_dst}"
+  # (Optional) Verify the signature:
+  jarsigner -verify -verbose -certs "${aab_dst}"
 
   echo "✔ AAB built and stored in ${aab_dst}"
 fi

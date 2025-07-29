@@ -184,7 +184,7 @@ pipeline {
 
                     git submodule update --init
                     chmod +x building/android/build-nextapp.sh
-                    ./building/android/build-nextapp.sh armeabi-v7a aab
+                    ./building/android/build-nextapp.sh armeabi_v7a aab
                   '''
 
                   archiveArtifacts artifacts: "build/apk/*.apk", fingerprint: true
