@@ -154,6 +154,82 @@ pipeline {
               }
             }
         } // android x86_64
+
+        stage('Android armeabi-v7a Build') {
+            agent { label 'linux' }
+
+            environment {
+                // Qt settings
+                KEY_ALIAS         = "eu.lastviking.app"
+                BUILD_DIR         = "${WORKSPACE}/build"
+                SDK_PATH          = "${WORKSPACE}/android-sdk"
+                QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
+                BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
+            }
+
+            steps {
+
+                checkout scm
+
+                withCredentials([
+                  file(credentialsId: 'GOOGLE_SERVICES_NEXTAPP_ANDROID', variable: 'GOOGLE_SERVICES_PATH'),
+                  file(credentialsId: 'KEYSTORE_PATH',  variable: 'KEYSTORE_PATH'),
+                  string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD')
+                ]) {
+                  sh '''
+                    set -e
+                    echo "Beginning..."
+                    pwd
+                    ls -la
+
+                    git submodule update --init
+                    chmod +x building/android/build-nextapp.sh
+                    ./building/android/build-nextapp.sh armeabi-v7a aab
+                  '''
+
+                  archiveArtifacts artifacts: "build/apk/*.apk", fingerprint: true
+                  archiveArtifacts artifacts: "build/aab/*.aab", fingerprint: true
+              }
+            }
+        } // android armeabi-v7a
+
+        stage('Android x86 Build') {
+            agent { label 'linux' }
+
+            environment {
+                // Qt settings
+                KEY_ALIAS         = "eu.lastviking.app"
+                BUILD_DIR         = "${WORKSPACE}/build"
+                SDK_PATH          = "${WORKSPACE}/android-sdk"
+                QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
+                BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
+            }
+
+            steps {
+
+                checkout scm
+
+                withCredentials([
+                  file(credentialsId: 'GOOGLE_SERVICES_NEXTAPP_ANDROID', variable: 'GOOGLE_SERVICES_PATH'),
+                  file(credentialsId: 'KEYSTORE_PATH',  variable: 'KEYSTORE_PATH'),
+                  string(credentialsId: 'KEYSTORE_PASSWORD', variable: 'KEYSTORE_PASSWORD')
+                ]) {
+                  sh '''
+                    set -e
+                    echo "Beginning..."
+                    pwd
+                    ls -la
+
+                    git submodule update --init
+                    chmod +x building/android/build-nextapp.sh
+                    ./building/android/build-nextapp.sh x86 aab
+                  '''
+
+                  archiveArtifacts artifacts: "build/apk/*.apk", fingerprint: true
+                  archiveArtifacts artifacts: "build/aab/*.aab", fingerprint: true
+              }
+            }
+        } // android x86
       } //parallel
     } // Build
   } // stages
