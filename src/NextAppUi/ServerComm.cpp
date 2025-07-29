@@ -282,7 +282,7 @@ ServerComm::ServerComm()
         // Decode the base-64 encoded data
         // Unfortunately, QT does not provide a way to decode base64 directly from a memory view.
         // So we have to convert it to a QByteArray and then decode it.
-        const QByteArray qmessage{message.data(), static_cast<qlonglong>(message.size())};
+        const QByteArray qmessage{message.data(), static_cast<qsizetype>(message.size())};
         auto decoded_data = QByteArray::fromBase64(qmessage);
         auto update = make_shared<nextapp::pb::Update>();
         QProtobufSerializer serializer;
