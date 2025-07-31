@@ -74,29 +74,6 @@ jobs:
             --name "nextapp-macos-arm64-dmg-${{ env.VERSION }}" \
             --dir artifacts/macos-arm64
 
-      - name: Download Windows x64 installer
-        id: download_windows_installer_x64
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          RUN_ID=$(
-          gh run list \
-            --repo ${{ github.repository }} \
-            --workflow static-qt-windows.yaml \
-            --branch main \
-            --status success \
-            --limit 1 \
-            --json databaseId \
-            --jq '.[0].databaseId'
-          )
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "❌ No successful Winbdows/x64 run found" >&2
-            exit 1
-          fi
-          gh run download "$RUN_ID" \
-            --name "nextapp-windows-x64-installer-${{ env.VERSION }}" \
-            --dir artifacts/windows-x64
-
       - name: Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -117,4 +94,4 @@ jobs:
           files: |
             artifacts/flatpak/*
             artifacts/macos-arm64/*
-            artifacts/windows-x64/*
+
