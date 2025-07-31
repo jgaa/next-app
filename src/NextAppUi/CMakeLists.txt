@@ -6,6 +6,19 @@ project(appNextAppUi
 
 add_definitions(-DNEXTAPP_UI_VERSION=\"${appNextAppUi_VERSION}\")
 
+# Split the version string into components
+string(REPLACE "." ";" VERSION_PARTS ${NEXTAPP_VERSION})
+
+list(GET VERSION_PARTS 0 VERSION_MAJOR)
+list(GET VERSION_PARTS 1 VERSION_MINOR)
+list(GET VERSION_PARTS 2 VERSION_PATCH)
+
+# Convert to integer version code: major * 10000 + minor * 100 + patch
+math(EXPR VERSION_CODE "${VERSION_MAJOR} * 10000 + ${VERSION_MINOR} * 100 + ${VERSION_PATCH}")
+
+message(STATUS "Version: ${NEXTAPP_VERSION}")
+message(STATUS "Version code: ${VERSION_CODE}")
+
 #set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 

@@ -277,7 +277,9 @@ QByteArrayView SoundPlayer::getSoundData(const QString &resourcePath) {
         return {};
     }
 
-    auto [it, _] = sounds_.emplace(adjusted_path, QByteArray{reinterpret_cast<const char*>(resource.data()), resource.size()});
+    auto [it, _] = sounds_.emplace(adjusted_path,
+                                   QByteArray{reinterpret_cast<const char*>(resource.data()),
+                                              static_cast<qsizetype>(resource.size())});
 
     return it->second;
 }
