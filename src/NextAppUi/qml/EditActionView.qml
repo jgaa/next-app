@@ -15,6 +15,7 @@ ColumnLayout {
     property NextappPb.action action: null
     property bool existingOnly: false
     property bool autoCommit: false
+    property bool valid: name.text.length > 0 && status.currentIndex >= 0
 
     function assign(newAction) {
         commitIf()

@@ -24,7 +24,7 @@ Dialog {
     width: Math.min(600, NaCore.width, Screen.width)
     height: Math.min(700, NaCore.height, Screen.height)
 
-    standardButtons: root.aprx.valid ? (Dialog.Ok | Dialog.Cancel) : Dialog.Cancel
+    standardButtons: root.aprx.valid && actionsCtl.valid ? (Dialog.Ok | Dialog.Cancel) : Dialog.Cancel
 
     onOpened: {
         assign()

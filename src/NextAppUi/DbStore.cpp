@@ -435,7 +435,7 @@ bool DbStore::updateSchema(uint version)
             "dyn_score" INT NULL,
             "status" INTEGER NOT NULL,
             "favorite" BOOLEAN NOT NULL,
-            "name" VARCHAR(255) NOT NULL,
+            "name" VARCHAR(255) NULL DEFAULT 'Unnamed',
             "descr" TEXT,
             "created_date" DATETIME NOT NULL,
             "due_kind" INTEGER NOT NULL,
