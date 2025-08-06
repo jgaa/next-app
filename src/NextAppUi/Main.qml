@@ -1,13 +1,14 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Window
 import QtCore
 import NextAppUi
 import Nextapp.Models
 import "qml/common.js" as Common
 
 ApplicationWindow {
-    id: root
+    id: appWindow
     width: 1700
     height: 900
     visible: NaComm.signupStatus == NaComm.SIGNUP_OK
@@ -35,13 +36,13 @@ ApplicationWindow {
             // re‐open the onboarding wizard immediately:
             settings.onboarding = false
             console.log("Account was deleted – re‐launching onboarding wizard")
-            root.openWindow("onboard/OnBoardingWizard.qml")
+            appWindow.openWindow("onboard/OnBoardingWizard.qml")
         }
     }
 
     menuBar: MyMenuBar {
-        dragWindow: root
-        //infoText: root.getInfoText()
+        dragWindow: appWindow
+        //infoText: appWindow.getInfoText()
         MyMenu {
             title: qsTr("App")
 
@@ -222,14 +223,14 @@ ApplicationWindow {
             RowLayout {
                 // Purple
                 //anchors.fill: parent
-                SplitView.preferredWidth: root.width - 360
+                SplitView.preferredWidth: appWindow.width - 360
                 SplitView.fillHeight: true
-                //Layout.preferredWidth: root.width - dayPlan.implicitWidth - 10
+                //Layout.preferredWidth: appWindow.width - dayPlan.implicitWidth - 10
 
                 // Stores the buttons that navigate the application.
                 Sidebar {
                     id: sidebar
-                    dragWindow: root
+                    dragWindow: appWindow
                     Layout.preferredWidth: 100
                     Layout.fillHeight: true
                 }
@@ -304,7 +305,7 @@ ApplicationWindow {
                             id: currentWorkSessionsCtl
                             SplitView.fillWidth: true
                             SplitView.preferredHeight: Math.max(currentWorkSessionsCtl.minHeight,
-                                                                root.height / 6)
+                                                                appWindow.height / 6)
                         }
                     } // ColumnLayout for tree views
 
@@ -339,7 +340,7 @@ ApplicationWindow {
         Rectangle {
             id: bottomBar
             Layout.fillWidth: true
-            Layout.preferredHeight: root.menuBar.height
+            Layout.preferredHeight: appWindow.menuBar.height
             color: MaterialDesignStyling.surfaceContainer
 
             RowLayout {
@@ -406,7 +407,7 @@ ApplicationWindow {
 
     ResizeButton {
         visible: false
-        resizeWindow: root
+        resizeWindow: appWindow
     }
 
     function openDialog(name, args) {
@@ -416,7 +417,7 @@ ApplicationWindow {
                 console.debug("Error:"+ component.errorString() );
             return;
         }
-        var dlg = component.createObject(root, args);
+        var dlg = component.createObject(appWindow, args);
         dlg.open()
     }
 
@@ -427,7 +428,7 @@ ApplicationWindow {
                 console.debug("Error:"+ component.errorString() );
             return;
         }
-        var win = component.createObject(root, args);
+        var win = component.createObject(appWindow, args);
         win.show()
     }
 

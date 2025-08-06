@@ -7,7 +7,7 @@ import nextapp.pb as NextappPb
 import "common.js" as Common
 import Nextapp.Models
 
-ColumnLayout {
+Item {
     id: root
     property int controlsPreferredWidth: (width - 40 - leftMarginForControls) / (NaCore.isMobile ? 1 : 4)
     property int labelWidth: 80
@@ -178,7 +178,8 @@ ColumnLayout {
 
     TabBar {
         id: bar
-        Layout.fillWidth: true
+        width: parent.width
+        height: implicitContentHeight
 
         TabButton {
             Layout.preferredWidth: 100
@@ -197,7 +198,12 @@ ColumnLayout {
     }
 
     StackLayout {
+        // Layout.preferredWidth: parent.width
+        // Layout.fillHeight: true
+        x : 0
+        y: bar.height + 10
         width: parent.width
+        height: parent.height - bar.height - 10
         currentIndex: bar.currentIndex
 
         // Main tab

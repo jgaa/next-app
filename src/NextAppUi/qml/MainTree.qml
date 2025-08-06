@@ -3,8 +3,10 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
 import QtQuick.Dialogs
+import QtQuick.Window
 import NextAppUi
 import Nextapp.Models
+import "common.js" as Common
 
 pragma ComponentBehavior: Bound
 
@@ -494,7 +496,7 @@ Rectangle {
                 console.debug("Error:"+ component.errorString() );
             return;
         }
-        var dlg = component.createObject(root, args);
+        var dlg = component.createObject(ApplicationWindow.window, args);
         dlg.open()
     }
 

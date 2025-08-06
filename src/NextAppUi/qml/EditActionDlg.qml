@@ -19,10 +19,10 @@ Dialog {
     property bool valid: aprx.valid
     property bool dragWasEnabled: false
 
-    x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
-    y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
-    width: Math.min(600, NaCore.width, Screen.width)
-    height: Math.min(700, NaCore.height, Screen.height)
+    x: NaCore.isMobile ? 0 : Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
+    y: NaCore.isMobile ? 0 : Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
+    width: NaCore.isMobile ? parent.width : Math.min(600, NaCore.width, Screen.width)
+    height: NaCore.isMobile ? parent.height : Math.min(700, NaCore.height, Screen.height)
 
     standardButtons: root.aprx.valid && actionsCtl.valid ? (Dialog.Ok | Dialog.Cancel) : Dialog.Cancel
 
@@ -55,9 +55,12 @@ Dialog {
         }
     }
 
-    EditActionView {
-        id: actionsCtl
+    ScrollView {
         anchors.fill: parent
+        EditActionView {
+            id: actionsCtl
+            anchors.fill: parent
+        }
     }
 
     onAccepted: { 

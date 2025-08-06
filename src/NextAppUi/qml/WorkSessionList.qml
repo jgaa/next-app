@@ -3,9 +3,11 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtQuick.Effects
+import QtQuick.Window
 import NextAppUi
 import nextapp.pb as NextappPB
 import Nextapp.Models
+import "common.js" as Common
 
 Rectangle {
     id: root
@@ -252,7 +254,7 @@ Rectangle {
     }
 
     function openWorkSessionDlg(uuid) {
-        openDialog("EditWorkSession.qml", {
+        Connon.openDialog("EditWorkSession.qml", ApplicationWindow.window, {
             title: qsTr("Edit Work Session"),
             ws: tableView.model.getSession(uuid),
             model: tableView.model
@@ -260,7 +262,7 @@ Rectangle {
     }
 
     function openActionDlg(uuid) {
-        openDialog("EditActionDlg.qml", {
+        Common.openDialog("EditActionDlg.qml", ApplicationWindow.window, {
             title: qsTr("Edit Action"),
             aprx: NaActionsModel.getAction(uuid)
         });

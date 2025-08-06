@@ -3,6 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtQuick.Effects
+import QtQuick.Window
 import NextAppUi
 import nextapp.pb as NextappPB
 import Nextapp.Models
@@ -523,7 +524,7 @@ Rectangle {
     }
 
     function openActionDlg(uuid) {
-        Common.openDialog("EditActionDlg.qml", root, {
+        Common.openDialog("EditActionDlg.qml", ApplicationWindow.window, {
             node: NaMainTreeModel.selected,
             title: qsTr("Edit Action"),
             aprx: NaActionsModel.getAction(uuid)
@@ -531,7 +532,7 @@ Rectangle {
     }
 
     function openAddWorkDialog(uuid, name) {
-        Common.openDialog("EditWorkSession.qml", root, {
+        Common.openDialog("EditWorkSession.qml", ApplicationWindow.window, {
             ws: NaWorkSessionsModel.createSession(uuid, name),
             title: qsTr("Add Work Session"),
             model: NaWorkSessionsModel
