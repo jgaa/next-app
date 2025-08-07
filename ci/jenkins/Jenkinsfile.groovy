@@ -23,7 +23,7 @@ pipeline {
     stage('Parallel build') {
       parallel {
         stage('Windows Build') {
-            when { expression { false } }
+            //when { expression { false } }
             // Assumes cmake, nsis, ninja and exists
             //
             //   choco install nsis
