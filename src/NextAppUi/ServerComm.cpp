@@ -160,7 +160,10 @@ ServerComm::ServerComm()
     setDefaulValuesInUserSettings();
 
     if (!settings.contains("deviceName")) {
-        settings.setValue("deviceName", QSysInfo::machineHostName());
+        const auto name = QSysInfo::machineHostName();
+        if (name != "localhost") {
+            settings.setValue("deviceName", QSysInfo::machineHostName());
+        }
     }
 
     if (settings.value("onboarding", false).toBool()
