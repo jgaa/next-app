@@ -22,3 +22,29 @@ Java_@PACKAGE_NAME_UNDERSCORES@_MainActivity_nativeOnSharedNextapp(
 
     NextAppCore::handleSharedFile(qPath);
 }
+
+namespace nextapp::android {
+
+QString getMediaDir() {
+    static const QString dir = QJniObject::callStaticObjectMethod(
+    "@PACKAGE_NAME@/MainActivity",
+    "getAppMediaDir",
+    "()Ljava/lang/String;"
+    ).toString();
+
+    return dir;
+}
+
+QString getLogsDir() {
+    static const QString dir = QJniObject::callStaticObjectMethod(
+    "@PACKAGE_NAME@/MainActivity",
+    "ensureMediaSubdir",
+    "(Ljava/lang/String;)Ljava/lang/String;",
+    QJniObject::fromString("Logs").object<jstring>()
+    ).toString();
+    return dir;
+}
+
+
+} // ns
+

@@ -31,6 +31,7 @@
 
 #ifdef __ANDROID__
     #include <QtCore/private/qandroidextras_p.h>
+    #include "AndroidHandlers.h"
 #endif
 
 #include "logging.h"
@@ -304,25 +305,43 @@ int main(int argc, char *argv[])
         auto scale = scales.at(settings.value("UI/scale").toInt());
 
         if (!settings.contains("logging/path")) {
+
+#ifdef ANDROID_BUILD
+            const QString media_path = nextapp::android::getLogsDir();
+            if (!media_path.isEmpty() && !settings.contains("logging/path")) {
+                // If the path is empty, set it to the media path
+                settings.setValue("logging/path", media_path + "/" + app_name + ".log");
+                LOG_INFO << "Using log directory: " << media_path;
+            }
+#else
             QDir baseDir(QDir::homePath());
             const auto log_path = baseDir.filePath("NextApp/Logging/" + app_name + ".log");
             settings.setValue("logging/path", log_path);
-
             const auto abs_path = QFileInfo{log_path}.absolutePath();
             QDir log_dir{abs_path};
             if (!abs_path.isEmpty() && !log_dir.exists()) {
                 LOG_INFO << "Creating log directory: " << abs_path;
                 log_dir.mkpath(abs_path);
             }
+#endif
         }
 
-        if (const auto level = settings.value("logging/level", 0).toInt()) {
-            if (auto path = settings.value("logging/path", "").toString().toStdString(); !path.empty()) {
-                const bool prune = settings.value("logging/prune", "").toString() == "true";
-                logfault::LogManager::Instance().AddHandler(
-                    make_unique<logfault::StreamHandler>(path, static_cast<logfault::LogLevel>(level), prune));
+        {
+            auto level = settings.value("logging/level", 0).toInt();
+#ifdef _DEBUG
+            if (!level) {
+                level = static_cast<int>(logfault::LogLevel::TRACE);
+            }
+#endif
 
-                LOG_INFO << "Logging to: " << path;
+            if (level > 0) {
+                if (auto path = settings.value("logging/path", "").toString().toStdString(); !path.empty()) {
+                    const bool prune = settings.value("logging/prune", "").toString() == "true";
+                    logfault::LogManager::Instance().AddHandler(
+                        make_unique<logfault::StreamHandler>(path, static_cast<logfault::LogLevel>(level), prune));
+
+                    LOG_INFO << "Logging to: " << path;
+                }
             }
         }
 

@@ -23,13 +23,15 @@ import java.util.ArrayList;
 
 public class MainActivity extends QtActivity {
     private static final String TAG = "@PACKAGE_NAME@-MainActivity";
-    private static final int REQUEST_CODE_POST_NOTIFICATIONS = 1001;
+    private static final String FILE_PROVIDER_AUTHORITY = "@PACKAGE_NAME@.qtprovider";
+    private static MainActivity self = null;
 
     private native void nativeOnSharedNextapp(String absolutePath);
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        self = this;
 
         // try {
         //     Intent intent = new Intent(this, QtAndroidService.class);
@@ -78,39 +80,39 @@ public class MainActivity extends QtActivity {
 
     }
 
-    // share a file via the system share sheet
-    public void shareFile(String path, String mimeType) {
-        File file = new File(path);
-        Uri uri = FileProvider.getUriForFile(
-            this,
-            "@PACKAGE_NAME@.qtprovider",  // must match your manifest/provider
-            file
-        );
+    // // share a file via the system share sheet
+    // public void shareFile(String path, String mimeType) {
+    //     File file = new File(path);
+    //     Uri uri = FileProvider.getUriForFile(
+    //         this,
+    //         "@PACKAGE_NAME@.qtprovider",  // must match your manifest/provider
+    //         file
+    //     );
 
-        Intent share = new Intent(Intent.ACTION_SEND);
-        share.setType(mimeType);
-        share.putExtra(Intent.EXTRA_STREAM, uri);
-        share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    //     Intent share = new Intent(Intent.ACTION_SEND);
+    //     share.setType(mimeType);
+    //     share.putExtra(Intent.EXTRA_STREAM, uri);
+    //     share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-        // wrap in a chooser so the user sees all file-managers, etc.
-        startActivity(Intent.createChooser(share, "Share file"));
-    }
+    //     // wrap in a chooser so the user sees all file-managers, etc.
+    //     startActivity(Intent.createChooser(share, "Share file"));
+    // }
 
-    // view a file via the "Open with…" dialog
-    public void viewFile(String path, String mimeType) {
-        File file = new File(path);
-        Uri uri = FileProvider.getUriForFile(
-            this,
-            "@PACKAGE_NAME@.fileprovider",
-            file
-        );
+    // // view a file via the "Open with…" dialog
+    // public void viewFile(String path, String mimeType) {
+    //     File file = new File(path);
+    //     Uri uri = FileProvider.getUriForFile(
+    //         this,
+    //         "@PACKAGE_NAME@.fileprovider",
+    //         file
+    //     );
 
-        Intent view = new Intent(Intent.ACTION_VIEW);
-        view.setDataAndType(uri, mimeType);
-        view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    //     Intent view = new Intent(Intent.ACTION_VIEW);
+    //     view.setDataAndType(uri, mimeType);
+    //     view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-        startActivity(Intent.createChooser(view, "Open file with"));
-    }
+    //     startActivity(Intent.createChooser(view, "Open file with"));
+    // }
 
     // private void handleIncoming(Intent intent) {
     //     String action = intent.getAction();
@@ -194,6 +196,74 @@ public class MainActivity extends QtActivity {
                 }
             }
         }
+    }
+
+
+    public static void shareFile(String absolutePath, String mimeType) {
+        if (self == null) {
+            Log.e(TAG, "shareFile: self is null");
+            return;
+        }
+        try {
+            Uri uri = FileProvider.getUriForFile(self, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
+            Intent share = new Intent(Intent.ACTION_SEND);
+            share.setType(mimeType);
+            share.putExtra(Intent.EXTRA_STREAM, uri);
+            share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            self.startActivity(Intent.createChooser(share, "Share file"));
+        } catch (Exception e) {
+            Log.e(TAG, "shareFile failed", e);
+        }
+    }
+
+    /** Open a file with an external viewer ("Open with…"). */
+    public static void viewFile(String absolutePath, String mimeType) {
+        if (self == null) {
+            Log.e(TAG, "viewFile: self is null");
+            return;
+        }
+        try {
+            Uri uri = FileProvider.getUriForFile(self, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
+            Intent view = new Intent(Intent.ACTION_VIEW);
+            view.setDataAndType(uri, mimeType);
+            view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            self.startActivity(Intent.createChooser(view, "Open file with"));
+        } catch (Exception e) {
+            Log.e(TAG, "viewFile failed", e);
+        }
+    }
+
+    /** Return the app-specific media dir: /storage/.../Android/media/@PACKAGE_NAME@ */
+    public static String getAppMediaDir() {
+        if (self == null) {
+            Log.e(TAG, "getAppMediaDir: self is null");
+            return "";
+        }
+        File[] dirs = self.getExternalMediaDirs();
+        if (dirs != null) {
+            for (File d : dirs) {
+                if (d != null) {
+                    if (!d.exists() && !d.mkdirs()) {
+                        Log.w(TAG, "getAppMediaDir: mkdirs failed for " + d);
+                    }
+                    return d.getAbsolutePath();
+                }
+            }
+        }
+        Log.e(TAG, "getAppMediaDir: no externalMediaDirs available");
+        return "";
+    }
+
+    /** Ensure a subdirectory under the media dir exists; returns its absolute path (or empty on failure). */
+    public static String ensureMediaSubdir(String relative) {
+        String base = getAppMediaDir();
+        if (base.isEmpty()) return "";
+        File f = new File(base, relative == null ? "" : relative);
+        if (!f.exists() && !f.mkdirs()) {
+            Log.e(TAG, "ensureMediaSubdir: mkdirs failed for " + f.getAbsolutePath());
+            return "";
+        }
+        return f.getAbsolutePath();
     }
 
 }

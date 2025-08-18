@@ -7,6 +7,7 @@ Rectangle {
     property alias text: input.text
     property alias inputMask: input.inputMask
     property alias validator: input.validator
+    property alias inputMethodHints: input.inputMethodHints
     Layout.preferredHeight: input.font.pixelSize + 12
     color: input.focus ? "lightblue" : "lightgray"
     signal changed()
