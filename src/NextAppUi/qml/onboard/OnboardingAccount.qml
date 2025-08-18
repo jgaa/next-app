@@ -94,6 +94,7 @@ ColumnLayout  {
             id: email
             Layout.fillWidth: true
             text: settings.userEmail
+            inputMethodHints: Qt.ImhEmailCharactersOnly | Qt.ImhNoPredictiveText
             //color: MaterialDesignStyling.onSurface
             onTextChanged: {
                 settings.userEmail = email.text

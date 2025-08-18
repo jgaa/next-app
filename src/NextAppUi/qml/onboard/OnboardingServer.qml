@@ -88,6 +88,7 @@ ColumnLayout  {
             //Layout.preferredWidth: (root.width / 3) * 2
             id: address
             text: settings.serverAddress
+            inputMethodHints: Qt.ImhUrlCharactersOnly
         }
     }
 

@@ -44,7 +44,7 @@ ColumnLayout  {
             id: email
             Layout.fillWidth: true
             text: settings.userEmail
-            //color: MaterialDesignStyling.onSurface
+            inputMethodHints: Qt.ImhEmailCharactersOnly | Qt.ImhNoPredictiveText
             onTextChanged: {
                 settings.userEmail = email.text
             }
@@ -60,7 +60,7 @@ ColumnLayout  {
             Layout.fillWidth: true
 
             property string textWithoutSpaces: otp.text.replace(/\s+/g, "")
-
+            inputMethodHints: Qt.ImhPreferNumbers | Qt.ImhNoPredictiveText
             onTextChanged: {
                 textWithoutSpaces = otp.text.replace(/\s+/g, "");
                 //console.log("Updated textWithoutSpaces:", textWithoutSpaces);
