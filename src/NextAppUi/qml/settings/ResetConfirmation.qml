@@ -12,7 +12,7 @@ Dialog {
     title: qsTr("Factory Reset")
     standardButtons: Dialog.Yes | Dialog.No
     width: 400
-    height: 300
+    height: 600
 
     contentItem: ColumnLayout {
         spacing: 10
@@ -25,7 +25,7 @@ Dialog {
 
             TextArea {
                 id: errorMessage
-                text: qsTr("Are you sure you want to reset NextApp?\nThis will open the Signup wizard next time you start NextApp. Your current local configuration and settings will be lost. You will have to re-add this device using an One Time Password (OTP) from another device, or sign up for a new account.\nNote that resetting the app on this device will not delete your account or your data om the server.")
+                text: qsTr("Are you sure you want to reset NextApp?\nThis will open the Signup wizard next time you start NextApp. Your current local configuration and settings will be lost. You will have to re-add this device using an One Time Password (OTP) from another device, or sign up for a new account.\nNote that resetting the app on this device will not delete your account or your data on the server.")
                 wrapMode: TextArea.Wrap
                 readOnly: true
                 selectByMouse: true  // Allow selecting text for copying

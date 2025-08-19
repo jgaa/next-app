@@ -10,7 +10,7 @@ Dialog {
     title: qsTr("Delete Account")
     standardButtons: Dialog.Yes | Dialog.No
     width: 400
-    height: 300
+    height: 600
 
     contentItem: ColumnLayout {
         spacing: 10
