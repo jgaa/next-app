@@ -45,6 +45,15 @@ QString getLogsDir() {
     return dir;
 }
 
+QString getNamedDir(const QString& name) {
+    static const QString dir = QJniObject::callStaticObjectMethod(
+    "@PACKAGE_NAME@/MainActivity",
+    "ensureMediaSubdir",
+    "(Ljava/lang/String;)Ljava/lang/String;",
+    QJniObject::fromString(name).object<jstring>()
+    ).toString();
+    return dir;
+}
 
 } // ns
 

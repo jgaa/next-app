@@ -21,25 +21,19 @@
 #include "logging.h"
 #include "util.h"
 
+#ifdef __ANDROID__
+#include "AndroidHandlers.h"
+#endif
+
 using namespace std;
 
 namespace {
-
-QString getMobileExportName(bool json)
-{
-    const QString base_name = json ? "nextapp_export.json" : "export.nextapp";
-
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir().mkpath(dir);
-
-    const QString filePath = dir + QDir::separator() + base_name;
-    return filePath;
-}
 
 #ifdef ANDROID_BUILD
 
 void sharePrivateFile(const QString &filePath, const QString &mimeType)
 {
+    LOG_DEBUG_N << "Sharing file: " << filePath << " with MIME type: " << mimeType;
     // Grab your QtActivity instance
     QJniObject activity = QNativeInterface::QAndroidApplication::context();
     // Call your Java: void shareFile(String path, String mimeType)
@@ -54,6 +48,7 @@ void sharePrivateFile(const QString &filePath, const QString &mimeType)
 // Likewise, to pop up “Open with…”
 void viewPrivateFile(const QString &filePath, const QString &mimeType)
 {
+    LOG_DEBUG_N << "Viewing file: " << filePath << " with MIME type: " << mimeType;
     QJniObject activity = QNativeInterface::QAndroidApplication::context();
     // Call your Java: void viewFile(String path, String mimeType)
     activity.callMethod<void>(
@@ -228,7 +223,7 @@ void WriteJson(const nextapp::pb::Status& msg, QFile& file) {
         return;
     }
 
-    if (msg.hasActions()) {
+    if (msg.hasCompleteActions()) {
         if (json_current_section != JsonSections::ACTIONS) {
             clear_array();
             file.write(R"(, "actions": [)");
@@ -236,7 +231,7 @@ void WriteJson(const nextapp::pb::Status& msg, QFile& file) {
             json_current_section = JsonSections::ACTIONS;
         }
 
-        WriteItems(msg.actions().actions(), file);
+        WriteItems(msg.completeActions().actions(), file);
         return;
     }
 
@@ -562,4 +557,25 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
     }
 
     co_return;
+}
+
+
+QString ImportExportModel::getMobileExportName(bool json)
+{
+    const QString base_name = json ? "nextapp_export.json" : "export.nextapp";
+#ifdef ANDROID_BUILD
+    const bool save_to_local_dir = QSettings{}.value("export/saveToPublicDir", false).toBool();
+    if (save_to_local_dir) {
+        const auto pub_dir = nextapp::android::getNamedDir("Exports");
+        if (!pub_dir.isEmpty() && save_to_local_dir) {
+            // Use the public directory for exports
+            QDir().mkpath(pub_dir);
+            return pub_dir + QDir::separator() + base_name;
+        }
+    }
+#endif
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+
+    return  dir + QDir::separator() + base_name;
 }

@@ -24,7 +24,9 @@ ScrollView {
         settings.setValue("sync/resync", resync.checked ? "true" : "false")
         settings.setValue("server/reconnect_level", reconnectLevel.currentIndex.toString())
         settings.setValue("server/resend_requests", resend.checked ? "true" : "false")
-        if (!NaCore.isMobile) {
+        if (NaCore.isMobile) {
+            settings.setValue("export/saveToPublicDir", androidSaveToPubDir.checked ? "true" : "false")
+        } else {
             settings.setValue("client/maxInstances", instances.value)
         }
         settings.sync()
@@ -93,7 +95,7 @@ ScrollView {
         CheckBox {
             id: prune
             text: qsTr("Prune log-file when starting")
-            checked: settings.value("logging/prune") == "true"
+            checked: settings.value("logging/prune") === "true"
         }
 
         Label {
@@ -110,6 +112,14 @@ ScrollView {
                 qsTr("When on Site"),
                 qsTr("When Local network comes up"),
                 qsTr("Never")]
+        }
+
+        Item {visible: androidSaveToPubDir.visible}
+        CheckBox {
+            id: androidSaveToPubDir
+            visible: NaCore.isMobile
+            text: qsTr("Save exports in the apps public directory")
+            checked: settings.value("export/saveToPublicDir") === "true"
         }
 
         Label {

@@ -45,7 +45,7 @@ private:
     void setHaveBackup(bool haveBackup);
     void setHaveJson(bool haveJson);
     void scanFiles();
-
+    QString getMobileExportName(bool json);
 
     QCoro::Task<void> doExport(file_t file);
     QCoro::Task<void> doImport(QString fileName);

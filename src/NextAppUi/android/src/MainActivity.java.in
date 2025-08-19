@@ -199,35 +199,29 @@ public class MainActivity extends QtActivity {
     }
 
 
-    public static void shareFile(String absolutePath, String mimeType) {
-        if (self == null) {
-            Log.e(TAG, "shareFile: self is null");
-            return;
-        }
+    public void shareFile(String absolutePath, String mimeType) {
+        Log.i(TAG, "shareFile called with path: " + absolutePath + ", mimeType: " + mimeType);
         try {
-            Uri uri = FileProvider.getUriForFile(self, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
+            Uri uri = FileProvider.getUriForFile(this, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
             Intent share = new Intent(Intent.ACTION_SEND);
             share.setType(mimeType);
             share.putExtra(Intent.EXTRA_STREAM, uri);
             share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            self.startActivity(Intent.createChooser(share, "Share file"));
+            startActivity(Intent.createChooser(share, "Share file"));
         } catch (Exception e) {
             Log.e(TAG, "shareFile failed", e);
         }
     }
 
     /** Open a file with an external viewer ("Open with…"). */
-    public static void viewFile(String absolutePath, String mimeType) {
-        if (self == null) {
-            Log.e(TAG, "viewFile: self is null");
-            return;
-        }
+    public void viewFile(String absolutePath, String mimeType) {
+        Log.i(TAG, "viewFile called with path: " + absolutePath + ", mimeType: " + mimeType);
         try {
-            Uri uri = FileProvider.getUriForFile(self, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
+            Uri uri = FileProvider.getUriForFile(this, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
             Intent view = new Intent(Intent.ACTION_VIEW);
             view.setDataAndType(uri, mimeType);
             view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            self.startActivity(Intent.createChooser(view, "Open file with"));
+            startActivity(Intent.createChooser(view, "Open file with"));
         } catch (Exception e) {
             Log.e(TAG, "viewFile failed", e);
         }
