@@ -32,6 +32,8 @@ class NextAppCore : public QObject
     Q_PROPERTY(int width READ width NOTIFY widthChanged FINAL)
     Q_PROPERTY(int height READ height NOTIFY heightChanged FINAL)
     Q_PROPERTY(bool dragEnabled READ dragEnabled WRITE setDragEnabled NOTIFY dragEnabledChanged)
+    Q_PROPERTY(bool lookupRelated MEMBER lookupRelated_ WRITE setLookupRelated  NOTIFY lookupRelatedChanged)
+
 
     // True if the app was build with the CMAKE option DEVEL_SETTINGS enabled
     Q_PROPERTY(bool develBuild READ isDevelBuild CONSTANT)
@@ -177,6 +179,8 @@ public:
      */
     static void runOrQueueFunction(std::function<void()> fn);
 
+    void setLookupRelated(bool lookupRelated);
+
 public slots:
     void handlePrepareForSleep(bool sleep);
 
@@ -196,6 +200,7 @@ signals:
     void factoryResetDone();
     void accountDeletionFailed(const QString& message);
     void importEvent(const QUrl& url);
+    void lookupRelatedChanged();
 
 private:
     void setState(State state);
@@ -225,4 +230,5 @@ private:
 #endif
     QQmlApplicationEngine *engine_{};
     static std::deque<std::function<void()>> pre_instance_callbacks_;
+    bool lookupRelated_{true};
 };

@@ -203,6 +203,18 @@ ApplicationWindow {
                         });
                     }
                 }
+
+                // TODO: Separator
+
+                ToolBarBtn {
+                    alwaysAvailable: true
+                    tooltipText: qsTr("Magnet")
+                    icon: "\uf076"
+                    isActive: NaCore.lookupRelated
+                    onClicked: {
+                        NaCore.lookupRelated = !NaCore.lookupRelated;
+                    }
+                }
             }
 
             Item {

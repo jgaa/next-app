@@ -13,6 +13,7 @@ Rectangle {
     property bool isActive: false
     property string text
     property string tooltipText: ""
+    property bool alwaysAvailable : false
     color: "transparent"
     signal clicked
 
@@ -41,7 +42,7 @@ Rectangle {
         }
 
         onClicked: {
-            if (root.isActive) {
+            if (root.isActive || root.alwaysAvailable) {
                 clickAnimation.start();
                 root.clicked()
             }

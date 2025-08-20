@@ -625,6 +625,13 @@ void NextAppCore::runOrQueueFunction(std::function<void ()> fn)
     }
 }
 
+void NextAppCore::setLookupRelated(bool lookupRelated) {
+    if (lookupRelated_ != lookupRelated) {
+        lookupRelated_ = lookupRelated;
+        emit lookupRelatedChanged();
+    }
+}
+
 void NextAppCore::handlePrepareForSleep(bool sleep)
 {
     LOG_DEBUG_N << "Prepare for sleep: " << sleep;
