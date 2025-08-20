@@ -29,6 +29,7 @@
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
 
+#include "nextapp.h"
 #include "NextAppCore.h"
 #include "GreenDaysModel.h"
 #include "ActionInfoCache.h"
@@ -1610,6 +1611,14 @@ void ServerComm::connectToSignupServer()
      }, GrpcCallOptions{false, false, true});
 }
 
+QCoro::Task<void> ServerComm::updateDataEpoc()
+{
+    LOG_DEBUG_N << "Updating data-epoc";
+    nextapp::pb::Empty req;
+    auto& db = NextAppCore::instance()->db();
+    co_await db.query("UPDATE nextapp SET data_epoc = ?", nextapp::app_data_epoc);
+}
+
 void ServerComm::clearMessages()
 {
     messages_ = "";
@@ -1673,17 +1682,13 @@ QCoro::Task<void> ServerComm::startNextappSession()
         }
     }
 
-    const bool full_sync = settings.value("sync/resync", false).toBool()
-                           || NextAppCore::instance()->db().dbWasInitialized();
-
+    const bool full_sync = co_await needFullResync();
     if (full_sync) {
         LOG_WARN << "Resyncing from the server. Will delete the local cache.";
         addMessage(tr("Doing a full synch with the server. This may take a few moments..."));
 
         // Clear the local cache.
         co_await NextAppCore::instance()->db().clear();
-
-        settings.setValue("sync/resync", "false");
     }
 
     setStatus(Status::CONNECTING);
@@ -1941,6 +1946,10 @@ failed:
 
     // If we re-run this later, we don't need to do a full sync again.
     NextAppCore::instance()->db().clearDbInitializedFlag();
+    if (full_sync) {
+        settings.setValue("sync/resync", "false");
+        co_await updateDataEpoc();
+    }
 
     co_return;
 }
@@ -2526,6 +2535,26 @@ void ServerComm::resetSignupStatus() {
     signup_status_ = SIGNUP_NOT_STARTED;
     stop();
     emit signupStatusChanged();
+}
+
+QCoro::Task<bool> ServerComm::needFullResync()
+{
+    if (QSettings{}.value("sync/resync", false).toBool()
+        || NextAppCore::instance()->db().dbWasInitialized()) {
+
+        LOG_TRACE_N << "Full resync is required as the user requested it or the db was initialized.";
+        co_return true;
+    }
+
+    auto& db = NextAppCore::instance()->db();
+    if (auto val = co_await db.queryOne<quint32>("SELECT data_epoc FROM nextapp WHERE id=1")) {
+        LOG_TRACE_N << "Data epoc in the database is: " << val.value() <<
+            ", app epoc is: " << nextapp::app_data_epoc;
+        co_return val.value() != nextapp::app_data_epoc;
+    }
+
+    LOG_TRACE_N << "No data epoc found in the database. Full resync is required.";
+    co_return true;
 }
 
 void ServerComm::resync()

@@ -20,6 +20,7 @@
 #include "AppInstanceMgr.h"
 #include "DbStore.h"
 
+#include "nextapp.h"
 #include "logging.h"
 
 using namespace std;
@@ -56,7 +57,14 @@ void DbStore::start() {
         }
     }
 
-    createDbObject();
+    try {
+        createDbObject();
+    } catch (const std::exception &e) {
+        LOG_ERROR << "Failed to create db object: " << e.what();
+        emit error(GENERIC_ERROR);
+        assert(false);
+        return;
+    }
     connect(this, &DbStore::doQuery, this, &DbStore::queryImpl, Qt::QueuedConnection);
     emit initialized();
 }
@@ -64,7 +72,9 @@ void DbStore::start() {
 void DbStore::createDbObject()
 {
     LOG_TRACE_N << "Initializing db store";
+    bool is_retry{false};
 
+again:
     db_ = make_unique<QSqlDatabase>(QSqlDatabase::addDatabase("QSQLITE"));
     data_dir_ = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + AppInstanceMgr::instance()->name() + "/";
     LOG_INFO << "Using data dir: " << data_dir_;
@@ -117,8 +127,14 @@ void DbStore::createDbObject()
     const auto version = getDbVersion();
 
     if (!updateSchema(version)) {
-        // TODO: Do something!
-        assert(false);
+        if (is_retry) {
+            LOG_ERROR_N << "Failed to update the database schema, and retrying with a clean database failed.";
+            throw std::runtime_error("Failed to update the database schema and retrying with a clean database failed.");
+        }
+        is_retry = true;
+        clear_pending_ = true;
+        LOG_WARN_N << "Failed to update the database schema, retrying with a clean database...";
+        goto again;
     }
 }
 
@@ -172,13 +188,21 @@ void DbStore::close()
 
 QCoro::Task<bool> DbStore::clear()
 {
+    co_return co_await runInWorkerThread<bool>([this]() -> bool {
+        return clear_();
+    });
+}
+
+bool DbStore::clear_()
+{
     LOG_INFO_N << "Clearing the database. All data will be deleted.";
     if (!db_) {
         clear_pending_ = true;
-        co_return false;
+        return false;
     }
 
     if (db_->isOpen()) {
+        LOG_DEBUG_N << "Closing the database before clearing it";
         db_->close();
         db_.reset();
     }
@@ -186,13 +210,15 @@ QCoro::Task<bool> DbStore::clear()
     // delete the file pointed to by db_path
     QFile file(db_path_);
     if (file.exists()) {
+        LOG_DEBUG_N << "Removing the database file: " << db_path_;
         if (!file.remove()) {
             LOG_WARN << "Failed to remove database file: " << db_path_;
         }
     }
 
+    LOG_DEBUG_N << "Re-creating the database object";
     createDbObject();
-    co_return true;
+    return true;
 }
 
 QCoro::Task<void> DbStore::closeAndDeleteDb()
@@ -377,8 +403,8 @@ void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QProm
 bool DbStore::updateSchema(uint version)
 {
     static constexpr auto v1_bootstrap = to_array<string_view>({
-        "CREATE TABLE nextapp (id INTEGER NOT NULL, version INTEGER NOT NULL) ",
-        "INSERT INTO nextapp (id, version) values(1, 0)",
+        "CREATE TABLE nextapp (id INTEGER NOT NULL, version INTEGER NOT NULL, data_epoc INTEGER NOT NULL) ",
+        "INSERT INTO nextapp (id, version, data_epoc) values(1, 0, 0)",
 
         R"(CREATE TABLE IF NOT EXISTS "day" (
             "date" DATE NOT NULL,
@@ -566,7 +592,8 @@ bool DbStore::updateSchema(uint version)
 
     {
         QSqlQuery q{*db_};
-        if (!q.exec(QString::asprintf("UPDATE nextapp SET version = %d WHERE id=1", latest_version))) {
+        if (!q.exec(QString::asprintf("UPDATE nextapp SET version = %d, data_epoc = %d WHERE id=1",
+                                      latest_version, nextapp::app_data_epoc))) {
             return false;
         }
     }

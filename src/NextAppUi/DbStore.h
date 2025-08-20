@@ -64,17 +64,16 @@ public:
     //[[deprecated]]
     QCoro::Task<rval_t> legacyQuery(const QString& sql, const param_t *params = {});
 
-    template <typename T>
-    QCoro::Task<tl::expected<T, Error>> queryOne(const QString& sql, const param_t *params = {}) {
-        auto vals = co_await legacyQuery(sql, params);
-        if (vals) {
-            auto& value = vals.value();
-            if (value.empty()) {
-                co_return tl::unexpected(EMPTY_RESULT);
-            }
-            co_return value.front().front().template value<T>();
+    template <typename T, typename... Args>
+    QCoro::Task<tl::expected<T, Error>> queryOne(const QString& sql, Args&&... args) {
+        auto res = co_await query(sql,std::forward<Args>(args)...);
+        if (!res) {
+            co_return tl::unexpected(QUERY_FAILED);
         }
-        co_return vals.error();
+        if (res.value().rows.empty() || res.value().rows.front().empty()) {
+            co_return tl::unexpected(EMPTY_RESULT);
+        }
+        co_return res.value().rows.front().front().template value<T>();
     }
 
     struct QueryResult {
@@ -180,6 +179,8 @@ public:
 
     QCoro::Task<void> closeAndDeleteDb();
 
+
+
 signals:
     // Emitted from the main thread to query the database.
     void doQuery(const QString& sql, const param_t *params, QPromise<rval_t> *promise);
@@ -193,6 +194,33 @@ signals:
 private:
     QCoro::Task<qrval_t> runQueryInWorker(const QString &sql, const QList<QVariant> &params);
 
+    template <typename T, typename F>
+    QCoro::Task<T> runInWorkerThread(F&& func) {
+        if (QThread::currentThread() == thread_) {
+            // If already in the correct thread, run immediately
+            co_return std::forward<F>(func)();
+        }
+
+        auto promise = QSharedPointer<QPromise<T>>::create();
+        auto future = promise->future();
+
+        QMetaObject::invokeMethod(this, [promise, func = std::forward<F>(func)]() mutable {
+            try {
+                auto result = func();
+                promise->start();
+                promise->addResult(result);
+            } catch (...) {
+                promise->setException(std::current_exception());
+            }
+            promise->finish();
+        }, Qt::QueuedConnection);
+
+        QFutureWatcher<T> watcher;
+        watcher.setFuture(future);
+        co_await watcher.future();
+        co_return future.result();
+    }
+
     qrval_t executeQuery(const QString &sql, const QList<QVariant> &params);
 
     void start();
@@ -202,6 +230,7 @@ private:
     uint getDbVersion();
     rval_t queryImpl_(const QString& sql, const param_t *params);
     bool batchQueryImpl(QSqlQuery& query);
+    bool clear_();
 
     QThread* thread_{};
     std::unique_ptr<QSqlDatabase> db_;

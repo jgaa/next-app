@@ -9,3 +9,9 @@
 #ifdef max
 #   undef max
 #endif
+
+namespace nextapp {
+
+static constexpr unsigned int app_data_epoc = NEXTAPP_DATA_EPOCH;
+
+} // namespace nextapp

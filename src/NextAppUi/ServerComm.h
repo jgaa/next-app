@@ -298,6 +298,7 @@ public:
     static bool isTemporaryError(nextapp::pb::ErrorGadget::Error error);
 
     void resetSignupStatus();
+    QCoro::Task<bool> needFullResync();
 
 signals:
     void versionChanged();
@@ -336,6 +337,7 @@ private:
     void setDefaulValuesInUserSettings();
     void scheduleReconnect();
     void connectToSignupServer();
+    QCoro::Task<void> updateDataEpoc();
     QCoro::Task<void> signupOrAdd(QString name,
                      QString email,
                      QString company,

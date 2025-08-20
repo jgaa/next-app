@@ -24,6 +24,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 set(SERVER_ADDRESS "https://signup.prod.next-app.org" CACHE STRING "Default address to signup server")
 add_definitions("-DSERVER_ADDRESS=\"${SERVER_ADDRESS}\"")
+set(NEXTAPP_DATA_EPOCH "1" CACHE STRING "Epoch for NextApp data. Used to determine if the data needs to be fully resynched after an upgrade.")
+add_definitions(-DNEXTAPP_DATA_EPOCH=${NEXTAPP_DATA_EPOCH})
 
 option(NEXTAPP_WITH_TREE_MODEL_TESTING "Enable ongoing tests for the MainTreeModel" OFF)
 if (NEXTAPP_WITH_TREE_MODEL_TESTING)
