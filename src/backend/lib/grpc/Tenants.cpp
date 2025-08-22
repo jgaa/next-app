@@ -809,6 +809,7 @@ ORDER BY t.id;
         mapper{rctx};
         deque<pair<boost::uuids::uuid, boost::uuids::uuid>> action_origin;
         deque<pair<boost::uuids::uuid, boost::uuids::uuid>> node_parent;
+        deque<pair<boost::uuids::uuid, boost::uuids::uuid>> node_category;
 
         // Delete the users current data
         const auto& cuser = rctx.uctx->userUuid();
@@ -877,6 +878,25 @@ ORDER BY t.id;
                 }
             };
 
+            if (!node_category.empty() && !msg) {
+                auto sql = "UPDATE node SET category=? WHERE id=?";
+
+                auto generator = jgaa::mysqlpool::BindTupleGenerator(node_category,
+                                                                     [&] (const auto& nc) {
+                                                                         return make_tuple (
+                                                                             mapper.actionCategory(toString(nc.second)),
+                                                                             toString(nc.first)
+                                                                             );
+                                                                     });
+                try {
+                    co_await rctx.dbh->exec(sql, generator);
+                    node_category.clear();
+                } catch (const std::exception& ex) {
+                    LOG_ERROR_EX(rctx) << "Failed to update node categories: " << ex.what();
+                    throw server_err{pb::Error::GENERIC_ERROR, "Failed to update node categories"};
+                }
+            }
+
         };
 
         try {
@@ -917,6 +937,11 @@ ORDER BY t.id;
                             for(auto& item : *rows) {
                                 item.set_user(mapper.user(item.user()));
                                 item.set_uuid(mapper.addNode(item.uuid()));
+                                if (!item.category().empty()) {
+                                    node_category.emplace_back(toUuid(item.uuid()), toUuid(item.category()));
+                                    item.clear_category();
+                                }
+
                                 if (!item.parent().empty()) {
                                     if (auto node = mapper.node(item.parent(), false); !node.empty()) {
                                         item.set_parent(node);
