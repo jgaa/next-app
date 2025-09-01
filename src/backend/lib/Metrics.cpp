@@ -20,7 +20,7 @@ public:
         }
     };
 
-    void LogMessage(const logfault::Message& msg) override {
+    void LogMessage(const logfault::Message& msg) LOGFAULT_NOEXCEPT override {
         if (msg.level_ == level_) {
             counter_->inc();
         }

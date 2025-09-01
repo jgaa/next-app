@@ -314,6 +314,17 @@ void NextAppCore::emitSettingsChanged() {
     emit settingsChanged();
 }
 
+QCoro::Task<void> NextAppCore::refreshDbData()
+{
+    if (auto res = co_await db_->getDbDataInfo()) {
+        db_info_cached_ = *res;
+    } else {
+        db_info_cached_ = {};
+    }
+
+    emit dbInfoChanged();
+}
+
 void NextAppCore::setProperty(const QString &name, const QVariant &value)
 {
     LOG_TRACE_N << "Setting property " << name;
@@ -630,6 +641,17 @@ void NextAppCore::setLookupRelated(bool lookupRelated) {
         lookupRelated_ = lookupRelated;
         emit lookupRelatedChanged();
     }
+}
+
+nextapp::pb::UserDataInfo NextAppCore::getDbInfo()
+{
+    LOG_DEBUG_N << "Getting DB info";
+    const auto now = time(nullptr);
+    if (db_info_last_update_ < (now - 5)) {
+        db_info_last_update_ = now;
+        refreshDbData();
+    }
+    return db_info_cached_;
 }
 
 void NextAppCore::handlePrepareForSleep(bool sleep)

@@ -4,6 +4,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import NextAppUi
 import Nextapp.Models
+import "common.js" as Common
 
 Dialog {
     id: root
@@ -133,6 +134,17 @@ Dialog {
                 restoreDialog.open()
             }
         }
+
+        Label {}
+
+        Button {
+            text: qsTr("Database Info")
+            onClicked: {
+                console.log("Opening DbInfoDlg")
+                Common.openDialog("components/DbInfoDlg.qml", root.parent)
+            }
+        }
+
 
         Item {
             Layout.fillHeight: true

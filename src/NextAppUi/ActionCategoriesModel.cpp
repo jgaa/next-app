@@ -259,7 +259,7 @@ QCoro::Task<bool> ActionCategoriesModel::synchFromServer()
         if (res.hasActionCategories()) {
 
             auto& db = NextAppCore::instance()->db();
-            co_await db.legacyQuery("DELETE FROM action_category");
+            auto r = co_await db.legacyQuery("DELETE FROM action_category");
 
             const auto& cats = res.actionCategories();
             for(const auto cat : cats.categories()) {

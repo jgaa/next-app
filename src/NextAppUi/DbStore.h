@@ -54,10 +54,6 @@ public:
     using rval_t = tl::expected<QList<QList<QVariant>>, Error>;
     using param_t = QList<QVariant>;
 
-    struct DbRval {
-
-    };
-
     explicit DbStore(QObject *parent = nullptr);
     ~DbStore();
 
@@ -94,6 +90,7 @@ public:
         co_return co_await runQueryInWorker(sql, std::move(params));
     }
 
+    QCoro::Task<tl::expected<nextapp::pb::UserDataInfo, Error>> getDbDataInfo();
 
     /*! Process a batch of data-records in the database-thread.
      *
@@ -122,7 +119,7 @@ public:
                 if (isDeleted(row)) {
                     QList<QVariant> params;
                     params << getId(row);
-                    queryImpl_(deleteQuery, &params);
+                    (void) queryImpl_(deleteQuery, &params);
                     continue;
                 };
 
@@ -193,6 +190,7 @@ signals:
 
 private:
     QCoro::Task<qrval_t> runQueryInWorker(const QString &sql, const QList<QVariant> &params);
+    tl::expected<QString, DbStore::Error> getDbDataHash();
 
     template <typename T, typename F>
     QCoro::Task<T> runInWorkerThread(F&& func) {
@@ -217,7 +215,7 @@ private:
 
         QFutureWatcher<T> watcher;
         watcher.setFuture(future);
-        co_await watcher.future();
+        auto r = co_await watcher.future();
         co_return future.result();
     }
 

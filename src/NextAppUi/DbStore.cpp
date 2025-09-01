@@ -17,6 +17,8 @@
 #include "qcorosignal.h"
 #include "qcorotimer.h"
 
+#include <boost/hash2/sha1.hpp>
+
 #include "AppInstanceMgr.h"
 #include "DbStore.h"
 
@@ -24,6 +26,114 @@
 #include "logging.h"
 
 using namespace std;
+
+namespace {
+
+#include <QCryptographicHash>
+#include <QSqlQuery>
+#include <QSqlRecord>
+
+void putVarUint(QByteArray& out, quint64 x) {
+    while (x >= 0x80) { out.append(char((x & 0x7F) | 0x80)); x >>= 7; }
+    out.append(char(x));
+}
+
+void putI64(QByteArray& out, qint64 v) {
+    for (int i = 0; i < 8; ++i) out.append(char((quint64(v) >> (8*i)) & 0xFF));
+}
+
+void putF64(QByteArray& out, double d) {
+    quint64 bits; static_assert(sizeof(double) == 8, "double must be 8 bytes");
+    memcpy(&bits, &d, 8);
+    for (int i = 0; i < 8; ++i) out.append(char((bits >> (8*i)) & 0xFF));
+}
+
+QByteArray serializeRow(const QSqlQuery& q) {
+    QByteArray out;
+    out.append(char(0x7E));                 // row marker
+    const int n = q.record().count();
+    for (int i = 0; i < n; ++i) {
+        if (q.isNull(i)) { out.append(char(0x00)); continue; }         // NULL
+        const QVariant v = q.value(i);
+        switch (v.metaType().id()) {
+        case QMetaType::Int:
+        case QMetaType::LongLong:
+        case QMetaType::UInt:
+        case QMetaType::ULongLong:
+        case QMetaType::Short:
+        case QMetaType::Long:
+            out.append(char(0x01));                                  // int tag
+            putI64(out, v.toLongLong());
+            break;
+        case QMetaType::Double:
+        case QMetaType::Float:
+            out.append(char(0x02));                                  // float tag
+            putF64(out, v.toDouble());
+            break;
+        case QMetaType::QByteArray: {
+            out.append(char(0x04));                                  // blob tag
+            QByteArray b = v.toByteArray();
+            putVarUint(out, quint64(b.size()));
+            out.append(b);
+            break;
+        }
+        default: {                                                   // text tag
+            out.append(char(0x03));
+            QByteArray b = v.toString().toUtf8();
+            putVarUint(out, quint64(b.size()));
+            out.append(b);
+            break;
+        }
+        }
+    }
+    return out;
+}
+
+QByteArray blobFromQuery(QSqlDatabase db, const QString& sql)
+{
+    QSqlQuery q(db);
+    q.setForwardOnly(true);
+    if (!q.exec(sql)) return QByteArray();
+
+    QByteArray all;
+    // Optional: include column count so schema changes alter the blob
+    quint32 cols = q.record().count();
+    all.append(char(0x55)); all.append(char(0xAA));
+    all.append(char(cols & 0xFF));
+    all.append(char((cols >> 8) & 0xFF));
+    while (q.next())
+        all += serializeRow(q);
+    return all;
+}
+
+bool sha3OfQuery(QCryptographicHash& h, QSqlDatabase db, const QString& sql)
+{
+    QSqlQuery q(db);
+    q.setForwardOnly(true);
+    if (!q.exec(sql)) {
+        LOG_WARN_N << "Failed to execute query: " << sql
+                   << ", db=" << q.lastError().databaseText()
+                   << ", driver=" << q.lastError().driverText();
+        return false;
+    }
+
+    // Include column count (force a defined byte order)
+    quint32 cols = q.record().count();
+    const quint32 colsLE = qToLittleEndian(cols);
+    h.addData(QByteArrayView(reinterpret_cast<const char*>(&colsLE),
+                             qsizetype(sizeof colsLE)));
+
+    while (q.next()) {
+        const QByteArray row = serializeRow(q);     // your existing serializer
+        // Either of these is fine; both are non-deprecated:
+        // h.addData(row);
+        h.addData(QByteArrayView(row));
+    }
+    return true;
+}
+
+
+} // anon ns
 
 DbStore::DbStore(QObject *parent)
     : QObject{parent}, thread_{new QThread{this}}
@@ -44,6 +154,53 @@ DbStore::DbStore(QObject *parent)
 DbStore::~DbStore()
 {
     LOG_TRACE_N << "Destroying db store";
+}
+
+QCoro::Task<tl::expected<nextapp::pb::UserDataInfo, DbStore::Error> > DbStore::getDbDataInfo()
+{
+    // wrap to worker-thread
+    co_return co_await runInWorkerThread<tl::expected<nextapp::pb::UserDataInfo, DbStore::Error>>([this]()
+            -> tl::expected<nextapp::pb::UserDataInfo, DbStore::Error> {
+        nextapp::pb::UserDataInfo info;
+        if (const auto& res = getDbDataHash()) {
+            info.setHash(res.value());
+        } else {
+            return tl::make_unexpected(res.error());
+        }
+
+        auto get_count = [&](const QString& table) {
+            if (auto res = executeQuery(QString{"SELECT COUNT(*) FROM %1"}.arg(table), {})) {
+                if (!res->rows.empty() && !res->rows.front().empty()) {
+                    bool ok = false;
+                    auto count = res->rows.front().front().toUInt(&ok);
+                    if (ok) {
+                        return count;
+                    }
+                    throw std::runtime_error("Failed to convert count to uint");
+                } else {
+                    throw std::runtime_error("No rows returned when counting table " + table.toStdString());
+                }
+            } else {
+                throw std::runtime_error("Failed to count table " + table.toStdString() + ": "
+                                         + to_string(static_cast<int>(res.error())));
+            }
+        };
+
+        try {
+            info.setNumActions(get_count("action"));
+            info.setNumActionCategories(get_count("action_category"));
+            info.setNumNodes(get_count("node"));
+            info.setNumDays(get_count("day"));
+            info.setNumWorkSessions(get_count("work_session"));
+            info.setNumTimeBlocks(get_count("time_block"));
+
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Exception when getting DB info: " << e.what();
+            return tl::make_unexpected(GENERIC_ERROR);
+        }
+
+        return info;
+    });
 }
 
 void DbStore::start() {
@@ -258,6 +415,30 @@ QCoro::Task<void> DbStore::closeAndDeleteDb()
     co_return;
 }
 
+tl::expected<QString, DbStore::Error> DbStore::getDbDataHash()
+{
+    QCryptographicHash h(QCryptographicHash::Sha1); // We don't need cryptographic strength here
+
+    array<pair<QString, QString>, 6> tables = {{
+        {"node", "SELECT * FROM node ORDER BY uuid"},
+        {"action_category", "SELECT * FROM action_category ORDER BY id"},
+        // For actions, we need to remove the dynamic fields we update locally so the hash is reliable between devices.
+        {"action", "SELECT id, node, origin, category, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, kind, version, tags, tags_hash FROM action ORDER BY id"},
+        {"day", "SELECT * FROM day ORDER BY date"},
+        {"work_session", "SELECT * FROM work_session ORDER BY id"},
+        {"time_block", "SELECT * FROM time_block ORDER BY id"},
+    }};
+
+    for(const auto& [table, query] : tables) {
+        if (!sha3OfQuery(h, *db_, query)) {
+            LOG_WARN_N << "Failed to get hash for table: " << table;
+            return tl::make_unexpected(Error::QUERY_FAILED);
+        }
+    }
+
+    return h.result().toHex();
+}
+
 DbStore::qrval_t DbStore::executeQuery(const QString &sql, const QList<QVariant> &params) {
     QSqlQuery query{*db_};
     if (!query.prepare(sql)) {
@@ -329,7 +510,7 @@ QCoro::Task<DbStore::qrval_t> DbStore::runQueryInWorker(const QString &sql, cons
     //watcher.moveToThread(thread_);
 
     // Wait for completion in a coroutine-safe way
-    co_await watcher.future();
+    (void) co_await watcher.future();
     co_return future.result();
 }
 

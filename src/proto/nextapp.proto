@@ -989,6 +989,16 @@ message ImportDataMsg {
     }
 }
 
+message UserDataInfo {
+    string hash = 1; // Hash of the user-data
+    uint64 numNodes = 2;
+    uint64 numActions = 3;
+    uint64 numDays = 4;
+    uint64 numWorkSessions = 5;
+    uint64 numTimeBlocks = 6;
+    uint64 numActionCategories = 7;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -1029,6 +1039,7 @@ message Status {
         UserSessions userSessions = 38;
         Notifications notifications = 39;
         uint32 lastReadNotificationId = 40;
+        UserDataInfo userDataInfo = 41;
     }
 }
 

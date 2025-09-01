@@ -664,6 +664,7 @@ qt_add_qml_module(${PROJECT_NAME}
         EventScheduler.h
         EventScheduler.cpp
         QML_FILES qml/android/ImportDataDlg.qml
+        QML_FILES qml/components/DbInfoDlg.qml
 )
 
 

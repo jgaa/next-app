@@ -33,6 +33,7 @@ class NextAppCore : public QObject
     Q_PROPERTY(int height READ height NOTIFY heightChanged FINAL)
     Q_PROPERTY(bool dragEnabled READ dragEnabled WRITE setDragEnabled NOTIFY dragEnabledChanged)
     Q_PROPERTY(bool lookupRelated MEMBER lookupRelated_ WRITE setLookupRelated  NOTIFY lookupRelatedChanged)
+    Q_PROPERTY(nextapp::pb::UserDataInfo dbInfo READ getDbInfo NOTIFY dbInfoChanged)
 
 
     // True if the app was build with the CMAKE option DEVEL_SETTINGS enabled
@@ -181,6 +182,8 @@ public:
 
     void setLookupRelated(bool lookupRelated);
 
+    nextapp::pb::UserDataInfo getDbInfo();
+
 public slots:
     void handlePrepareForSleep(bool sleep);
 
@@ -201,13 +204,16 @@ signals:
     void accountDeletionFailed(const QString& message);
     void importEvent(const QUrl& url);
     void lookupRelatedChanged();
+    void dbInfoChanged();
 
 private:
+
     void setState(State state);
     void resetTomorrowTimer();
     QCoro::Task<void> doDeleteAccount();
     QCoro::Task<void> doFactoryReset();
     void emitSettingsChanged();
+    QCoro::Task<void> refreshDbData();
 
     static NextAppCore *instance_;
     State state_{State::STARTING_UP};
@@ -231,4 +237,6 @@ private:
     QQmlApplicationEngine *engine_{};
     static std::deque<std::function<void()>> pre_instance_callbacks_;
     bool lookupRelated_{true};
+    nextapp::pb::UserDataInfo db_info_cached_;
+    time_t db_info_last_update_{0};
 };
