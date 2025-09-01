@@ -1,0 +1,14 @@
+#pragma once
+
+#include <QString>
+#include <QJniObject>
+
+namespace nextapp {
+namespace android {
+
+QString getMediaDir();
+QString getLogsDir();
+QString getNamedDir(const QString& name);
+
+} }
+
