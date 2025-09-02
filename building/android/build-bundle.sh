@@ -40,14 +40,20 @@ QT_INSTALL_DIR="${QT_INSTALL_DIR-/var/local/build/qt-${QT_VERSION}}"
 
 export SOURCE_DIR="${SOURCE_DIR:-${SCRIPT_DIR}/../../}"
 export BUILD_DIR="${BUILD_DIR:-/var/local/build/nextapp-android}"
-export SDK_PATH="${SDK_PATH:-/var/local/build/android-sdk}"
-export NDK_VERSION="${NDK_VERSION:-27.2.12479018}"
+#export NDK_VERSION="${NDK_VERSION:-27.2.12479018}"
+export NDK_VERSION="${NDK_VERSION:-28.2.13676358}"
+export SDK_PATH_BASE="${SDK_PATH_BASE:-/var/local/build/android-sdk}"
+#export SDK_PATH="${SDK_PATH:-/var/local/build/android-sdk-$NDK_VERSION}"
+if [ -z "$SDK_PATH" ]; then
+  export SDK_PATH="${SDK_PATH_BASE}"
+fi
 export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-29}"
 APK_DST="${APK_DST:-${BUILD_DIR}/apk}"
 ASSETS_PATH="${ASSETS_PATH:-${BUILD_DIR}/assets}"
 
 echo "QT_VERSION is ${QT_VERSION}"
 echo "HOST_TRIPLET is: $HOST_TRIPLET"
+echo "NDK_VERSION is: $NDK_VERSION"
 echo "SDK_PATH is: $SDK_PATH"
 echo "SOURCE_DIR is: $SOURCE_DIR"
 echo "BUILD_DIR is: $BUILD_DIR"
