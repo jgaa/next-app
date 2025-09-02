@@ -41,11 +41,18 @@ QT_INSTALL_DIR="${QT_INSTALL_DIR-/var/local/build/qt-${QT_VERSION}}"
 export SOURCE_DIR="${SOURCE_DIR:-${SCRIPT_DIR}/../../}"
 export BUILD_DIR="${BUILD_DIR:-/var/local/build/nextapp-android}"
 #export NDK_VERSION="${NDK_VERSION:-27.2.12479018}"
+<<<<<<< HEAD
 export NDK_VERSION="${NDK_VERSION:-28.2.13676358}"
 export SDK_PATH_BASE="${SDK_PATH_BASE:-/var/local/build/android-sdk}"
 #export SDK_PATH="${SDK_PATH:-/var/local/build/android-sdk-$NDK_VERSION}"
 if [ -z "$SDK_PATH" ]; then
   export SDK_PATH="${SDK_PATH_BASE}"
+=======
+export NDK_VERSION="${NDK_VERSION:-28.0.13004209}"
+#export SDK_PATH="${SDK_PATH:-/var/local/build/android-sdk-$NDK_VERSION}"
+if [ -z "$SDK_PATH" ]; then
+  export SDK_PATH="/var/local/build/android-sdk-${NDK_VERSION}"
+>>>>>>> cfed40e (Experimenting with android build)
 fi
 export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-29}"
 APK_DST="${APK_DST:-${BUILD_DIR}/apk}"
