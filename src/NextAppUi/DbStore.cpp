@@ -17,8 +17,6 @@
 #include "qcorosignal.h"
 #include "qcorotimer.h"
 
-#include <boost/hash2/sha1.hpp>
-
 #include "AppInstanceMgr.h"
 #include "DbStore.h"
 
