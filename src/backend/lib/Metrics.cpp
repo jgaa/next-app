@@ -66,6 +66,12 @@ Metrics::Metrics(Server& server)
                                             combine(default_labels, lbl{"kind", "tenants"}));
     devices_ = metrics_.AddGauge("nextapp_devices", "Number of devices", {},
                                             combine(default_labels, lbl{"kind", "devices"}));
+    data_imports_ = metrics_.AddCounter("nextapp_data_imports", "Number of data imports", {},
+                                            combine(default_labels, lbl{"kind", "imports"}, lbl{"status", "success"}));
+    data_import_errors_ = metrics_.AddCounter("nextapp_data_imports", "Number of data import errors", {},
+                                            combine(default_labels, lbl{"kind", "imports"}, lbl{"status", "error"}));
+    data_exports_ = metrics_.AddCounter("nextapp_data_exports", "Number of data exports", {},
+                                            combine(default_labels, lbl{"kind", "exports"}));
 
     const std::vector quantiles = {0.5, 0.9, 0.95, 0.99};
     grpc_request_latency_ = metrics_.AddSummary("nextapp_grpc_request_latency", "gRPC request latency", {},

@@ -77,6 +77,17 @@ public:
         return *devices_;
     }
 
+    counter_t& data_imports_success() {
+        return *data_imports_;
+    }
+
+    counter_t& data_import_errors() {
+        return *data_import_errors_;
+    }
+
+    counter_t& data_exports() {
+        return *data_exports_;
+    }
 
 private:
     Server& server_;
@@ -95,6 +106,9 @@ private:
     gauge_t * users_{};
     gauge_t * tenants_{};
     gauge_t *devices_{};
+    counter_t * data_imports_{};
+    counter_t * data_import_errors_{};
+    counter_t * data_exports_{};
 };
 
 

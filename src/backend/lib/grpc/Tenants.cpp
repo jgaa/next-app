@@ -671,6 +671,21 @@ ORDER BY t.id;
     return readStreamHandler<pb::ImportDataMsg>(ctx, reply,
     [this, reply, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
+        LOG_INFO_EX(rctx) << "Starting data import";
+        bool success = false;
+
+        auto trx = co_await rctx.dbh->transaction();
+
+        ScopedExit onExit([&] {
+            if (success) {
+                owner_.server().metrics().data_imports_success().inc();
+            } else {
+                owner_.server().metrics().data_import_errors().inc();
+            }
+
+            LOG_INFO_EX(rctx) << "Data import finished " << (success ? "successfully" : "with errors");
+        });
+
         // Map the old uuid's to new uuids.
         // TODO: For large data-sets, we can't have all the mappings in memory.
         //       We need to use a LRU cache over a kv-store. Alternatively, we cound
@@ -766,6 +781,10 @@ ORDER BY t.id;
                 throw server_err{pb::Error::NOT_FOUND, format("Action {} not found in mapping-table.", toString(uid))};
             }
 
+            bool containsAction(const boost::uuids::uuid& uid) const noexcept {
+                return actions_.contains(uid);
+            }
+
             string addWorkSession(string_view session) {
                 const auto newid = newUuid();
                 work_sessions_[toUuid(session)] = newid;
@@ -840,13 +859,14 @@ ORDER BY t.id;
         auto post_updates = [&](const nextapp::pb::ImportDataMsg *msg = nullptr) -> boost::asio::awaitable<void> {
 
             if (!node_parent.empty() && (!msg || !msg->has_nodes())) {
-                auto sql = "UPDATE node SET parent=? WHERE id=?";
+                auto sql = "UPDATE node SET parent=? WHERE id=? AND user=?";
 
                 auto generator = jgaa::mysqlpool::BindTupleGenerator(node_parent,
                                                                      [&] (const auto& np) {
                                                                          return make_tuple (
                                                                              mapper.node(np.second),
-                                                                             toString(np.first)
+                                                                             toString(np.first),
+                                                                             cuser
                                                                              );
                                                                      });
 
@@ -859,14 +879,29 @@ ORDER BY t.id;
                 }
             }
 
-            if (!action_origin.empty() && (!msg || msg->has_actions())) {
-                auto sql = "UPDATE action SET origin=? WHERE id=?";
+            // wash action_origin. Remove any entries that point to non-existing actions
+            action_origin.erase(
+                std::remove_if(action_origin.begin(), action_origin.end(),
+                               [&mapper] (const auto& ao) {
+                                   if (!mapper.containsAction(ao.second)) [[unlikely]] {
+                                        LOG_DEBUG_EX() << "Removing action origin mapping for action "
+                                                       << toString(ao.first) << " -> " << toString(ao.second)
+                                                       << ", since the origin action does not exist in the mapping-table.";
+                                       return true;
+                                   }
+                                   return false;
+                               }),
+                action_origin.end());
+
+            if (!action_origin.empty() && (!msg || !msg->has_actions())) {
+                auto sql = "UPDATE action SET origin=? WHERE id=? AND user=?";
 
                 auto generator = jgaa::mysqlpool::BindTupleGenerator(action_origin,
                                                                      [&] (const auto& ao) {
                                                                          return make_tuple (
                                                                              toString(ao.first),
-                                                                             mapper.action(ao.second)
+                                                                             mapper.action(ao.second),
+                                                                             cuser
                                                                              );
                                                                      });
                 try {
@@ -879,13 +914,14 @@ ORDER BY t.id;
             };
 
             if (!node_category.empty() && !msg) {
-                auto sql = "UPDATE node SET category=? WHERE id=?";
+                auto sql = "UPDATE node SET category=? WHERE id=? AND user=?";
 
                 auto generator = jgaa::mysqlpool::BindTupleGenerator(node_category,
                                                                      [&] (const auto& nc) {
                                                                          return make_tuple (
                                                                              mapper.actionCategory(toString(nc.second)),
-                                                                             toString(nc.first)
+                                                                             toString(nc.first),
+                                                                             cuser
                                                                              );
                                                                      });
                 try {
@@ -963,12 +999,12 @@ ORDER BY t.id;
                                 item.set_id(mapper.addAction(item.id()));
                                 item.set_node(mapper.node(item.node()));
                                 if (item.has_origin() && !item.origin().empty()) {
-                                    auto origin = mapper.action(item.origin(), false);
-                                    if (!origin.empty()) {
+                                    if (mapper.containsAction(toUuid(item.origin()))) {
                                         item.set_origin(mapper.action(item.origin()));
                                     } else {
                                         // Delay until all actions are imported
                                         action_origin.emplace_back(toUuid(item.id()), toUuid(item.origin()));
+                                        item.clear_origin();
                                     }
                                 }
                                 if (!item.category().empty()) {
@@ -1048,36 +1084,19 @@ ORDER BY t.id;
             } // while ...
 
             co_await post_updates();
-
-            // // Link nodes that failed early lookup to their parents
-            // if (!node_parent.empty()) {
-            //     auto sql = "UPDATE node SET parent=? WHERE id=?";
-
-            //     auto generator = jgaa::mysqlpool::BindTupleGenerator(node_parent,
-            //         [&] (const auto& np) {
-            //             return make_tuple (
-            //                 mapper.node(np.second),
-            //                 toString(np.first)
-            //             );
-            //         });
-
-            //     try {
-            //         co_await rctx.dbh->exec(sql, generator);
-            //     } catch (const std::exception& ex) {
-            //         LOG_ERROR_EX(rctx) << "Failed to update node parents: " << ex.what();
-            //         throw server_err{pb::Error::GENERIC_ERROR, "Failed to update node parents"};
-            //     }
-            // }
         } catch (const exception& ex) {
             LOG_DEBUG_EX(rctx) << "Exception while importing data: " << ex.what();
             eptr = std::current_exception();
         }
 
         if (eptr) {
-            co_await clear_user_data();
+            //co_await clear_user_data();
             std::rethrow_exception(eptr);
         }
 
+        co_await trx.commit();
+
+        success = true;
         co_return;
     }, __func__);
 }
@@ -1140,6 +1159,8 @@ ORDER BY t.id;
         msg.set_error(pb::Error::OK);
         msg.set_hasmore(false); // No more messages to send
         co_await stream->sendMessage(std::move(msg), boost::asio::use_awaitable);
+
+        owner_.server().metrics().data_exports().inc();
     }, __func__);
 }
 
