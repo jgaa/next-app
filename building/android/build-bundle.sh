@@ -237,7 +237,7 @@ pushd "${AAB_BUILD_PATH}"
 #  || echo 'qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64' >> "gradle.properties"
 
 echo "Patching gradle.properties..."
-PROP=gradle.properties"
+PROP=gradle.properties
 
 # Replace/add properties idempotently
 ensure_prop() { key="$1"; val="$2"; if grep -q "^$key=" "$PROP"; then sed -i "s|^$key=.*|$key=$val|" "$PROP"; else echo "$key=$val" >> "$PROP"; fi; }
