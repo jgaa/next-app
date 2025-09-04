@@ -256,7 +256,7 @@ echo "Final gradle.properties: ==============================="
 cat "$PROP"
 echo "End of gradle.properties ==============================="
 
-echo "Running ./gradlew bundleRelease...
+echo "Running ./gradlew bundleRelease..."
 ./gradlew bundleRelease
 
 aab_dst=${ASSETS_PATH}/nextapp-${app_version}.aab
