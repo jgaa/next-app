@@ -28,7 +28,7 @@ if [ ! -d "${BOOST_INSTALL_DIR}" ]; then
   echo ">>> Boost headers installed."
 else
   echo ">>> Found existing Boost at ${BOOST_INSTALL_DIR}"
-fi
+fi:q
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
@@ -50,6 +50,7 @@ fi
 export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-29}"
 APK_DST="${APK_DST:-${BUILD_DIR}/apk}"
 ASSETS_PATH="${ASSETS_PATH:-${BUILD_DIR}/assets}"
+QT_HOST_PATH="${QT_HOST_PATH:-${QT_INSTALL_DIR}/gcc_64}"
 
 echo "QT_VERSION is ${QT_VERSION}"
 echo "HOST_TRIPLET is: $HOST_TRIPLET"
@@ -60,6 +61,7 @@ echo "BUILD_DIR is: $BUILD_DIR"
 echo "QT_INSTALL_DIR is ${QT_INSTALL_DIR}"
 echo "APK_DST is: $APK_DST"
 echo "ASSETS_PATH is: ${ASSETS_PATH}"
+echo "QT_HOST_PATH is: $QT_HOST_PATH"
 
 if [ ! -d "${QT_INSTALL_DIR}" ]; then
   echo "==> Fetching Qt ${QT_VERSION}"
@@ -167,7 +169,7 @@ cmake -S ${SOURCE_DIR} \
   -DCMAKE_CXX_COMPILER:FILEPATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ \
   -DCMAKE_C_COMPILER:FILEPATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
   -DANDROID_NDK:PATH=${ANDROID_NDK} \
-  -DQT_HOST_PATH:PATH=${QT_INSTALL_DIR}/gcc_64 \
+  -DQT_HOST_PATH:PATH=${QT_HOST_PATH} \
   -DANDROID_ABI:STRING=${ANDROID_ABI} \
   -DCMAKE_PREFIX_PATH:PATH=${QT_INSTALL_DIR}/android_${ABI} \
   -DQT_NO_GLOBAL_APK_TARGET_PART_OF_ALL:BOOL=OFF \
@@ -230,10 +232,31 @@ PATH="${QT_INSTALL_DIR}/gcc_64/bin:${PATH}"
 
 pushd "${AAB_BUILD_PATH}"
 
-grep -q '^qtTargetAbiList=' "gradle.properties" \
-  && sed -i 's/^qtTargetAbiList=.*/qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64/' "gradle.properties" \
-  || echo 'qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64' >> "gradle.properties"
+#grep -q '^qtTargetAbiList=' "gradle.properties" \
+#  && sed -i 's/^qtTargetAbiList=.*/qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64/' "gradle.properties" \
+#  || echo 'qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64' >> "gradle.properties"
 
+echo "Patching gradle.properties..."
+PROP=gradle.properties"
+
+# Replace/add properties idempotently
+ensure_prop() { key="$1"; val="$2"; if grep -q "^$key=" "$PROP"; then sed -i "s|^$key=.*|$key=$val|" "$PROP"; else echo "$key=$val" >> "$PROP"; fi; }
+
+ensure_prop qtAndroidDir "$QT_HOST_PATH/src/android/java"
+ensure_prop qt5AndroidDir "$QT_HOST_PATH/src/android/java"
+ensure_prop qtTargetAbiList "armeabi-v7a,arm64-v8a,x86,x86_64"
+
+# Wire each ABI to your sibling build dirs
+ensure_prop qtArmeabiV7aBuildDirectory "${BUILD_DIR}/nextapp_bld_armv7"
+ensure_prop qtArm64V8aBuildDirectory   "${BUILD_DIR}/nextapp_bld_arm64_v8a"
+ensure_prop qtX86BuildDirectory        "${BUILD_DIR}/nextapp_bld_x86"
+ensure_prop qtX86_64BuildDirectory     "${BUILD_DIR}/nextapp_bld_x86_64"
+
+echo "Final gradle.properties: ==============================="
+cat "$PROP"
+echo "End of gradle.properties ==============================="
+
+echo "Running ./gradlew bundleRelease...
 ./gradlew bundleRelease
 
 aab_dst=${ASSETS_PATH}/nextapp-${app_version}.aab
