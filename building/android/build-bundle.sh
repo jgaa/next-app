@@ -28,7 +28,7 @@ if [ ! -d "${BOOST_INSTALL_DIR}" ]; then
   echo ">>> Boost headers installed."
 else
   echo ">>> Found existing Boost at ${BOOST_INSTALL_DIR}"
-fi:q
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
