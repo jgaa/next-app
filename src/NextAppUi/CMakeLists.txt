@@ -74,10 +74,12 @@ if (ANDROID_BUILD)
         if (NOT GOOGLE_SERVICES_PATH)
             if(DEFINED ENV{GOOGLE_SERVICES_PATH})
                 set(GOOGLE_SERVICES_PATH "$ENV{GOOGLE_SERVICES_PATH}")
+                message(STATUS "Using google-services.json from environment variable GOOGLE_SERVICES_PATH: ${GOOGLE_SERVICES_PATH}")
             else()
                 message(FATAL_ERROR "You must specify the path to google-services.json using -DGOOGLE_SERVICES_PATH=/path/to/google-services.json")
             endif()
         endif()
+        message(STATUS "Using google-services.json from GOOGLE_SERVICES_PATH: ${GOOGLE_SERVICES_PATH}")
     endif()
 endif()
 
@@ -143,6 +145,7 @@ if(ANDROID)
             </intent-filter>
         </service>")
 
+        message(STATUS "Enabling Firebase Cloud Messaging support: ${GOOGLE_SERVICES_PATH} --> ${ANDROID_OUT_DIR}/google-services.json")
         configure_file(
              "${GOOGLE_SERVICES_PATH}"
             "${ANDROID_OUT_DIR}/google-services.json"
