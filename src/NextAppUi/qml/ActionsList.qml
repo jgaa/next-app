@@ -189,6 +189,7 @@ Rectangle {
                         switch (button) {
                             case 0: // touch
                             case Qt.LeftButton:
+                                NaCore.clickInitiator = NaCore.ClickInitiator.ACTIONS
                                 if (point.modifiers & Qt.ControlModifier) {
                                     listView.toggleUuid(uuid)
                                 } else {
@@ -200,6 +201,7 @@ Rectangle {
                                     if (root.callOnSelectionEvent) {
                                         root.onSelectionEvent(uuid)
                                     }
+                                    NaCore.currentActionSelected(uuid)
                                 }
                                 break;
                             case Qt.RightButton:

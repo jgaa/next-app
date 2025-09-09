@@ -69,6 +69,33 @@ Rectangle {
                     }
                 }
 
+                Connections {
+                    target: NaCore
+
+                    function onSelectNodeChanged() {
+                        if (NaCore.clickInitiator === NaCore.ClickInitiator.TREE)
+                            return;
+
+                        const idx = NaCore.selectNode;
+                        if (!idx || !idx.valid)
+                            return;
+
+                        treeView.expandToIndex(idx);
+                        treeView.forceLayout();
+
+                        const r = treeView.rowAtIndex(idx);
+                        if (r >= 0) {
+                            treeView.positionViewAtRow(r, Qt.AlignVCenter);
+                            // Optional: keep keyboard focus/current-row in sync
+                            //treeView.currentRow = r;
+                        }
+
+                        // 4) Your existing app-side selection
+                        const uuid = NaMainTreeModel.uuidFromIndex(idx);
+                        root.setSelection(uuid);
+                    }
+                }
+
                 onVisibleChanged: {
                     if (visible) {
                         console.log("TreeView visible")
@@ -114,6 +141,7 @@ Rectangle {
                         target: indicator
                         acceptedButtons: Qt.LeftButton
                         onSingleTapped: (eventPoint, button) => {
+                            NaCore.clickInitiator = NaCore.ClickInitiator.TREE
                             const exclude = eventPoint.pressPosition.x > indicator.x + 40
                             console.log("indicator tapped, indicator.x ", indicator.x, " exclude ", exclude )
                             if (!exclude) {

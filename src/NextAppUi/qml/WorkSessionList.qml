@@ -16,6 +16,7 @@ Rectangle {
     property string selectedItem: ""
     property bool selectedIsActive: false
     property bool selectedIsStarted: false
+    property bool enableSelectAction: false
     color: MaterialDesignStyling.surface
     Layout.fillHeight: true
 
@@ -155,6 +156,9 @@ Rectangle {
                         switch (button) {
                             case Qt.LeftButton:
                                 root.selectedItem = uuid
+                                if (root.enableSelectAction) {
+                                    NaCore.selectAction(action)
+                                }
                                 somethingChanged()
                                 break;
                             case Qt.RightButton:

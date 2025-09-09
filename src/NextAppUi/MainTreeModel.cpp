@@ -886,6 +886,15 @@ QString MainTreeModel::getCategoryForNode(const QString &uuid, bool recurse)
     return {};
 }
 
+QString MainTreeModel::uuidFromIndex(const QModelIndex &ix)
+{
+    if (auto current = getTreeNode(ix)) {
+        return current->node().uuid();
+    }
+
+    return {};
+}
+
 MainTreeModel::ResetScope::ResetScope(MainTreeModel &model)
     : model_{model} {
 
