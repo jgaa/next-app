@@ -486,13 +486,14 @@ void NextAppCore::currentActionSelected(const QString &uuid)
     }
 }
 
-void NextAppCore::selectAction(const QString &uuid)
+void NextAppCore::setSelectAction(const QString &uuid)
 {
     LOG_TRACE_N << "Selecting action: " << uuid.toStdString();
 
     if (lookupRelated_) {
         // TODO: Set the current action
-
+        selectAction_ = uuid;
+        emit selectActionChanged();
     }
 }
 

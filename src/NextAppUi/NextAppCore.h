@@ -36,6 +36,7 @@ public:
     Q_PROPERTY(bool lookupRelated MEMBER lookupRelated_ WRITE setLookupRelated  NOTIFY lookupRelatedChanged)
     Q_PROPERTY(nextapp::pb::UserDataInfo dbInfo READ getDbInfo NOTIFY dbInfoChanged)
     Q_PROPERTY(QModelIndex selectNode MEMBER selectNode_ NOTIFY selectNodeChanged)
+    Q_PROPERTY(QString selectAction MEMBER selectAction_ NOTIFY selectActionChanged)
 
     enum class ClickInitiator {
         NONE,
@@ -96,7 +97,7 @@ public:
     Q_INVOKABLE void deleteLocalData();
     Q_INVOKABLE void factoryReset();
     Q_INVOKABLE void currentActionSelected(const QString& uuid);
-    Q_INVOKABLE void selectAction(const QString& uuid);
+    Q_INVOKABLE void setSelectAction(const QString& uuid);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseHourMin(const QString& str);
@@ -220,6 +221,7 @@ signals:
     void lookupRelatedChanged();
     void dbInfoChanged();
     void selectNodeChanged();
+    void selectActionChanged();
     void clickInitiatorChanged();
 
 private:
@@ -257,5 +259,6 @@ private:
     nextapp::pb::UserDataInfo db_info_cached_;
     time_t db_info_last_update_{0};
     QModelIndex selectNode_;
+    QString selectAction_;
     ClickInitiator clickInitiator_{ClickInitiator::NONE};
 };

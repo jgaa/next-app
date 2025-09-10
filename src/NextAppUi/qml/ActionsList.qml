@@ -24,6 +24,27 @@ Rectangle {
     property alias selectedIds: listView.selectedItems
     property bool hasSelection: listView.selectedItems.length > 0
 
+    Connections {
+        target: NaCore
+
+        function onSelectActionChanged() {
+            if (NaCore.clickInitiator === NaCore.ClickInitiator.ACTION)
+                return;
+
+            const uuid = NaCore.selectAction;
+            const ix = listView.model.indexOfAction(uuid);
+            if (ix < 0) {
+                return;
+            }
+
+            listView.resetSelection()
+            listView.selectUuid(uuid)
+            listView.currentIndex = ix
+            listView.positionViewAtIndex(ix, ListView.Contain)
+            NaActionsModel.selected = uuid
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
 

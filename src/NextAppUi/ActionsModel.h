@@ -255,6 +255,7 @@ public:
     Q_INVOKABLE void batchChangePriority(int priority, const QStringList& actions);
     Q_INVOKABLE void batchChangeDifficulty(int difficulty, const QStringList& actions);
     Q_INVOKABLE void batchDelete(const QStringList& actions);
+    Q_INVOKABLE int indexOfAction(const QString& uuid) const noexcept;
     static Q_INVOKABLE nextapp::pb::UrgencyImportance setUrgencyImportance(double urgency, double importance);
     static Q_INVOKABLE QStringList tagsToList(const QString& tags);
     static Q_INVOKABLE QString tagsToString(const QStringList& tags, bool addHash);

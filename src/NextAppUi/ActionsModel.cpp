@@ -1095,6 +1095,11 @@ void ActionsModel::batchDelete(const QStringList &actions)
     }
 }
 
+int ActionsModel::indexOfAction(const QString &uuid) const noexcept
+{
+    return findCurrentRow(actions_, uuid);
+}
+
 QStringList ActionsModel::tagsToList(const QString &tags)
 {
     static const QRegularExpression split_regex{R"([\s,;]+)"};

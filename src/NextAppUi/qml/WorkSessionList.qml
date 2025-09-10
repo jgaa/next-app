@@ -157,7 +157,8 @@ Rectangle {
                             case Qt.LeftButton:
                                 root.selectedItem = uuid
                                 if (root.enableSelectAction) {
-                                    NaCore.selectAction(action)
+                                    NaCore.clickInitiator = NaCore.ClickInitiator.SESSIONS
+                                    NaCore.setSelectAction(action)
                                 }
                                 somethingChanged()
                                 break;
