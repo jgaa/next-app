@@ -122,7 +122,13 @@ Dialog {
                     TapHandler {
 
                         onTapped: {
-                            selectionModel.select(listCtl.model.index(index, 0), ItemSelectionModel.Select | ItemSelectionModel.Current)
+                            if (listCtl.model.isValid(index)) {
+                                selectionModel.select(listCtl.model.index(index, 0), ItemSelectionModel.Select | ItemSelectionModel.Current)
+                            } else {
+                                // unselect
+                                selectionModel.clear();
+                            }
+
                             // console.log("selected")
                         }
 

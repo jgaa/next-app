@@ -1616,7 +1616,7 @@ QCoro::Task<void> ServerComm::updateDataEpoc()
     LOG_DEBUG_N << "Updating data-epoc";
     nextapp::pb::Empty req;
     auto& db = NextAppCore::instance()->db();
-    co_await db.query("UPDATE nextapp SET data_epoc = ?", nextapp::app_data_epoc);
+    (void) co_await db.query("UPDATE nextapp SET data_epoc = ?", nextapp::app_data_epoc);
 }
 
 void ServerComm::clearMessages()
