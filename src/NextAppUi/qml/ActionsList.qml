@@ -26,6 +26,7 @@ Rectangle {
 
     Connections {
         target: NaCore
+        enabled: !root.hasReview
 
         function onSelectActionChanged() {
             if (NaCore.clickInitiator === NaCore.ClickInitiator.ACTION)

@@ -141,6 +141,11 @@ void ReviewModel::toggleReviewed(const QString &uuid)
     }
 }
 
+// int ReviewModel::indexOfAction(const QString &uuid) const noexcept
+// {
+//     return findCurrentRow(actions_, uuid);
+// }
+
 int ReviewModel::rowCount(const QModelIndex &parent) const
 {
     if (isOk()) {
