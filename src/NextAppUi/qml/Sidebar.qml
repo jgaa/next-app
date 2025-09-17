@@ -19,6 +19,8 @@ Rectangle {
 
     color: MaterialDesignStyling.surfaceContainer
 
+    Component.onCompleted: lists.checked = true
+
     component SidebarEntry: Button {
         id: sidebarButton
 
