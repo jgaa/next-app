@@ -37,6 +37,13 @@ option(UI_USE_STATIC_BOOST "Build with static Boost libraries" ON)
 option(WITH_TESTS "Enable Tests" ON)
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
 
+if (ANDROID_BUILD)
+    option(NEXTAPP_USE_JNI "Use JNI for Android builds" ON)
+    if (NEXTAPP_USE_JNI)
+        add_definitions(-DNEXTAPP_USE_JNI)
+    endif()
+endif()
+
 if (UI_USE_STATIC_BOOST)
     add_definitions(-DUSE_STATIC_BOOST)
 endif()
@@ -201,6 +208,12 @@ if(ANDROID)
     )
 
     configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/JniGuard.h.in"
+      "${CMAKE_BINARY_DIR}/JniGuard.h"
+      @ONLY
+    )
+
+    configure_file(
       "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
       "${ANDROID_OUT_DIR}/AndroidManifest.xml"
       @ONLY
@@ -219,6 +232,7 @@ if(ANDROID)
     set (EXTRA_SOURCE_FILES ${EXTRA_SOURCE_FILES}
         ${CMAKE_BINARY_DIR}/AndroidHandlers.h
         ${CMAKE_BINARY_DIR}/AndroidHandlers.cpp
+        ${CMAKE_BINARY_DIR}/JniGuard.h
     )
 
     file(COPY

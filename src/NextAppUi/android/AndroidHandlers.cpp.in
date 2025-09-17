@@ -5,6 +5,7 @@
 
 #include "NextAppCore.h"
 #include "logging.h"
+#include "JniGuard.h"
 
 extern "C" JNIEXPORT void JNICALL
 Java_@PACKAGE_NAME_UNDERSCORES@_MainActivity_nativeOnSharedNextapp(
@@ -26,33 +27,63 @@ Java_@PACKAGE_NAME_UNDERSCORES@_MainActivity_nativeOnSharedNextapp(
 namespace nextapp::android {
 
 QString getMediaDir() {
+#ifdef NEXTAPP_USE_JNI
+    requireStaticMethod(
+        "@PACKAGE_NAME_SLASHES@/MainActivity",
+        "getAppMediaDir",
+        "()Ljava/lang/String;");
+
     static const QString dir = QJniObject::callStaticObjectMethod(
-    "@PACKAGE_NAME@/MainActivity",
+    "@PACKAGE_NAME_SLASHES@/MainActivity",
     "getAppMediaDir",
     "()Ljava/lang/String;"
     ).toString();
 
     return dir;
+#else
+    LOG_WARN_N << "JNI not available, using temp dir for media dir.";
+    return {};
+#endif
 }
 
 QString getLogsDir() {
+#ifdef NEXTAPP_USE_JNI
+    requireStaticMethod(
+        "@PACKAGE_NAME_SLASHES@/MainActivity",
+        "ensureMediaSubdir",
+        "(Ljava/lang/String;)Ljava/lang/String;");
+
     static const QString dir = QJniObject::callStaticObjectMethod(
-    "@PACKAGE_NAME@/MainActivity",
+    "@PACKAGE_NAME_SLASHES@/MainActivity",
     "ensureMediaSubdir",
     "(Ljava/lang/String;)Ljava/lang/String;",
     QJniObject::fromString("Logs").object<jstring>()
     ).toString();
     return dir;
+#else
+    LOG_WARN_N << "JNI not available, using temp dir for logs dir.";
+    return QCoreApplication::applicationDirPath() + "/Logs";
+#endif
 }
 
 QString getNamedDir(const QString& name) {
+#ifdef NEXTAPP_USE_JNI
+    requireStaticMethod(
+        "@PACKAGE_NAME_SLASHES@/MainActivity",
+        "ensureMediaSubdir",
+        "(Ljava/lang/String;)Ljava/lang/String;");
+
     static const QString dir = QJniObject::callStaticObjectMethod(
-    "@PACKAGE_NAME@/MainActivity",
+    "@PACKAGE_NAME_SLASHES@/MainActivity",
     "ensureMediaSubdir",
     "(Ljava/lang/String;)Ljava/lang/String;",
     QJniObject::fromString(name).object<jstring>()
     ).toString();
     return dir;
+#else
+    LOG_WARN_N << "JNI not available, using temp dir for " << name << " dir.";
+    return QCoreApplication::applicationDirPath() + "/" + name;
+#endif
 }
 
 } // ns

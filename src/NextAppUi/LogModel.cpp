@@ -6,6 +6,7 @@
 #include <QJniObject>
 #include <QJniEnvironment>
 #include <QCoreApplication>
+#include "JniGuard.h"
 #endif
 
 #include "logging.h"
@@ -57,6 +58,7 @@ QString cleanLogMessage(const QString& logMessage) {
 
 #ifdef __ANDROID__
 void showToast(const QString &message) {
+#ifdef NEXTAPP_USE_JNI
     QJniObject javaMessage = QJniObject::fromString(message);
 
     QCoreApplication::instance()->nativeInterface<QNativeInterface::QAndroidApplication>()
@@ -71,6 +73,10 @@ void showToast(const QString &message) {
                 LOG_DEBUG_N << "Failed to get Android context!";
                 return;
             }
+
+            nextapp::android::requireStaticMethod("android/widget/Toast",
+                                                  "makeText",
+                                                  "(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;");
 
             QJniObject toast = QJniObject::callStaticObjectMethod(
                 "android/widget/Toast",
@@ -87,6 +93,10 @@ void showToast(const QString &message) {
                 LOG_DEBUG_N << "Failed to create Toast!";
             }
         });
+#else
+    Q_UNUSED(message);
+    LOG_DEBUG_N << "JNI support not enabled, cannot show toast.";
+#endif
 }
 #endif
 

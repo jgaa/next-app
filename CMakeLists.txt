@@ -33,9 +33,12 @@ endif()
 
 # Android
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-  set(ANDROID_BUILD ON)
-  message(STATUS "Android build")
-  add_definitions(-DANDROID_BUILD)
+    set(ANDROID_BUILD ON)
+    message(STATUS "Android build")
+    add_definitions(-DANDROID_BUILD)
+
+    # Fix for regression in QT 6.9.2
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 endif()
 
 # Apple platforms (macOS vs. iOS)

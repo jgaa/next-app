@@ -1,0 +1,123 @@
+#pragma once
+
+#include <string>
+#include <QString>
+#include <QDebug>
+
+#include <QtCore/QJniObject>
+#include <QtCore/private/qjnihelpers_p.h>   // for QJniEnvironment
+#include "QCoreApplication"
+
+#include "logging.h"
+
+namespace nextapp {
+namespace android {
+
+inline QJniObject toDotName(const char* slashName) {
+    LOG_TRACE_N << "slashName = " << slashName;
+#ifdef NEXTAPP_USE_JNI
+    QString s = QString::fromUtf8(slashName);
+    s.replace(u'/', u'.');
+    LOG_TRACE_N << "dotName = " << s;
+    return QJniObject::fromString(s);
+#else
+    LOG_WARN_N << "JNI is not enabled, cannot convert class name";
+    return QJniObject(); // dummy
+#endif
+}
+
+inline void abortIfException(const char* where) {
+    LOG_TRACE_N << "where = " << where;
+#ifdef NEXTAPP_USE_JNI
+    QJniEnvironment env;
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();      // prints Java stack to logcat
+        env->ExceptionClear();
+        LOG_ERROR_N << "JNI exception after:" << where;
+        ::abort();
+    }
+#else
+    LOG_WARN_N << "JNI is not enabled, cannot check exceptions";
+#endif
+}
+
+// Load class via the app ClassLoader (robust from any thread).
+inline jclass loadClassOrAbort(const char* classSlashName) {
+    LOG_TRACE_N << "classSlashName = " << classSlashName;
+#ifdef NEXTAPP_USE_JNI
+    QJniObject ctx = QNativeInterface::QAndroidApplication::context();
+    if (!ctx.isValid()) { LOG_ERROR_N << "Android context is null (called too early?)"; ::abort(); }
+
+    QJniObject loader = ctx.callObjectMethod("getClassLoader", "()Ljava/lang/ClassLoader;");
+    abortIfException("Context.getClassLoader");
+    if (!loader.isValid()) { LOG_ERROR_N << "Context.getClassLoader returned null"; ::abort(); }
+
+    QJniObject dotName = toDotName(classSlashName);
+    QJniObject clazz = loader.callObjectMethod(
+        "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", dotName.object<jstring>());
+    abortIfException("ClassLoader.loadClass");
+    if (!clazz.isValid()) { LOG_ERROR_N << "JNI class not found:" << classSlashName; ::abort(); }
+
+    QJniEnvironment env;
+    jclass globalCls = static_cast<jclass>(env->NewGlobalRef(clazz.object<jclass>()));
+    if (!globalCls) { LOG_ERROR_N << "Failed to promote jclass to global ref"; ::abort(); }
+    return globalCls;   // caller must DeleteGlobalRef
+#else
+    LOG_WARN_N << "JNI is not enabled, cannot load class" << classSlashName;
+    return nullptr;
+#endif
+}
+
+inline void requireClass(const char* classSlashName) {
+    LOG_TRACE_N << "classSlashName = " << classSlashName;
+#ifdef NEXTAPP_USE_JNI
+    if (!QJniObject::isClassAvailable(classSlashName)) {
+        LOG_ERROR_N << "JNI class not available:" << classSlashName;
+        ::abort();
+    }
+    loadClassOrAbort(classSlashName); // ensure it really loads via ClassLoader
+#else
+    LOG_WARN_N << "JNI is not enabled, cannot check class" << classSlashName;
+    (void)classSlashName;
+#endif
+}
+
+inline void requireStaticMethod(const char* classSlashName,
+                                const char* methodName, const char* jniSig) {
+    LOG_TRACE_N << "classSlashName = " << classSlashName
+                << ", methodName = " << methodName
+                << ", jniSig = " << jniSig;
+#ifdef NEXTAPP_USE_JNI
+    QJniEnvironment env;
+    jclass cls = loadClassOrAbort(classSlashName);   // GLOBAL ref
+    jmethodID mid = env->GetStaticMethodID(cls, methodName, jniSig);
+    if (!mid) {
+        LOG_ERROR_N << "JNI static method not found:" << classSlashName << "." << methodName << jniSig;
+        env->DeleteGlobalRef(cls);
+        ::abort();
+    }
+    env->DeleteGlobalRef(cls);   // ✅ release global
+#else
+    LOG_WARN_N << "JNI is not enabled, cannot check static method"
+               << classSlashName << methodName << jniSig;
+#endif
+}
+
+inline void requireInstanceMethod(jobject obj,
+                                  const char* methodName, const char* jniSig) {
+    LOG_TRACE_N << "methodName = " << methodName
+                << ", jniSig = " << jniSig;
+#ifdef NEXTAPP_USE_JNI
+    if (!obj) { LOG_ERROR_N << "JNI object is null when checking method" << methodName << jniSig; ::abort(); }
+    QJniEnvironment env;
+    jclass cls = env->GetObjectClass(obj);   // local ref
+    if (!cls) { LOG_ERROR_N << "JNI failed to obtain object class"; ::abort(); }
+    jmethodID mid = env->GetMethodID(cls, methodName, jniSig);
+    env->DeleteLocalRef(cls);                // ✅ release local
+    if (!mid) { LOG_ERROR_N << "JNI instance method not found:" << methodName << jniSig; ::abort(); }
+#else
+    LOG_WARN_N << "JNI is not enabled, cannot check instance method" << methodName << jniSig;
+#endif
+}
+} // ns
+} // ns
