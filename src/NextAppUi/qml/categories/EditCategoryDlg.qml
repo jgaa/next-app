@@ -9,10 +9,10 @@ import Nextapp.Models
 Dialog {
     id: root
     title: qsTr("Edit Categories")
-    x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
-    y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
-    width: Math.min(600, NaCore.width, Screen.width)
-    height: Math.min(800, NaCore.height - 100, Screen.height)
+    x: NaCore.isMobile ? 0 : (ApplicationWindow.window.width - width) / 3
+    y: NaCore.isMobile ? 0 : (ApplicationWindow.window.height - height) / 3
+    width: Math.min(600, ApplicationWindow.window.width - 10)
+    height: Math.min(800, ApplicationWindow.window.height - 10)
     standardButtons: Dialog.Ok
     property NextappPB.actionCategory actionCategory: NaAcModel.get(-1)
 
@@ -89,6 +89,10 @@ Dialog {
             onClicked: {
                 colorPicker.open()
             }
+        }
+
+        Item {
+            Layout.fillHeight: true
         }
     }
 

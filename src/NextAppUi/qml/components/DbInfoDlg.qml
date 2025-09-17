@@ -8,10 +8,10 @@ import nextapp.pb as NextappPb
 
 Dialog {
     id: root
-    width: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.width, 450) : 100
-    height: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.height - 10, 650) : 100
-    x: ApplicationWindow.window ? (ApplicationWindow.window.width - width) / 2 : 0
-    y: ApplicationWindow.window ? (ApplicationWindow.window.height - height) / 2 : 0
+    x: NaCore.isMobile ? 0 : (ApplicationWindow.window.width - width) / 3
+    y: NaCore.isMobile ? 0 : (ApplicationWindow.window.height - height) / 3
+    width: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.width, 300) : 300
+    height: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.height - 10, 650) : 500
     title: qsTr("Database Info")
     property NextappPb.userDataInfo model: NaCore.dbInfo
     standardButtons: Dialog.Close
@@ -23,6 +23,7 @@ Dialog {
         // Make the grid scrollable
         ScrollView {
             id: scroller
+            Layout.margins: 12
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -118,10 +119,14 @@ Dialog {
 
     Popup {
         id: hashPopup
-        modal: false
+        modal: true
         focus: true
         padding: 10
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(root.width - 20, 500)
+        height: Math.min(root.height - 20, 600)
+        x: NaCore.isMobile ? 0 : (root.width - width) / 6
+        y: NaCore.isMobile ? 0 : (root.height - height) / 6
 
         background: Rectangle {
             radius: 6
@@ -140,10 +145,5 @@ Dialog {
                            + "After an import, the hash will always change because the identifiers of all database objects are replaced with new ones.")
         }
 
-        // Position the popup next to the info icon when opened
-        onOpened: {
-            x = hashInfo.mapToItem(null, hashInfo.width/2 - width/2, 0).x
-            y = hashInfo.mapToItem(null, 0, hashInfo.height + 6).y
-        }
     }
 }

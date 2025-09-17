@@ -45,9 +45,9 @@ ScrollView {
 
     GridLayout {
         id: grid
-        width: parent.width
+        width: root.width - 15
         rowSpacing: 4
-        columns: 2
+        columns: width >= 350 ? 2 : 1
 
         Label { text: qsTr("Work Hours")}
 
@@ -110,7 +110,7 @@ ScrollView {
 
         CheckBox {
             id: optInEmail
-            text: qsTr("Opt in to receive information or promotions on email")
+            text: qsTr("Opt in to receive information or\npromotions on email")
         }
 
         Item {

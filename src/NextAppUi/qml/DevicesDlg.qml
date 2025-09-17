@@ -16,10 +16,10 @@ Dialog {
     padding: 10
     margins: 20
     modal: true
-    x: NaCore.isMobile ? 0 : (parent.width - width) / 2
-    y: NaCore.isMobile ? 0 : (parent.height - height) / 2
-    width: Math.min(NaCore.width, 400)
-    height: Math.min(NaCore.height, 600)
+    x: NaCore.isMobile ? 0 : (parent.width - width) / 3
+    y: NaCore.isMobile ? 0 : (parent.height - height) / 3
+    width: NaCore.isMobile ? parent.width : Math.min(parent.width, 700)
+    height: NaCore.isMobile ? parent.height - 10 : Math.min(parent.height - 10, 900)
     standardButtons: Dialog.Close
 
     Rectangle {
