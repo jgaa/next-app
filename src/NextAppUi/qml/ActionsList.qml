@@ -181,6 +181,7 @@ Rectangle {
                 required property string scoreColor
                 required property double score
                 required property string tags
+                required property string categoryColor
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -343,8 +344,8 @@ Rectangle {
                     Rectangle {
                         Layout.preferredWidth: 8
                         Layout.preferredHeight: row.height - 4
-                        color: NaAcModel.valid ? NaAcModel.getColorFromUuid(actionItem.category) : "lightgray"
-                        visible: actionItem.category !== ""
+                        color: actionItem.categoryColor
+                        //visible: actionItem.category !== ""
                     }
 
                     ColumnLayout {

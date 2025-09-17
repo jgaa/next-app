@@ -158,7 +158,8 @@ class ActionsModel : public QAbstractListModel
         OnCalendarRole,
         WorkedOnTodayRole,
         ScoreColorRole,
-        TagsRole
+        TagsRole,
+        CategoryColorRole
     };
 
     enum Shortcuts {

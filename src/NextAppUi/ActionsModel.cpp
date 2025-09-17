@@ -1260,6 +1260,11 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         }
     case TagsRole:
         return tagsToString(action.tags(), true);
+    case CategoryColorRole:
+        if (action.category().isEmpty()) {
+            return "trasparant";
+        }
+        return ActionCategoriesModel::instance().getColorFromUuid(action.category());
     }
 
     return {};
@@ -1332,6 +1337,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[PriorityKindRole] = "priorityKind";
     roles[ScoreColorRole] = "scoreColor";
     roles[TagsRole] = "tags";
+    roles[CategoryColorRole] = "categoryColor";
     return roles;
 }
 

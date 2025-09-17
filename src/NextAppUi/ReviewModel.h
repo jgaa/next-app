@@ -67,7 +67,8 @@ public:
         OnCalendarRole,
         WorkedOnTodayRole,
         ScoreColorRole,
-        TagsRole
+        TagsRole,
+        CategoryColorRole
     };
 
     Q_ENUM(State)
