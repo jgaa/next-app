@@ -888,6 +888,15 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
         co_await deleteWorkSession(ws.at(0).as_string(), rctx);
     }
 
+    // Relink any actions that has this as a parent to this actions parent
+    {
+        const auto ores = co_await rctx.dbh->exec(R"(UPDATE action
+            SET origin = (SELECT origin FROM action WHERE id = ? AND user=?)
+            WHERE origin = ? AND user=?)", uuid, cuser, uuid, cuser);
+        LOG_TRACE_EX(rctx) << "Relinked " << ores.affected_rows() << " actions that had "
+                           << uuid << " as origin";
+    }
+
     // Now, mark the action as deleted
     const auto res = co_await rctx.dbh->exec(R"(UPDATE action SET
         node=NULL,
