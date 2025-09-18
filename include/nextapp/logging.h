@@ -28,8 +28,13 @@ namespace nextapp::grpc {
 class RequestCtx;
 }
 
+namespace nextapp {
+class UserContext;
+}
+
 namespace logfault {
     std::pair<bool /* json */, std::string /* content or json */> toLog(const nextapp::grpc::RequestCtx& ctx, bool json);
+    std::pair<bool /* json */, std::string /* content or json */> toLog(const nextapp::UserContext& uctx, bool json);
 }
 
 #define LOGFAULT_USE_TID_AS_NAME 1
