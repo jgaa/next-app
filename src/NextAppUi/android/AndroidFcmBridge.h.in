@@ -11,6 +11,7 @@ public:
     static AndroidFcmBridge &instance();
 
     QString getToken();
+    QString getPackageId();
     void setToken(const QString &token) {
         if (token_ != token) {
             token_ = token;
@@ -26,6 +27,7 @@ signals:
 
 private:
     QString token_;
+    QString packageId_;
 };
 
 extern "C" {

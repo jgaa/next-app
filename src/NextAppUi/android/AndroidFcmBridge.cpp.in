@@ -23,6 +23,28 @@ QString fetchFcmTokenFromJava() {
     LOG_WARN_N << "Failed to fetch FCM token from Java";
     return {};
 }
+
+QString fetchFcmPackageIdFromJava() {
+// Make sure the JVM is up and the activity is created:
+    QJniEnvironment env;
+    // Call the static Java method you added:
+    QJniObject tokenObj = QJniObject::callStaticObjectMethod(
+        "@PACKAGE_NAME_SLASHES@/MainActivityFcm",  // Java class FQN
+        "getFcmProjectId",                              // method name
+        "()Ljava/lang/String;"                      // JNI signature
+    );
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return {};
+    }
+    if (tokenObj.isValid()){
+        return tokenObj.toString();
+    }
+    LOG_WARN_N << "Failed to fetch FCM ProjectId from Java";
+    return {};
+}
+
 } // ns
 
 AndroidFcmBridge &AndroidFcmBridge::instance() {
@@ -39,6 +61,13 @@ QString AndroidFcmBridge::getToken() {
     return token_;
 }
 
+QString AndroidFcmBridge::getPackageId() {
+    if (packageId_.isEmpty()) {
+        packageId_ = fetchFcmPackageIdFromJava();
+    }
+    return packageId_;
+}
+
 // Called when onNewToken fires
 JNIEXPORT void JNICALL
 Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnNewToken(
@@ -49,8 +78,8 @@ Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnNewToken
     const char *token = env->GetStringUTFChars(jtoken, nullptr);
     QMetaObject::invokeMethod(&AndroidFcmBridge::instance(),
                               [token]() {
-                                  LOG_DEBUG_N << "Token: " <<  token;
-                                  //emit AndroidFcmBridge::instance().tokenRefreshed(QString::fromUtf8(token));
+                                  const auto str_token = QString::fromUtf8(token);
+                                  LOG_DEBUG_N << "Token: " <<  str_token.left(8) << "...";
                                   AndroidFcmBridge::instance().setToken(QString::fromUtf8(token));
                               },
                               Qt::QueuedConnection);

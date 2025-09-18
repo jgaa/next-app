@@ -17,16 +17,22 @@ import org.qtproject.qt.android.bindings.QtActivity;
 import java.io.File;
 import android.net.Uri;
 import androidx.core.content.FileProvider;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.FirebaseOptions;
+
 
 
 public class MainActivityFcm extends MainActivity {
     private static final String TAG = "@PACKAGE_NAME@-MainActivityFcm";
     private static String sFcmToken;
+    private static String sFcmProjectId;
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 1001;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        ensureFirebaseInitializedAndLogProjectInfo();
 
         // This forces Firebase to initialize and call the firebase messaging service.
         FirebaseMessaging.getInstance()
@@ -55,4 +61,60 @@ public class MainActivityFcm extends MainActivity {
         return sFcmToken;
     }
 
+    public static String getFcmProjectId() {
+        return sFcmProjectId;
+    }
+
+    private void ensureFirebaseInitializedAndLogProjectInfo() {
+        // Make sure a default app exists (usually created automatically via google-services.json)
+        FirebaseApp app;
+        try {
+            app = FirebaseApp.getInstance();
+        } catch (IllegalStateException e) {
+            // Fallback: initialize explicitly (rare with proper google-services.json)
+            app = FirebaseApp.initializeApp(this);
+        }
+
+        if (app == null) {
+            Log.e(TAG, "FirebaseApp is null. Is google-services.json included for this package?");
+            return;
+        }
+
+        FirebaseOptions fo = app.getOptions();
+        // These are the key bits to verify your PROD build:
+        // senderId == project number; projectId == human-readable project id.
+        sFcmProjectId     = fo.getProjectId();
+        String senderId   = fo.getGcmSenderId();
+        String appId      = fo.getApplicationId(); // "1:1234567890:android:abcdef..."
+        String apiKey     = fo.getApiKey();
+
+        Log.i(TAG, "Firebase options: " +
+                "projectId=" + sFcmProjectId +
+                ", senderId=" + senderId +
+                ", appId=" + appId +
+                ", apiKeyPresent=" + (apiKey != null && !apiKey.isEmpty()));
+
+        // Optional: also log values generated from google-services.json in resources
+        // (useful to catch flavor/mis-packaging issues)
+        logFirebaseResourceHints();
+    }
+
+    private void logFirebaseResourceHints() {
+        try {
+            String pkg = getPackageName();
+            int idSender = getResources().getIdentifier("gcm_defaultSenderId", "string", pkg);
+            int idProj   = getResources().getIdentifier("project_id", "string", pkg);
+            int idAppId  = getResources().getIdentifier("default_web_client_id", "string", pkg); // sometimes present
+
+            String rSender = (idSender != 0) ? getString(idSender) : "<missing>";
+            String rProj   = (idProj   != 0) ? getString(idProj)   : "<missing>";
+            String rAppId  = (idAppId  != 0) ? getString(idAppId)  : "<missing>";
+
+            Log.i(TAG, "Firebase resources: gcm_defaultSenderId=" + rSender +
+                    ", project_id=" + rProj +
+                    ", default_web_client_id=" + rAppId);
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not read generated Firebase resources", t);
+        }
+    }
 }

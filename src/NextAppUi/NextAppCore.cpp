@@ -139,6 +139,7 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
 
 #ifdef WITH_FCM
     auto &bridge = AndroidFcmBridge::instance();
+    LOG_INFO_N << "FCM package-id is: " << bridge.getPackageId();
     QObject::connect(&bridge, &AndroidFcmBridge::tokenRefreshed,
                      [](const QString &token){
                          LOG_DEBUG_N << "New FCM token:" << token;

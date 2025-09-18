@@ -15,7 +15,7 @@ void logChildItems(string_view name, const QQuickItem *item)
 {
     LOG_DEBUG << "Children of " << name;
     for (auto *child : item->childItems()) {
-        LOG_DEBUG << "  Child of " << item->objectName() << ": " << child->objectName()
+        LOG_TRACE_N << "  Child of " << item->objectName() << ": " << child->objectName()
                   << " enabled=" << child->isEnabled()
                   << " visible=" << child->isVisible()
                   << " x=" << child->x() << " y=" << child->y()
