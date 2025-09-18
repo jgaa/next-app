@@ -1789,7 +1789,8 @@ failed:
     ureq.setWithPush(std::move(fcn_config));
 
     if (fcm_requested_) {
-        LOG_DEBUG_N << "Sending Android FCM token: " << ureq.withPush().token();
+        LOG_DEBUG_N << "Sending Android FCM token: " << ureq.withPush().token().left(8) << "...";
+        LOG_TRACE_N << "Full token: " << ureq.withPush().token();
     }
 #endif
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
