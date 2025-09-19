@@ -405,10 +405,10 @@ int main(int argc, char *argv[])
             QQuickStyle::setStyle(style.data());
         }
 
-        if (!scale.empty()) {
-            LOG_INFO << "Setting UI scale to: " << scale;
-            qputenv("QT_SCALE_FACTOR", scale.data());
-        }
+        // if (!scale.empty()) {
+        //     LOG_INFO << "Setting UI scale to: " << scale;
+        //     qputenv("QT_SCALE_FACTOR", scale.data());
+        // }
     }
 
     // nextapp::pb::Nextapp::Client cli{&app};
