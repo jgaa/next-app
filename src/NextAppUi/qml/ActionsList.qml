@@ -13,7 +13,7 @@ Rectangle {
     id: root
     //property string selectedItemUuid: NaMainTreeModel.selected
     property var priorityColors: ["magenta", "red", "orangered", "orange", "green", "blue", "lightblue", "gray"]
-    property var statusIcons: ["\uf058", "\uf111", "\uf0c8"]
+    property var statusIcons: ["\uf111", "\uf111", "\uf0c8"]
     property alias model: listView.model
     property alias listCtl: listView
     property bool selectFirstOnModelReset: true
@@ -313,15 +313,16 @@ Rectangle {
                     }
 
                     CheckBoxWithFontIcon {
+                        id: doneIcon
                         Layout.alignment: Qt.AlignTop
                         Layout.topMargin: 2
                         Layout.bottomMargin: 2
                         Layout.rightMargin: 6
                         isChecked: done
-                        checkedCode: "\uf058"
+                        checkedCode: "\uf111"
                         uncheckedCode: root.statusIcons[status]
                         checkedColor: "green"
-                        uncheckedColor: "orange"
+                        uncheckedColor: "blue"
                         iconSize: NaCore.isMobile ? 42 : 24
 
                         onClicked: {
@@ -332,7 +333,8 @@ Rectangle {
                             anchors.fill: parent
                             font.family: ce.faSolidName
                             font.styleName: ce.faSolidStyle
-                            text: "\uf06d"
+                            font.pixelSize: doneIcon.iconSize * 0.7
+                            text: "\uf00c"
                             color: scoreColor //root.priorityColors[priority]
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
