@@ -101,7 +101,6 @@ private:
     void onMinuteTimer();
     void updateToday();
     void updateIfPrimary();
-    void updateActionsOnCalendarCache();
     CategoryUseModel::list_t getCategoryUsage();
 
     CategoryUseModel *category_use_model_{};

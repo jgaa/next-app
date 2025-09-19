@@ -64,6 +64,7 @@ private:
     QCoro::Task<bool> loadFromCache() override;
     QCoro::Task<void> setAudioTimers();
     void onAudioEvent();
+    QCoro::Task<void> updateActionsOnCalendarCache();
 
     bool hasItems(const nextapp::pb::Status& status) const noexcept override {
         return status.hasTimeBlocks();
@@ -83,4 +84,7 @@ private:
 
     std::map<QUuid, std::shared_ptr<nextapp::pb::CalendarEvent>> events_;
     std::unique_ptr<AudioEvent> next_event_;
+    QDate current_calendar_date_{QDate::currentDate()};
+    bool is_updating_actions_cache_{false};
+    bool update_actions_cache_pending_{false};
 };

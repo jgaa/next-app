@@ -225,7 +225,6 @@ signals:
     void clickInitiatorChanged();
 
 private:
-
     void setState(State state);
     void resetTomorrowTimer();
     QCoro::Task<void> doDeleteAccount();
