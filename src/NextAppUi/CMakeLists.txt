@@ -413,9 +413,20 @@ if (NOT ANDROID)
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
     # TODO: Get the header only libraries we use from the system or download them
-    set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_88_0"
-        CACHE STRING
-        "Boost location if set manually (required for Android/ QT Creator)")
+    # If NEXTAPP_BOOST_ROOT is already set and non-empty, keep it.
+    if(NOT DEFINED NEXTAPP_BOOST_ROOT OR "${NEXTAPP_BOOST_ROOT}" STREQUAL "")
+      if(DEFINED ENV{NEXTAPP_BOOST_ROOT} AND NOT "$ENV{NEXTAPP_BOOST_ROOT}" STREQUAL "")
+        set(NEXTAPP_BOOST_ROOT "$ENV{NEXTAPP_BOOST_ROOT}")
+      else()
+        set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_88_0")
+      endif()
+    endif()
+
+    if(NOT EXISTS "${NEXTAPP_BOOST_ROOT}/boost")
+      message(FATAL_ERROR
+        "Boost headers not found under '${NEXTAPP_BOOST_ROOT}'. "
+        "Set NEXTAPP_BOOST_ROOT to a dir that contains 'boost/'")
+    endif()
 
     message(STATUS "Using Boost includes from: ${NEXTAPP_BOOST_ROOT}")
 
