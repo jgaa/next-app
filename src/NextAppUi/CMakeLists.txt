@@ -417,7 +417,7 @@ else()
         CACHE STRING
         "Boost location if set manually (required for Android/ QT Creator)")
 
-    echo (STATUS "Using Boost includes from: ${NEXTAPP_BOOST_ROOT}")
+    message(STATUS "Using Boost includes from: ${NEXTAPP_BOOST_ROOT}")
 
     set_target_properties(${PROJECT_NAME} PROPERTIES
         QT_ANDROID_PACKAGE_NAME "${QT_ANDROID_PACKAGE_NAME}"
