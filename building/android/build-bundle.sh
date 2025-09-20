@@ -47,7 +47,7 @@ export SDK_PATH_BASE="${SDK_PATH_BASE:-/var/local/build/android-sdk}"
 if [ -z "$SDK_PATH" ]; then
   export SDK_PATH="${SDK_PATH_BASE}"
 fi
-export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-36}"
+export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-35}"
 ASSETS_PATH="${ASSETS_PATH:-${BUILD_DIR}/assets}"
 
 echo "QT_VERSION is ${QT_VERSION}"
