@@ -60,6 +60,7 @@ echo "QT_INSTALL_DIR is ${QT_INSTALL_DIR}"
 echo "ASSETS_PATH is: ${ASSETS_PATH}"
 echo "GOOGLE_SERVICES_PATH is: ${GOOGLE_SERVICES_PATH}"
 echo "KEYSTORE_PATH is: ${KEYSTORE_PATH}"
+echo "BOOST_INSTALL_DIR is: ${BOOST_INSTALL_DIR}"
 
 if [ ! -d "${QT_INSTALL_DIR}" ]; then
   echo "==> Fetching Qt ${QT_VERSION}"
