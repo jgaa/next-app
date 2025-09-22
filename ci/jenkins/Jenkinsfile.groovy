@@ -95,9 +95,9 @@ pipeline {
                 // Qt settings
                 KEY_ALIAS         = "eu.lastviking.app"
                 BUILD_DIR         = "${WORKSPACE}/build"
-                SDK_PATH_BASE     = "${WORKSPACE}/android-sdk"
-                QT_INSTALL_DIR    = "${WORKSPACE}/qt-sdk"
-                BOOST_INSTALL_DIR = "${WORKSPACE}/boost"
+                SDK_PATH_BASE     = "${HOME}/android-sdk"
+                QT_INSTALL_DIR    = "${HOME}/qt-sdk"
+                BOOST_INSTALL_DIR = "${HOME}/boost"
             }
 
             steps {
