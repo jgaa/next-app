@@ -23,6 +23,7 @@ class NextAppCore : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
+public:
 
     Q_PROPERTY(QString qtVersion READ qtVersion CONSTANT)
     Q_PROPERTY(bool isMobile READ isMobile CONSTANT)
@@ -34,11 +35,22 @@ class NextAppCore : public QObject
     Q_PROPERTY(bool dragEnabled READ dragEnabled WRITE setDragEnabled NOTIFY dragEnabledChanged)
     Q_PROPERTY(bool lookupRelated MEMBER lookupRelated_ WRITE setLookupRelated  NOTIFY lookupRelatedChanged)
     Q_PROPERTY(nextapp::pb::UserDataInfo dbInfo READ getDbInfo NOTIFY dbInfoChanged)
+    Q_PROPERTY(QModelIndex selectNode MEMBER selectNode_ NOTIFY selectNodeChanged)
+    Q_PROPERTY(QString selectAction MEMBER selectAction_ NOTIFY selectActionChanged)
 
+    enum class ClickInitiator {
+        NONE,
+        TREE,
+        ACTIONS,
+        SESSIONS
+    };
+
+    Q_ENUM(ClickInitiator)
+
+    Q_PROPERTY(ClickInitiator clickInitiator MEMBER clickInitiator_ WRITE setClickInitiator NOTIFY selectNodeChanged)
 
     // True if the app was build with the CMAKE option DEVEL_SETTINGS enabled
     Q_PROPERTY(bool develBuild READ isDevelBuild CONSTANT)
-public:
     enum class State {
         STARTING_UP,
         ACTIVE,
@@ -84,6 +96,8 @@ public:
     Q_INVOKABLE void deleteAccount();
     Q_INVOKABLE void deleteLocalData();
     Q_INVOKABLE void factoryReset();
+    Q_INVOKABLE void currentActionSelected(const QString& uuid);
+    Q_INVOKABLE void setSelectAction(const QString& uuid);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseHourMin(const QString& str);
@@ -181,6 +195,7 @@ public:
     static void runOrQueueFunction(std::function<void()> fn);
 
     void setLookupRelated(bool lookupRelated);
+    void setClickInitiator(ClickInitiator initiator);
 
     nextapp::pb::UserDataInfo getDbInfo();
 
@@ -205,15 +220,18 @@ signals:
     void importEvent(const QUrl& url);
     void lookupRelatedChanged();
     void dbInfoChanged();
+    void selectNodeChanged();
+    void selectActionChanged();
+    void clickInitiatorChanged();
 
 private:
-
     void setState(State state);
     void resetTomorrowTimer();
     QCoro::Task<void> doDeleteAccount();
     QCoro::Task<void> doFactoryReset();
     void emitSettingsChanged();
     QCoro::Task<void> refreshDbData();
+    void selectNode(const QString& uuid);
 
     static NextAppCore *instance_;
     State state_{State::STARTING_UP};
@@ -236,7 +254,10 @@ private:
 #endif
     QQmlApplicationEngine *engine_{};
     static std::deque<std::function<void()>> pre_instance_callbacks_;
-    bool lookupRelated_{true};
+    bool lookupRelated_{true}; // magnet
     nextapp::pb::UserDataInfo db_info_cached_;
     time_t db_info_last_update_{0};
+    QModelIndex selectNode_;
+    QString selectAction_;
+    ClickInitiator clickInitiator_{ClickInitiator::NONE};
 };

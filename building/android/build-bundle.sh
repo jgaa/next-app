@@ -11,7 +11,7 @@ BOOST_INSTALL_DIR="${BOOST_INSTALL_DIR:-/var/local/build/boost_1.88}"
 
 if [ ! -d "${BOOST_INSTALL_DIR}" ]; then
   BOOST_VERSION_UNDERSCORE=1_88_0
-  echo ">>> Bootstrapping Boost ${BOOST_VERSION} into ${BOOST_INSTALL_DIR}"
+  echo ">>> Bootstrapping Boost ${BOOST_VERSION_UNDERSCORE} into ${BOOST_INSTALL_DIR}"
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' EXIT
 
@@ -47,8 +47,7 @@ export SDK_PATH_BASE="${SDK_PATH_BASE:-/var/local/build/android-sdk}"
 if [ -z "$SDK_PATH" ]; then
   export SDK_PATH="${SDK_PATH_BASE}"
 fi
-export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-29}"
-APK_DST="${APK_DST:-${BUILD_DIR}/apk}"
+export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-35}"
 ASSETS_PATH="${ASSETS_PATH:-${BUILD_DIR}/assets}"
 
 echo "QT_VERSION is ${QT_VERSION}"
@@ -58,8 +57,10 @@ echo "SDK_PATH is: $SDK_PATH"
 echo "SOURCE_DIR is: $SOURCE_DIR"
 echo "BUILD_DIR is: $BUILD_DIR"
 echo "QT_INSTALL_DIR is ${QT_INSTALL_DIR}"
-echo "APK_DST is: $APK_DST"
 echo "ASSETS_PATH is: ${ASSETS_PATH}"
+echo "GOOGLE_SERVICES_PATH is: ${GOOGLE_SERVICES_PATH}"
+echo "KEYSTORE_PATH is: ${KEYSTORE_PATH}"
+echo "BOOST_INSTALL_DIR is: ${BOOST_INSTALL_DIR}"
 
 if [ ! -d "${QT_INSTALL_DIR}" ]; then
   echo "==> Fetching Qt ${QT_VERSION}"
@@ -108,7 +109,8 @@ sdkmanager --sdk_root="$SDK_PATH" \
   "ndk;$NDK_VERSION"
 
 # point to the just-installed NDK
-export ANDROID_NDK_ROOT=$(ls -d "$SDK_PATH/ndk/"* | tail -n1)
+#export ANDROID_NDK_ROOT=$(ls -d "$SDK_PATH/ndk/"* | tail -n1)
+export ANDROID_NDK_ROOT="$SDK_PATH/ndk/$NDK_VERSION"
 
 echo "ANDROID_SDK_ROOT is: $ANDROID_SDK_ROOT"
 echo "ANDROID_NDK_ROOT is: $ANDROID_NDK_ROOT"
@@ -135,125 +137,84 @@ export ANDROID_HOME="$SDK_PATH"
 export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
 export ANDROID_NDK="$ANDROID_NDK_ROOT"
 export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
-
+export NEXTAPP_BOOST_ROOT="${BOOST_INSTALL_DIR}"
+ABI=arm64_v8a
+ANDROID_ABI=arm64-v8a
 
 echo "ANDROID_SDK_ROOT is: $ANDROID_SDK_ROOT"
 echo "ANDROID_NDK_ROOT is: $ANDROID_NDK_ROOT"
 echo "ANDROID_HOME is: $ANDROID_HOME"
 echo "ANDROID_NDK_HOME is: $ANDROID_NDK_HOME"
 echo "ANDROID_NDK is: $ANDROID_NDK"
+echo "ABI is: $ABI"
+echo "ANDROID_ABI is: $ANDROID_ABI"
+echo "NEXTAPP_BOOST_ROOT is: $NEXTAPP_BOOST_ROOT"
 
-AAB_BUILD_PATH=${BUILD_DIR}/aab_bld
-mkdir -p ${AAB_BUILD_PATH}
+CMAKEBUILD_DIR=${BUILD_DIR}/bld
+mkdir -p ${CMAKEBUILD_DIR}
+pushd ${CMAKEBUILD_DIR}
 
-for i in "${!ABIS[@]}"; do
-  ABI="${ABIS[$i]}"
-  ANDROID_ABI="${ANDROID_ABIS[$i]}"
-  ARCH_BUILD_DIR="${BUILD_DIR}/nextapp_bld_${ABI}"
+echo "Configuring NextApp for Android, apk and aab, all abi's ..."
 
-  echo ===================================================================================================
-  echo "Building ABI='${ABI}' ANDROID_ABI='${ANDROID_ABI}' in '${ARCH_BUILD_DIR}'"
-  echo ===================================================================================================
-  mkdir -p ${ARCH_BUILD_DIR}
-  pushd ${ARCH_BUILD_DIR}
-
-cmake -S ${SOURCE_DIR} \
-  -B ${ARCH_BUILD_DIR} \
-  -DCMAKE_BUILD_TYPE:STRING=Release \
-  -DQT_USE_TARGET_ANDROID_BUILD_DIR:BOOL=ON \
-  -DANDROID_STL:STRING=c++_shared \
-  -DANDROID_PLATFORM:STRING=${ANDROID_PLATFORM} \
-  -DQT_QMAKE_EXECUTABLE:FILEPATH=${QT_INSTALL_DIR}/android_${ABI}/bin/qmake \
-  -DCMAKE_CXX_COMPILER:FILEPATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ \
-  -DCMAKE_C_COMPILER:FILEPATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
-  -DANDROID_NDK:PATH=${ANDROID_NDK} \
+cmake \
+  -S ${SOURCE_DIR} \
+  -B ${CMAKEBUILD_DIR} \
+  -DQT_QMAKE_EXECUTABLE:FILEPATH=${QT_INSTALL_DIR}/gcc_64/bin/qmake \
   -DQT_HOST_PATH:PATH=${QT_INSTALL_DIR}/gcc_64 \
-  -DANDROID_ABI:STRING=${ANDROID_ABI} \
-  -DCMAKE_PREFIX_PATH:PATH=${QT_INSTALL_DIR}/android_${ABI} \
-  -DQT_NO_GLOBAL_APK_TARGET_PART_OF_ALL:BOOL=OFF \
   -DCMAKE_GENERATOR:STRING=Ninja \
-  -DCMAKE_FIND_ROOT_PATH:PATH=${QT_INSTALL_DIR}/android_${ABI} \
   -DCMAKE_COLOR_DIAGNOSTICS:BOOL=ON \
-  -DCMAKE_CXX_FLAGS_INIT:STRING= \
+  -DQT_NO_GLOBAL_APK_TARGET_PART_OF_ALL:BOOL=ON \
+  -DCMAKE_PREFIX_PATH:PATH=${QT_INSTALL_DIR}/android_${ABI} \
+  -DQT_USE_TARGET_ANDROID_BUILD_DIR:BOOL=ON \
   -DANDROID_USE_LEGACY_TOOLCHAIN_FILE:BOOL=OFF \
-  -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${ANDROID_NDK}/build/cmake/android.toolchain.cmake \
   -DANDROID_SDK_ROOT:PATH=${ANDROID_SDK_ROOT} \
-  -DCMAKE_SYSTEM_NAME=Android \
-  -DNEXTAPP_BOOST_ROOT=${BOOST_INSTALL_DIR} \
-  -DNEXTAPP_WITH_FCM=ON
+  -DCMAKE_CXX_COMPILER:FILEPATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ \
+  -DANDROID_NDK:PATH=${ANDROID_NDK} \
+  -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${ANDROID_NDK}/build/cmake/android.toolchain.cmake \
+  -DCMAKE_BUILD_TYPE:STRING=Release \
+  -DCMAKE_CXX_FLAGS_INIT:STRING= \
+  -DANDROID_PLATFORM:STRING=${ANDROID_PLATFORM} \
+  -DANDROID_STL:STRING=c++_shared \
+  -DCMAKE_FIND_ROOT_PATH:PATH=${QT_INSTALL_DIR}/android_${ABI} \
+  -DCMAKE_C_COMPILER:FILEPATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
+  -DANDROID_ABI:STRING=${ANDROID_ABI} \
+  -DNEXTAPP_WITH_FCM=ON \
+  '-DQT_ANDROID_ABIS:STRING=armeabi-v7a;arm64-v8a;x86;x86_64' \
+  -DQT_ANDROID_BUILD_ALL_ABIS:BOOL=ON
 
-  # —————————————————————————————
-  # Build & install
-  # —————————————————————————————
-  echo "Building Nextapp for Android..."
-  cmake --build . --target apk --config Release --parallel
+app_version=$(cat VERSION.txt)
+echo "App version: ${app_version}"
 
-  app_version=$(cat VERSION.txt)
+echo "Building NextApp for Android, apk and aab, all abi's ..."
+cmake --build ${CMAKEBUILD_DIR} --target all
 
-  # —————————————————————————————
-  # Locate & sign the APK
-  # —————————————————————————————
-  APK=$(find -name "*release-unsigned.apk" | head -n1)
-  if [ -z "$APK" ]; then
-    echo "[ERROR] No APK found in $INSTALL_DIR/$ABI"
-    exit 1
-  fi
+DEPLOY_CONFIG=`find src -name '*-deployment-settings.json'`
+echo "Deploy config: ${DEPLOY_CONFIG}"
 
-  NEXTAPP_APK=${ASSETS_PATH}/nextapp-${app_version}_${ANDROID_ABI}.apk
-  cp -v ${APK} ${NEXTAPP_APK}
+echo 'Preparing and signing Android App Bundle (.aab) ...'
+${QT_INSTALL_DIR}/gcc_64/bin/androiddeployqt \
+  --input ${DEPLOY_CONFIG} \
+  --output ${CMAKEBUILD_DIR}/src/NextAppUi/android-build-appNextAppUi \
+  --android-platform ${ANDROID_PLATFORM} \
+  --gradle --aab --jarsigner --release \
+  --sign ${KEYSTORE_PATH} eu.lastviking.app --storepass ${KEYSTORE_PASSWORD} --no-gdbserver
 
-  echo "Signing ${NEXTAPP_APK} ..."
+AAB_FILE=`find src/NextAppUi/android-build-appNextAppUi  -name '*.aab' | grep output | grep release`
+APK_FILE=`find src/NextAppUi/android-build-appNextAppUi  -name '*.apk' | grep output | grep release`
 
-  ${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner sign \
-    --ks ${KEYSTORE_PATH} \
-    --ks-key-alias ${KEY_ALIAS} \
-    --ks-pass pass:${KEYSTORE_PASSWORD} \
-    ${NEXTAPP_APK}
+echo "AAB file: ${AAB_FILE}"
+ls -l ${AAB_FILE}
 
-  # echo "✔ Successfully built & signed: ${NEXTAPP_APK}"
+echo "APK file: ${APK_FILE}"
+ls -l ${APK_FILE}
 
-  gradle_dir=$(find -name gradlew | grep NextApp | xargs -r dirname)
+AAB_DST=${ASSETS_PATH}/nextapp-${app_version}.aab
+APK_DST=${ASSETS_PATH}/nextapp-${app_version}_all.apk
 
-  if [[ -z "$gradle_dir" ]]; then
-    echo "ERROR: no gradlew found under $(pwd)" >&2
-    exit 1
-  fi
-
-  echo "Copying build directory to merged aab dir..."
-  cp -afrv $gradle_dir/. ${AAB_BUILD_PATH}/
-
-  popd
-done
-
-echo "Building Android App Bundle (.aab) ..."
-PATH="${QT_INSTALL_DIR}/gcc_64/bin:${PATH}"
-
-pushd "${AAB_BUILD_PATH}"
-
-grep -q '^qtTargetAbiList=' "gradle.properties" \
-  && sed -i 's/^qtTargetAbiList=.*/qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64/' "gradle.properties" \
-  || echo 'qtTargetAbiList=armeabi-v7a,arm64-v8a,x86,x86_64' >> "gradle.properties"
-
-./gradlew bundleRelease
-
-aab_dst=${ASSETS_PATH}/nextapp-${app_version}.aab
-
-cp -v $(find -type f -name '*.aab' | grep outputs) ${aab_dst}
-
-popd
-
-echo "Signing ${aab_dst} with keystore ${KEYSTORE_PATH}..."
-jarsigner \
-  -sigalg SHA256withRSA \
-  -digestalg SHA-256 \
-  -keystore "${KEYSTORE_PATH}" \
-  -storepass "${KEYSTORE_PASSWORD}" \
-  -tsa http://timestamp.digicert.com \
-  "${aab_dst}" \
-  "${KEY_ALIAS}"
-
-  # (Optional) Verify the signature:
-  jarsigner -verify -certs "${aab_dst}"
+echo "Copying AAB to ${AAB_DST}"
+cp -v "${AAB_FILE}" "${AAB_DST}"
+echo "Copying APK to ${APK_DST}"
+cp -v "${APK_FILE}" "${APK_DST}"
 
 echo "✔ AAB built and stored in ${aab_dst}"
 

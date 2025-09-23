@@ -24,6 +24,7 @@ Rectangle {
             Layout.fillWidth: true
             id: workSessionList
             model: NaWorkSessionsModel
+            enableSelectAction: true
         }
 
         // Right buttons

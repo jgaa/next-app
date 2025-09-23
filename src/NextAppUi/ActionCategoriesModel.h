@@ -20,6 +20,7 @@ class ActionCategoriesModel : public QAbstractListModel
         ColorRole,
         DescrRole,
         IdRole,
+        ValidRole
     };
 
     Q_PROPERTY(bool valid READ valid NOTIFY validChanged FINAL)
@@ -35,6 +36,7 @@ public:
     Q_INVOKABLE QString getName(const QString& id);
     Q_INVOKABLE int getIndexByUuid(const QString& id);
     Q_INVOKABLE QString getColorFromUuid(const QString& id);
+    Q_INVOKABLE bool isValid(int row);
 
     const nextapp::pb::ActionCategory& getFromUuid(const QString& uuid);
 
@@ -82,4 +84,5 @@ private:
     QList<nextapp::pb::ActionCategory> action_categories_;
     std::set<QString> deleted_entries_;
     static ActionCategoriesModel *instance_;
+    QString none_;
 };

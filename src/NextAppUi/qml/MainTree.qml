@@ -15,6 +15,9 @@ Rectangle {
     //anchors.fill: parent
     enabled: NaComm.connected && NaMainTreeModel.useRoot
 
+    property int iconSize: NaCore.isMobile ? 32 : 16
+    property int iconFontSize: NaCore.isMobile ? 28 : 16
+
     DisabledDimmer {}
 
     //property alias currentIndex : treeView.selectionModel.currentIndex
@@ -69,11 +72,45 @@ Rectangle {
                     }
                 }
 
-                onVisibleChanged: {
-                    if (visible) {
-                        console.log("TreeView visible")
-                        treeView.expandRecursively(-1, 2)
+                Connections {
+                    target: NaCore
+
+                    function onSelectNodeChanged() {
+                        if (NaCore.clickInitiator === NaCore.ClickInitiator.TREE)
+                            return;
+
+                        const idx = NaCore.selectNode;
+                        if (!idx || !idx.valid)
+                            return;
+
+                        treeView.expandToIndex(idx);
+                        treeView.forceLayout();
+
+                        const r = treeView.rowAtIndex(idx);
+                        if (r >= 0) {
+                            treeView.positionViewAtRow(r, Qt.AlignVCenter);
+                            // Optional: keep keyboard focus/current-row in sync
+                            //treeView.currentRow = r;
+                        }
+
+                        // 4) Your existing app-side selection
+                        const uuid = NaMainTreeModel.uuidFromIndex(idx);
+                        root.setSelection(uuid);
                     }
+                }
+
+                function expandNow() {
+                    treeView.expandRecursively(-1, 2)
+                }
+
+                // fire once the item is actually in a window
+                onWindowChanged: if (window) Qt.callLater(() => Qt.callLater(expandNow))
+
+                // if model resets later (common with async models), expand again
+                Connections {
+                    target: NaMainTreeModel
+                    function onModelReset()  { Qt.callLater(expandNow) }
+                    function onRowsInserted() { Qt.callLater(expandNow) }
                 }
 
                 ScrollBar.vertical: ScrollBar {
@@ -91,7 +128,7 @@ Rectangle {
                     id: treeDelegate
                     indentation: 12
                     implicitWidth: treeView.width - MaterialDesignStyling.scrollBarWidth
-                    implicitHeight: 25
+                    implicitHeight: root.iconSize + 4
 
                     required property int index
                     required property string name
@@ -105,7 +142,7 @@ Rectangle {
                         color: MaterialDesignStyling.onSurfaceVariant
                         font.family: ce.faSolidName
                         font.styleName: ce.faSolidStyle
-                        font.pointSize: 14
+                        font.pointSize: root.iconFontSize
                         text: treeDelegate.hasChildren
                               ? treeDelegate.expanded ? "\uf0d7" : "\uf0da" : ""
                     }
@@ -114,6 +151,7 @@ Rectangle {
                         target: indicator
                         acceptedButtons: Qt.LeftButton
                         onSingleTapped: (eventPoint, button) => {
+                            NaCore.clickInitiator = NaCore.ClickInitiator.TREE
                             const exclude = eventPoint.pressPosition.x > indicator.x + 40
                             console.log("indicator tapped, indicator.x ", indicator.x, " exclude ", exclude )
                             if (!exclude) {
@@ -132,16 +170,16 @@ Rectangle {
 
                         Item {
                             Layout.leftMargin: 10
-                            Layout.preferredHeight: 16
-                            Layout.preferredWidth: 20
+                            Layout.preferredHeight: root.iconSize
+                            Layout.preferredWidth: root.iconSize + 4
 
                             Image {
                                 id: kindIcon
-                                Layout.preferredWidth: 16
+                                Layout.preferredWidth: root.iconSize
                                 Layout.fillWidth: false
                                 source:  "../icons/" + treeDelegate.kind + ".svg"
-                                sourceSize.width: 16
-                                sourceSize.height: 16
+                                sourceSize.width: root.iconFontSize
+                                sourceSize.height: root.iconFontSize
                                 fillMode: Image.PreserveAspectFit
 
                                 Layout.alignment: Qt.AlignLeft

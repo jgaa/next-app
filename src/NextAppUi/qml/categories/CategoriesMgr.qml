@@ -9,10 +9,10 @@ import Nextapp.Models
 
 Dialog {
     id: root
-    x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
-    y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
-    width: Math.min(600, NaCore.width, Screen.width)
-    height: Math.min(800, NaCore.height - 100, Screen.height)
+    x: NaCore.isMobile ? 0 : (parent.width - width) / 3
+    y: NaCore.isMobile ? 0 : (parent.height - height) / 3
+    width: NaCore.isMobile ? parent.width : Math.min(parent.width, 700)
+    height: NaCore.isMobile ? parent.height : Math.min(parent.height - 10, 900)
     visible: true
     standardButtons: Dialog.Close
     property font headerFont: Qt.font({pixelSize: 18, bold: true})
@@ -122,7 +122,13 @@ Dialog {
                     TapHandler {
 
                         onTapped: {
-                            selectionModel.select(listCtl.model.index(index, 0), ItemSelectionModel.Select | ItemSelectionModel.Current)
+                            if (listCtl.model.isValid(index)) {
+                                selectionModel.select(listCtl.model.index(index, 0), ItemSelectionModel.Select | ItemSelectionModel.Current)
+                            } else {
+                                // unselect
+                                selectionModel.clear();
+                            }
+
                             // console.log("selected")
                         }
 

@@ -158,7 +158,9 @@ class ActionsModel : public QAbstractListModel
         OnCalendarRole,
         WorkedOnTodayRole,
         ScoreColorRole,
-        TagsRole
+        TagsRole,
+        CategoryColorRole,
+        StatusColor
     };
 
     enum Shortcuts {
@@ -255,6 +257,7 @@ public:
     Q_INVOKABLE void batchChangePriority(int priority, const QStringList& actions);
     Q_INVOKABLE void batchChangeDifficulty(int difficulty, const QStringList& actions);
     Q_INVOKABLE void batchDelete(const QStringList& actions);
+    Q_INVOKABLE int indexOfAction(const QString& uuid) const noexcept;
     static Q_INVOKABLE nextapp::pb::UrgencyImportance setUrgencyImportance(double urgency, double importance);
     static Q_INVOKABLE QStringList tagsToList(const QString& tags);
     static Q_INVOKABLE QString tagsToString(const QStringList& tags, bool addHash);
@@ -290,6 +293,43 @@ public:
     QHash<int, QByteArray> roleNames() const override;
     void fetchMore(const QModelIndex &parent) override;
     bool canFetchMore(const QModelIndex &parent) const override;
+
+    template <typename T>
+    static QString getStatusColor(const T& a) {
+
+        QString color = "gray";
+        if (a.hasDue()) {
+            const auto& d = a.due();
+            const auto now = time({});
+            if (d.hasStart()) {
+                if (d.start() > now) {
+                    return color;
+                }
+            }
+            if (d.hasDue()) {
+                const auto due = d.due();
+                if (due < now) {
+                    color = "red";
+                } else {
+                    auto days = (due - now) / 86400;
+                    if (days <= 1) {
+                        color = "darkorange";
+                    } else if (days <= 3) {
+                        color = "gold";
+                    } else if (days <= 7) {
+                        color = "yellow";
+                    } else if (days <= 14) {
+                        color = "lightblue";
+                    } else if (days <= 30) {
+                        color = "royalblue";
+                    } else {
+                        color = "blue";
+                    }
+                }
+            }
+        }
+        return color;
+    }
 
 signals:
     void modeChanged();

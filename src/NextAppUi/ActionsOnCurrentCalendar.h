@@ -5,7 +5,7 @@
 
 #include <QObject>
 
-// Create a concept ot any range of QUuid
+// Create a concept for any range of QUuid
 template <typename T>
 concept QUuidRange = requires(T t) {
     { *std::begin(t) } -> std::convertible_to<QUuid>;

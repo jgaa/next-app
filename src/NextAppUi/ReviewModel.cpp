@@ -11,7 +11,8 @@
 #include "ActionsModel.h"
 #include "ActionsOnCurrentCalendar.h"
 #include "ActionsWorkedOnTodayCache.h"
-
+#include "ActionCategoriesModel.h"
+#include "ActionsModel.h"
 
 #include "util.h"
 #include "logging.h"
@@ -141,6 +142,11 @@ void ReviewModel::toggleReviewed(const QString &uuid)
     }
 }
 
+// int ReviewModel::indexOfAction(const QString &uuid) const noexcept
+// {
+//     return findCurrentRow(actions_, uuid);
+// }
+
 int ReviewModel::rowCount(const QModelIndex &parent) const
 {
     if (isOk()) {
@@ -250,6 +256,13 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
     }
     case TagsRole:
         return ActionsModel::tagsToString(action.tags(), true);
+    case CategoryColorRole:
+        if (action.category().isEmpty()) {
+            return "trasparant";
+        }
+        return ActionCategoriesModel::instance().getColorFromUuid(action.category());
+    case StatusColor:
+        return ActionsModel::getStatusColor(action);
     }
     return {};
 }
@@ -280,6 +293,8 @@ QHash<int, QByteArray> ReviewModel::roleNames() const
     roles[ScoreRole] = "score";
     roles[ScoreColorRole] = "scoreColor";
     roles[TagsRole] = "tags";
+    roles[CategoryColorRole] = "categoryColor";
+    roles[StatusColor] = "statusColor";
     return roles;
 }
 

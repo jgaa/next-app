@@ -8,7 +8,24 @@
 #include "nextapp/errors.h"
 #include "grpc/grpc_security_constants.h"
 
+#include "nextapp/logging.h"
+
 using namespace std;
+
+namespace logfault {
+std::pair<bool /* json */, std::string /* content or json */> toLog(const nextapp::UserContext& uctx, bool json) {
+    if (json) {
+        return make_pair(true, format(R"("user":"{}", "tenant":"{}")",
+                                      uctx.userUuid(),
+                                      uctx.tenantUuid()));
+    }
+
+    return make_pair(false, format("UserContext{{user={}, tenant={}}}",
+                                   uctx.userUuid(),
+                                   uctx.tenantUuid()));
+}
+
+}
 
 namespace nextapp {
 
@@ -182,7 +199,7 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
     try {
         if (settings_.timezone().empty()) [[unlikely]] {
             tz_ = std::chrono::current_zone();
-            LOG_WARN << "User has no time-zone set. Using " << tz_->name() << ".";
+            LOG_WARN_N << "User " << userUuid << " has no time-zone set. Using " << tz_->name() << ".";
         } else {
             tz_ = std::chrono::locate_zone(settings_.timezone());
         }

@@ -30,7 +30,7 @@ Rectangle {
     Connections {
         target: NaMainTreeModel
         function onSelectedChanged() {
-            if (root.visible) {
+            if (root.visible && NaCore.clickInitiator != NaCore.ClickInitiator.ACTIONS) {
                 //console.log("ActionsListView: Tree selection changed to", NaMainTreeModel.selected)
                 if (NaMainTreeModel.selected != ""
                         && NaActionsModel.mode !== NaActionsModel.FW_SELECTED_NODE

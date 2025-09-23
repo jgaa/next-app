@@ -183,7 +183,11 @@ int main(int argc, char *argv[])
     //qRegisterProtobufTypes();
 
 #ifdef __ANDROID__
+#ifdef _DEBUG
+    nextapp::logging::initAndroidLogging(logfault::LogLevel::TRACE);
+#else
     nextapp::logging::initAndroidLogging(logfault::LogLevel::DEBUGGING);
+#endif
     // Check it it's a service
 
     for(auto i = 0; i < argc; ++i) {
@@ -401,10 +405,10 @@ int main(int argc, char *argv[])
             QQuickStyle::setStyle(style.data());
         }
 
-        if (!scale.empty()) {
-            LOG_INFO << "Setting UI scale to: " << scale;
-            qputenv("QT_SCALE_FACTOR", scale.data());
-        }
+        // if (!scale.empty()) {
+        //     LOG_INFO << "Setting UI scale to: " << scale;
+        //     qputenv("QT_SCALE_FACTOR", scale.data());
+        // }
     }
 
     // nextapp::pb::Nextapp::Client cli{&app};

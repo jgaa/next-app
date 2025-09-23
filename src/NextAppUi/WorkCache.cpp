@@ -401,11 +401,14 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
 
     const auto orig_start = work.start() / 60;
     const auto orig_end = work.hasEnd() ? work.end() / 60 : 0;
-    const auto orig_duration = work.duration() / 60;
-    const auto orig_paused = work.paused() / 60;
+    //const auto orig_duration = work.duration() / 60;
+    //const auto orig_paused = work.paused() / 60;
     const auto orig_state = work.state();
     const auto orig_name = work.name();
     const auto full_orig_duration = work.duration();
+
+    const QString str_duration = NextAppCore::toTime(work.duration());
+    const QString str_paused = NextAppCore::toTime(work.paused());
 
     work.setPaused(0);
     work.setDuration(0);
@@ -521,13 +524,12 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
     Outcome outcome;
     outcome.start = orig_start != (work.start() / 60);
     outcome.end = orig_end != (work.hasEnd() ? work.end() / 60 : 0);
-    outcome.duration = orig_duration != (work.duration() / 60);
-    outcome.paused= orig_paused != (work.paused() / 60);
+    outcome.duration = str_duration != NextAppCore::toTime(work.duration());
+    outcome.paused = str_paused != NextAppCore::toTime(work.paused());
     outcome.name = orig_name != work.name();
 
     LOG_TRACE << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
               << work.duration()
-              << "(" << orig_duration << "!=" << (work.duration() / 60) << ")"
               << " outcome.duration= " << outcome.duration;
 
     return outcome;

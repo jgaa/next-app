@@ -1,4 +1,5 @@
 #include <memory>
+#include <cassert>
 
 #include <QDir>
 #include <QProtobufJsonSerializer>
@@ -23,6 +24,7 @@
 
 #ifdef __ANDROID__
 #include "AndroidHandlers.h"
+#include "JniGuard.h"
 #endif
 
 using namespace std;
@@ -33,29 +35,45 @@ namespace {
 
 void sharePrivateFile(const QString &filePath, const QString &mimeType)
 {
+#ifdef NEXTAPP_USE_JNI
     LOG_DEBUG_N << "Sharing file: " << filePath << " with MIME type: " << mimeType;
     // Grab your QtActivity instance
     QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    assert(activity.isValid());
     // Call your Java: void shareFile(String path, String mimeType)
+    nextapp::android::requireInstanceMethod(activity.object<jobject>(),
+                          "shareFile",
+                          "(Ljava/lang/String;Ljava/lang/String;)V");
     activity.callMethod<void>(
         "shareFile",
         // no signature string here: Qt6 will infer "(Ljava/lang/String;Ljava/lang/String;)V"
         QJniObject::fromString(filePath).object<jstring>(),
         QJniObject::fromString(mimeType).object<jstring>()
         );
+#else
+    LOG_WARN_N << "JNI is disabled. See NEXTAPP_USE_JNI cmake option.";
+#endif
 }
 
 // Likewise, to pop up “Open with…”
 void viewPrivateFile(const QString &filePath, const QString &mimeType)
 {
+#ifdef NEXTAPP_USE_JNI
     LOG_DEBUG_N << "Viewing file: " << filePath << " with MIME type: " << mimeType;
     QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    assert(activity.isValid());
+    nextapp::android::requireInstanceMethod(activity.object<jobject>(),
+                          "viewFile",
+                          "(Ljava/lang/String;Ljava/lang/String;)V");
     // Call your Java: void viewFile(String path, String mimeType)
     activity.callMethod<void>(
         "viewFile",
         QJniObject::fromString(filePath).object<jstring>(),
         QJniObject::fromString(mimeType).object<jstring>()
         );
+#else
+    LOG_WARN_N << "JNI is disabled. See NEXTAPP_USE_JNI cmake option.";
+#endif
 }
 
 #endif

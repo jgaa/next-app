@@ -3,6 +3,7 @@
 
 #include <QProtobufSerializer>
 #include "CalendarCache.h"
+#include "ActionsOnCurrentCalendar.h"
 
 using namespace std;
 
@@ -45,6 +46,18 @@ CalendarCache::CalendarCache() {
     connect(NextAppCore::instance(), &NextAppCore::currentDateChanged, this, [this]{
         setAudioTimers();
     });
+
+    connect(NextAppCore::instance(), &NextAppCore::propertyChanged, this, [this](const QString& name){
+        if (name == "primaryForActionList") {
+            auto new_date = NextAppCore::instance()->getProperty(name).toDate();
+            if (new_date != current_calendar_date_) {
+                LOG_TRACE_N << "CalendarCache: primaryForActionList changed from "
+                    << current_calendar_date_.toString() << " to " << new_date.toString();
+                current_calendar_date_ = new_date;
+                updateActionsOnCalendarCache();
+            }
+        }
+    });
 }
 
 CalendarCache *CalendarCache::instance() noexcept
@@ -58,6 +71,7 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
     const auto op = update->op();
 
     bool need_to_update_alarms = false;
+    bool need_to_update_actions_on_calendar = false;
     const auto todays_date = QDate::currentDate();
 
     if (update->hasCalendarEvents()) {
@@ -68,6 +82,9 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
             const bool is_relevant_for_audio =
                 todays_date == QDateTime::fromSecsSinceEpoch(ce.timeBlock().timeSpan().start()).date()
                                                || todays_date == QDateTime::fromSecsSinceEpoch(ce.timeBlock().timeSpan().end()).date();
+            const bool is_relevant_for_actions =
+                current_calendar_date_ == QDateTime::fromSecsSinceEpoch(ce.timeBlock().timeSpan().start()).date()
+                                               || current_calendar_date_ == QDateTime::fromSecsSinceEpoch(ce.timeBlock().timeSpan().end()).date();
 
             const QUuid id{ce.id_proto()};
 
@@ -80,6 +97,9 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
                     emit eventRemoved(id);
                     if (is_relevant_for_audio) {
                         need_to_update_alarms = true;
+                    }
+                    if (is_relevant_for_actions) {
+                        need_to_update_actions_on_calendar = true;
                     }
                     continue;
                 }
@@ -101,6 +121,9 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
                 if (is_relevant_for_audio) {
                     need_to_update_alarms = true;
                 }
+                if (is_relevant_for_actions) {
+                    need_to_update_actions_on_calendar = true;
+                }
 
             } // if timeblock
         }
@@ -109,6 +132,10 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
     if (need_to_update_alarms) {
         LOG_DEBUG_N << "Updating audio timers after calendar update.";
         co_await setAudioTimers();
+    }
+
+    if (need_to_update_actions_on_calendar) {
+        co_await updateActionsOnCalendarCache();
     }
 }
 
@@ -229,6 +256,7 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
 QCoro::Task<bool> CalendarCache::loadFromCache()
 {
     // Nothing to read by default.
+    co_await updateActionsOnCalendarCache();
     co_return true;
 }
 
@@ -371,6 +399,50 @@ void CalendarCache::onAudioEvent()
 
     // Set the timer for the next event
     setAudioTimers();
+}
+
+QCoro::Task<void> CalendarCache::updateActionsOnCalendarCache()
+{
+    LOG_TRACE_N << "Updating actions on calendar cache for date " << current_calendar_date_.toString();
+
+    if (is_updating_actions_cache_) {
+        update_actions_cache_pending_ = true;
+        co_return;
+    }
+    is_updating_actions_cache_ = true;
+    ScopedExit exit_scope{[this] {
+        is_updating_actions_cache_ = false;
+        if (update_actions_cache_pending_) {
+            update_actions_cache_pending_ = false;
+            QTimer::singleShot(0, this, [this]{
+                updateActionsOnCalendarCache();
+            });
+        }
+    }};
+
+    std::vector<QUuid> actions;
+
+    auto& db = NextAppCore::instance()->db();
+    auto res = co_await db.query(R"(SELECT tba.action FROM time_block_actions AS tba JOIN time_block AS tb ON tb.id = tba.time_block
+WHERE DATE(tb.start_time) >= DATE(?)
+AND DATE(tb.end_time) <= DATE(?))", current_calendar_date_, current_calendar_date_);
+
+    if (!res) {
+        LOG_ERROR_N << "Failed to get actions on current calendar date: " << current_calendar_date_.toString()
+            << " err=" << res.error();
+        co_return;
+    }
+
+    const auto& rows = res.value().rows;
+    actions.reserve(rows.size());
+
+    for (const auto& row : rows) {
+        assert(row.size() >= 1);
+        const auto& aid = row[0].toString();
+        actions.push_back(QUuid{aid});
+    }
+
+    ActionsOnCurrentCalendar::instance()->setActions(actions);
 }
 
 std::shared_ptr<GrpcIncomingStream> CalendarCache::openServerStream(nextapp::pb::GetNewReq req)

@@ -12,7 +12,6 @@
 #include "NextAppCore.h"
 #include "util.h"
 #include "ActionsModel.h"
-#include "ActionsOnCurrentCalendar.h"
 #include "ActionCategoriesModel.h"
 
 using namespace std;
@@ -410,10 +409,6 @@ QCoro::Task<void> CalendarModel::onCalendarEventAddedOrUpdated(const QUuid id)
             }
         }
     }
-
-    if (is_primary_) {
-        updateActionsOnCalendarCache();
-    }
 }
 
 QCoro::Task<void> CalendarModel::onCalendarEventRemoved(const QUuid id)
@@ -435,10 +430,6 @@ QCoro::Task<void> CalendarModel::onCalendarEventRemoved(const QUuid id)
                 day->setValid(true, true); // Trigger a redraw
             }
         }
-    }
-
-    if (is_primary_) {
-        updateActionsOnCalendarCache();
     }
 
     co_return;
@@ -470,9 +461,6 @@ QCoro::Task<void> CalendarModel::fetchIf()
 
         updateDayModels();
         setValid(online_);
-        if (online_ && is_primary_) {
-            updateActionsOnCalendarCache();
-        }
     }
 
     LOG_TRACE_N << "Done.";
@@ -588,26 +576,6 @@ void CalendarModel::updateIfPrimary()
         assert(first_ == last_);
         NextAppCore::instance()->setProperty("primaryForActionList", first_);
     }
-}
-
-void CalendarModel::updateActionsOnCalendarCache()
-{
-    std::vector<QUuid> actions;
-    actions.reserve(96);
-
-    for(const auto& event : all_events_) {
-        if (event->hasTimeBlock()) {
-            ranges::transform(event->timeBlock().actions().list(), std::back_inserter(actions), [](const auto& action) {
-                return QUuid{action};
-            });
-        }
-    }
-
-    ranges::transform(all_events_, std::back_inserter(actions), [](const auto& event) {
-        return QUuid(event->id_proto());
-    });
-
-    ActionsOnCurrentCalendar::instance()->setActions(actions);
 }
 
 CategoryUseModel::list_t CalendarModel::getCategoryUsage()

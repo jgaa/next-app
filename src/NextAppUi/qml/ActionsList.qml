@@ -13,7 +13,7 @@ Rectangle {
     id: root
     //property string selectedItemUuid: NaMainTreeModel.selected
     property var priorityColors: ["magenta", "red", "orangered", "orange", "green", "blue", "lightblue", "gray"]
-    property var statusIcons: ["\uf058", "\uf111", "\uf0c8"]
+    property var statusIcons: ["\uf111", "\uf111", "\uf0c8"]
     property alias model: listView.model
     property alias listCtl: listView
     property bool selectFirstOnModelReset: true
@@ -23,6 +23,28 @@ Rectangle {
     property bool hasReview: false
     property alias selectedIds: listView.selectedItems
     property bool hasSelection: listView.selectedItems.length > 0
+
+    Connections {
+        target: NaCore
+        enabled: !root.hasReview
+
+        function onSelectActionChanged() {
+            if (NaCore.clickInitiator === NaCore.ClickInitiator.ACTION)
+                return;
+
+            const uuid = NaCore.selectAction;
+            const ix = listView.model.indexOfAction(uuid);
+            if (ix < 0) {
+                return;
+            }
+
+            listView.resetSelection()
+            listView.selectUuid(uuid)
+            listView.currentIndex = ix
+            listView.positionViewAtIndex(ix, ListView.Contain)
+            NaActionsModel.selected = uuid
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -159,6 +181,8 @@ Rectangle {
                 required property string scoreColor
                 required property double score
                 required property string tags
+                required property string categoryColor
+                required property string statusColor
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -189,6 +213,7 @@ Rectangle {
                         switch (button) {
                             case 0: // touch
                             case Qt.LeftButton:
+                                NaCore.clickInitiator = NaCore.ClickInitiator.ACTIONS
                                 if (point.modifiers & Qt.ControlModifier) {
                                     listView.toggleUuid(uuid)
                                 } else {
@@ -200,6 +225,7 @@ Rectangle {
                                     if (root.callOnSelectionEvent) {
                                         root.onSelectionEvent(uuid)
                                     }
+                                    NaCore.currentActionSelected(uuid)
                                 }
                                 break;
                             case Qt.RightButton:
@@ -258,198 +284,211 @@ Rectangle {
                         selected: actionItem.selected
                     }
 
-                ColumnLayout {
-                    id: row
-                    Layout.fillWidth: true
+                    // ColumnLayout {
+                    //     id: row
+                    //     Layout.fillWidth: true
 
-                    RowLayout {
-                        spacing: 6
+    //                     RowLayout {
+    //                         spacing: 6
 
-                        CheckBoxWithFontIcon {
-                            id: revewedIcon
-                            visible: root.hasReview
-                            isChecked: reviewed
-                            checkedCode: "\uf06e"
-                            uncheckedCode: "\uf06e"
-                            checkedColor: "green"
-                            uncheckedColor: "blue"
-                            useSolidForChecked: true
-                            iconSize: 16
-                            autoToggle: false
-                            text: ""
+                    CheckBoxWithFontIcon {
+                        Layout.alignment: Qt.AlignTop
+                        Layout.topMargin: 2
+                        Layout.bottomMargin: 2
+                        Layout.rightMargin: 6
+                        id: revewedIcon
+                        visible: root.hasReview
+                        isChecked: reviewed
+                        checkedCode: "\uf06e"
+                        uncheckedCode: "\uf06e"
+                        checkedColor: "green"
+                        uncheckedColor: "blue"
+                        useSolidForChecked: true
+                        iconSize: NaCore.isMobile ? 42 : 24
+                        autoToggle: false
+                        text: ""
 
-                            onClicked: {
-                                listView.model.toggleReviewed(uuid)
-                            }
+                        onClicked: {
+                            listView.model.toggleReviewed(uuid)
                         }
+                    }
 
-                        CheckBoxWithFontIcon {
-                            Layout.topMargin: 2
-                            Layout.bottomMargin: 2
-                            isChecked: done
-                            checkedCode: "\uf058"
-                            uncheckedCode: root.statusIcons[status]
-                            checkedColor: "green"
-                            uncheckedColor: "orange"
+                    CheckBoxWithFontIcon {
+                        id: doneIcon
+                        Layout.alignment: Qt.AlignTop
+                        Layout.topMargin: 2
+                        Layout.bottomMargin: 2
+                        Layout.rightMargin: 6
+                        isChecked: done
+                        checkedCode: "\uf111"
+                        uncheckedCode: root.statusIcons[status]
+                        checkedColor: "green"
+                        uncheckedColor: actionItem.statusColor
+                        iconSize: NaCore.isMobile ? 42 : 24
 
-                            onClicked: {
-                                NaActionsModel.markActionAsDone(uuid, isChecked)
-                            }
-
-                            Text {
-                                anchors.fill: parent
-                                font.family: ce.faSolidName
-                                font.styleName: ce.faSolidStyle
-                                text: "\uf06d"
-                                color: scoreColor //root.priorityColors[priority]
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-
-                            //bgColor: onCalendar ? MaterialDesignStyling.primaryContainer : "transparent"
-                        }
-
-
-                        Rectangle {
-                            width: 12
-                            height: 20
-                            color: NaAcModel.valid ? NaAcModel.getColorFromUuid(actionItem.category) : "lightgray"
-                            visible: actionItem.category !== ""
+                        onClicked: {
+                            NaActionsModel.markActionAsDone(uuid, isChecked)
                         }
 
                         Text {
-                            id: actionName
-                            text: name
-                            color: done ? MaterialDesignStyling.onSurfaceVariant : MaterialDesignStyling.onSurface
+                            anchors.fill: parent
+                            font.family: ce.faSolidName
+                            font.styleName: ce.faSolidStyle
+                            font.pixelSize: doneIcon.iconSize * 0.7
+                            text: "\uf00c"
+                            color: scoreColor //root.priorityColors[priority]
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
 
-                            Component.onCompleted: {
-                                font.pointSize *= 1.15;
+                        //bgColor: onCalendar ? MaterialDesignStyling.primaryContainer : "transparent"
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 8
+                        Layout.preferredHeight: row.height - 4
+                        color: actionItem.categoryColor
+                        //visible: actionItem.category !== ""
+                    }
+
+                    ColumnLayout {
+                        id: row
+                        Layout.leftMargin: 6
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
+
+                        RowLayout {
+                            id: topRow
+                            spacing: 6
+
+                            Text {
+                                id: actionName
+                                text: name
+                                color: done ? MaterialDesignStyling.onSurfaceVariant : MaterialDesignStyling.onSurface
+
+                                Component.onCompleted: {
+                                    font.pointSize *= 1.15;
+                                }
+                            }
+
+                            CheckBoxWithFontIcon {
+                                id: favoriteIcon
+                                enabled: !done
+                                isChecked: favorite
+                                checkedCode: "\uf005"
+                                uncheckedCode: "\uf005"
+                                checkedColor: "orange"
+                                uncheckedColor: "lightgray"
+                                useSolidForChecked: true
+                                iconSize: NaCore.isMobile ? 28 : 16
+                                autoToggle: false
+                                text: ""
+
+                                onClicked: {
+                                    NaActionsModel.markActionAsFavorite(uuid, !favorite)
+                                }
+                            }
+
+                            CheckBoxWithFontIcon {
+                                id: canWorkIcon
+                                enabled: !done
+                                isChecked: hasWorkSession
+                                checkedCode: "\uf017"
+                                uncheckedCode: "\uf017"
+                                checkedColor: "green"
+                                uncheckedColor: "lightblue"
+                                useSolidForChecked: true
+                                iconSize: NaCore.isMobile ? 28 : 16
+                                autoToggle: false
+                                useSolidForAll: workedOnToday
+
+                                onClicked: {
+                                    NaWorkSessionsModel.startWorkSetActive(uuid)
+                                }
                             }
                         }
 
-                        CheckBoxWithFontIcon {
-                            id: favoriteIcon
-                            enabled: !done
-                            isChecked: favorite
-                            checkedCode: "\uf005"
-                            uncheckedCode: "\uf005"
-                            checkedColor: "orange"
-                            uncheckedColor: "lightgray"
-                            useSolidForChecked: true
-                            iconSize: 16
-                            autoToggle: false
-                            text: ""
+                        RowLayout {
+                            id: bottomRow
 
-                            onClicked: {
-                                NaActionsModel.markActionAsFavorite(uuid, !favorite)
+                            Label {
+                                id: onCalendarLabel
+                                //visible: actionItem.onCalendar
+                                font.family: ce.faSolidName
+                                font.styleName: ce.faSolidStyle
+                                text: "\uf783"
+                                color: MaterialDesignStyling.onPrimaryContainer
+                                // dim it if not on calendar
+                                opacity: actionItem.onCalendar ? 1.0 : 0.3
+                                font.pixelSize: listLabel.font.pixelSize
+                            }
+
+                            // Label {
+                            //     visible: dueLabel.visible
+                            //     font.family: ce.faNormalName
+                            //     text: "\uf133"
+                            //     color: MaterialDesignStyling.onSurfaceVariant
+                            //     font.pixelSize: listLabel.font.pixelSize
+                            // }
+
+                            Label {
+                                id: dueLabel
+                                color: MaterialDesignStyling.onSurfaceVariant
+                                text: due
+                            }
+
+                            Item {
+                                visible: dueLabel.visible
+                                Layout.preferredWidth: 4
+                            }
+
+                            Label {
+                                visible: listLabel.visible
+                                font.family: ce.faSolidName
+                                font.styleName: ce.faSolidStyle
+                                text: "\uf802"
+                                color: MaterialDesignStyling.onSurface
+                                font.pixelSize: listLabel.font.pixelSize
+                            }
+
+                            Label {
+                                id: listLabel
+                                color: MaterialDesignStyling.outline
+                                text: listName
+                                visible: text !== ""
+                            }
+
+
+                            // Label {
+                            //     color: MaterialDesignStyling.onSurfaceVariant
+                            //     text: "score"
+                            // }
+                            // Label {
+                            //     color: MaterialDesignStyling.outline
+                            //     text: score
+                            // }
+                        }
+
+                        RowLayout {
+                            id: tagRow
+
+                            Label {
+                                visible: tagsCtl.visible
+                                font.family: ce.faSolidName
+                                font.styleName: ce.faSolidStyle
+                                text: "\uf02c"
+                                color: MaterialDesignStyling.onSurface
+                                font.pixelSize: listLabel.font.pixelSize
+                            }
+
+                            Label {
+                                id: tagsCtl
+                                color: MaterialDesignStyling.onSurfaceVariant
+                                text: tags
+                                visible: text !== ""
                             }
                         }
-
-                        CheckBoxWithFontIcon {
-                            id: canWorkIcon
-                            enabled: !done
-                            isChecked: hasWorkSession
-                            checkedCode: "\uf017"
-                            uncheckedCode: "\uf017"
-                            checkedColor: "green"
-                            uncheckedColor: "lightblue"
-                            useSolidForChecked: true
-                            iconSize: 16
-                            autoToggle: false
-                            useSolidForAll: workedOnToday
-
-                            onClicked: {
-                                NaWorkSessionsModel.startWorkSetActive(uuid)
-                            }
-                        }
                     }
-
-                    RowLayout {
-                        Item {
-                            visible: !onCalendarLabel.visible
-                            Layout.preferredWidth: 20
-                        }
-
-                        Label {
-                            id: onCalendarLabel
-                            visible: onCalendar
-                            font.family: ce.faSolidName
-                            font.styleName: ce.faSolidStyle
-                            text: "\uf783"
-                            color: MaterialDesignStyling.onPrimaryContainer
-                            font.pixelSize: listLabel.font.pixelSize
-                            Layout.preferredWidth: 20
-                        }
-
-                        Label {
-                            visible: dueLabel.visible
-                            font.family: ce.faNormalName
-                            text: "\uf133"
-                            color: MaterialDesignStyling.onSurface
-                            font.pixelSize: listLabel.font.pixelSize
-                        }
-
-                        Label {
-                            id: dueLabel
-                            color: MaterialDesignStyling.onSurfaceVariant
-                            text: due
-                        }
-
-                        Item {
-                            visible: dueLabel.visible
-                            Layout.preferredWidth: 4
-                        }
-
-                        Label {
-                            visible: listLabel.visible
-                            font.family: ce.faSolidName
-                            font.styleName: ce.faSolidStyle
-                            text: "\uf802"
-                            color: MaterialDesignStyling.onSurface
-                            font.pixelSize: listLabel.font.pixelSize
-                        }
-
-                        Label {
-                            id: listLabel
-                            color: MaterialDesignStyling.outline
-                            text: listName
-                            visible: text !== ""
-                        }
-
-
-                        // Label {
-                        //     color: MaterialDesignStyling.onSurfaceVariant
-                        //     text: "score"
-                        // }
-                        // Label {
-                        //     color: MaterialDesignStyling.outline
-                        //     text: score
-                        // }
-                    }
-
-                    RowLayout {
-                        Item {
-                            visible: tagsCtl.visible
-                            Layout.preferredWidth: 20
-                        }
-
-                        Label {
-                            visible: tagsCtl.visible
-                            font.family: ce.faSolidName
-                            font.styleName: ce.faSolidStyle
-                            text: "\uf02c"
-                            color: MaterialDesignStyling.onSurface
-                            font.pixelSize: listLabel.font.pixelSize
-                        }
-
-                        Label {
-                            id: tagsCtl
-                            color: MaterialDesignStyling.onSurfaceVariant
-                            text: tags
-                            visible: text !== ""
-                        }
-                    }
-                }
                 }
             }
         }

@@ -47,23 +47,23 @@ ScrollView {
                 qsTr("Windows")]
         }
 
-        Label { text: qsTr("Ui Scale")}
-        ComboBox {
-            id: uiScale
-            currentIndex: parseInt(settings.value("UI/scale"))
-            Layout.fillWidth: true
-            model: [qsTr("Default"),
-                qsTr("Very Tiny"),
-                qsTr("Tiny"),
-                qsTr("Small"),
-                qsTr("Normal"),
-                qsTr("Large"),
-                qsTr("Larger"),
-                qsTr("Even larger"),
-                qsTr("Very large"),
-                qsTr("Huge"),
-                qsTr("Very Huge"),]
-        }
+        // Label { text: qsTr("Ui Scale")}
+        // ComboBox {
+        //     id: uiScale
+        //     currentIndex: parseInt(settings.value("UI/scale"))
+        //     Layout.fillWidth: true
+        //     model: [qsTr("Default"),
+        //         qsTr("Very Tiny"),
+        //         qsTr("Tiny"),
+        //         qsTr("Small"),
+        //         qsTr("Normal"),
+        //         qsTr("Large"),
+        //         qsTr("Larger"),
+        //         qsTr("Even larger"),
+        //         qsTr("Very large"),
+        //         qsTr("Huge"),
+        //         qsTr("Very Huge"),]
+        // }
 
         Item {
             Layout.fillHeight: true

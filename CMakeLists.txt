@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.12.5) # MajorVersion.MinorVersion.PatchVersion
+    set(NEXTAPP_VERSION 0.13.0) # MajorVersion.MinorVersion.PatchVersion
 endif()
 
 project(next-app
@@ -33,9 +33,12 @@ endif()
 
 # Android
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-  set(ANDROID_BUILD ON)
-  message(STATUS "Android build")
-  add_definitions(-DANDROID_BUILD)
+    set(ANDROID_BUILD ON)
+    message(STATUS "Android build")
+    add_definitions(-DANDROID_BUILD)
+
+    # Fix for regression in QT 6.9.2
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 endif()
 
 # Apple platforms (macOS vs. iOS)

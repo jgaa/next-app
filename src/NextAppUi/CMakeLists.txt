@@ -37,6 +37,13 @@ option(UI_USE_STATIC_BOOST "Build with static Boost libraries" ON)
 option(WITH_TESTS "Enable Tests" ON)
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
 
+if (ANDROID_BUILD)
+    option(NEXTAPP_USE_JNI "Use JNI for Android builds" ON)
+    if (NEXTAPP_USE_JNI)
+        add_definitions(-DNEXTAPP_USE_JNI)
+    endif()
+endif()
+
 if (UI_USE_STATIC_BOOST)
     add_definitions(-DUSE_STATIC_BOOST)
 endif()
@@ -74,10 +81,12 @@ if (ANDROID_BUILD)
         if (NOT GOOGLE_SERVICES_PATH)
             if(DEFINED ENV{GOOGLE_SERVICES_PATH})
                 set(GOOGLE_SERVICES_PATH "$ENV{GOOGLE_SERVICES_PATH}")
+                message(STATUS "Using google-services.json from environment variable GOOGLE_SERVICES_PATH: ${GOOGLE_SERVICES_PATH}")
             else()
                 message(FATAL_ERROR "You must specify the path to google-services.json using -DGOOGLE_SERVICES_PATH=/path/to/google-services.json")
             endif()
         endif()
+        message(STATUS "Using google-services.json from GOOGLE_SERVICES_PATH: ${GOOGLE_SERVICES_PATH}")
     endif()
 endif()
 
@@ -143,6 +152,7 @@ if(ANDROID)
             </intent-filter>
         </service>")
 
+        message(STATUS "Enabling Firebase Cloud Messaging support: ${GOOGLE_SERVICES_PATH} --> ${ANDROID_OUT_DIR}/google-services.json")
         configure_file(
              "${GOOGLE_SERVICES_PATH}"
             "${ANDROID_OUT_DIR}/google-services.json"
@@ -198,6 +208,12 @@ if(ANDROID)
     )
 
     configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/JniGuard.h.in"
+      "${CMAKE_BINARY_DIR}/JniGuard.h"
+      @ONLY
+    )
+
+    configure_file(
       "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
       "${ANDROID_OUT_DIR}/AndroidManifest.xml"
       @ONLY
@@ -216,6 +232,7 @@ if(ANDROID)
     set (EXTRA_SOURCE_FILES ${EXTRA_SOURCE_FILES}
         ${CMAKE_BINARY_DIR}/AndroidHandlers.h
         ${CMAKE_BINARY_DIR}/AndroidHandlers.cpp
+        ${CMAKE_BINARY_DIR}/JniGuard.h
     )
 
     file(COPY
@@ -396,9 +413,22 @@ if (NOT ANDROID)
     target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
     # TODO: Get the header only libraries we use from the system or download them
-    set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_88_0"
-        CACHE STRING
-        "Boost location if set manually (required for Android/ QT Creator)")
+    # If NEXTAPP_BOOST_ROOT is already set and non-empty, keep it.
+    if(NOT DEFINED NEXTAPP_BOOST_ROOT OR "${NEXTAPP_BOOST_ROOT}" STREQUAL "")
+      if(DEFINED ENV{NEXTAPP_BOOST_ROOT} AND NOT "$ENV{NEXTAPP_BOOST_ROOT}" STREQUAL "")
+        set(NEXTAPP_BOOST_ROOT "$ENV{NEXTAPP_BOOST_ROOT}")
+      else()
+        set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_88_0")
+      endif()
+    endif()
+
+    if(NOT EXISTS "${NEXTAPP_BOOST_ROOT}/boost")
+      message(FATAL_ERROR
+        "Boost headers not found under '${NEXTAPP_BOOST_ROOT}'. "
+        "Set NEXTAPP_BOOST_ROOT to a dir that contains 'boost/'")
+    endif()
+
+    message(STATUS "Using Boost includes from: ${NEXTAPP_BOOST_ROOT}")
 
     set_target_properties(${PROJECT_NAME} PROPERTIES
         QT_ANDROID_PACKAGE_NAME "${QT_ANDROID_PACKAGE_NAME}"

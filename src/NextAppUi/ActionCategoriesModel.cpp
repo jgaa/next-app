@@ -26,6 +26,8 @@ ActionCategoriesModel::ActionCategoriesModel(QObject *parent)
     instance_ = this;
     LOG_TRACE_N << "ActionCategoriesModel created";
 
+    none_ = tr("-- None --");
+
     connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &ActionCategoriesModel::onUpdate);
 
     connect(NextAppCore::instance(), &NextAppCore::onlineChanged, this, [this] (bool online) {
@@ -80,6 +82,13 @@ void ActionCategoriesModel::updateCategory(const nextapp::pb::ActionCategory &ca
 
 nextapp::pb::ActionCategory ActionCategoriesModel::get(int index)
 {
+    if (index == action_categories_.size()) {
+        nextapp::pb::ActionCategory cat;
+        cat.setName(none_);
+        cat.setColor("transparent");
+        return cat;
+    }
+
     if (index < 0 || index >= action_categories_.size()) {
         nextapp::pb::ActionCategory cat;
         cat.setColor("deepskyblue");
@@ -91,6 +100,10 @@ nextapp::pb::ActionCategory ActionCategoriesModel::get(int index)
 
 QString ActionCategoriesModel::getName(const QString &id)
 {
+    if (id.isEmpty()) {
+        return none_; // -- None --
+    }
+
     if (const auto* cat = lookup(id)) {
         return cat->name();
     }
@@ -100,6 +113,10 @@ QString ActionCategoriesModel::getName(const QString &id)
 
 int ActionCategoriesModel::getIndexByUuid(const QString &id)
 {
+    if (id.isEmpty()) {
+        return action_categories_.size(); // -- None --
+    }
+
     auto it = ranges::find_if(action_categories_, [&id](const nextapp::pb::ActionCategory& c) {
         return c.id_proto() == id;
     });
@@ -114,6 +131,10 @@ int ActionCategoriesModel::getIndexByUuid(const QString &id)
 
 QString ActionCategoriesModel::getColorFromUuid(const QString &id)
 {
+    if (id.isEmpty()) {
+        return "transparent"; // -- None --
+    }
+
     auto it = ranges::find_if(action_categories_, [&id](const nextapp::pb::ActionCategory& c) {
         return c.id_proto() == id;
     });
@@ -125,9 +146,20 @@ QString ActionCategoriesModel::getColorFromUuid(const QString &id)
     return it->color();
 }
 
+bool ActionCategoriesModel::isValid(int row)
+{
+    return row >= 0 && row < action_categories_.size();
+}
+
 const nextapp::pb::ActionCategory &ActionCategoriesModel::getFromUuid(const QString &uuid)
 {
     static const nextapp::pb::ActionCategory empty;
+    if (uuid.isEmpty()) {
+        static nextapp::pb::ActionCategory none;
+        none.setName(none_);
+        return none;
+    }
+
     auto it = ranges::find_if(action_categories_, [&uuid](const nextapp::pb::ActionCategory& c) {
         return c.id_proto() == uuid;
     });
@@ -141,13 +173,24 @@ const nextapp::pb::ActionCategory &ActionCategoriesModel::getFromUuid(const QStr
 
 int ActionCategoriesModel::rowCount(const QModelIndex &parent) const
 {
-    return action_categories_.size();
+    return action_categories_.size() + 1;
 }
 
 QVariant ActionCategoriesModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid()) {
         return {};
+    }
+
+    if (index.row() == action_categories_.size()) {
+        switch (role) {
+        case NameRole:
+            return none_;
+        case ValidRole:
+            return false;
+        default:
+            return {};
+        }
     }
 
     const auto &category = action_categories_.at(index.row());
@@ -162,6 +205,8 @@ QVariant ActionCategoriesModel::data(const QModelIndex &index, int role) const
         return category.descr();
     case IdRole:
         return category.id_proto();
+    case ValidRole:
+        return true;
     default:
         return {};
     }
@@ -175,6 +220,7 @@ QHash<int, QByteArray> ActionCategoriesModel::roleNames() const
         {ColorRole, "color"},
         {DescrRole, "descr"},
         {IdRole, "id"},
+        {ValidRole, "valid"} // -- None -- is selectable but not valid
     };
 }
 
@@ -202,12 +248,6 @@ QCoro::Task<void> ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp:
 {
     if (update->hasActionCategory()) {
 
-        beginResetModel();
-
-        ScopedExit do_later([this] {
-            endResetModel();
-        });
-
         // We need a copy since update lilkely goes out of scope before we finish.
         const auto cat = update->actionCategory();
 
@@ -219,6 +259,8 @@ QCoro::Task<void> ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp:
         if (update->op() == nextapp::pb::Update::Operation::DELETED) {
             action_categories_.erase(it);
             co_await remove(cat.id_proto());
+            beginResetModel();
+            endResetModel();
         } else {
             co_await save(cat);
             if (it != action_categories_.end()) {
@@ -227,7 +269,9 @@ QCoro::Task<void> ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp:
                 action_categories_.push_back(cat);
             }
 
+            beginResetModel();
             ranges::sort(action_categories_, compare);
+            endResetModel();
         }
     }
 

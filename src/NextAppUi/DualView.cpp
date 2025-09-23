@@ -13,9 +13,9 @@ using namespace std;
 namespace {
 void logChildItems(string_view name, const QQuickItem *item)
 {
-    LOG_DEBUG << "Children of " << name;
+    LOG_TRACE_N << "Children of " << name;
     for (auto *child : item->childItems()) {
-        LOG_DEBUG << "  Child of " << item->objectName() << ": " << child->objectName()
+        LOG_TRACE_N << "  Child of " << item->objectName() << ": " << child->objectName()
                   << " enabled=" << child->isEnabled()
                   << " visible=" << child->isVisible()
                   << " x=" << child->x() << " y=" << child->y()
@@ -135,6 +135,11 @@ QQuickItem *DualView::createView(ViewType type) {
     auto item = qobject_cast<QQuickItem*>(component.create());
     item->setParent(this);
     item->setObjectName(names.at(index));
+
+    if (type == ViewType::Calendar) {
+        QQmlProperty::write(item, "primaryForActionList", true);
+    }
+
     return item;
 }
 

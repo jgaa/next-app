@@ -1095,6 +1095,11 @@ void ActionsModel::batchDelete(const QStringList &actions)
     }
 }
 
+int ActionsModel::indexOfAction(const QString &uuid) const noexcept
+{
+    return findCurrentRow(actions_, uuid);
+}
+
 QStringList ActionsModel::tagsToList(const QString &tags)
 {
     static const QRegularExpression split_regex{R"([\s,;]+)"};
@@ -1255,6 +1260,13 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         }
     case TagsRole:
         return tagsToString(action.tags(), true);
+    case CategoryColorRole:
+        if (action.category().isEmpty()) {
+            return "trasparant";
+        }
+        return ActionCategoriesModel::instance().getColorFromUuid(action.category());
+    case StatusColor:
+        return getStatusColor(action);
     }
 
     return {};
@@ -1327,6 +1339,8 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[PriorityKindRole] = "priorityKind";
     roles[ScoreColorRole] = "scoreColor";
     roles[TagsRole] = "tags";
+    roles[CategoryColorRole] = "categoryColor";
+    roles[StatusColor] = "statusColor";
     return roles;
 }
 

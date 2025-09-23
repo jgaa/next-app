@@ -67,7 +67,9 @@ public:
         OnCalendarRole,
         WorkedOnTodayRole,
         ScoreColorRole,
-        TagsRole
+        TagsRole,
+        CategoryColorRole,
+        StatusColor
     };
 
     Q_ENUM(State)
@@ -213,6 +215,7 @@ public:
     Q_INVOKABLE bool back();
     Q_INVOKABLE void selectByUuid(const QString& uuid);
     Q_INVOKABLE void toggleReviewed(const QString& uuid);
+    //Q_INVOKABLE int indexOfAction(const QString& uuid) const noexcept;
 
     // QAbstractItemModel interface
     int rowCount(const QModelIndex &parent) const override;

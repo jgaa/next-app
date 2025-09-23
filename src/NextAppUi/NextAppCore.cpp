@@ -22,6 +22,7 @@
 #include "SoundPlayer.h"
 #include "WeeklyWorkReportModel.h"
 #include "ActionCategoriesModel.h"
+#include "MainTreeModel.h"
 #include "util.h"
 
 #include "qcorotimer.h"
@@ -138,6 +139,7 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
 
 #ifdef WITH_FCM
     auto &bridge = AndroidFcmBridge::instance();
+    LOG_INFO_N << "FCM package-id is: " << bridge.getPackageId();
     QObject::connect(&bridge, &AndroidFcmBridge::tokenRefreshed,
                      [](const QString &token){
                          LOG_DEBUG_N << "New FCM token:" << token;
@@ -325,6 +327,32 @@ QCoro::Task<void> NextAppCore::refreshDbData()
     emit dbInfoChanged();
 }
 
+void NextAppCore::selectNode(const QString &uuid)
+{
+    LOG_TRACE_N << "Selecting node with uuid: " << uuid.toStdString();
+    if (uuid.isEmpty()) {
+        if (selectNode_.isValid()) {
+            selectNode_ = {};
+            LOG_TRACE_N << "Clearing selected node";
+            emit selectNodeChanged();
+            return;
+        }
+    }
+
+    MainTreeModel *mtm = MainTreeModel::instance();
+    mtm->setSelected(uuid);
+    auto ix = mtm->indexFromUuid(uuid);
+    if (ix.isValid()) {
+        if (selectNode_ != ix) {
+            selectNode_ = ix;
+            LOG_TRACE_N << "Selected node changed to: " << uuid.toStdString();
+            emit selectNodeChanged();
+        }
+    } else  {
+        LOG_WARN_N << "Cannot find node with uuid: " << uuid.toStdString();
+    }
+}
+
 void NextAppCore::setProperty(const QString &name, const QVariant &value)
 {
     LOG_TRACE_N << "Setting property " << name;
@@ -444,6 +472,30 @@ void NextAppCore::deleteLocalData()
 void NextAppCore::factoryReset()
 {
     doFactoryReset();
+}
+
+void NextAppCore::currentActionSelected(const QString &uuid)
+{
+    LOG_TRACE_N << "Current action selected: " << uuid.toStdString() << " lookupRelated=" << lookupRelated_;
+    if (lookupRelated_) {
+        // Get the actioninfo if it's cached (it should be)
+        if (auto ai = ActionInfoCache::instance()->getIfCached(QUuid(uuid)); ai) {
+            if (const auto nodeid = ai->node(); !nodeid.isEmpty()) {
+                selectNode(nodeid);
+            }
+        }
+    }
+}
+
+void NextAppCore::setSelectAction(const QString &uuid)
+{
+    LOG_TRACE_N << "Selecting action: " << uuid.toStdString();
+
+    if (lookupRelated_) {
+        // TODO: Set the current action
+        selectAction_ = uuid;
+        emit selectActionChanged();
+    }
 }
 
 time_t NextAppCore::parseHourMin(const QString &str)
@@ -641,6 +693,14 @@ void NextAppCore::setLookupRelated(bool lookupRelated) {
         lookupRelated_ = lookupRelated;
         emit lookupRelatedChanged();
     }
+}
+
+void NextAppCore::setClickInitiator(ClickInitiator initiator) {
+    if (clickInitiator_ == initiator) {
+        return;
+    }
+    clickInitiator_ = initiator;
+    emit clickInitiatorChanged();
 }
 
 nextapp::pb::UserDataInfo NextAppCore::getDbInfo()
