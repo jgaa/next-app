@@ -12,6 +12,7 @@
 #include "ActionsOnCurrentCalendar.h"
 #include "ActionsWorkedOnTodayCache.h"
 #include "ActionCategoriesModel.h"
+#include "ActionsModel.h"
 
 #include "util.h"
 #include "logging.h"
@@ -260,6 +261,8 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
             return "trasparant";
         }
         return ActionCategoriesModel::instance().getColorFromUuid(action.category());
+    case StatusColor:
+        return ActionsModel::getStatusColor(action);
     }
     return {};
 }
@@ -291,6 +294,7 @@ QHash<int, QByteArray> ReviewModel::roleNames() const
     roles[ScoreColorRole] = "scoreColor";
     roles[TagsRole] = "tags";
     roles[CategoryColorRole] = "categoryColor";
+    roles[StatusColor] = "statusColor";
     return roles;
 }
 

@@ -159,7 +159,8 @@ class ActionsModel : public QAbstractListModel
         WorkedOnTodayRole,
         ScoreColorRole,
         TagsRole,
-        CategoryColorRole
+        CategoryColorRole,
+        StatusColor
     };
 
     enum Shortcuts {
@@ -292,6 +293,43 @@ public:
     QHash<int, QByteArray> roleNames() const override;
     void fetchMore(const QModelIndex &parent) override;
     bool canFetchMore(const QModelIndex &parent) const override;
+
+    template <typename T>
+    static QString getStatusColor(const T& a) {
+
+        QString color = "gray";
+        if (a.hasDue()) {
+            const auto& d = a.due();
+            const auto now = time({});
+            if (d.hasStart()) {
+                if (d.start() > now) {
+                    return color;
+                }
+            }
+            if (d.hasDue()) {
+                const auto due = d.due();
+                if (due < now) {
+                    color = "red";
+                } else {
+                    auto days = (due - now) / 86400;
+                    if (days <= 1) {
+                        color = "darkorange";
+                    } else if (days <= 3) {
+                        color = "gold";
+                    } else if (days <= 7) {
+                        color = "yellow";
+                    } else if (days <= 14) {
+                        color = "lightblue";
+                    } else if (days <= 30) {
+                        color = "royalblue";
+                    } else {
+                        color = "blue";
+                    }
+                }
+            }
+        }
+        return color;
+    }
 
 signals:
     void modeChanged();

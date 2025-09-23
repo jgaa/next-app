@@ -182,6 +182,7 @@ Rectangle {
                 required property double score
                 required property string tags
                 required property string categoryColor
+                required property string statusColor
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -322,7 +323,7 @@ Rectangle {
                         checkedCode: "\uf111"
                         uncheckedCode: root.statusIcons[status]
                         checkedColor: "green"
-                        uncheckedColor: "blue"
+                        uncheckedColor: actionItem.statusColor
                         iconSize: NaCore.isMobile ? 42 : 24
 
                         onClicked: {

@@ -68,7 +68,8 @@ public:
         WorkedOnTodayRole,
         ScoreColorRole,
         TagsRole,
-        CategoryColorRole
+        CategoryColorRole,
+        StatusColor
     };
 
     Q_ENUM(State)
