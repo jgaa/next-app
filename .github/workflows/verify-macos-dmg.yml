@@ -1,0 +1,190 @@
+name: Verify & Smoke-run macOS app (from DMG)
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build macOS App run-id to pull artifacts from (optional)"
+        required: false
+      artifact_pattern:
+        description: "Artifact name/pattern"
+        required: false
+        default: "nextapp-macos-arm64-dmg-*"
+
+  # Auto trigger after the build workflow completes
+  workflow_run:
+    workflows: ["Build macOS App"]   # ← must match your build workflow name
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify-and-run:
+    # Use Apple silicon so we can actually launch arm64
+    runs-on: macos-14
+    # Only auto-run when the build on main succeeded
+    if: >
+      ${{
+        (github.event_name != 'workflow_run') ||
+        (github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.head_branch == 'main')
+      }}
+
+    steps:
+      - name: Checkout (empty)
+        uses: actions/checkout@v4
+
+      - name: Resolve run-id and artifact pattern
+        id: resolve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifactPattern =
+              (core.getInput('artifact_pattern') || 'nextapp-macos-arm64-dmg-*').trim();
+
+            // Case 1: workflow_run -> use triggering run id directly
+            if (context.eventName === 'workflow_run') {
+              core.setOutput('run_id', context.payload.workflow_run.id.toString());
+              core.setOutput('artifact_pattern', artifactPattern);
+              return;
+            }
+
+            // Case 2: manual -> if user provided run_id, use it
+            const manualRunId = core.getInput('run_id')?.trim();
+            if (manualRunId) {
+              core.setOutput('run_id', manualRunId);
+              core.setOutput('artifact_pattern', artifactPattern);
+              return;
+            }
+
+            // Case 3: manual with no run_id -> find latest successful "Build macOS App" on main
+            const WF_NAME = "Build macOS App";
+            const { owner, repo } = context.repo;
+
+            const wfs = await github.rest.actions.listRepoWorkflows({ owner, repo });
+            const wf = wfs.data.workflows.find(w => w.name === WF_NAME);
+            if (!wf) core.setFailed(`Workflow "${WF_NAME}" not found`);
+
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: wf.id, branch: 'main', status: 'success', per_page: 1
+            });
+            const run = runs.data.workflow_runs?.[0];
+            if (!run) core.setFailed(`No successful "${WF_NAME}" runs on main`);
+            core.setOutput('run_id', run.id.toString());
+            core.setOutput('artifact_pattern', artifactPattern);
+
+      - name: Download DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.resolve.outputs.run_id }}
+          pattern: ${{ steps.resolve.outputs.artifact_pattern }}
+          merge-multiple: false
+          path: artifacts
+
+      - name: Locate DMG
+        id: find_dmg
+        run: |
+          set -euo pipefail
+          DMG=$(ls -1 artifacts/*.dmg | head -n1)
+          test -n "$DMG" || { echo "No .dmg found"; exit 66; }
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+
+      - name: Mount DMG (read-only)
+        id: mount
+        run: |
+          set -euo pipefail
+          OUT=$(hdiutil attach -nobrowse -readonly "${{ steps.find_dmg.outputs.dmg }}")
+          echo "$OUT"
+          MOUNT_POINT=$(echo "$OUT" | awk '/Volumes/ {print $3; exit}')
+          test -n "$MOUNT_POINT" || { echo "Failed to get mount point"; exit 67; }
+          echo "mount_point=$MOUNT_POINT" >> "$GITHUB_OUTPUT"
+
+      - name: Copy .app out of DMG
+        run: |
+          set -euo pipefail
+          MP="${{ steps.mount.outputs.mount_point }}"
+          APP_IN_DMG=$(find "$MP" -maxdepth 2 -name "NextApp.app" -print -quit)
+          test -n "$APP_IN_DMG" || { echo "NextApp.app not found in DMG"; exit 68; }
+          mkdir -p out
+          ditto "$APP_IN_DMG" out/NextApp.app
+          xattr -dr com.apple.quarantine out/NextApp.app || true
+          echo "APP=out/NextApp.app" >> "$GITHUB_ENV"
+
+      - name: Unmount DMG
+        if: always()
+        run: |
+          MP="${{ steps.mount.outputs.mount_point }}"
+          [[ -n "$MP" ]] && hdiutil detach "$MP" || true
+
+      - name: Validate architecture & dylibs
+        run: |
+          set -euo pipefail
+          BIN="$APP/Contents/MacOS/NextApp"
+          echo "== file ==" && file "$BIN"
+          echo "== lipo ==" && lipo -info "$BIN"
+          lipo -verify_arch arm64 "$BIN" || { echo "Missing arm64 slice"; exit 65; }
+
+          echo "== linked dylibs (arm64) ==" && otool -arch arm64 -L "$BIN"
+
+          echo "== Walk all Mach-Os for arm64 slice =="
+          FAIL=0
+          while IFS= read -r f; do
+            if file "$f" | grep -q 'Mach-O'; then
+              if ! lipo -verify_arch arm64 "$f" 2>/dev/null; then
+                echo "❌ Not arm64: $f"
+                FAIL=1
+              fi
+            fi
+          done < <(find "$APP" -type f)
+          exit $FAIL
+
+      - name: Check RPATHs
+        run: |
+          otool -arch arm64 -l "$APP/Contents/MacOS/NextApp" | awk '/LC_RPATH/,/cmdsize/'
+
+      - name: Verify code signature strictly
+        run: |
+          set -e
+          codesign -dvv --verbose=4 "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP" || exit 64
+          spctl -a -vv --type execute "$APP" || true
+
+      - name: Notarization ticket (if stapled)
+        run: xcrun stapler validate -v "$APP" || true
+
+      - name: Smoke-launch (Qt offscreen) and collect logs
+        run: |
+          set -euo pipefail
+          BIN="$APP/Contents/MacOS/NextApp"
+          export QT_QPA_PLATFORM=offscreen
+          export QT_LOGGING_RULES="*.debug=true"
+          "$BIN" -platform offscreen > run.log 2>&1 & echo $! > app.pid
+          for i in {1..10}; do
+            if ! kill -0 $(cat app.pid) 2>/dev/null; then
+              echo "App exited (may be fine)."
+              break
+            fi
+            sleep 1
+          done
+          if kill -0 $(cat app.pid) 2>/dev/null; then
+            echo "Timeout, stopping app"; kill $(cat app.pid) || true
+          fi
+          echo "=== tail run.log ===" && tail -n +1 run.log || true
+
+      - name: Best-effort screenshot
+        run: |
+          screencapture -x screen.png || true
+          ls -l screen.png || true
+        continue-on-error: true
+
+      - name: Upload verification artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextapp-macos-verify
+          path: |
+            ${{ env.APP }}
+            run.log
+            screen.png
