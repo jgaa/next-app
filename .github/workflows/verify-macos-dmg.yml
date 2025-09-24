@@ -1,96 +1,122 @@
-name: Verify & Smoke-run macOS app (from DMG)
+name: Verify & Smoke-run macOS app (from DMG, via gh)
 
 on:
-  # Manual trigger
   workflow_dispatch:
     inputs:
-      run_id:
-        description: "Build macOS App run-id to pull artifacts from (optional)"
+      version:
+        description: "Version string (e.g. 0.13.0). If empty, use latest successful build on main."
         required: false
-      artifact_pattern:
-        description: "Artifact name/pattern"
-        required: false
-        default: "nextapp-macos-arm64-dmg-*"
-
-  # Auto trigger after the build workflow completes
   workflow_run:
-    workflows: ["Build macOS App"]   # ← must match your build workflow name
+    workflows: ["Build macOS App"]   # ← must match your build workflow *name*
     types: [completed]
 
 permissions:
   actions: read
   contents: read
 
+env:
+  BUILD_WORKFLOW_FILE: build-macos-arm64.yaml   # ← your build workflow file path/name
+  ARTIFACT_PREFIX: nextapp-macos-arm64-dmg-     # artifact names look like: nextapp-macos-arm64-dmg-0.13.0
+  ARTIFACTS_DIR: artifacts
+
 jobs:
   verify-and-run:
-    # Use Apple silicon so we can actually launch arm64
     runs-on: macos-14
-    # Only auto-run when the build on main succeeded
-    if: >
-      ${{
-        (github.event_name != 'workflow_run') ||
-        (github.event.workflow_run.conclusion == 'success' &&
-         github.event.workflow_run.head_branch == 'main')
-      }}
+    # only auto-run for successful builds on main
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
 
     steps:
       - name: Checkout (empty)
         uses: actions/checkout@v4
 
-      - name: Resolve run-id and artifact pattern
+      - name: Resolve RUN_ID and ARTIFACT pattern/name
         id: resolve
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const artifactPattern =
-              (core.getInput('artifact_pattern') || 'nextapp-macos-arm64-dmg-*').trim();
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "event: ${{ github.event_name }}"
+          # Decide RUN_ID
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            RUN_ID="${{ github.event.workflow_run.id }}"
+          else
+            # Manual run -> pick latest successful run of the build workflow on main
+            RUN_ID=$(gh run list \
+              --repo "${{ github.repository }}" \
+              --workflow "${BUILD_WORKFLOW_FILE}" \
+              --branch main \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+          fi
 
-            // Case 1: workflow_run -> use triggering run id directly
-            if (context.eventName === 'workflow_run') {
-              core.setOutput('run_id', context.payload.workflow_run.id.toString());
-              core.setOutput('artifact_pattern', artifactPattern);
-              return;
-            }
+          if [[ -z "${RUN_ID:-}" || "${RUN_ID}" == "null" ]]; then
+            echo "::error::No successful macOS/arm64 build run found on main."
+            exit 1
+          fi
+          echo "RUN_ID=$RUN_ID" >> "$GITHUB_OUTPUT"
 
-            // Case 2: manual -> if user provided run_id, use it
-            const manualRunId = core.getInput('run_id')?.trim();
-            if (manualRunId) {
-              core.setOutput('run_id', manualRunId);
-              core.setOutput('artifact_pattern', artifactPattern);
-              return;
-            }
+          # Artifact selection: exact name if version provided; otherwise pattern
+          VERSION_INPUT="${{ inputs.version || '' }}"
+          if [[ -n "${VERSION_INPUT}" ]]; then
+            ARTIFACT_NAME="${ARTIFACT_PREFIX}${VERSION_INPUT}"
+            echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+          else
+            ARTIFACT_PATTERN="${ARTIFACT_PREFIX}*"
+            echo "ARTIFACT_PATTERN=$ARTIFACT_PATTERN" >> "$GITHUB_OUTPUT"
+          fi
 
-            // Case 3: manual with no run_id -> find latest successful "Build macOS App" on main
-            const WF_NAME = "Build macOS App";
-            const { owner, repo } = context.repo;
+          echo "Resolved RUN_ID=${RUN_ID}"
+          echo "Version input='${VERSION_INPUT:-<none>}'"
 
-            const wfs = await github.rest.actions.listRepoWorkflows({ owner, repo });
-            const wf = wfs.data.workflows.find(w => w.name === WF_NAME);
-            if (!wf) core.setFailed(`Workflow "${WF_NAME}" not found`);
+      - name: List artifacts for debugging
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run view "${{ steps.resolve.outputs.RUN_ID }}" --repo "${{ github.repository }}" --log || true
+          echo "----- Artifacts in run -----"
+          gh api \
+            repos/${{ github.repository }}/actions/runs/${{ steps.resolve.outputs.RUN_ID }}/artifacts \
+            --jq '.artifacts[] | {name, expired, size_in_bytes}'
 
-            const runs = await github.rest.actions.listWorkflowRuns({
-              owner, repo, workflow_id: wf.id, branch: 'main', status: 'success', per_page: 1
-            });
-            const run = runs.data.workflow_runs?.[0];
-            if (!run) core.setFailed(`No successful "${WF_NAME}" runs on main`);
-            core.setOutput('run_id', run.id.toString());
-            core.setOutput('artifact_pattern', artifactPattern);
+      - name: Download artifact (exact name if version provided)
+        if: ${{ steps.resolve.outputs.ARTIFACT_NAME != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${ARTIFACTS_DIR}"
+          gh run download "${{ steps.resolve.outputs.RUN_ID }}" \
+            --repo "${{ github.repository }}" \
+            --name "${{ steps.resolve.outputs.ARTIFACT_NAME }}" \
+            --dir "${ARTIFACTS_DIR}"
 
-      - name: Download DMG artifact
-        uses: actions/download-artifact@v4
-        with:
-          run-id: ${{ steps.resolve.outputs.run_id }}
-          pattern: ${{ steps.resolve.outputs.artifact_pattern }}
-          merge-multiple: false
-          path: artifacts
+      - name: Download artifact (pattern fallback when no version provided)
+        if: ${{ steps.resolve.outputs.ARTIFACT_NAME == '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${ARTIFACTS_DIR}"
+          gh run download "${{ steps.resolve.outputs.RUN_ID }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "${{ steps.resolve.outputs.ARTIFACT_PATTERN }}" \
+            --dir "${ARTIFACTS_DIR}"
 
       - name: Locate DMG
         id: find_dmg
         run: |
           set -euo pipefail
-          DMG=$(ls -1 artifacts/*.dmg | head -n1)
-          test -n "$DMG" || { echo "No .dmg found"; exit 66; }
+          DMG=$(ls -1 "${ARTIFACTS_DIR}"/*.dmg | head -n1 || true)
+          if [[ -z "${DMG}" ]]; then
+            echo "::error::No .dmg found in ${ARTIFACTS_DIR}."
+            echo "Check the artifact names printed above and your upload step."
+            exit 66
+          fi
           echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+          echo "Found DMG: $DMG"
 
       - name: Mount DMG (read-only)
         id: mount
@@ -123,19 +149,15 @@ jobs:
         run: |
           set -euo pipefail
           BIN="$APP/Contents/MacOS/NextApp"
-          echo "== file ==" && file "$BIN"
-          echo "== lipo ==" && lipo -info "$BIN"
+          file "$BIN"
+          lipo -info "$BIN"
           lipo -verify_arch arm64 "$BIN" || { echo "Missing arm64 slice"; exit 65; }
-
-          echo "== linked dylibs (arm64) ==" && otool -arch arm64 -L "$BIN"
-
-          echo "== Walk all Mach-Os for arm64 slice =="
+          otool -arch arm64 -L "$BIN"
           FAIL=0
           while IFS= read -r f; do
             if file "$f" | grep -q 'Mach-O'; then
               if ! lipo -verify_arch arm64 "$f" 2>/dev/null; then
-                echo "❌ Not arm64: $f"
-                FAIL=1
+                echo "❌ Not arm64: $f"; FAIL=1
               fi
             fi
           done < <(find "$APP" -type f)
@@ -164,21 +186,13 @@ jobs:
           "$BIN" -platform offscreen > run.log 2>&1 & echo $! > app.pid
           for i in {1..10}; do
             if ! kill -0 $(cat app.pid) 2>/dev/null; then
-              echo "App exited (may be fine)."
-              break
-            fi
-            sleep 1
+              echo "App exited (may be fine)."; break
+            fi; sleep 1
           done
           if kill -0 $(cat app.pid) 2>/dev/null; then
             echo "Timeout, stopping app"; kill $(cat app.pid) || true
           fi
-          echo "=== tail run.log ===" && tail -n +1 run.log || true
-
-      - name: Best-effort screenshot
-        run: |
-          screencapture -x screen.png || true
-          ls -l screen.png || true
-        continue-on-error: true
+          tail -n +1 run.log || true
 
       - name: Upload verification artifacts
         uses: actions/upload-artifact@v4
@@ -187,4 +201,3 @@ jobs:
           path: |
             ${{ env.APP }}
             run.log
-            screen.png
