@@ -323,44 +323,6 @@ nextapp::pb::Action ReviewModel::action()
     return {};
 }
 
-/*int ReviewModel::findNext(bool forward, int from, bool nextList)
-{
-    assert(!cache_.empty());
-
-    optional<QUuid> node;
-    if (nextList) {
-        node = cache_.current().node_id_;
-    };
-    const int step = forward ? 1 : -1;
-    const int start = from == -1  ? cache_.currentIx() + step : from;
-    int tries = 0;
-
-    for(int i = start;; i += step, ++tries) {
-        if (i == -1) {
-            i = cache_.size() - 1;
-        } else if (i == cache_.size()) {
-            i = 0;
-        };
-
-        if (tries && i == start) {
-            break;
-        }
-
-        if (cache_.at(i).state() == Item::State::PENDING) {
-            if (node && cache_.at(i).node_id_ == *node) {
-                continue;
-            };
-            return i;
-        }
-
-        assert(tries < cache_.size());
-    }
-
-    remaining_ = cache_.countRemaining();
-    updateProgress();
-    return -1;
-}*/
-
 int ReviewModel::findNext(bool forward,
                           int from,
                           bool nextList)
