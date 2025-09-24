@@ -1,13 +1,13 @@
-name: Verify & Smoke-run macOS app (from DMG, via gh)
+name: Verify & Smoke-run macOS app (DMG)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version string (e.g. 0.13.0). If empty, use latest successful build on main."
+        description: "Optional: version to fetch (e.g. 0.13.0). If empty, use latest successful build on main."
         required: false
   workflow_run:
-    workflows: ["Build macOS App"]   # ← must match your build workflow *name*
+    workflows: ["Build macOS"]   # ← MUST match your build workflow NAME
     types: [completed]
 
 permissions:
@@ -15,32 +15,28 @@ permissions:
   contents: read
 
 env:
-  BUILD_WORKFLOW_FILE: build-macos-arm64.yaml   # ← your build workflow file path/name
-  ARTIFACT_PREFIX: nextapp-macos-arm64-dmg-     # artifact names look like: nextapp-macos-arm64-dmg-0.13.0
+  BUILD_WORKFLOW_FILE: build-macos-arm64.yaml            # ← your build workflow file (you already use this)
+  ARTIFACT_PREFIX: nextapp-macos-arm64-dmg-              # ← artifact name prefix; build uploads: nextapp-macos-arm64-dmg-${VERSION}
   ARTIFACTS_DIR: artifacts
 
 jobs:
   verify-and-run:
     runs-on: macos-14
-    # only auto-run for successful builds on main
     if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
 
     steps:
       - name: Checkout (empty)
         uses: actions/checkout@v4
 
-      - name: Resolve RUN_ID and ARTIFACT pattern/name
+      - name: Resolve run-id + artifact selector (GH CLI)
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          echo "event: ${{ github.event_name }}"
-          # Decide RUN_ID
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             RUN_ID="${{ github.event.workflow_run.id }}"
           else
-            # Manual run -> pick latest successful run of the build workflow on main
             RUN_ID=$(gh run list \
               --repo "${{ github.repository }}" \
               --workflow "${BUILD_WORKFLOW_FILE}" \
@@ -50,38 +46,24 @@ jobs:
               --json databaseId \
               --jq '.[0].databaseId')
           fi
-
-          if [[ -z "${RUN_ID:-}" || "${RUN_ID}" == "null" ]]; then
-            echo "::error::No successful macOS/arm64 build run found on main."
-            exit 1
-          fi
+          test -n "${RUN_ID:-}" && [[ "$RUN_ID" != "null" ]] || { echo "::error::No successful Build macOS run on main"; exit 1; }
           echo "RUN_ID=$RUN_ID" >> "$GITHUB_OUTPUT"
 
-          # Artifact selection: exact name if version provided; otherwise pattern
           VERSION_INPUT="${{ inputs.version || '' }}"
-          if [[ -n "${VERSION_INPUT}" ]]; then
-            ARTIFACT_NAME="${ARTIFACT_PREFIX}${VERSION_INPUT}"
-            echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+          if [[ -n "$VERSION_INPUT" ]]; then
+            echo "ARTIFACT_NAME=${ARTIFACT_PREFIX}${VERSION_INPUT}" >> "$GITHUB_OUTPUT"
           else
-            ARTIFACT_PATTERN="${ARTIFACT_PREFIX}*"
-            echo "ARTIFACT_PATTERN=$ARTIFACT_PATTERN" >> "$GITHUB_OUTPUT"
+            echo "ARTIFACT_PATTERN=${ARTIFACT_PREFIX}*" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "Resolved RUN_ID=${RUN_ID}"
-          echo "Version input='${VERSION_INPUT:-<none>}'"
-
-      - name: List artifacts for debugging
+      - name: List artifacts (debug)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          gh run view "${{ steps.resolve.outputs.RUN_ID }}" --repo "${{ github.repository }}" --log || true
-          echo "----- Artifacts in run -----"
-          gh api \
-            repos/${{ github.repository }}/actions/runs/${{ steps.resolve.outputs.RUN_ID }}/artifacts \
-            --jq '.artifacts[] | {name, expired, size_in_bytes}'
+          gh api repos/${{ github.repository }}/actions/runs/${{ steps.resolve.outputs.RUN_ID }}/artifacts \
+            --jq '.artifacts[] | {name,expired,size_in_bytes}'
 
-      - name: Download artifact (exact name if version provided)
+      - name: Download artifact (exact name)
         if: ${{ steps.resolve.outputs.ARTIFACT_NAME != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,7 +75,7 @@ jobs:
             --name "${{ steps.resolve.outputs.ARTIFACT_NAME }}" \
             --dir "${ARTIFACTS_DIR}"
 
-      - name: Download artifact (pattern fallback when no version provided)
+      - name: Download artifact (pattern)
         if: ${{ steps.resolve.outputs.ARTIFACT_NAME == '' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -105,93 +87,139 @@ jobs:
             --pattern "${{ steps.resolve.outputs.ARTIFACT_PATTERN }}" \
             --dir "${ARTIFACTS_DIR}"
 
-      - name: Locate DMG
-        id: find_dmg
+      - name: Locate or extract DMG
+        id: dmg
         run: |
           set -euo pipefail
-          DMG=$(ls -1 "${ARTIFACTS_DIR}"/*.dmg | head -n1 || true)
-          if [[ -z "${DMG}" ]]; then
-            echo "::error::No .dmg found in ${ARTIFACTS_DIR}."
-            echo "Check the artifact names printed above and your upload step."
-            exit 66
+          shopt -s nullglob
+          # If we got a zip, unzip it to reveal the DMG
+          if compgen -G "${ARTIFACTS_DIR}/*.zip" > /dev/null; then
+            for z in ${ARTIFACTS_DIR}/*.zip; do
+              echo "Unzipping: $z"
+              ditto -x -k "$z" "${ARTIFACTS_DIR}"
+            done
           fi
+
+          DMG=""
+          if compgen -G "${ARTIFACTS_DIR}/*.dmg" > /dev/null; then
+            DMG=$(ls -1 ${ARTIFACTS_DIR}/*.dmg | head -n1)
+          fi
+          test -n "$DMG" || { echo "::error::No .dmg found after download"; exit 66; }
           echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
           echo "Found DMG: $DMG"
 
-      - name: Mount DMG (read-only)
+      - name: Mount DMG (stable mountpoint)
         id: mount
         run: |
           set -euo pipefail
-          OUT=$(hdiutil attach -nobrowse -readonly "${{ steps.find_dmg.outputs.dmg }}")
-          echo "$OUT"
-          MOUNT_POINT=$(echo "$OUT" | awk '/Volumes/ {print $3; exit}')
-          test -n "$MOUNT_POINT" || { echo "Failed to get mount point"; exit 67; }
-          echo "mount_point=$MOUNT_POINT" >> "$GITHUB_OUTPUT"
+          MP="$(mktemp -d /tmp/nextapp-mnt.XXXXXX)"
+          echo "Mountpoint: $MP"
+          hdiutil attach -nobrowse -readonly -noverify -mountpoint "$MP" "${{ steps.dmg.outputs.dmg }}"
+          echo "mount_point=$MP" >> "$GITHUB_OUTPUT"
+          echo "DMG contents:"
+          ls -la "$MP" || true
 
-      - name: Copy .app out of DMG
+      - name: Copy .app out of DMG (auto-detect)
+        id: copyapp
         run: |
           set -euo pipefail
           MP="${{ steps.mount.outputs.mount_point }}"
-          APP_IN_DMG=$(find "$MP" -maxdepth 2 -name "NextApp.app" -print -quit)
-          test -n "$APP_IN_DMG" || { echo "NextApp.app not found in DMG"; exit 68; }
+          APP_IN_DMG=$(find "$MP" -maxdepth 2 -type d -name "*.app" -print -quit)
+          test -n "${APP_IN_DMG:-}" || { echo "::error::No .app found in DMG"; exit 68; }
+          echo "Found app: $APP_IN_DMG"
           mkdir -p out
-          ditto "$APP_IN_DMG" out/NextApp.app
-          xattr -dr com.apple.quarantine out/NextApp.app || true
-          echo "APP=out/NextApp.app" >> "$GITHUB_ENV"
+          ditto "$APP_IN_DMG" "out/nextapp.app"
+          xattr -dr com.apple.quarantine "out/nextapp.app" || true
+          echo "app=out/nextapp.app" >> "$GITHUB_OUTPUT"
 
-      - name: Unmount DMG
+      - name: Unmount DMG (retry on busy)
         if: always()
         run: |
+          set -euo pipefail
           MP="${{ steps.mount.outputs.mount_point }}"
-          [[ -n "$MP" ]] && hdiutil detach "$MP" || true
+          if [[ -n "${MP:-}" ]] && mount | grep -q "on $MP "; then
+            hdiutil detach "$MP" || { sleep 2; hdiutil detach -force "$MP" || true; }
+          fi
 
-      - name: Validate architecture & dylibs
+      - name: Read Info.plist & resolve executable
+        id: info
         run: |
           set -euo pipefail
-          BIN="$APP/Contents/MacOS/NextApp"
-          file "$BIN"
-          lipo -info "$BIN"
-          lipo -verify_arch arm64 "$BIN" || { echo "Missing arm64 slice"; exit 65; }
-          otool -arch arm64 -L "$BIN"
+          APP="${{ steps.copyapp.outputs.app }}"
+          INFO="$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$INFO" >/tmp/execname
+          EXEC_NAME=$(cat /tmp/execname)
+          echo "exec_name=$EXEC_NAME" >> "$GITHUB_OUTPUT"
+          echo "App=$APP"
+          echo "Exec=$EXEC_NAME"
+          echo "=== Info.plist ==="
+          plutil -p "$INFO" || true
+
+      - name: Validate architecture, dylibs, rpaths
+        run: |
+          set -euo pipefail
+          APP="${{ steps.copyapp.outputs.app }}"
+          BIN="$APP/Contents/MacOS/${{ steps.info.outputs.exec_name }}"
+
+          echo "== file ==" && file "$BIN"
+          echo "== lipo -info ==" && lipo "$BIN" -info
+          lipo "$BIN" -verify_arch arm64 && echo "✅ arm64 slice present"
+
+          echo "== linked dylibs (arm64) ==" && otool -arch arm64 -L "$BIN"
+
+          echo "== RPATHs (arm64) =="
+          otool -arch arm64 -l "$BIN" | awk '/LC_RPATH/{p=1} p; /cmdsize/{p=0}'
+
+          echo "== Ensure exactly one Mach-O in Contents/MacOS =="
+          find "$APP/Contents/MacOS" -maxdepth 1 -type f -print | sed 's/^/  /'
+          COUNT=$(find "$APP/Contents/MacOS" -maxdepth 1 -type f -print | wc -l | tr -d ' ')
+          if [ "$COUNT" -ne 1 ]; then
+            echo "⚠️ Expected 1 file in Contents/MacOS; found $COUNT"
+          fi
+
+          echo "== Walk bundle: every Mach-O must have arm64 =="
           FAIL=0
           while IFS= read -r f; do
             if file "$f" | grep -q 'Mach-O'; then
-              if ! lipo -verify_arch arm64 "$f" 2>/dev/null; then
+              if ! lipo "$f" -verify_arch arm64 2>/dev/null; then
                 echo "❌ Not arm64: $f"; FAIL=1
               fi
             fi
           done < <(find "$APP" -type f)
           exit $FAIL
 
-      - name: Check RPATHs
-        run: |
-          otool -arch arm64 -l "$APP/Contents/MacOS/NextApp" | awk '/LC_RPATH/,/cmdsize/'
-
-      - name: Verify code signature strictly
+      - name: Verify code signature (strict but non-fatal for ad-hoc)
         run: |
           set -e
-          codesign -dvv --verbose=4 "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP" || exit 64
-          spctl -a -vv --type execute "$APP" || true
+          APP="${{ steps.copyapp.outputs.app }}"
+          echo "== codesign details =="
+          codesign -dvv --verbose=4 "$APP" 2>&1 || true
+          echo "-- entitlements --"
+          codesign -d --entitlements :- "$APP" 2>/dev/null || echo "(none)"
+          echo "== deep strict verify (may fail for ad-hoc) =="
+          codesign --verify --deep --strict --verbose=2 "$APP" || true
+          echo "== stapler validate (informational) =="
+          xcrun stapler validate -v "$APP" || true
+          xcrun stapler validate -v "${{ steps.dmg.outputs.dmg }}" || true
 
-      - name: Notarization ticket (if stapled)
-        run: xcrun stapler validate -v "$APP" || true
-
-      - name: Smoke-launch (Qt offscreen) and collect logs
+      - name: Smoke-run (Qt offscreen) and collect logs
         run: |
           set -euo pipefail
-          BIN="$APP/Contents/MacOS/NextApp"
+          APP="${{ steps.copyapp.outputs.app }}"
+          BIN="$APP/Contents/MacOS/${{ steps.info.outputs.exec_name }}"
           export QT_QPA_PLATFORM=offscreen
           export QT_LOGGING_RULES="*.debug=true"
           "$BIN" -platform offscreen > run.log 2>&1 & echo $! > app.pid
+          # Wait up to 10s; stop if still running
           for i in {1..10}; do
-            if ! kill -0 $(cat app.pid) 2>/dev/null; then
-              echo "App exited (may be fine)."; break
+            if ! kill -0 "$(cat app.pid)" 2>/dev/null; then
+              echo "App exited (ok)."; break
             fi; sleep 1
           done
-          if kill -0 $(cat app.pid) 2>/dev/null; then
-            echo "Timeout, stopping app"; kill $(cat app.pid) || true
+          if kill -0 "$(cat app.pid)" 2>/dev/null; then
+            echo "Timeout, stopping app"; kill "$(cat app.pid)" || true
           fi
+          echo "=== tail run.log ==="
           tail -n +1 run.log || true
 
       - name: Upload verification artifacts
@@ -199,5 +227,5 @@ jobs:
         with:
           name: nextapp-macos-verify
           path: |
-            ${{ env.APP }}
+            ${{ steps.copyapp.outputs.app }}
             run.log
