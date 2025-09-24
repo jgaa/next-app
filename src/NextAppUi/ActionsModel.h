@@ -296,13 +296,14 @@ public:
 
     template <typename T>
     static QString getStatusColor(const T& a) {
-
         QString color = "gray";
         if (a.hasDue()) {
             const auto& d = a.due();
             const auto now = time({});
+            const auto today = QDate::currentDate();
             if (d.hasStart()) {
-                if (d.start() > now) {
+                const auto day = QDateTime::fromSecsSinceEpoch(d.start(), Qt::LocalTime).date();
+                if (day > today) {
                     return color;
                 }
             }
