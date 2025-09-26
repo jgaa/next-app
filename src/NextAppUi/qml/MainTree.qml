@@ -104,13 +104,17 @@ Rectangle {
                 }
 
                 // fire once the item is actually in a window
-                onWindowChanged: if (window) Qt.callLater(() => Qt.callLater(expandNow))
+                onWindowChanged: (w) => {
+                    if (w) {
+                        Qt.callLater(expandNow)
+                    }
+                }
 
                 // if model resets later (common with async models), expand again
                 Connections {
                     target: NaMainTreeModel
-                    function onModelReset()  { Qt.callLater(expandNow) }
-                    function onRowsInserted() { Qt.callLater(expandNow) }
+                    function onModelReset()  { Qt.callLater(treeView.expandNow) }
+                    function onRowsInserted() { Qt.callLater(treeView.expandNow) }
                 }
 
                 ScrollBar.vertical: ScrollBar {

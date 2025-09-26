@@ -326,6 +326,7 @@ signals:
     void signupStatusChanged();
     void messagesChanged();
     void resynching();
+    void dataUpdated(); // All models should refresh their views with the current state.
 
 private:
     void onReachabilityChanged(QNetworkInformation::Reachability reachability);

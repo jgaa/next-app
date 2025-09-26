@@ -254,6 +254,9 @@ ActionsModel::ActionsModel(QObject *parent)
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ActionsModel::actionDeleted);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionAdded, this, &ActionsModel::actionAdded);
     connect(ActionInfoCache::instance(), &ActionInfoCache::cacheReloaded, this, &ActionsModel::cacheReloaded);
+    connect(std::addressof(ServerComm::instance()), &ServerComm::dataUpdated, [this]() {
+        fetchIf();
+    });
 
     connect(ActionsOnCurrentCalendar::instance(), &ActionsOnCurrentCalendar::modelReset, this, [this] {
         if (valid_) {

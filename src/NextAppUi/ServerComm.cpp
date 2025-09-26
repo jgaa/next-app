@@ -1952,6 +1952,12 @@ failed:
         co_await updateDataEpoc();
     }
 
+    // execute later
+    QTimer::singleShot(0, [this] {
+        LOG_TRACE_N << "Emitting dataUpdated";
+        emit dataUpdated();
+    });
+
     co_return;
 }
 
