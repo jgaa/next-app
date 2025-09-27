@@ -352,11 +352,16 @@ ApplicationWindow {
         Rectangle {
             id: bottomBar
             Layout.fillWidth: true
-            Layout.preferredHeight: appWindow.menuBar.height
+            Layout.preferredHeight: appWindow.menuBar.height > 0 ? appWindow.menuBar.height : Math.max(30, row.implicitHeight)
             color: MaterialDesignStyling.surfaceContainer
 
+            z: 2
+
             RowLayout {
+                id: row
                 anchors.fill: parent
+                spacing: 8
+                anchors.margins: 8
 
                 Item {
                     Layout.fillWidth: true
