@@ -3,7 +3,7 @@ name: Build macOS App
 on:
   push:
     branches:
-      #- main
+      - main
       - macos-ga
       
 permissions:
