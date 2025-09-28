@@ -49,7 +49,7 @@ This architecture provides a robust and efficient way to maintain consistency an
 
 ## How to Play with the Current Version
 
-The simplest way to get started is to download an installer for your laptop or PC (see the Releases tag on GitHub) and use the public beta backend.
+The simplest way to get started is to download an installer for your laptop or PC (see the Releases tag on GitHub) and use the public beta backend. For Android, you can install the app from [Google Play](https://play.google.com/store/apps/details?id=eu.lastviking.nextapp).
 
 If you are a software developer, you can also clone the repository and build everything yourself. The NextApp client runs on Linux, macOS, Windows, and Android. The backend - which consists of two daemons, `signupd` and `nextappd` - runs only under Linux. These daemons are built automatically as docker images on the `main` and `devel` branches on GitHub. The backend uses MariaDB for storage.
 
@@ -59,7 +59,7 @@ There is a [script](scripts/bootstrap-and-run-backend.sh) that lets you run your
 
 * Linux desktop
 * macOS
-* Windows 10/11
+* Windows
 * Android
 
 ## Roadmap
