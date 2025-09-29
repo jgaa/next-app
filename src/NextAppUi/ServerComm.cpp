@@ -1207,8 +1207,15 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
                              QString otp,
                              int region)
 {
+    // Create a new device ID
+    {
+        device_uuid_ = QUuid::createUuid();
+        LOG_INFO_N << "Generated new device UUID: " << device_uuid_.toString(QUuid::WithoutBraces);
+        QSettings settings;
+        settings.setValue("deviceUuid", device_uuid_.toString(QUuid::WithoutBraces));
+    }
+
     // Create CSR
-    // Send signup request
     signup_status_ = SignupStatus::SIGNUP_SIGNING_UP;
     emit signupStatusChanged();
 
@@ -1221,6 +1228,8 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
         emit signupStatusChanged();
         co_return;
     }
+
+    // Send signup/add-device request
 
     const QString& csr = csr_result->first;
     const QString& key = csr_result->second;
