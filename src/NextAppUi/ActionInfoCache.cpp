@@ -232,6 +232,11 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
         return false;
     }
 
+    if (existing.hasDescr() != action.hasDescr()) {
+        existing.setHasDescr(action.hasDescr());
+        changed = true;
+    }
+
     if (existing.node() != action.node()) {
         existing.setNode(action.node());
         changed = true;
@@ -739,7 +744,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
         LOG_TRACE_N << "Deleting action " << action.id_proto() << " " << action.name();
 
-        co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+        const auto _ = co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
         const auto rval = co_await db.query("DELETE FROM action WHERE id = ?", action.id_proto());
         if (!rval) {
             LOG_WARN_N << "Failed to delete action " << action.id_proto() << " " << action.name()
@@ -757,7 +762,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
             if (hash == new_hash) {
                 need_tags_update = false;
             } else {
-                co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+                const auto _ = co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
             }
         } else {
             need_tags_update = !action.tags().isEmpty();

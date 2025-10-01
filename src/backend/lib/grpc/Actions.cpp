@@ -146,6 +146,7 @@ struct ToAction {
         }
     }
 
+    // TODO: If we assign to ActionInfo, set_hasdescr() is not set.
     template <ActionType T>
     static void assign(const boost::mysql::row_view& row, T& obj, const UserContext& uctx) {
         obj.set_id(pb_adapt(row.at(ID).as_string()));
@@ -248,6 +249,9 @@ struct ToAction {
         if constexpr (std::is_same_v<T, pb::Action>) {
             if (row.at(DESCR).is_string()) {
                 obj.set_descr(pb_adapt(row.at(DESCR).as_string()));
+                obj.set_hasdescr(!obj.descr().empty());
+            } else {
+                obj.set_hasdescr(false);
             }
             if (row.at(TIME_ESTIMATE).is_int64()) {
                 obj.set_timeestimate(row.at(TIME_ESTIMATE).as_int64());
