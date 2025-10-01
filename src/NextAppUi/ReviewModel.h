@@ -69,7 +69,8 @@ public:
         ScoreColorRole,
         TagsRole,
         CategoryColorRole,
-        StatusColor
+        StatusColor,
+        HasDescriptionRole
     };
 
     Q_ENUM(State)

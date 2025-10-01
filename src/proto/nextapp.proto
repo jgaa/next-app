@@ -365,6 +365,7 @@ message ActionInfo {
     ActionStatus status = 4;
     bool favorite       = 8;
     string name         = 5;
+    bool hasDescr       = 6;
     Date createdDate    = 7;
     Due due             = 9;
     uint64 completedTime = 11; // time_t
@@ -452,6 +453,7 @@ message Action {
     int64 updated = 23; // time_t as ms
     float score = 24; // Used to sort the actions. Used locally in the client
     repeated string tags = 25; // Tags for the action
+    bool hasDescr = 26;
 }
 
 // Allow updating multiple actions at once, without altering the other fields.

@@ -183,6 +183,7 @@ Rectangle {
                 required property string tags
                 required property string categoryColor
                 required property string statusColor
+                required property bool hasDescription;
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -368,6 +369,24 @@ Rectangle {
 
                                 Component.onCompleted: {
                                     font.pointSize *= 1.15;
+                                }
+                            }
+
+                            CheckBoxWithFontIcon {
+                                id: editIcon
+                                enabled: !actionItem.done
+                                isChecked: actionItem.hasDescription
+                                checkedCode: "\uf303"
+                                uncheckedCode: "\uf303"
+                                checkedColor:  "gold"
+                                uncheckedColor: MaterialDesignStyling.onSurface
+                                useSolidForAll: true
+                                iconSize: NaCore.isMobile ? 28 : 16
+                                autoToggle: false
+                                text: ""
+
+                                onClicked: {
+                                    root.openActionDlg(actionItem.uuid)
                                 }
                             }
 

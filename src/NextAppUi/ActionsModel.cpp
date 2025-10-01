@@ -1270,6 +1270,8 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
         return ActionCategoriesModel::instance().getColorFromUuid(action.category());
     case StatusColor:
         return getStatusColor(action);
+    case HasDescriptionRole:
+        return action.hasDescr();
     }
 
     return {};
@@ -1344,6 +1346,7 @@ QHash<int, QByteArray> ActionsModel::roleNames() const
     roles[TagsRole] = "tags";
     roles[CategoryColorRole] = "categoryColor";
     roles[StatusColor] = "statusColor";
+    roles[HasDescriptionRole] = "hasDescription";
     return roles;
 }
 

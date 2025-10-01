@@ -646,6 +646,9 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
         }
         if (!row[DESCR].isNull()) {
             item->setDescr(row[DESCR].toString());
+            item->setHasDescr(true);
+        } else {
+            item->setHasDescr(false);
         }
 
         item->setKind(static_cast<nextapp::pb::ActionKindGadget::ActionKind>(row[KIND].toInt()));
@@ -871,7 +874,9 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
     auto& db = NextAppCore::instance()->db();
     QString query = "SELECT id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, created_date, "
                           " due_kind, start_time, due_by_time, due_timezone, completed_time, "
-                          " kind, version, category, time_estimate, time_spent, score, tags FROM action";
+                          " kind, version, category, time_estimate, time_spent, score, tags, "
+                          " (descr IS NOT NULL) AS has_descr"
+                          " FROM action";
 
     if (id && !QUuid{*id}.isNull()) {
         query += " WHERE id = '" + *id + "'";
@@ -900,7 +905,8 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
         TIME_ESTIMATE,
         TIME_SPENT,
         SCORE,
-        TAGS
+        TAGS,
+        HAS_DESCR
     };
 
     uint count = 0;
@@ -972,7 +978,7 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
                 auto tags_list = tags.split(' ');
                 item.setTags(std::move(tags_list));
             }
-
+            item.setHasDescr(row[HAS_DESCR].toBool());
 
             hot_cache_[uuid] = std::make_shared<nextapp::pb::ActionInfo>(std::move(item));
             ++count;

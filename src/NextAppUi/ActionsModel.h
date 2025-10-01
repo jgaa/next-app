@@ -160,7 +160,8 @@ class ActionsModel : public QAbstractListModel
         ScoreColorRole,
         TagsRole,
         CategoryColorRole,
-        StatusColor
+        StatusColor,
+        HasDescriptionRole,
     };
 
     enum Shortcuts {
