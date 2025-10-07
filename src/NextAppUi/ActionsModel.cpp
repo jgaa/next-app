@@ -1422,26 +1422,13 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 
     const auto sort_completed = sort_ < SORT_COMPLETED_DATE ? sort_completed_prefix : "";
 
-    bool started_reset = false;
-
-    ScopedExit reset_model([&] {
-        if (started_reset) {
-            endResetModel();
-        }
-    });
-
-    auto start_reset = [&] {
-        if (!started_reset) {
-            beginResetModel();
-            started_reset = true;
-        }
-    };
 
     if (restart) {
         pagination_.reset();
         actions_.clear();
         valid_ = false;
-        start_reset();
+        beginResetModel();
+        endResetModel();
     }
 
     if (!isVisible() ) {
@@ -1796,7 +1783,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
             co_await ActionInfoCache::instance()->fill(new_actions);
 
             // Insert or replace the new list depending on it's page.
-            start_reset();
+            beginResetModel();
             if (restart) {
                 actions_ = std::move(new_actions);
             } else {
@@ -1806,6 +1793,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
             pagination_.more = rows.size() == pagination_.pageSize();
             pagination_.increment(rows.size());
             valid_ = true;
+            endResetModel();
             co_return;
         }
     }
@@ -1814,7 +1802,8 @@ ORDER BY {} LIMIT {} OFFSET {})",
 failed:
     pagination_.more = false;
     valid_ = false;
-    start_reset();
+    beginResetModel();
+    endResetModel();
     actions_.clear();
 }
 

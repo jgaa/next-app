@@ -9,6 +9,7 @@
 #include <QUuid>
 #include <QSettings>
 #include <QDate>
+#include <QTimeZone>
 
 #include "qcorotask.h"
 
@@ -303,7 +304,7 @@ public:
             const auto now = time({});
             const auto today = QDate::currentDate();
             if (d.hasStart()) {
-                const auto day = QDateTime::fromSecsSinceEpoch(d.start(), Qt::LocalTime).date();
+                const auto day = QDateTime::fromSecsSinceEpoch(d.start(), QTimeZone::systemTimeZone()).date();
                 if (day > today) {
                     return color;
                 }
