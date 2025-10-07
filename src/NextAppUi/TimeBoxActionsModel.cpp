@@ -116,6 +116,7 @@ void TimeBoxActionsModel::reSync()
     if (state_ && state_->isSynching()) {
         LOG_WARN_N << toString() << ": Resychning while resynching!";
         resetState();
+        return;
     }
 
     assert(state_);
