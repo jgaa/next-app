@@ -10,7 +10,6 @@ if(NOT DEFINED USE_BOOST_VERSION)
 endif()
 
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
-    system
     program_options
     date_time
     coroutine
