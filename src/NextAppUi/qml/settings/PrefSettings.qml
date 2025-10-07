@@ -16,7 +16,7 @@ ScrollView {
     function commit() {
         settings.setValue("UI/theme", uiTheme.currentText)
         settings.setValue("UI/style", uiStyle.currentIndex.toString())
-        settings.setValue("UI/scale", uiScale.currentIndex.toString())
+        //settings.setValue("UI/scale", uiScale.currentIndex.toString())
         settings.sync()
     }
 
