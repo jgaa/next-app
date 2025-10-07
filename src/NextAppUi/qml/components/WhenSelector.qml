@@ -68,7 +68,7 @@ ComboBox {
                         datePicker.date = new Date(when * 1000)
                         datePicker.endDate = new Date(until * 1000)
                         datePicker.open()
-                        break;
+                        return;
                     case NextappPb.ActionDueKind.UNSET:
                         if (!due) {
                             // construct a default due
@@ -81,7 +81,7 @@ ComboBox {
                         break;
                 }
 
-                displayText = NaActionsModel.formatDue(due)
+                displayText = root.due ? NaActionsModel.formatDue(root.due) : ""
             }
         });
     }
