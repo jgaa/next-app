@@ -22,11 +22,9 @@ class GreenDaysModel;
 class GreenDayModel : public QObject {
     Q_OBJECT
     QML_ELEMENT
-    QML_VALUE_TYPE(GreenDayModel)
 
     Q_PROPERTY(bool valid READ valid NOTIFY validChanged)
     Q_PROPERTY(QString color READ color NOTIFY colorChanged)
-    Q_PROPERTY(QString colorUuid READ colorUuid NOTIFY colorUuidChanged)
     Q_PROPERTY(QString colorUuid READ colorUuid WRITE setColorUuid NOTIFY colorUuidChanged)
     Q_PROPERTY(QString notes READ notes WRITE setNotes NOTIFY notesChanged)
     Q_PROPERTY(QString report READ report WRITE setReport NOTIFY reportChanged)
