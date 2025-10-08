@@ -303,30 +303,33 @@ public:
             const auto& d = a.due();
             const auto now = time({});
             const auto today = QDate::currentDate();
-            if (d.hasStart()) {
+            if (d.hasStart() && d.start()) {
                 const auto day = QDateTime::fromSecsSinceEpoch(d.start(), QTimeZone::systemTimeZone()).date();
                 if (day > today) {
                     return color;
                 }
+            } else {
+                color = "darkcyan";
             }
             if (d.hasDue()) {
-                const auto due = d.due();
-                if (due < now) {
-                    color = "red";
-                } else {
-                    auto days = (due - now) / 86400;
-                    if (days <= 1) {
-                        color = "darkorange";
-                    } else if (days <= 3) {
-                        color = "gold";
-                    } else if (days <= 7) {
-                        color = "yellow";
-                    } else if (days <= 14) {
-                        color = "lightblue";
-                    } else if (days <= 30) {
-                        color = "royalblue";
+                if (const auto due = d.due()) {
+                    if (due < now) {
+                        color = "red";
                     } else {
-                        color = "blue";
+                        auto days = (due - now) / 86400;
+                        if (days <= 1) {
+                            color = "darkorange";
+                        } else if (days <= 3) {
+                            color = "gold";
+                        } else if (days <= 7) {
+                            color = "yellow";
+                        } else if (days <= 14) {
+                            color = "lightblue";
+                        } else if (days <= 30) {
+                            color = "royalblue";
+                        } else {
+                            color = "blue";
+                        }
                     }
                 }
             }
