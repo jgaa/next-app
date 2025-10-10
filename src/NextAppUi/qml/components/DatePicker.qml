@@ -330,9 +330,13 @@ Popup {
                                     // console.log("popup.currentMonth", popup.currentMonth, "popup.currentYear", popup.currentYear)
                                     // console.log("currentDate", currentDate, "inRange", inRange)
 
-                                    popup.date.setYear(grid.year)
-                                    popup.date.setMonth(grid.month)
-                                    popup.date.setDate(drect.model.day)
+                                    // popup.date.setYear(grid.year)
+                                    // popup.date.setMonth(grid.month)
+                                    // popup.date.setDate(drect.model.day)
+
+                                    var d = new Date(popup.date);                 // keep the time portion
+                                    d.setFullYear(grid.year, grid.month, drect.model.day);
+                                    popup.date = d;                               // <-- triggers onDateChanged
 
                                     if (popup.closeOnSelect) {
                                         popup.accepted = true
