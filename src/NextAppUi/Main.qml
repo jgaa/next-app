@@ -87,6 +87,11 @@ ApplicationWindow {
             }
 
             Action {
+                text: qsTr("Feedback")
+                onTriggered: { openDialog("dialogs/FeedbackDlg.qml") }
+            }
+
+            Action {
                 text: qsTr("Exit")
                 onTriggered: Qt.exit(0)
                 shortcut: StandardKey.Quit

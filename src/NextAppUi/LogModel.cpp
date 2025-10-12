@@ -14,6 +14,8 @@
 
 using namespace std;
 
+LogModel *LogModel::instance_ = nullptr;
+
 namespace {
 const array<QString, 7> severity_names = {
     "DISABLED", "ERROR", "WARN", "NOTICE", "INFO", "DEBUG", "TRACE"
@@ -104,6 +106,8 @@ void showToast(const QString &message) {
 
 LogModel::LogModel()
 {
+    assert(!instance_);
+    instance_ = this;
     logfault::LogManager::Instance().AddHandler(
         make_unique<logfault::ProxyHandler>(handler_name,
             [this](const logfault::Message& msg) -> void {
@@ -135,8 +139,10 @@ LogModel::LogModel()
 
 LogModel::~LogModel()
 {
+    assert(instance_ == this);
     LOG_DEBUG_N << "Removing LogModel handler";
     logfault::LogManager::Instance().RemoveHandler(handler_name);
+    instance_ = nullptr;
 }
 
 int LogModel::rowCount(const QModelIndex &parent) const
@@ -178,6 +184,37 @@ QHash<int, QByteArray> LogModel::roleNames() const
     roles[MessageRole] = "message";
     roles[ColorRole] = "eventColor";
     return roles;
+}
+
+LogModel *LogModel::instance()
+{
+    assert(instance_);
+    return instance_;
+}
+
+QString LogModel::getAll() const
+{
+    QString all;
+
+    // Count the total size of all the messages to reserve memory. Use ranges
+    size_t total_size = 0;
+    for (const auto& msg : messages_) {
+        total_size += msg.message.size() + 1 // +1 for newline
+            + 32 // date + 1 // space
+            + severity_names.at(msg.severity).size() + 1; // space
+    }
+
+    all.reserve(total_size);
+    for (const auto& msg : messages_) {
+        all += msg.time.toString(Qt::DateFormat::ISODateWithMs);
+        all += ' ';
+        all += severity_names.at(msg.severity);
+        all += ' ';
+        all += msg.message;
+        all += '\n';
+    }
+
+    return all;
 }
 
 void LogModel::setMessage(const LogMessage& msg)

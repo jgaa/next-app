@@ -52,6 +52,7 @@ using grpc_metadata_t = QHash<QByteArray, QByteArray>;
 #include "CalendarCache.h"
 #include "AppInstanceMgr.h"
 #include "NotificationsModel.h"
+#include "LogModel.h"
 
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
 #include "AndroidFcmBridge.h"
@@ -1352,6 +1353,11 @@ QStringList ServerComm::getRegionsForSignup() const
     return regions;
 }
 
+void ServerComm::sendFeedback(const nextapp::pb::Feedback &feedback)
+{
+    doSendFeedback(feedback);
+}
+
 void ServerComm::saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings)
 {
     LOG_DEBUG_N << "Saving global user-settings";
@@ -1669,6 +1675,23 @@ QString ServerComm::lastSeenUpdateIdKey() const {
 QString ServerComm::lastSeenServerInstance() const
 {
     return AppInstanceMgr::instance()->name() + "/last_seen_server_instance";
+}
+
+QCoro::Task<void> ServerComm::doSendFeedback(nextapp::pb::Feedback feedback)
+{
+    feedback.setDeviceId(deviceUuid().toString(QUuid::WithoutBraces));
+
+    if (feedback.hasLog()) {
+        // Attach the log
+        if (auto *logger = LogModel::instance()) {
+            const auto plain = logger->getAll();
+            const auto compressed = qCompress(plain.toUtf8());
+            feedback.setLog(compressed);
+        }
+    };
+
+    LOG_DEBUG_N << "Sending feedback to server";
+    co_await rpc(feedback, &nextapp::pb::Nextapp::Client::SendFeedback);
 }
 
 QCoro::Task<void> ServerComm::startNextappSession()

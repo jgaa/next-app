@@ -520,6 +520,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/WorkSessionList.qml
         qml/WorkSessionsView.qml
         qml/android/DrawerContent.qml
+        qml/android/ImportDataDlg.qml
         qml/android/TodoList.qml
         qml/android/WorkSessionsCompactList.qml
         qml/android/WorkSessionsStacked.qml
@@ -538,6 +539,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/categories/EditCategoryDlg.qml
         qml/common.js
         qml/components/DatePicker.qml
+        qml/components/DbInfoDlg.qml
         qml/components/DifficultySelector.qml
         qml/components/MoveDue.qml
         qml/components/PrioritySelector.qml
@@ -547,6 +549,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/components/ToolBarBtn.qml
         qml/components/UnrecognizedDeviceErrorDlg.qml
         qml/components/WhenSelector.qml
+        qml/dialogs/FeedbackDlg.qml
         qml/greendays/DayDialog.qml
         qml/greendays/DaysInYear.qml
         qml/greendays/GdMonth.qml
@@ -705,8 +708,6 @@ qt_add_qml_module(${PROJECT_NAME}
         util.h
         EventScheduler.h
         EventScheduler.cpp
-        QML_FILES qml/android/ImportDataDlg.qml
-        QML_FILES qml/components/DbInfoDlg.qml
 )
 
 

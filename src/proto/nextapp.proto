@@ -1001,6 +1001,32 @@ message UserDataInfo {
     uint64 numActionCategories = 7;
 }
 
+message Feedback {
+    enum Kind {
+        BUG = 0;
+        IDEA = 1;
+        THOUGHTS = 2;
+        OTHER = 3;
+    }
+
+    enum Emoji {
+        SMILE = 0;
+        FROWN = 1;
+        NEUTRAL = 2;
+        ANGRY = 3;
+        LOVE = 4;
+        SAD = 5;
+    }
+
+    string deviceId = 1;
+    Kind kind = 2;
+    Emoji emoji = 3;
+    bytes log = 4; // Compressed log messages
+    bool hasLog = 7;
+    string message = 5;
+    bool requestsAnswer = 6;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -1121,4 +1147,6 @@ service Nextapp {
     rpc ExportData(ExportDataReq) returns (stream Status) {}
     rpc ImportData(stream ImportDataMsg) returns (Status) {}
     rpc SetPushNotificationConfig(PushNotificationConfig) returns (Status) {}
+    rpc SendFeedback(Feedback) returns (Status) {}
+
 }

@@ -59,6 +59,9 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    static LogModel* instance();
+    QString getAll() const;
+
 signals:
     void messageAdded(const LogMessage& message);
     void messageChanged();
@@ -72,5 +75,6 @@ private:
     QString shortMessageColor_;
     QTimer clearMessageTimer_;
     alignas(64) std::mutex mutex_;
+    static LogModel* instance_;
     // read/write mutex
 };

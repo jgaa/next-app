@@ -183,6 +183,7 @@ public:
         return device_uuid_.toString(QUuid::WithoutBraces);
     }
     Q_INVOKABLE QStringList getRegionsForSignup() const;
+    Q_INVOKABLE void sendFeedback(const nextapp::pb::Feedback& feedback);
 
     /*! Resynch with the server */
     Q_INVOKABLE void resync();
@@ -351,6 +352,7 @@ private:
     void setMessage(const QString &msg);
     QString lastSeenUpdateIdKey() const;
     QString lastSeenServerInstance() const;
+    QCoro::Task<void> doSendFeedback(nextapp::pb::Feedback feedback);
 
     struct GrpcCallOptions {
 
