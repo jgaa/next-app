@@ -69,7 +69,7 @@ There is a [script](scripts/bootstrap-and-run-backend.sh) that lets you run your
 
 ## Building
 
-The application uses CMake, Qt 6.8.3, and requires g++ 12 or newer for the client and clang++ 17 or newer for the backend (the C++ templates in the backend makes g++ crash). It’s developed under Linux (Ubuntu 24.04). The project Boost 1.88 or newer.
+The application uses CMake, Qt 6.8.3, and requires g++ 13 or newer for the client and clang++ 17 or newer for the backend (the C++ templates in the backend makes g++ crash). It’s developed under Linux (Ubuntu 24.04). The project needs Boost 1.88 or newer.
 
 **Qt Creator under Windows**
 

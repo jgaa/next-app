@@ -120,7 +120,19 @@ find_package(Qt6 REQUIRED COMPONENTS
     ProtobufQtCoreTypes
     ProtobufWellKnownTypes
 )
-find_package(Qt6 REQUIRED COMPONENTS Core)
+
+#find_package(Qt6 REQUIRED COMPONENTS Core)
+# Qt 6.10+ now requires the Private WKT component to expose the target
+# Qt 6.9 worked without this.
+if(DEFINED Qt6_VERSION)
+  set(_qt_ver "${Qt6_VERSION}")
+elseif(DEFINED Qt6Core_VERSION)         # fallback (older CMake files)
+  set(_qt_ver "${Qt6Core_VERSION}")
+endif()
+
+if(_qt_ver VERSION_GREATER_EQUAL "6.10.0")
+  find_package(Qt6 REQUIRED COMPONENTS ProtobufWellKnownTypesPrivate)
+endif()
 
 if(ANDROID)
     message(STATUS "Compiling for Android")

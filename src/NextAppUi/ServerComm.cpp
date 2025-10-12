@@ -22,6 +22,19 @@
 #   include <QGrpcChannelOptions>
 #endif
 
+#include <QByteArray>
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+#include <QMultiHash>
+using grpc_metadata_t = QMultiHash<QByteArray, QByteArray>;
+#else
+// Qt 6.9 and earlier
+#include <QHash>
+// If you have Qgrpc_metadata_t typedef available, you can use that instead:
+//   using grpc_metadata_t = Qgrpc_metadata_t;
+using grpc_metadata_t = QHash<QByteArray, QByteArray>;
+#endif
+
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/evp.h>
@@ -1706,7 +1719,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
     // The default instance_id is 1. If we have a higher id, we need to send "instance_id".
     if (auto iid = AppInstanceMgr::instance()->instanceId(); iid > 1) {
         const auto str = to_string(iid);
-        QHash<QByteArray, QByteArray> metadata;
+        grpc_metadata_t metadata;
         metadata.insert("instance_id", str.c_str());
         options.qopts.setMetadata(std::move(metadata));
     };
@@ -2268,7 +2281,7 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
     GrpcCallOptions options;
     options.enable_queue = true; // Informative
 
-    QHash<QByteArray, QByteArray> metadata;
+    grpc_metadata_t metadata;
 
     // Don't enable replay protection for direct requests that are not stored in the database.
     if (deleteRequest) {
