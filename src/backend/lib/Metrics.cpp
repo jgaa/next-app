@@ -106,6 +106,7 @@ Metrics::Metrics(Server& server)
             lbl{"platform", BOOST_PLATFORM},
             lbl{"compiler", COMPILER_NAME},
             lbl{"compiler_version", COMPILER_VERSION},
+            lbl{"boost", BOOST_LIB_VERSION},
             lbl{"branch", GIT_BRANCH}));
 }
 
