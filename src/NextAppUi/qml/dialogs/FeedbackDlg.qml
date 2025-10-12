@@ -167,7 +167,7 @@ Dialog {
         // Fill the value-type fields
         fm.kind = root.kindModel[cbKind.currentIndex].value
         fm.emoji = root.emojiModel[cbEmoji.currentIndex].value
-        fm.hasLOg = logSwitch.checked
+        fm.hasLog = logSwitch.checked
         fm.message = messageArea.text
         fm.requestsAnswer = answerSwitch.checked
 

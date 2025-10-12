@@ -79,6 +79,13 @@ struct ServerOptions {
      * To disable the timer, set this to 0.
      */
     size_t metrics_timer_minutes = 5;
+
+    /*! Maximum size for feedback log entries
+     *
+     *  This is to prevent excessively large feedback entries from being stored in the database.
+     *  The size is in bytes.
+     */
+    size_t max_feedback_log_size = 32 * 1024;
 };
 
 struct Config {

@@ -1679,8 +1679,6 @@ QString ServerComm::lastSeenServerInstance() const
 
 QCoro::Task<void> ServerComm::doSendFeedback(nextapp::pb::Feedback feedback)
 {
-    feedback.setDeviceId(deviceUuid().toString(QUuid::WithoutBraces));
-
     if (feedback.hasLog()) {
         // Attach the log
         if (auto *logger = LogModel::instance()) {

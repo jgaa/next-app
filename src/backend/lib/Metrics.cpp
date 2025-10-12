@@ -72,6 +72,8 @@ Metrics::Metrics(Server& server)
                                             combine(default_labels, lbl{"kind", "imports"}, lbl{"status", "error"}));
     data_exports_ = metrics_.AddCounter("nextapp_data_exports", "Number of data exports", {},
                                             combine(default_labels, lbl{"kind", "exports"}));
+    user_feedbacks_ = metrics_.AddCounter("nextapp_user_feedbacks", "Number of user feedbacks submitted", {},
+                                            default_labels);
 
     const std::vector quantiles = {0.5, 0.9, 0.95, 0.99};
     grpc_request_latency_ = metrics_.AddSummary("nextapp_grpc_request_latency", "gRPC request latency", {},

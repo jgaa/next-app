@@ -665,6 +665,34 @@ ORDER BY t.id;
         }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SendFeedback(::grpc::CallbackServerContext *ctx,
+                                                                  const pb::Feedback *req,
+                                                                  pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            LOG_DEBUG_EX(rctx) << "Storing feedback.";
+
+            const auto dev_id = toString(rctx.session().deviceId());
+
+            auto res = co_await rctx.dbh->exec(
+                "INSERT INTO feedback (id, user, message, log, deviceId, kind, emoji, requestsAnswer) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rctx.uctx->dbOptions(),
+                newUuidStr(),
+                rctx.uctx->userUuid(),
+                req->message(),
+                toBlobOrNull(req->log(), owner_.server().config().options.max_feedback_log_size),
+                dev_id,
+                nextapp::pb::Feedback::Kind_Name(req->kind()),
+                nextapp::pb::Feedback::Emoji_Name(req->emoji()),
+                req->requestsanswer());
+
+            owner_.server().metrics().user_feedbacks().inc();
+
+            co_return;
+        }, __func__);
+}
+
 ::grpc::ServerReadReactor<pb::ImportDataMsg> *GrpcServer::NextappImpl::ImportData(
     ::grpc::CallbackServerContext *ctx, pb::Status *reply)
 {

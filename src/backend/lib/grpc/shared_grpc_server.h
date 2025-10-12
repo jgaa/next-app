@@ -124,8 +124,9 @@ private:
     std::string where_;
 };
 
+
 template <ProtoMessage T>
-auto toBlob(const T& msg) {
+[[nodiscard]] auto toBlob(const T& msg) {
     boost::mysql::blob blob;
     blob.resize(msg.ByteSizeLong());
     if (!msg.SerializeToArray(blob.data(), blob.size())) {
@@ -135,15 +136,26 @@ auto toBlob(const T& msg) {
 }
 
 template <range_of<char> T>
-auto toBlob(const T& buffer) {
+[[nodiscard]] auto toBlob(const T& buffer) {
     boost::mysql::blob blob;
     blob.resize(buffer.size());
     std::copy(buffer.begin(), buffer.end(), blob.begin());
     return blob;
 }
 
+[[nodiscard]] inline std::optional<boost::mysql::blob> toBlobOrNull(std::string_view v, size_t maxSize = 0) {
+    if (!v.empty()) {
+        if (!maxSize || (v.size() <= maxSize)) {
+            return toBlob(v);
+        } else {
+            LOG_WARN_N << "String too large to fit in blob: " << v.size() << " > " << maxSize;
+        }
+    }
+    return std::nullopt;
+}
+
 template<typename T>
-std::optional<nextapp::pb::KeyValue> KeyValueFromBlob(const T& row) {
+[[nodiscard]]  std::optional<nextapp::pb::KeyValue> KeyValueFromBlob(const T& row) {
     if (row.is_blob()) {
         auto data = row.as_blob();
         pb::KeyValue kv;

@@ -1018,7 +1018,6 @@ message Feedback {
         SAD = 5;
     }
 
-    string deviceId = 1;
     Kind kind = 2;
     Emoji emoji = 3;
     bytes log = 4; // Compressed log messages

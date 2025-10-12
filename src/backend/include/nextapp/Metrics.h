@@ -89,6 +89,10 @@ public:
         return *data_exports_;
     }
 
+    counter_t& user_feedbacks() {
+        return *user_feedbacks_;
+    }
+
 private:
     Server& server_;
     yahat::Metrics metrics_;
@@ -109,6 +113,7 @@ private:
     counter_t * data_imports_{};
     counter_t * data_import_errors_{};
     counter_t * data_exports_{};
+    counter_t * user_feedbacks_{};
 };
 
 

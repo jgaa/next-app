@@ -1234,6 +1234,28 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v23_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE TABLE feedback (
+              id                UUID NOT NULL,
+              user              UUID NOT NULL,
+              deviceId          VARCHAR(191) NOT NULL,
+              kind              ENUM('bug','idea','thoughts','other') NOT NULL,
+              emoji             ENUM('smile','frown','neutral','angry','love','sad') NOT NULL,
+              log               MEDIUMBLOB NULL,
+              message           TEXT NULL,
+              requestsAnswer    BOOLEAN NOT NULL DEFAULT FALSE,
+              createdAt         DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+              PRIMARY KEY (id),
+              KEY idx_feedback_device_created (user, createdAt),
+              KEY idx_feedback_created (createdAt)
+            )
+        )",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
@@ -1258,6 +1280,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v20_upgrade,
         v21_upgrade,
         v22_upgrade,
+        v23_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

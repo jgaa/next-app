@@ -245,6 +245,8 @@ int main(int argc, char* argv[]) {
             ("google-push-service-file", po::value(&config.push.google.config_file),
              "Path to the service-file.json that provide credentials from Google to push-notifications for the app. "
              "Required if --enable-push-notifications is provided.")
+            ("max-feedback-log-size" , po::value(&config.options.max_feedback_log_size)->default_value(config.options.max_feedback_log_size),
+             "Maximum compressed size in bytes for feedback log entries")
             ;
 
         po::options_description metrics("Metrics");
