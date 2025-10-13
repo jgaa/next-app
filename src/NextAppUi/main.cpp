@@ -30,7 +30,9 @@
 #include "nextapp.qpb.h"
 
 #ifdef __ANDROID__
-    #include <QtCore/private/qandroidextras_p.h>
+// #   include <QJniObject>
+// #   include <QJniEnvironment>
+// #   include <QCoreApplication>
     #include "AndroidHandlers.h"
 #endif
 
@@ -187,33 +189,10 @@ int main(int argc, char *argv[])
     nextapp::logging::initAndroidLogging(logfault::LogLevel::TRACE);
 #else
     nextapp::logging::initAndroidLogging(logfault::LogLevel::DEBUGGING);
-#endif
-    // Check it it's a service
+#endif // _DEBUG
 
-    for(auto i = 0; i < argc; ++i) {
-        LOG_DEBUG_N << "Argument " << i << ": " << argv[i];
-    }
+#endif // __ANDROID__
 
-    if (argc > 1 && strcmp(argv[1], "-service") == 0) {
-        try {
-        LOG_INFO_N << "Running as a service";
-        QAndroidService app(argc, argv);
-
-        LOG_DEBUG_N << "Handing the service thread over to QT";
-        return app.exec();
-        LOG_INFO_N << "Service thread finished";
-        } catch (const std::exception& e) {
-            LOG_ERROR_N << "Service thread failed: " << e.what();
-            return -1;
-        }
-    }
-    else {
-        LOG_INFO_N << "Running as a regular application";
-    }
-#endif
-
-    // volatile auto registration = &qml_register_types_nextapp_pb;
-    // Q_UNUSED(registration);
     std::string log_level_qt =
 #ifdef _DEBUG
         "trace";

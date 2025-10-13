@@ -25,6 +25,7 @@ public class MainActivity extends QtActivity {
     private static final String TAG = "@PACKAGE_NAME@-MainActivity";
     private static final String FILE_PROVIDER_AUTHORITY = "@PACKAGE_NAME@.qtprovider";
     private static MainActivity self = null;
+    private boolean consumedLaunchIntent = false;
 
     private native void nativeOnSharedNextapp(String absolutePath);
 
@@ -67,13 +68,13 @@ public class MainActivity extends QtActivity {
 
         // grab whatever Intent launched or re-launched us
         Intent intent = getIntent();
-        if (intent != null) {
+        if (intent != null && !consumedLaunchIntent) {
             Log.i(TAG, "onResume called with intent: " + intent.toString());
             handleIncoming(intent);
 
             // clear it so if the user hits home/back and then returns,
             // we don’t re-process the same Intent over and over
-            setIntent(null);
+            //setIntent(null);
         } else {
             Log.w(TAG, "onResume called with null intent");
         }
