@@ -10,8 +10,6 @@ import nextapp.pb
 Dialog {
     id: root
     focus: true
-    padding: 10
-    margins: 20
     modal: true
     x: NaCore.isMobile ? 0 : (parent.width - width) / 3
     y: NaCore.isMobile ? 0 : (parent.height - height) / 3

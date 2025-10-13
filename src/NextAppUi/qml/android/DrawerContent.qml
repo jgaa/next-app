@@ -237,10 +237,10 @@ Rectangle {
                 onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/log/LogDialog.qml", appWindow, {});
             }
 
-            Action {
-                text: qsTr("Application log")
-                onTriggered: { openDialog("log/LogDialog.qml") }
-            }
+            // Action {
+            //     text: qsTr("Application log")
+            //     onTriggered: { openDialog("log/LogDialog.qml") }
+            // }
 
             RoundButton {
                 Layout.alignment: Qt.AlignHCenter
@@ -249,6 +249,15 @@ Rectangle {
                 checkable: false
                 text: qsTr("Export data")
                 onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/ImportExport.qml", appWindow, {});
+            }
+
+            RoundButton {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: true
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/comment-dots.svg"
+                checkable: false
+                text: qsTr("Feedback")
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/dialogs/FeedbackDlg.qml", appWindow, {});
             }
 
             RoundButton {
