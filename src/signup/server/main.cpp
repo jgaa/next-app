@@ -326,6 +326,43 @@ int main(int argc, char* argv[]) {
                     LOG_ERROR << "Caught exception during bootstrap: " << ex.what();
                     return -5;
                 }
+            } else if (argv[1] == "reset-admin-account"s) {
+                LOG_INFO << "Resetting admin account.";
+                cmdline_options.add(general).add(db);
+                po::variables_map vm;
+                try {
+                    // Shift arguments left to remove command-name
+                    vector<char*> new_argv(argv, argv + argc); // Copy argv
+                    new_argv.erase(new_argv.begin() + 1); // Remove second element (index 1)
+
+                    po::store(po::command_line_parser(new_argv.size(), new_argv.data()).options(cmdline_options).run(), vm);
+                    po::notify(vm);
+                } catch (const exception& ex) {
+                    cerr << appname
+                         << " Failed to parse command-line arguments: " << ex.what() << endl;
+                    return -1;
+                }
+
+                if (vm.count("help")) {
+                    cout <<appname << " [options]"
+                         << cmdline_options << endl << endl
+                         << "If the evvironment variable SIGNUP_ADMIN_PASSWORD is unset, "
+                         << "a random password will be generated for the admin user." << endl;
+                    return -2;
+                }
+
+                if (auto err = init_logging_and_config_file(cmdline_options, vm)) {
+                    return err;
+                }
+
+                try {
+                    Server server{config};
+                    server.resetAdminAccount();
+                    return 0; // Done
+                } catch (const exception& ex) {
+                    LOG_ERROR << "Caught exception during admin account reset: " << ex.what();
+                    return -5;
+                }
             }
         }
 
@@ -345,6 +382,8 @@ int main(int argc, char* argv[]) {
             cout << cmdline_options << endl;
             cout << "To bootstrap the instance:" << endl;
             cout << "  " << appname << " bootstrap [bootstrap-options] [--help]" << endl;
+            cout << "To reset the admin account password:" << endl;
+            cout << "  " << appname << " reset-admin-account [options] [--help]" << endl;
             return -2;
         }
 

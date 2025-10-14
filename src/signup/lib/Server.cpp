@@ -541,6 +541,22 @@ void Server::bootstrap(const BootstrapOptions &opts)
     LOG_INFO << "Bootstrapping is complete";
 }
 
+void Server::resetAdminAccount()
+{
+    LOG_INFO << "Resetting the admin account...";
+
+    auto res = asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        ScopedExit se{[this] {
+            ctx_.stop();
+        }};
+        co_await createAdminUser();
+    }, boost::asio::use_future);
+
+    ctx_.run();
+    res.get();
+    LOG_INFO << "Reset admin account is complete";
+}
+
 boost::asio::awaitable<Server::AssignedInstance> Server::assignInstance(const boost::uuids::uuid &region)
 {
     string region_name;
@@ -830,9 +846,26 @@ boost::asio::awaitable<void> Server::createAdminUser()
     const auto hash = getPasswordHash(password, id);
 
     auto conn = co_await db.getConnection();
+
+    // Remove any existing admin users. This is a hard reset
+    {
+        const auto dres = co_await conn.exec("DELETE FROM localuser WHERE kind='admin'");
+        if (const auto num = dres.affected_rows()) {
+            LOG_WARN_N << "Removed " << num << " existing admin "
+                       << (num == 1 ? "user" : "users") << " from the database.";
+        }
+    }
+
     auto res = co_await conn.exec(
         "INSERT INTO localuser (id, nickname, kind, auth_token) VALUES (?, ?, ?, ?)",
         id, admin, "admin", hash);
+
+    if (res.affected_rows() != 1) {
+        LOG_ERROR_N << "Failed to create the admin user.";
+        throw runtime_error{"Failed to create the admin user."};
+    }
+
+    co_return;
 }
 
 boost::asio::awaitable<void> Server::createDefaultNextappInstance()

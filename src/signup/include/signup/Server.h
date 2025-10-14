@@ -108,6 +108,7 @@ public:
     boost::asio::awaitable<::signup::pb::GetInfoResponse> getInfo(const ::signup::pb::GetInfoRequest& req);
 
     void bootstrap(const BootstrapOptions& opts);
+    void resetAdminAccount();
 
     static std::string getPasswordHash(std::string_view password, std::string_view userUuid);
 
