@@ -9,7 +9,7 @@ if not exist "build-configs\" (
     exit /b 1
 )
 
-if not defined QT_VERSION set QT_VERSION=6.8.3
+if not defined QT_VERSION set QT_VERSION=6.10.0
 
 if not defined BUILD_DIR (
     set "BUILD_DIR=C:\build"
