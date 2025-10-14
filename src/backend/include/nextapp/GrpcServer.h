@@ -206,6 +206,7 @@ public:
         ::grpc::ServerReadReactor< ::nextapp::pb::ImportDataMsg>* ImportData(::grpc::CallbackServerContext* ctx, ::nextapp::pb::Status* reply) override;
         ::grpc::ServerUnaryReactor *SetPushNotificationConfig(::grpc::CallbackServerContext *ctx, const pb::PushNotificationConfig *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *SendFeedback(::grpc::CallbackServerContext *ctx, const pb::Feedback *req, pb::Status *reply) override;
+        ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetFeedback(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetFeedbackReq *req) override;
 
     private:
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback

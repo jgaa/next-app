@@ -691,6 +691,92 @@ ORDER BY t.id;
         }, __func__);
 }
 
+::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::GetFeedback(::grpc::CallbackServerContext *ctx, const pb::GetFeedbackReq *req)
+{
+    return writeStreamHandler(ctx, req,
+    [this, req, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        const auto stream_scope = owner_.server().metrics().data_streams_actions().scoped();
+        const auto uctx = rctx.uctx;
+        const auto& cuser = uctx->userUuid();
+
+        assert(uctx->isAdmin());
+
+        constexpr string_view query = R"(SELECT f.id, f.user, u.email, u.tenant, u.active, f.deviceId, f.kind, f.emoji, f.log, f.message, f.requestsAnswer, f.createdAt
+FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
+
+        enum Cols { ID, USER, EMAIL, TENANT, ACTIVE, DEVICEID, KIND, EMOJI, LOG, MESSAGE, REQUESTS_ANSWER, CREATED_AT };
+
+        // Use batched reading from the database, so that we can get all the data, but
+        // without running out of memory.
+        assert(rctx.dbh);
+        co_await  rctx.dbh->start_exec(query, rctx.uctx->dbOptions());
+
+        nextapp::pb::Status reply;
+        auto total_rows = 0u;
+
+        bool read_more = true;
+        for(auto rows = co_await rctx.dbh->readSome()
+             ; read_more
+             ; rows = co_await rctx.dbh->readSome()) {
+
+            read_more = rctx.dbh->shouldReadMore(); // For next iteration
+
+            if (rows.empty()) {
+                LOG_TRACE_N << "Out of rows to iterate...";
+                break;
+            }
+
+            for(const auto& row : rows) {
+                ++total_rows;
+
+                auto * f = reply.mutable_feedback();
+                f->set_id(row.at(ID).as_string());
+                f->set_userid(row.at(USER).as_string());
+                f->set_useremail(row.at(EMAIL).as_string());
+                f->set_userisactive(row.at(ACTIVE).as_int64() != 0);
+                f->set_tenantid(row.at(TENANT).as_string());
+                f->mutable_created()->set_unixtime(toTimeT(row[CREATED_AT].as_datetime(), uctx->tz()));
+
+                auto * fb = f->mutable_feedback();
+
+                // kind enum
+                {
+                    const auto kind = toUpper((toStringIfValue(row, KIND)));
+                    pb::Feedback::Kind kind_value{};
+                    if (pb::Feedback::Kind_Parse(kind, &kind_value)) {
+                        fb->set_kind(kind_value);
+                    }
+                }
+
+                // emoji enum
+                {
+                    const auto emoji = toUpper((toStringIfValue(row, EMOJI)));
+                    pb::Feedback::Emoji emoji_value{};
+                    if (pb::Feedback::Emoji_Parse(emoji, &emoji_value)) {
+                        fb->set_emoji(emoji_value);
+                    }
+                }
+                {
+                    auto blob = row.at(LOG).as_blob();
+                    if (!blob.empty()) {
+                        fb->set_log(blob.data(), blob.size());
+                        fb->set_haslog(true);
+                    } else {
+                        fb->set_haslog(false);
+                    }
+                }
+                fb->set_message(toStringIfValue(row, MESSAGE));
+                fb->set_requestsanswer(row.at(REQUESTS_ANSWER).as_int64() != 0);
+
+                co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
+                reply.Clear();
+            }
+        } // read more from db loop
+
+
+    }, __func__, /* allow new session */ true, /* admin only */ true);
+}
+
 ::grpc::ServerReadReactor<pb::ImportDataMsg> *GrpcServer::NextappImpl::ImportData(
     ::grpc::CallbackServerContext *ctx, pb::Status *reply)
 {

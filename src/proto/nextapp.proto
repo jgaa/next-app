@@ -1026,6 +1026,18 @@ message Feedback {
     bool requestsAnswer = 6;
 }
 
+message FullFeedback {
+    string id = 1; // uuid
+    string userId = 2;
+    string userEmail = 3; // optional
+    bool userIsActive = 4;
+    Feedback feedback = 5;
+    common.Time created = 6;
+    string tenantId = 7;
+}
+
+message GetFeedbackReq {}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -1067,6 +1079,7 @@ message Status {
         Notifications notifications = 39;
         uint32 lastReadNotificationId = 40;
         UserDataInfo userDataInfo = 41;
+        FullFeedback feedback = 42;
     }
 }
 
@@ -1147,5 +1160,6 @@ service Nextapp {
     rpc ImportData(stream ImportDataMsg) returns (Status) {}
     rpc SetPushNotificationConfig(PushNotificationConfig) returns (Status) {}
     rpc SendFeedback(Feedback) returns (Status) {}
+    rpc GetFeedback(GetFeedbackReq) returns (stream Status) {}
 
 }
