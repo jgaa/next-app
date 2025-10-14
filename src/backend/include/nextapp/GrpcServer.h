@@ -317,7 +317,10 @@ public:
 
         template <typename ReqT, typename FnT, typename ReplyT=::nextapp::pb::Status>
         ::grpc::ServerWriteReactor<ReplyT> *
-        writeStreamHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, FnT &&fn, std::string_view name = {}) noexcept {
+        writeStreamHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, FnT &&fn,
+                           std::string_view name = {},
+                           bool allowNewSession = false,
+                           bool restrictedToAdmin = false) noexcept {
             assert(ctx);
             assert(req);
 
@@ -325,7 +328,7 @@ public:
             stream->start();
 
             boost::asio::co_spawn(owner_.server().ctx(),
-              [this, ctx, req, stream, fn=std::move(fn), name]
+              [this, ctx, req, stream, fn=std::move(fn), name, allowNewSession, restrictedToAdmin]
               () mutable -> boost::asio::awaitable<void> {
                   nextapp::pb::Status err_reply;
                   ::grpc::Status finish_status;
@@ -333,8 +336,17 @@ public:
                   try {
                       LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
 
-                      rctx.emplace(co_await owner_.sessionManager().getSession(ctx));
+                      rctx.emplace(co_await owner_.sessionManager().getSession(ctx, allowNewSession));
                       rctx->session().touch();
+
+                      if (restrictedToAdmin) {
+                          if (!rctx->uctx->isAdmin()) {
+                              LOG_WARN << "Request [" << name << "] Restricted to admin. User "
+                                       << rctx->uctx->userUuid() <<  " is not an admin.";
+                              throw server_err(nextapp::pb::Error::PERMISSION_DENIED, "Permission denied.");
+                          }
+                      }
+
                       rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
                       co_await fn(stream, *rctx);
                       co_await owner_.publishUpdates(*rctx);
@@ -347,13 +359,13 @@ public:
                       }
                       err_reply.set_error(ex.error());
                       err_reply.set_message(ex.what());
-                      finish_status = {::grpc::Status::CANCELLED};
+                      finish_status = {::grpc::Status::OK};
                   } catch (const std::exception& ex) {
                       LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
 
                       err_reply.set_error(nextapp::pb::Error::GENERIC_ERROR);
                       err_reply.set_message(ex.what());
-                      finish_status = {::grpc::Status::CANCELLED};
+                      finish_status = {::grpc::Status::OK};
                   }
 
                   assert(err_reply.error() != nextapp::pb::Error::OK);

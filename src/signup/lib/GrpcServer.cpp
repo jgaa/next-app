@@ -840,14 +840,6 @@ auto to_string_view(::grpc::string_ref ref) {
     return string_view{ref.data(), ref.size()};
 }
 
-std::optional<std::string> lookup(::grpc::CallbackServerContext *ctx, const std::string& name) {
-    if (auto it = ctx->client_metadata().find(name); it != ctx->client_metadata().end()) {
-        return string{it->second.data(), it->second.size()};
-    }
-    return {};
-}
-
-
 // TODO: Cache all users from the localusers table regularily
 //       The current implementation can be user to DoS the service by sending
 //       a lot of requests with invalid user/password combinations, causing

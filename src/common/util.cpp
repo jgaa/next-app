@@ -1,14 +1,45 @@
 
+#include <map>
 #include <random>
 
 #include <openssl/evp.h>
 #include <boost/regex.hpp>
 
+#include <grpcpp/server_context.h>
 #include "nextapp/util.h"
 #include "nextapp/logging.h"
 
 
 using namespace std;
+
+namespace logfault {
+std::pair<bool /* json */, std::string /* content or json */> toLog(const ::grpc::CallbackServerContext& ctx, bool json) {
+
+    auto meta = ctx.client_metadata();
+
+    if (json) {
+
+        // format metadata entries a json without end brackets
+        string meta_json;
+        for (const auto& [key, value] : meta) {
+            meta_json += format(R"(, "{}":"{}")", string_view{key.data(), key.size()},
+                                string_view{value.data(), value.size()});
+        }
+
+        return make_pair(true, format(R"("peer":"{}"{})", ctx.peer(), meta_json));
+    }
+
+    // format metadata entries as key=value pairs
+    string meta_str;
+    for (const auto& [key, value] : meta) {
+        meta_str += format(", {}={}", string_view{key.data(), key.size()},
+                          string_view{value.data(), value.size()});
+    }
+    return make_pair(false, format("UserContext{{peer={}{}}}",
+                                   ctx.peer(), meta_str));
+}
+
+} // ns
 
 namespace {
 

@@ -23,6 +23,7 @@ namespace nextapp {
 
 signup::pb::Error translateError(const nextapp::pb::Error& e);
 
+
 class GrpcServer {
 public:
 
@@ -42,6 +43,15 @@ public:
     template <ProtoMessage T>
     std::string toJsonForLog(const T& obj) {
         return toJson(obj, server().config().options.log_protobuf_messages);
+    }
+
+    static std::optional<std::string> lookup(const ::grpc::CallbackServerContext *ctx, const std::string& name) {
+        if (ctx) {
+            if (auto it = ctx->client_metadata().find(name); it != ctx->client_metadata().end()) {
+                return std::string{it->second.data(), it->second.size()};
+            }
+        }
+        return {};
     }
 
     class InstanceCommn {
@@ -245,15 +255,21 @@ public:
 
             boost::asio::co_spawn(owner_.server().ctx(), [this, ctx, req, reply, reactor, fn=std::move(fn), name, requireAdminCreds]() -> boost::asio::awaitable<void> {
                 try {
-                    LOG_TRACE << "Request [" << name << "] " << req->GetDescriptor()->name() << ": " << owner_.toJsonForLog(*req);
-
                     // Start measuring latency for this request
                     const auto latency = owner_.server().metrics().grpc_request_latency().scoped();
+
+                    const auto ouser = lookup(ctx, "user");
+                    const std::string user = ouser && !ouser->empty() ? *ouser : "";
+
+                    LOG_TRACE_EX(*ctx) << "Request [" << name << "] " << req->GetDescriptor()->name()
+                              << ", user: '" << user << "', request: " << owner_.toJsonForLog(*req);
 
                     if (requireAdminCreds) {
                         if (!co_await owner_.isAdmin(ctx)) {
                             owner_.server().metrics().unauthorized_admin_requests().inc();
-                            LOG_DEBUG << "Request [" << name << "] Unauthorized request. Missing admin credentials.";
+                            LOG_INFO_N << "Request [" << name << "] Unauthorized request. Missing admin credentials for user '"
+                                       << user << "'.";
+                            LOG_TRACE_EX(*ctx) << "Request [" << name << "] Unauthorized request. Missing admin credentials.";
                             reply->set_error(signup::pb::Error::UNAUTHORIZED);
                             reply->set_message("Unauthorized request. Missing admin credentials.");
                             reactor->Finish(::grpc::Status::OK);

@@ -453,9 +453,7 @@ boost::asio::awaitable<bool> GrpcServer::saveUserGlobalSettings(
         const auto uctx = rctx.uctx;
         const auto& cuser = uctx->userUuid();
 
-        if (!uctx->isAdmin()) {
-            throw server_err{nextapp::pb::Error::PERMISSION_DENIED, "Permission denied"};
-        };
+        assert(uctx->isAdmin());
 
         constexpr string_view query = R"(SELECT
     t.id AS tenant_id,
@@ -604,7 +602,7 @@ ORDER BY t.id;
         LOG_DEBUG_N << "Sent " << total_rows << " tenants/users to client.";
         co_return;
 
-    }, __func__);
+    }, __func__, /* allow new session */ true, /* admin only */ true);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteAccount(::grpc::CallbackServerContext *ctx,
