@@ -2,7 +2,7 @@
 FROM ubuntu:22.04
 
 # Set environment variables
-ENV QT_VERSION=6.8.3
+ENV QT_VERSION=6.10.0
 ENV QT_DIR=/opt/qt-build
 ENV QT_INSTALL_DIR=/opt/qt-static
 ENV VCPKG_ROOT=/opt/vcpkg
@@ -86,8 +86,9 @@ RUN apt-get update && apt-get install -y \
 
 # Set up Flatpak
 RUN flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && \
-    flatpak --noninteractive install flathub org.freedesktop.Platform//23.08 && \
-    flatpak --noninteractive install flathub org.freedesktop.Sdk//23.08
+    flatpak --system --noninteractive install flathub \
+        org.freedesktop.Platform//25.08 \
+        org.freedesktop.Sdk//25.08
 
 # Install vcpkg
 RUN git clone https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT} && \
@@ -98,7 +99,7 @@ RUN git clone https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT} && \
 
 # Install Boost
 RUN mkdir -p /tmp/boost && \
-    curl -sL https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 && \
+    curl -sL https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.bz2 | tar -xjC /tmp/boost --strip-components 1 && \
     cd /tmp/boost && \
     ./bootstrap.sh && \
     ./b2 -d0 link=static threading=multi --with-program_options --with-system install && \
@@ -119,19 +120,6 @@ RUN mkdir -p ${QT_DIR} && \
     cmake --install . && \
     cd / && \
     rm -rf ${QT_DIR}
-
-# RUN mkdir -p ${QT_DIR} && \
-#     git clone --depth=1 --branch ${QT_VERSION} git://code.qt.io/qt/qt5.git ${QT_DIR}/qt && \
-#     cd ${QT_DIR}/qt && \
-#     ./init-repository --module-subset=default,-qtwebengine && \
-#     ./configure -prefix ${QT_INSTALL_DIR} -static -release -opensource -confirm-license -no-pch \
-#     -nomake examples -nomake tests -openssl-linked -opengl desktop -sql-sqlite \
-#     -skip qtwebengine -skip qtmultimedia -skip qtsensors -skip qtconnectivity -skip qtnetworkauth \
-#     -vcpkg --feature-protobufquick --feature-qtprotobufgen -feature-xcb -qt-libpng -qt-libjpeg \
-#     -skip qtspeech -skip qt5compat -skip qtquick3dphysics -skip qtremoteobjects -skip qthttpserver \
-#     && cmake --build . --parallel \
-#     && cmake --install . \
-#     && cd / && rm -rf ${QT_DIR}/qt
 
 # Create a non-root user
 RUN useradd -m -s /bin/bash build && \
