@@ -1,0 +1,143 @@
+# Broken. See ../building/build-flatpak.sh
+
+id: eu.lastviking.NextApp
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: nextapp
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  - --socket=pipewire
+  - --socket=session-bus
+  - --socket=system-bus
+  - --socket=pulseaudio
+  - --persist=.local/share
+  - --persist=.config
+  - --filesystem=home/NextApp:create
+
+build-options:
+  env:
+    CMAKE_PREFIX_PATH: /app;/usr
+    CMAKE_SYSTEM_PREFIX_PATH: /app;/usr
+    CMAKE_FIND_USE_PACKAGE_REGISTRY: "OFF"
+    CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: "OFF"
+
+modules:
+  - name: protobuf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -Dprotobuf_BUILD_TESTS=OFF
+      - -Dprotobuf_WITH_ZLIB=ON
+      - -Dprotobuf_BUILD_SHARED_LIBS=ON
+      # Search SDK first, then /app (for anything else you’ve built)
+      - -DCMAKE_PREFIX_PATH=/usr;/app
+      # Tell CMake exactly where KDE’s Abseil package is:
+      - -Dabsl_DIR=/usr/lib/x86_64-linux-gnu/cmake/absl
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v32.1/protobuf-32.1.tar.gz
+        sha256: 3feeabd077a112b56af52519bc4ece90e28b4583f4fc2549c95d765985e0fd3c
+
+
+  - name: grpc
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DgRPC_BUILD_TESTS=OFF
+      - -DgRPC_INSTALL=ON
+      - -DgRPC_ABSL_PROVIDER=package
+      - -DgRPC_PROTOBUF_PROVIDER=package
+      - -DgRPC_CARES_PROVIDER=module
+      - -DgRPC_RE2_PROVIDER=module
+      - -DgRPC_SSL_PROVIDER=package
+      - -DCMAKE_PREFIX_PATH=/usr;/app
+      - -Dabsl_DIR=/usr/lib/x86_64-linux-gnu/cmake/absl
+      - -DProtobuf_DIR=/app/lib/cmake/protobuf
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: git
+        url: https://github.com/grpc/grpc.git
+        tag: v1.75.1
+        submodules: false
+        disable-shallow-clone: true
+
+
+  - name: qtgraphs
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DQT_BUILD_TESTS=OFF
+      - -DQT_BUILD_EXAMPLES=OFF
+      # Use the SDK’s Qt for host & target
+      - -DQT_HOST_PATH=/usr
+      - -DCMAKE_PREFIX_PATH=/usr
+      # Install the module into /app so your app can find it
+      - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    sources:
+      - type: git
+        url: https://code.qt.io/qt/qtgraphs.git
+        # choose a tag matching your SDK minor, e.g. v6.9.2 (or your exact 6.9.x)
+        tag: v6.9.3
+        submodules: true
+
+  - name: qtgrpc
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DQT_BUILD_TESTS=OFF
+      - -DQT_BUILD_EXAMPLES=OFF
+      #- -DQT_HOST_PATH=/usr
+      - -DCMAKE_PREFIX_PATH=/usr;/app
+      #- -DProtobuf_DIR=/app/lib/cmake/protobuf
+      #- -DgRPC_DIR=/app/lib/cmake/grpc
+      - -DQT_FEATURE_protobuf=ON
+      - -DQT_FEATURE_grpc=ON
+      - -DQT_FEATURE_protobuf-qtcoretypes=ON
+      - -DQT_FEATURE_protobuf-qtguitypes=ON
+      - -DQT_FEATURE_protobuf-wellknowntypes=ON
+      - -DQT_FEATURE_qtprotobufgen=ON
+      - -DQT_WILL_INSTALL=ON
+      - -DCMAKE_INSTALL_PREFIX=/app
+      #- -DCMAKE_INSTALL_LIBDIR=lib/x86_64-linux-gnu
+      #- -DCMAKE_INSTALL_BINDIR=libexec
+    sources:
+      - type: git
+        url: https://code.qt.io/qt/qtgrpc.git
+        tag: v6.9.3
+        submodules: true
+
+  - name: nextapp
+    buildsystem: cmake-ninja
+    build-options:
+      env:
+        QT_HOST_PATH: /app/qt-host
+        QT_ADDITIONAL_PACKAGES_PREFIX_PATH: /app
+        PATH: /app/qt-host/lib/libexec:/app/lib/libexec:/app/bin:/usr/bin
+    config-opts:
+      - -DCMAKE_PREFIX_PATH=/usr;/app;/app/qt-host
+      - -DQt6_DIR=/usr/lib/x86_64-linux-gnu/cmake/Qt6
+      # Host Tools packages (now provided by shims):
+      - -DQt6ProtobufTools_DIR=/app/qt-host/lib/x86_64-linux-gnu/cmake/Qt6ProtobufTools
+      - -DQt6GrpcTools_DIR=/app/qt-host/lib/x86_64-linux-gnu/cmake/Qt6GrpcTools
+      # Target libs:
+      - -DQt6Protobuf_DIR=/app/lib/x86_64-linux-gnu/cmake/Qt6Protobuf
+      - -DQt6Grpc_DIR=/app/lib/x86_64-linux-gnu/cmake/Qt6Grpc
+      - -DProtobuf_DIR=/app/lib/cmake/protobuf
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DNEXTAPP_USE_JNI=OFF
+      - -DNEXTAPP_WITH_UI=ON
+      - -DNEXTAPP_WITH_BACKEND=OFF
+      - -DNEXTAPP_WITH_SIGNUP=OFF
+    sources:
+      - type: dir
+        path: ../
+
+
+
