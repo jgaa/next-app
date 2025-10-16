@@ -99,7 +99,11 @@ if (LINUX_BUILD OR WINDOWS_BUILD)
   find_package(Protobuf REQUIRED)
 endif()
 
+find_package(EXPAT REQUIRED)
+find_package(ZLIB REQUIRED)
+
 if (LINUX_BUILD)
+    # Make sure this resolves via vcpkg, not host:
     add_compile_definitions(LINUX_BUILD)
 endif()
 
@@ -430,7 +434,7 @@ else()
       if(DEFINED ENV{NEXTAPP_BOOST_ROOT} AND NOT "$ENV{NEXTAPP_BOOST_ROOT}" STREQUAL "")
         set(NEXTAPP_BOOST_ROOT "$ENV{NEXTAPP_BOOST_ROOT}")
       else()
-        set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_88_0")
+        set(NEXTAPP_BOOST_ROOT "/opt/boost/boost_1_89_0")
       endif()
     endif()
 
@@ -592,6 +596,7 @@ qt_add_qml_module(${PROJECT_NAME}
         icons/fontawsome/circle.svg
         icons/fontawsome/clock.svg
         icons/fontawsome/cloud-bolt.svg
+        icons/fontawsome/comment-dots.svg
         icons/fontawsome/file-export.svg
         icons/fontawsome/file-lines.svg
         icons/fontawsome/flag.svg
@@ -776,6 +781,8 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
+        $<$<BOOL:${LINUX_BUILD}>:expat> # Required with qt 6.9 from vcpkg
+        $<$<BOOL:${LINUX_BUILD}>:ZLIB::ZLIB>
         na_proto_lib
         na_grpc_lib
         QCoro6::Core
@@ -789,10 +796,11 @@ target_link_libraries(${PROJECT_NAME}
         Qt6::Svg
         Qt6::Protobuf
         Qt6::Grpc
+        Qt6::ProtobufQtCoreTypes
         Qt6::Concurrent
         Qt6::Test
         Qt6::Sql
-        $<$<OR:$<BOOL:${WINDOWS_BUILD}>,$<BOOL:${LINUX_BUILD}>>:gRPC::grpc++>
+        $<$<BOOL:${WINDOWS_BUILD}>:gRPC::grpc++> # Removed LINUX_BUILD with vcpkg
         $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
         $<$<AND:$<BOOL:${USE_STATIC_QT}>,$<BOOL:${LINUX_BUILD}>>:dl>
         ${OPEN_SSL_DEPS}
