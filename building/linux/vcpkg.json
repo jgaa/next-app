@@ -1,0 +1,40 @@
+{
+  "name": "nextapp",
+  "dependencies": [
+    "boost-headers",
+    "grpc",
+    "protobuf",
+    "pcre2",
+    "double-conversion",
+    "libpng",
+    "libjpeg-turbo",
+    "brotli",
+    "openssl",
+    "abseil",
+    "expat",
+    {
+      "name": "qtbase",
+      "features": [
+        "concurrent",
+        "testlib",
+        "dnslookup",
+        "network",
+        "xcb",
+        "dbus",
+        "gui",
+        "icu",
+        "jpeg",
+        "opengl",
+        "openssl",
+        "xcb-xlib"
+      ]
+    },
+    "qtdeclarative",
+    "qtcharts",
+    "qtsvg",
+    "qtgrpc",
+    "qtgraphs"
+  ],
+
+  "builtin-baseline": "b2c74683ecfd6a8e7d27ffb0df077f66a9339509"
+}
