@@ -1683,7 +1683,7 @@ QCoro::Task<void> ServerComm::doSendFeedback(nextapp::pb::Feedback feedback)
         // Attach the log
         if (auto *logger = LogModel::instance()) {
             const auto plain = logger->getAll();
-            const auto compressed = qCompress(plain.toUtf8());
+            const auto compressed = gzipCompress(plain.toUtf8());
             feedback.setLog(compressed);
         }
     };

@@ -60,3 +60,4 @@ bool isCurrentMonth(time_t when);
 bool isLastMonth(time_t when);
 bool isLastYear(time_t when);
 
+QByteArray gzipCompress(const std::span<const char>& data, std::optional<int> compression_level = {});

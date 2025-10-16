@@ -756,8 +756,9 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                         fb->set_emoji(emoji_value);
                     }
                 }
-                {
-                    auto blob = row.at(LOG).as_blob();
+
+                if (row.at(LOG).is_blob()) {
+                    const auto& blob = row.at(LOG).as_blob();
                     if (!blob.empty()) {
                         fb->set_log(blob.data(), blob.size());
                         fb->set_haslog(true);

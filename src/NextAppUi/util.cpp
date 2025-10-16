@@ -12,6 +12,8 @@
 
 #include <regex>
 
+#include <zlib.h>
+
 #include "util.h"
 #include "logging.h"
 #include "ServerComm.h"
@@ -256,4 +258,50 @@ QString getSystemTimeZone() {
     QString timeZoneString = QString::fromUtf8(timeZoneId);
 
     return timeZoneString;
+}
+
+QByteArray gzipCompress(const std::span<const char>& data, std::optional<int> compression_level)
+{
+    if (data.empty()) {
+        return {};
+    }
+
+    if (!compression_level || *compression_level < 0 || *compression_level > 9) {
+        compression_level = Z_BEST_COMPRESSION;
+    }
+
+    z_stream zs{};
+
+    if (deflateInit2(&zs, *compression_level, Z_DEFLATED, 15 + 16, 8,
+                     Z_DEFAULT_STRATEGY) != Z_OK) {
+        throw std::runtime_error("deflateInit2 failed");
+    }
+
+    ScopedExit exit{[&zs]() {
+        deflateEnd(&zs);
+    }};
+
+    zs.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data.data()));
+    zs.avail_in = static_cast<uInt>(data.size());
+
+    int ret{};
+    std::array<char, 32768> outbuffer{};
+    QByteArray out;
+
+    do {
+        zs.next_out = reinterpret_cast<Bytef*>(outbuffer.data());
+        zs.avail_out = outbuffer.size();
+
+        ret = deflate(&zs, Z_FINISH);
+
+        if (out.size() < static_cast<int>(zs.total_out)) {
+            out.append(outbuffer.data(), outbuffer.size() - zs.avail_out);
+        }
+    } while (ret == Z_OK);
+
+    if (ret != Z_STREAM_END) {
+        throw std::runtime_error("deflate failed");
+    }
+
+    return out;
 }
