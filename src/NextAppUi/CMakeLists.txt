@@ -781,8 +781,10 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        $<$<BOOL:${LINUX_BUILD}>:expat> # Required with qt 6.9 from vcpkg
-        $<$<BOOL:${LINUX_BUILD}>:ZLIB::ZLIB>
+        #$<$<BOOL:${LINUX_BUILD}>:expat> # Required with qt 6.9 from vcpkg
+        #$<$<BOOL:${LINUX_BUILD}>:ZLIB::ZLIB>
+        expat
+        ZLIB::ZLIB
         na_proto_lib
         na_grpc_lib
         QCoro6::Core
