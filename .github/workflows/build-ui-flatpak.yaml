@@ -3,8 +3,8 @@ name: Build NextApp Flatpak (Static Qt)
 on:
   push:
     branches:
-      - main
-      - devel
+      #- main
+      #- devel
 
 permissions:
   contents: read
