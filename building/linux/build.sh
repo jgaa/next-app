@@ -2,7 +2,7 @@
 set -eo pipefail
 
 unset ANDROID ANDROID_NDK_ROOT ANDROID_HOME ANDROID_SDK_ROOT
-export VCPKG_CMAKE_OPTIONS=-DANDROID=OFF
+export VCPKG_CMAKE_OPTIONS="-DQT_AUTODETECT_ANDROID=OFF -DANDROID=OFF"
 
 # -------------------------
 # Args
@@ -88,7 +88,13 @@ export VCPKG_FEATURE_FLAGS=manifests
 # Use release triplet to avoid building debug versions of everything
 TRIPLET="${TRIPLET:-x64-linux-release}"
 
+echo checking for android envvars.
+env | egrep -i '^(ANDROID|ANDROID_HOME|ANDROID_SDK_ROOT|ANDROID_NDK_ROOT)='
+
+echo Running vcpkg install
 ${vcpkg} install --clean-buildtrees-after-build --clean-downloads-after-build --triplet ${TRIPLET} --vcpkg-root ${VCPKG_ROOT}
+
+echo Running cmake for nextapp...
 
 cmake -S "$src_dir" \
   -G Ninja \
