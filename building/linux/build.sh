@@ -1,6 +1,9 @@
 #!/bin/bash
 set -eo pipefail
 
+unset ANDROID ANDROID_NDK_ROOT ANDROID_HOME ANDROID_SDK_ROOT
+export VCPKG_CMAKE_OPTIONS=-DANDROID=OFF
+
 # -------------------------
 # Args
 # -------------------------
