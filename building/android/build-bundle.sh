@@ -10,14 +10,14 @@ ANDROID_ABIS=("armeabi-v7a" "arm64-v8a" "x86" "x86_64")
 BOOST_INSTALL_DIR="${BOOST_INSTALL_DIR:-/var/local/build/boost_1.88}"
 
 if [ ! -d "${BOOST_INSTALL_DIR}" ]; then
-  BOOST_VERSION_UNDERSCORE=1_88_0
+  BOOST_VERSION_UNDERSCORE=1_89_0
   echo ">>> Bootstrapping Boost ${BOOST_VERSION_UNDERSCORE} into ${BOOST_INSTALL_DIR}"
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' EXIT
 
   # download & extract
   curl -sSL \
-    "https://archives.boost.io/release/1.88.0/source/boost_1_88_0.tar.bz2" \
+    "https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.bz2" \
     -o "$tmpdir/boost.tar.bz2"
   tar xf "$tmpdir/boost.tar.bz2" -C "$tmpdir"
 
@@ -33,7 +33,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
-QT_VERSION="${QT_VERSION:-6.9.1}"
+QT_VERSION="${QT_VERSION:-6.10.0}"
 QT_ARCHIVE="qt-${QT_VERSION}.tar"
 QT_DOWNLOAD_URL="${QT_DOWNLOAD_URL:-http://192.168.1.95/ci/${QT_ARCHIVE}}"
 QT_INSTALL_DIR="${QT_INSTALL_DIR-/var/local/build/qt-${QT_VERSION}}"
