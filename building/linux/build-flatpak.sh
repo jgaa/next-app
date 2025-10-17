@@ -6,7 +6,7 @@ manifest_dir=$(pwd)
 
 export BUILD_DIR="${BUILD_DIR:-/var/local/build}"
 export APP_BUILD_DIR="${APP_BUILD_DIR:-${BUILD_DIR}/next-app-linux}"
-
+export ASSETS_DIR=${ASSETS_DIR:-${APP_BUILD_DIR}/assets}
 
 src_dir="$(realpath "$(pwd)/../../")"
 REPO_DIR="${REPO_DIR:-${APP_BUILD_DIR}/flatpak-repo}"
@@ -186,5 +186,7 @@ flatpak build-bundle ${REPO_DIR} \
   --arch=x86_64 \
   --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
-echo Flatpak file is: $(pwd)/${FP_NAME}
+cp -v ${FP_NAME} "${ASSETS_DIR}"
+
+echo Flatpak file is: ${ASSETS_DIR}/${FP_NAME}
 

@@ -4,6 +4,11 @@
 //    apt install protobuf-compiler-grpc unzip cmake ninja-build
 
 pipeline {
+  parameters {
+    booleanParam(name: 'RUN_ANDROID', defaultValue: true, description: 'Run Android stage')
+    booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Run Windows stage')
+    booleanParam(name: 'RUN_LINUX', defaultValue: false, description: 'Run Linux stage')
+  }
   agent { label 'main' }
 
   options {
@@ -24,13 +29,8 @@ pipeline {
       parallel {
         stage('Windows Build') {
             when {
-              expression {
-                // Use source branch for PRs if present, otherwise normal branch,
-                // and fall back to GIT_BRANCH for non-multibranch jobs.
-                def b = (env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: env.GIT_BRANCH ?: '').toLowerCase()
-                // Skip Windows build if branch name contains "android"
-                !b.contains('android')
-              }
+              beforeAgent true
+              expression { return params.RUN_WINDOWS }
             }
             // Assumes cmake, nsis, ninja and exists
             //
@@ -89,6 +89,10 @@ pipeline {
           } // win
 
           stage('Android Build') {
+            when {
+              beforeAgent true
+              expression { return params.RUN_ANDROID }
+            }
             agent { label 'linux' }
 
             environment {
@@ -124,6 +128,61 @@ pipeline {
               }
             }
           } // android
+
+          stage('Linux and flatpak Build') {
+            when {
+              beforeAgent true
+              expression { return params.RUN_LINUX }
+            }
+
+            agent { label 'linux' }
+
+            options {
+              ansiColor('xterm')
+              timestamps()
+            }
+
+            environment {
+              BUILD_DIR  = "${WORKSPACE}/build"
+              VCPKG_ROOT = "${HOME}/vcpkg"
+              ASSETS_DIR = "${WORKSPACE}/build/assets"
+            }
+
+            steps {
+              checkout scm
+
+              sh '''
+                set -euxo pipefail
+
+                # Prepare dirs
+                mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
+
+                # Ensure vcpkg is installed in VCPKG_ROOT
+                if [ ! -d "$VCPKG_ROOT/.git" ]; then
+                  git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+                else
+                  git -C "$VCPKG_ROOT" fetch --depth 1 origin
+                  git -C "$VCPKG_ROOT" reset --hard origin/master
+                fi
+
+                # Bootstrap vcpkg (Linux)
+                "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+                # Make sure scripts are executable and run them
+                chmod +x ./building/linux/build.sh ./building/linux/build-flatpak.sh
+
+                ./building/linux/build.sh
+                ./building/linux/build-flatpak.sh
+              '''
+            }
+
+            post {
+              always {
+                // Archive whatever the builds produced
+                archiveArtifacts artifacts: 'build/assets/**', fingerprint: true
+              }
+            }
+          } //Linux
       } //parallel
     } // Build
   } // stages

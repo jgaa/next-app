@@ -50,6 +50,7 @@ manifest_dir=$(pwd)
 
 export BUILD_DIR="${BUILD_DIR:-/var/local/build}"
 export APP_BUILD_DIR="${APP_BUILD_DIR:-${BUILD_DIR}/next-app-linux}"
+export ASSETS_DIR=${ASSETS_DIR:-${APP_BUILD_DIR}/assets}
 
 echo Building NextApp from sources using vcpkg.
 echo BUILD_DIR: ${BUILD_DIR}
@@ -68,10 +69,11 @@ fi
 mkdir -p ${APP_BUILD_DIR}
 cd ${APP_BUILD_DIR}
 cp -v ${manifest_dir}/vcpkg.json .
+mkdir -p ${ASSETS_DIR}
 
 # --- vcpkg setup ---
 VCPKG_ROOT="${VCPKG_ROOT:-/var/local/src/vcpkg}"
-VCPKG="${VCPKG:-$VCPKG_ROOT/vcpkg}"
+vcpkg="${VCPKG:-$VCPKG_ROOT/vcpkg}"
 TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake
 export VCPKG_INSTALLED_DIR="${APP_BUILD_DIR}/vcpkg_installed"
 echo TOOLCHAIN_FILE: ${TOOLCHAIN_FILE}
@@ -83,7 +85,7 @@ export VCPKG_FEATURE_FLAGS=manifests
 # Use release triplet to avoid building debug versions of everything
 TRIPLET="${TRIPLET:-x64-linux-release}"
 
-vcpkg install --clean-buildtrees-after-build --clean-downloads-after-build --triplet ${TRIPLET}
+${vcpkg} install --clean-buildtrees-after-build --clean-downloads-after-build --triplet ${TRIPLET}
 
 cmake -S "$src_dir" \
   -G Ninja \
@@ -98,10 +100,13 @@ cmake -S "$src_dir" \
   -DNEXTAPP_WITH_BACKEND=OFF \
   -DNEXTAPP_WITH_SIGNUP=OFF
 
-export PATH="${PATH}:${APP_BUILD_DIR}/vcpkg_installed/x64-linux/tools/Qt6/bin/:${APP_BUILD_DIR}/vcpkg_installed/x64-linux-release/tools/Qt6/bin"
+export PATH="${VCPKG_ROOT}:${PATH}:${APP_BUILD_DIR}/vcpkg_installed/x64-linux/tools/Qt6/bin/:${APP_BUILD_DIR}/vcpkg_installed/x64-linux-release/tools/Qt6/bin"
 
 echo "Building NextApp..."
 
 cmake --build . -j
 
-echo Done. Executable is in $(pwd)/bin
+cp -c bin/nextapp "${ASSETS_DIR}"
+
+echo Done. Executable is in ${ASSETS_DIR}
+
