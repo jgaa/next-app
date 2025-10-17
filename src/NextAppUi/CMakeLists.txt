@@ -99,7 +99,10 @@ if (LINUX_BUILD OR WINDOWS_BUILD)
   find_package(Protobuf REQUIRED)
 endif()
 
-find_package(EXPAT REQUIRED)
+if (NOT ANDROID_BUILD)
+    find_package(EXPAT REQUIRED)
+endif()
+
 find_package(ZLIB REQUIRED)
 
 if (LINUX_BUILD)
@@ -783,7 +786,8 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         #$<$<BOOL:${LINUX_BUILD}>:expat> # Required with qt 6.9 from vcpkg
         #$<$<BOOL:${LINUX_BUILD}>:ZLIB::ZLIB>
-        expat
+        #expat
+        $<$<NOT:$<BOOL:${ANDROID}>>:expat>
         ZLIB::ZLIB
         na_proto_lib
         na_grpc_lib
