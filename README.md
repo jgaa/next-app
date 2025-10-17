@@ -1,6 +1,5 @@
 Build status
 - [![Build NextApp Docker Images](https://github.com/jgaa/next-app/actions/workflows/build_containers.yaml/badge.svg?branch=main)](https://github.com/jgaa/next-app/actions/workflows/build_containers.yaml)
-- [![Build NextApp Flatpak (Static Qt)](https://github.com/jgaa/next-app/actions/workflows/build-ui-flatpak.yaml/badge.svg)](https://github.com/jgaa/next-app/actions/workflows/build-ui-flatpak.yaml)
 - [![Build macOS App arm64 (Static Qt)](https://github.com/jgaa/next-app/actions/workflows/build-macos-arm64.yaml/badge.svg)](https://github.com/jgaa/next-app/actions/workflows/build-macos-arm64.yaml)
 
 # next-app
