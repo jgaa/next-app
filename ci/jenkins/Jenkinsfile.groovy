@@ -168,6 +168,7 @@ pipeline {
                 ''',
                 shell: '/bin/bash'
               )
+            }
 
             post {
               always {
