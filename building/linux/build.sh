@@ -89,7 +89,7 @@ export VCPKG_FEATURE_FLAGS=manifests
 TRIPLET="${TRIPLET:-x64-linux-release}"
 
 echo checking for android envvars.
-env | egrep -i '^(ANDROID|ANDROID_HOME|ANDROID_SDK_ROOT|ANDROID_NDK_ROOT)='
+env | grep -iE '^(ANDROID|ANDROID_HOME|ANDROID_SDK_ROOT|ANDROID_NDK_ROOT)=' || true
 
 echo Running vcpkg install
 ${vcpkg} install --clean-buildtrees-after-build --clean-downloads-after-build --triplet ${TRIPLET} --vcpkg-root ${VCPKG_ROOT}
