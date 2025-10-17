@@ -152,15 +152,21 @@ pipeline {
               mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
 
               if [ ! -d "$VCPKG_ROOT/.git" ]; then
+                echo "Installing vcpkg..."
                 git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+                pushd $VCPKG_ROOT
+                chmod +x bootstrap-vcpkg.sh
+                ./bootstrap-vcpkg.sh" -disableMetrics
+                popd
               else
-                git -C "$VCPKG_ROOT" fetch origin
-                git -C "$VCPKG_ROOT" reset origin/master
+                echo "Updating vcpkg..."
+                pushd $VCPKG_ROOT
+                git pull
+                popd
               fi
 
-              chmod +x "$VCPKG_ROOT/bootstrap-vcpkg.sh"
-              "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-
+              echo
+              echo "Calling build scripts for nextapp..."
               chmod +x ./building/linux/build.sh ./building/linux/build-flatpak.sh
               ./building/linux/build.sh
               ./building/linux/build-flatpak.sh
