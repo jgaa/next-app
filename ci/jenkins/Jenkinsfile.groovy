@@ -105,6 +105,8 @@ pipeline {
             }
 
             steps {
+                echo "Runner: node=${env.NODE_NAME}, labels=${env.NODE_LABELS}, executor=${env.EXECUTOR_NUMBER}"
+                sh 'echo "Host:" $(hostname)'
 
                 checkout scm
 
