@@ -85,7 +85,7 @@ export VCPKG_FEATURE_FLAGS=manifests
 # Use release triplet to avoid building debug versions of everything
 TRIPLET="${TRIPLET:-x64-linux-release}"
 
-${vcpkg} install --clean-buildtrees-after-build --clean-downloads-after-build --triplet ${TRIPLET}
+${vcpkg} install --clean-buildtrees-after-build --clean-downloads-after-build --triplet ${TRIPLET} --vcpkg-root ${VCPKG_ROOT}
 
 cmake -S "$src_dir" \
   -G Ninja \

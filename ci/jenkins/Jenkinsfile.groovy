@@ -152,10 +152,10 @@ pipeline {
               mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
 
               if [ ! -d "$VCPKG_ROOT/.git" ]; then
-                git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+                git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
               else
-                git -C "$VCPKG_ROOT" fetch --depth 1 origin
-                git -C "$VCPKG_ROOT" reset --hard origin/master
+                git -C "$VCPKG_ROOT" fetch origin
+                git -C "$VCPKG_ROOT" reset origin/master
               fi
 
               chmod +x "$VCPKG_ROOT/bootstrap-vcpkg.sh"
