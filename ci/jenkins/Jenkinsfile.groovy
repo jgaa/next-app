@@ -7,7 +7,7 @@ pipeline {
   parameters {
     booleanParam(name: 'RUN_ANDROID', defaultValue: true, description: 'Run Android stage')
     booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Run Windows stage')
-    booleanParam(name: 'RUN_LINUX', defaultValue: false, description: 'Run Linux stage')
+    booleanParam(name: 'RUN_LINUX', defaultValue: true, description: 'Run Linux stage')
   }
   agent { label 'main' }
 
@@ -146,30 +146,28 @@ pipeline {
             steps {
               checkout scm
 
-              sh '''
-                set -euxo pipefail
+              sh(
+                script: '''
+                  set -Eeuo pipefail
 
-                # Prepare dirs
-                mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
+                  mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
 
-                # Ensure vcpkg is installed in VCPKG_ROOT
-                if [ ! -d "$VCPKG_ROOT/.git" ]; then
-                  git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
-                else
-                  git -C "$VCPKG_ROOT" fetch --depth 1 origin
-                  git -C "$VCPKG_ROOT" reset --hard origin/master
-                fi
+                  if [ ! -d "$VCPKG_ROOT/.git" ]; then
+                    git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+                  else
+                    git -C "$VCPKG_ROOT" fetch --depth 1 origin
+                    git -C "$VCPKG_ROOT" reset --hard origin/master
+                  fi
 
-                # Bootstrap vcpkg (Linux)
-                "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+                  chmod +x "$VCPKG_ROOT/bootstrap-vcpkg.sh"
+                  "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
 
-                # Make sure scripts are executable and run them
-                chmod +x ./building/linux/build.sh ./building/linux/build-flatpak.sh
-
-                ./building/linux/build.sh
-                ./building/linux/build-flatpak.sh
-              '''
-            }
+                  chmod +x ./building/linux/build.sh ./building/linux/build-flatpak.sh
+                  ./building/linux/build.sh
+                  ./building/linux/build-flatpak.sh
+                ''',
+                shell: '/bin/bash'
+              )
 
             post {
               always {
