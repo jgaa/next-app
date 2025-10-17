@@ -144,31 +144,28 @@ pipeline {
             }
 
             steps {
-              checkout scm
+                checkout scm
 
-              sh(
-                script: '''
-                  set -Eeuo pipefail
+                sh '''#!/usr/bin/env bash
+              set -Eeuo pipefail
 
-                  mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
+              mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
 
-                  if [ ! -d "$VCPKG_ROOT/.git" ]; then
-                    git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
-                  else
-                    git -C "$VCPKG_ROOT" fetch --depth 1 origin
-                    git -C "$VCPKG_ROOT" reset --hard origin/master
-                  fi
+              if [ ! -d "$VCPKG_ROOT/.git" ]; then
+                git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+              else
+                git -C "$VCPKG_ROOT" fetch --depth 1 origin
+                git -C "$VCPKG_ROOT" reset --hard origin/master
+              fi
 
-                  chmod +x "$VCPKG_ROOT/bootstrap-vcpkg.sh"
-                  "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+              chmod +x "$VCPKG_ROOT/bootstrap-vcpkg.sh"
+              "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
 
-                  chmod +x ./building/linux/build.sh ./building/linux/build-flatpak.sh
-                  ./building/linux/build.sh
-                  ./building/linux/build-flatpak.sh
-                ''',
-                shell: '/bin/bash'
-              )
-            }
+              chmod +x ./building/linux/build.sh ./building/linux/build-flatpak.sh
+              ./building/linux/build.sh
+              ./building/linux/build-flatpak.sh
+              '''
+              }
 
             post {
               always {
