@@ -21,7 +21,7 @@ pipeline {
         artifactDaysToKeepStr:'7',    // delete archived artifacts older than 7 days
         artifactNumToKeepStr: '5'     // keep artifacts only for the last 5 builds
       )
-    )
+    )git status
   }
 
   stages {
@@ -136,11 +136,6 @@ pipeline {
             }
 
             agent { label 'linux' }
-
-            options {
-              ansiColor('xterm')
-              timestamps()
-            }
 
             environment {
               BUILD_DIR  = "${WORKSPACE}/build"
