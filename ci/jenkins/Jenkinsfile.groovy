@@ -149,8 +149,6 @@ pipeline {
                 sh '''#!/usr/bin/env bash
               set -Eeuo pipefail
 
-              sudo apt-get install curl zip unzip tar
-
               mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
 
               if [ ! -d "$VCPKG_ROOT/.git" ]; then
