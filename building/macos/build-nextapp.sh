@@ -85,7 +85,7 @@ cd "${BUILD_DIR}"
 # —————————————————————————————
 echo "Installing vcpkg packages…"
 cp -v "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" vcpkg.json
-vcpkg install ${VCPKG_INSTALL_OPTIONS} --triplet "${VCPKG_TRIPLET}"
+vcpkg install ${VCPKG_INSTALL_OPTIONS} --triplet "${VCPKG_TRIPLET}" --clean-after-build --debug
 echo "Done installing vcpkg packages."
 
 # —————————————————————————————
