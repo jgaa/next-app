@@ -31,7 +31,7 @@ export SOURCE_DIR="${SOURCE_DIR:-${SCRIPT_DIR}/../../}"
 export BUILD_DIR="${BUILD_DIR:-/Volumes/devel/build/nextapp}"
 export VCPKG_ROOT="${VCPKG_ROOT:-/Volumes/devel/src/vcpkg}"
 export VCPKG_TRIPLET="${VCPKG_TRIPLET:-x64-osx-release}"
-export VCPKG_INSTALL_OPTIONS="${VCPKG_INSTALL_OPTIONS:---clean-after-build}"
+export VCPKG_INSTALL_OPTIONS="${VCPKG_INSTALL_OPTIONS:---clean-after-build --debug}"
 export VCPKG_MANIFEST_MODE="${VCPKG_MANIFEST_MODE:-ON}"
 export CMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
 
@@ -85,7 +85,7 @@ cd "${BUILD_DIR}"
 # —————————————————————————————
 echo "Installing vcpkg packages…"
 cp -v "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" vcpkg.json
-vcpkg install ${VCPKG_INSTALL_OPTIONS} --triplet "${VCPKG_TRIPLET}" --clean-after-build --debug
+vcpkg install ${VCPKG_INSTALL_OPTIONS} --triplet "${VCPKG_TRIPLET}"
 echo "Done installing vcpkg packages."
 
 # —————————————————————————————
