@@ -16,7 +16,6 @@
       "name": "qtbase",
       "features": [
         "concurrent",
-        "testlib",
         "dnslookup",
         "network",
         "xcb",
@@ -26,7 +25,7 @@
         "jpeg",
         "opengl",
         "openssl",
-        "xcb-xlib"
+        "sql-sqlite"
       ]
     },
     "qtdeclarative",
@@ -36,5 +35,5 @@
     "qtgraphs"
   ],
 
-  "builtin-baseline": "b2c74683ecfd6a8e7d27ffb0df077f66a9339509"
+  "builtin-baseline": "74e6536215718009aae747d86d84b78376bf9e09"
 }

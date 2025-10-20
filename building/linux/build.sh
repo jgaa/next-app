@@ -2,7 +2,6 @@
 set -eo pipefail
 
 unset ANDROID ANDROID_NDK_ROOT ANDROID_HOME ANDROID_SDK_ROOT
-export VCPKG_CMAKE_OPTIONS="-DQT_AUTODETECT_ANDROID=OFF -DANDROID=OFF"
 
 # -------------------------
 # Args
@@ -76,11 +75,26 @@ mkdir -p ${ASSETS_DIR}
 
 # --- vcpkg setup ---
 VCPKG_ROOT="${VCPKG_ROOT:-/var/local/src/vcpkg}"
-vcpkg="${VCPKG:-$VCPKG_ROOT/vcpkg}"
+vcpkg="${vcpkg:-$VCPKG_ROOT/vcpkg}"
 TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake
 export VCPKG_INSTALLED_DIR="${APP_BUILD_DIR}/vcpkg_installed"
 echo TOOLCHAIN_FILE: ${TOOLCHAIN_FILE}
 export VCPKG_BUILD_TYPE=release
+
+# --- Make sure vcpkg is present and up to date
+if [ ! -d "$VCPKG_ROOT/.git" ]; then
+    echo "Installing vcpkg";
+    git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT";
+    ( cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics );
+else
+    echo "Updating vcpkg";
+    ( cd "$VCPKG_ROOT" && git pull --ff-only );
+fi
+
+if [ -n "$VCPKG_DEFAULT_BINARY_CACHE" ]; then
+    echo "Creating binary cache directory: $VCPKG_DEFAULT_BINARY_CACHE"
+    mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+fi
 
 # Ensure manifest mode (usually auto when vcpkg.json exists)
 export VCPKG_FEATURE_FLAGS=manifests
@@ -88,11 +102,14 @@ export VCPKG_FEATURE_FLAGS=manifests
 # Use release triplet to avoid building debug versions of everything
 TRIPLET="${TRIPLET:-x64-linux-release}"
 
+echo Using triplet ${TRIPLET}
+
 echo checking for android envvars.
-env | grep -iE '^(ANDROID|ANDROID_HOME|ANDROID_SDK_ROOT|ANDROID_NDK_ROOT)=' || true
+env | grep ANDROID || true
 
 echo Running vcpkg install
-${vcpkg} install --clean-buildtrees-after-build --clean-downloads-after-build --triplet ${TRIPLET} --vcpkg-root ${VCPKG_ROOT}
+# --clean-after-build
+${vcpkg} install --triplet ${TRIPLET} --debug --overlay-ports ${manifest_dir}/vcpkg-overlays
 
 echo Running cmake for nextapp...
 
@@ -115,7 +132,7 @@ echo "Building NextApp..."
 
 cmake --build . -j
 
-cp -c bin/nextapp "${ASSETS_DIR}"
+cp -v bin/nextapp "${ASSETS_DIR}"
 
 echo Done. Executable is in ${ASSETS_DIR}
 
