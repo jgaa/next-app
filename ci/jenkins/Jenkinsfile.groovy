@@ -153,7 +153,7 @@ pipeline {
 
                 checkout scm
 
-                sh '''#!/usr/bin/env bash
+                sh '''
                 set -Eeuo pipefail
 
                 pushd building/linux
