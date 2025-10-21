@@ -144,6 +144,7 @@ pipeline {
               BUILD_DIR  = "${WORKSPACE}/build"
               VCPKG_ROOT = "${HOME}/vcpkg"
               ASSETS_DIR = "${WORKSPACE}/build/assets"
+              CACHE_DIR  = "${HOME}/cache"
             }
 
             steps {
@@ -153,30 +154,19 @@ pipeline {
                 checkout scm
 
                 sh '''#!/usr/bin/env bash
-              set -Eeuo pipefail
+                set -Eeuo pipefail
 
-              mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
-
-              if [ ! -d "$VCPKG_ROOT/.git" ]; then
-                echo Installing vcpkg...
-                git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
-                pushd $VCPKG_ROOT
-                chmod +x bootstrap-vcpkg.sh
-                ./bootstrap-vcpkg.sh -disableMetrics
+                pushd building/linux
+                docker build -t nextapp-builder   --build-arg UID=$(id -u)   --build-arg GID=$(id -g) .
                 popd
-              else
-                echo Updating vcpkg...
-                pushd $VCPKG_ROOT
-                git pull
-                popd
-              fi
 
-              echo
-              echo Calling build scripts for nextapp...
-              chmod +x ./building/linux/build.sh ./building/linux/build-flatpak.sh
-              ./building/linux/build.sh
-              ./building/linux/build-flatpak.sh
-              '''
+                mkdir -p ${BUILD_DIR}
+                mkdr -p ${CACHE_DIR}
+
+                docker run --rm -it -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
+
+              ''',
+                shell: '/bin/bash'
               }
 
             post {
