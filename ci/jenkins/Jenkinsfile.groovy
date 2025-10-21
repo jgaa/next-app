@@ -8,6 +8,7 @@ pipeline {
     booleanParam(name: 'RUN_ANDROID', defaultValue: true, description: 'Run Android stage')
     booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Run Windows stage')
     booleanParam(name: 'RUN_LINUX', defaultValue: true, description: 'Run Linux stage')
+    booleanParam(name: 'RUN_MACOS', defaultValue: true, description: 'Run macOS stage')
   }
   agent { label 'main' }
 
@@ -185,6 +186,74 @@ pipeline {
               }
             }
           } //Linux
+
+        // Add this new stage inside your existing `parallel { ... }` block
+        stage('macOS Build (arm64)') {
+          when {
+            beforeAgent true
+            expression { return params.RUN_MACOS }
+          }
+          // Your mac runner label; ensure Xcode + codesign tools installed
+          agent { label 'macos' }
+
+          environment {
+            SRC_DIR        = "${WORKSPACE}"
+            BUILD_DIR      = "${WORKSPACE}/build"
+            VCPKG_ROOT     = "/Volumes/devel/src/vcpkg"           // acts as a cache across builds on the same node
+            VCPKG_MANIFEST_MODE = "ON"
+            VCPKG_INSTALL_OPTIONS = "--clean-after-build"
+            SIGN_ID        = "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"           }
+
+          options {
+            //timeout(time: 60, unit: 'MINUTES')
+          }
+
+          steps {
+            echo "Runner: node=${env.NODE_NAME}, labels=${env.NODE_LABELS}, executor=${env.EXECUTOR_NUMBER}"
+            sh 'echo "Host:" $(hostname)'
+
+            checkout scm
+            sh 'git submodule update --init'   // GA uses checkout@v4 with submodules: true :contentReference[oaicite:2]{index=2}
+
+            withCredentials([
+              file(credentialsId: 'MACOS_P12_FILE', variable: 'P12_FILE'),    // create in Jenkins
+              string(credentialsId: 'MACOS_P12_PASS', variable: 'P12_PASS')
+            ]) {
+              sh '''#!/usr/bin/env bash
+                set -Eeuo pipefail
+
+                # 2) Ensure vcpkg "cache" dir exists
+                mkdir -p "$VCPKG_ROOT"
+                if [ ! -d "$VCPKG_ROOT/.git" ]; then
+                  echo "Installing vcpkg into $VCPKG_ROOT…"
+                  git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+                  (cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics)
+                else
+                  echo "Updating vcpkg in $VCPKG_ROOT…"
+                  (cd "$VCPKG_ROOT" && git pull --ff-only)
+                fi
+
+                # 3) Run your macOS build script
+                chmod +x ./building/macos/build-nextapp.sh
+                ./building/macos/build-nextapp.sh
+
+                # 4) Read version
+                ver="$(< "${BUILD_DIR}/VERSION.txt")"
+                echo "✅ NEXTAPP_VERSION=$ver"
+                echo "$ver" > "${BUILD_DIR}/.nextapp_version"
+              '''
+            }
+
+            script {
+              // lift the version into env so we can name the artifact nicely, like your Windows stage does :contentReference[oaicite:7]{index=7}
+              env.NEXTAPP_VERSION = readFile("${env.BUILD_DIR}/.nextapp_version").trim()
+            }
+
+            // 5) Archive DMG (GA uploads '*.dmg' with retention) :contentReference[oaicite:8]{index=8}
+            archiveArtifacts artifacts: 'build/*.dmg', fingerprint: true
+          }
+        } // macos
+
       } //parallel
     } // Build
   } // stages
