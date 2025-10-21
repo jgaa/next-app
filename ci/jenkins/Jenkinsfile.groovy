@@ -154,6 +154,8 @@ pipeline {
 
                 checkout scm
 
+                sh 'git submodule update --init'
+
                 sh '''
                 #!/bin/bash
                 set -Eeuo pipefail
