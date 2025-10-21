@@ -149,6 +149,7 @@ pipeline {
 
             steps {
                 echo "Runner: node=${env.NODE_NAME}, labels=${env.NODE_LABELS}, executor=${env.EXECUTOR_NUMBER}"
+
                 sh 'echo "Host:" $(hostname)'
 
                 checkout scm
@@ -165,8 +166,7 @@ pipeline {
 
                 docker run --rm -it -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
 
-              ''',
-                shell: '/bin/bash'
+              '''
               }
 
             post {
