@@ -194,10 +194,6 @@ pipeline {
             VCPKG_INSTALL_OPTIONS = "--clean-after-build"
             SIGN_ID        = "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"           }
 
-          options {
-            //timeout(time: 60, unit: 'MINUTES')
-          }
-
           steps {
             echo "Runner: node=${env.NODE_NAME}, labels=${env.NODE_LABELS}, executor=${env.EXECUTOR_NUMBER}"
             sh 'echo "Host:" $(hostname)'
