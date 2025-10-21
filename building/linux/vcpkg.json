@@ -13,6 +13,8 @@
     "brotli",
     "openssl",
     "abseil",
+    "expat",
+    "fontconfig",
     {
       "name": "qtbase",
       "features": [
