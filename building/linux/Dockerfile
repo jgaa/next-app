@@ -8,6 +8,9 @@ ARG USER=builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# libfontconfig1-dev \
+# libexpat1-dev
+
 # --- Base system and build tools ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake ninja-build git curl pkg-config \
@@ -22,9 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcb-sync-dev libxcb-xfixes0-dev libxcb-shape0-dev \
     libxcb-randr0-dev libxcb-render-util0-dev libxcb-util-dev \
     libxcb-xinerama0-dev libxcb-xinput-dev \
-    libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev \
+    libxkbcommon-dev libxkbcommon-x11-dev \
     libfreetype6-dev libpng-dev libjpeg-dev libbrotli-dev libharfbuzz-dev \
-    libdbus-1-dev libssl-dev libicu-dev libglvnd-dev libexpat1-dev \
+    libdbus-1-dev libssl-dev libicu-dev libglvnd-dev \
     libgl1-mesa-dev libegl1-mesa-dev libgbm-dev libdrm-dev mesa-common-dev libglvnd-dev \
     libsm-dev libice-dev libxau-dev libxdmcp-dev libudev-dev \
     libxcb-cursor-dev libxcb-xkb-dev libgtk-3-dev libatspi2.0-dev \
