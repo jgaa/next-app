@@ -158,9 +158,10 @@ pipeline {
                 #!/bin/bash
                 set -Eeuo pipefail
 
-                pushd building/linux
+                cd building/linux
                 docker build -t nextapp-builder   --build-arg UID=$(id -u)   --build-arg GID=$(id -g) .
-                popd
+
+                cd ../../
 
                 mkdir -p ${BUILD_DIR}
                 mkdr -p ${CACHE_DIR}
