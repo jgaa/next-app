@@ -109,7 +109,9 @@ env | grep ANDROID || true
 
 echo Running vcpkg install
 # --clean-after-build
-${vcpkg} install --triplet ${TRIPLET} --debug --overlay-ports ${manifest_dir}/vcpkg-overlays
+#${vcpkg} install --triplet ${TRIPLET} --debug --overlay-ports ${manifest_dir}/vcpkg-overlays
+
+${vcpkg} install --triplet ${TRIPLET} --debug
 
 echo Running cmake for nextapp...
 
