@@ -213,11 +213,11 @@ pipeline {
                 # 2) Ensure vcpkg "cache" dir exists
                 mkdir -p "$VCPKG_ROOT"
                 if [ ! -d "$VCPKG_ROOT/.git" ]; then
-                  echo "Installing vcpkg into $VCPKG_ROOT…"
+                  echo "Installing vcpkg into $VCPKG_ROOT"
                   git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
                   (cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics)
                 else
-                  echo "Updating vcpkg in $VCPKG_ROOT…"
+                  echo "Updating vcpkg in $VCPKG_ROOT"
                   (cd "$VCPKG_ROOT" && git pull --ff-only)
                 fi
 
