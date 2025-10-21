@@ -1,7 +1,9 @@
 {
   "name": "nextapp",
   "dependencies": [
-    "boost-headers",
+    "boost-multi-index",
+    "boost-type-index",
+    "boost-circular-buffer",
     "grpc",
     "protobuf",
     "pcre2",
@@ -11,7 +13,6 @@
     "brotli",
     "openssl",
     "abseil",
-    "expat",
     {
       "name": "qtbase",
       "features": [

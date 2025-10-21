@@ -99,9 +99,28 @@ if (LINUX_BUILD OR WINDOWS_BUILD)
   find_package(Protobuf REQUIRED)
 endif()
 
-if (NOT ANDROID_BUILD)
-    find_package(EXPAT REQUIRED)
-endif()
+# if (NOT ANDROID_BUILD)
+#     # Prefer CONFIG (vcpkg), fall back to MODULE:
+#     find_package(EXPAT CONFIG QUIET)
+#     if(NOT EXPAT_FOUND)
+#     find_package(EXPAT MODULE REQUIRED)
+#     endif()
+#
+#     # Normalize the target name:
+#     set(_EXPAT_CANDIDATES expat::expat EXPAT::EXPAT Expat::expat EXPAT::expat)
+#     unset(EXPAT_TARGET)
+#     foreach(t IN LISTS _EXPAT_CANDIDATES)
+#     if(TARGET ${t})
+#         set(EXPAT_TARGET ${t})
+#         break()
+#     endif()
+#     endforeach()
+#     if(NOT EXPAT_TARGET)
+#     message(FATAL_ERROR "Expat target not found.")
+#     endif()
+#
+#     message("EXPAT_TARGET: ${EXPAT_TARGET}")
+# endif()
 
 find_package(ZLIB REQUIRED)
 
@@ -422,14 +441,21 @@ if(NOT HAS_STD_FORMAT OR ANDROID OR APPLE)
     set(FMT_DEPS fmt::fmt)
 endif()
 
+
+# Make sure every target that includes <boost/...> links the interface target
+target_link_libraries(${PROJECT_NAME} PRIVATE ${_boost_headers_target})
+
 if (NOT ANDROID)
-    find_package(Boost ${USE_BOOST_VERSION} CONFIG REQUIRED)
+    find_package(Boost CONFIG REQUIRED COMPONENTS
+        multi_index
+        type_index
+        circular_buffer
+    )
     find_package(OpenSSL CONFIG QUIET)
     if(NOT OpenSSL_FOUND)
         find_package(OpenSSL REQUIRED)
     endif()
 
-    target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
     # TODO: Get the header only libraries we use from the system or download them
     # If NEXTAPP_BOOST_ROOT is already set and non-empty, keep it.
@@ -782,12 +808,15 @@ if(USE_STATIC_QT)
         )
 endif()
 
+
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
+        #${EXPAT_TARGET}
         #$<$<BOOL:${LINUX_BUILD}>:expat> # Required with qt 6.9 from vcpkg
         #$<$<BOOL:${LINUX_BUILD}>:ZLIB::ZLIB>
-        #expat
-        $<$<NOT:$<BOOL:${ANDROID}>>:expat>
+        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::multi_index>
+        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::type_index>
+        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::circular_buffer>
         ZLIB::ZLIB
         na_proto_lib
         na_grpc_lib
@@ -812,6 +841,7 @@ target_link_libraries(${PROJECT_NAME}
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}
         miniaudio
+        #${EXPAT_TARGET}
 )
 
 if (APPLE)
