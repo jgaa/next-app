@@ -166,7 +166,7 @@ pipeline {
                 mkdir -p ${BUILD_DIR}
                 mkdir -p ${CACHE_DIR}
 
-                docker run --rm -it -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
+                docker run --rm -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
 
               '''
               }
