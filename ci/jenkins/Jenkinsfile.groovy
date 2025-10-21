@@ -168,6 +168,17 @@ pipeline {
                 mkdir -p ${BUILD_DIR}
                 mkdir -p ${CACHE_DIR}
 
+                # --- Make sure vcpkg is present and up to date
+                if [ ! -d "$VCPKG_ROOT/.git" ]; then
+                    echo "Installing vcpkg";
+                    git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT";
+                    ( cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics );
+                else
+                    echo "Updating vcpkg";
+                    ( cd "$VCPKG_ROOT" && git pull --ff-only );
+                fi
+
+
                 docker run --rm -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
 
               '''
