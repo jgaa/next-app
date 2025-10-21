@@ -159,7 +159,7 @@ pipeline {
                 set -Eeuo pipefail
 
                 cd building/linux
-                docker build -t nextapp-builder   --build-arg UID=$(id -u)   --build-arg GID=$(id -g) .
+                docker buildx build -t nextapp-builder --build-arg UID=$(id -u) --build-arg GID=$(id -g) .
 
                 cd ../../
 
