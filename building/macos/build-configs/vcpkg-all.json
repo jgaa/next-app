@@ -1,7 +1,9 @@
 {
 "name": "qtstuff",
 "dependencies": [
-    "boost-headers",
+    "boost-multi-index",
+    "boost-type-index",
+    "boost-circular-buffer",
     "abseil",
     "grpc",
     "protobuf",
