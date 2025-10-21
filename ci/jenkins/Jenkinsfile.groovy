@@ -164,7 +164,7 @@ pipeline {
                 cd ../../
 
                 mkdir -p ${BUILD_DIR}
-                mkdr -p ${CACHE_DIR}
+                mkdir -p ${CACHE_DIR}
 
                 docker run --rm -it -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
 
@@ -191,7 +191,7 @@ pipeline {
           environment {
             SRC_DIR        = "${WORKSPACE}"
             BUILD_DIR      = "${WORKSPACE}/build"
-            VCPKG_ROOT     = "/Volumes/devel/src/vcpkg"           // acts as a cache across builds on the same node
+            VCPKG_ROOT     = "/Volumes/devel/src/vcpkg"
             VCPKG_MANIFEST_MODE = "ON"
             VCPKG_INSTALL_OPTIONS = "--clean-after-build"
             SIGN_ID        = "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"           }
@@ -201,7 +201,7 @@ pipeline {
             sh 'echo "Host:" $(hostname)'
 
             checkout scm
-            sh 'git submodule update --init'   // GA uses checkout@v4 with submodules: true :contentReference[oaicite:2]{index=2}
+            sh 'git submodule update --init'
 
             withCredentials([
               file(credentialsId: 'MACOS_P12_FILE', variable: 'P12_FILE'),    // create in Jenkins
