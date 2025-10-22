@@ -809,12 +809,6 @@ if(USE_STATIC_QT)
         )
 endif()
 
-message("FontConfig_LIBRARIES: ${FontConfig_LIBRARIES}")
-
-target_link_options(${PROJECT_NAME} PRIVATE
-  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,--start-group>
-)
-
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         $<$<NOT:$<BOOL:${ANDROID}>>:Boost::multi_index>
@@ -848,9 +842,12 @@ target_link_libraries(${PROJECT_NAME}
         $<$<BOOL:${LINUX_BUILD}>:${EXPAT_TARGET}>
 )
 
-target_link_options(${PROJECT_NAME} PRIVATE
-  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,--end-group>
+target_link_libraries(${PROJECT_NAME} PRIVATE
+  LINK_GROUP RESCAN
+    Fontconfig::Fontconfig
+    ${EXPAT_TARGET}
 )
+
 
 if (APPLE)
     set(PLIST_IN   "${NEXTAPP_ROOT}/building/macos/Info.plist.in")
