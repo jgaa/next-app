@@ -167,6 +167,7 @@ pipeline {
 
                 mkdir -p ${BUILD_DIR}
                 mkdir -p ${CACHE_DIR}
+                mkdir -p ${ASSETS_DIR}
 
                 # --- Make sure vcpkg is present and up to date
                 if [ ! -d "$VCPKG_ROOT/.git" ]; then
