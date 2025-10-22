@@ -98,6 +98,7 @@ cmake -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DVCPKG_MANIFEST_MODE="${VCPKG_MANIFEST_MODE}" \
   -DSIGN_ID="${SIGN_ID}" \
+  -DNEXTAPP_EXPAT_FIX=ON \
   "${SOURCE_DIR}"
 
 # —————————————————————————————

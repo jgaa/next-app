@@ -126,7 +126,8 @@ cmake -S "$src_dir" \
   -DCMAKE_PREFIX_PATH=${APP_BUILD_DIR}/vcpkg_installed \
   -DNEXTAPP_WITH_TESTS=OFF \
   -DNEXTAPP_WITH_BACKEND=OFF \
-  -DNEXTAPP_WITH_SIGNUP=OFF
+  -DNEXTAPP_WITH_SIGNUP=OFF \
+  -DNEXTAPP_EXPAT_FIX=ON
 
 export PATH="${VCPKG_ROOT}:${PATH}:${APP_BUILD_DIR}/vcpkg_installed/x64-linux/tools/Qt6/bin/:${APP_BUILD_DIR}/vcpkg_installed/x64-linux-release/tools/Qt6/bin"
 

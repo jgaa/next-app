@@ -36,6 +36,7 @@ option(USE_STATIC_QT "Build with static Qt libraries" OFF)
 option(UI_USE_STATIC_BOOST "Build with static Boost libraries" ON)
 option(WITH_TESTS "Enable Tests" ON)
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
+option(NEXTAPP_EXPAT_FIX "Injects a dependency for expat in fontconfig to deal with a breakage in vcpkg/fontconfig/qtbase" OFF)
 
 if (ANDROID_BUILD)
     option(NEXTAPP_USE_JNI "Use JNI for Android builds" ON)
@@ -99,28 +100,19 @@ if (LINUX_BUILD OR WINDOWS_BUILD)
   find_package(Protobuf REQUIRED)
 endif()
 
-if (NOT ANDROID_BUILD)
-    # Prefer CONFIG (vcpkg), fall back to MODULE:
-    find_package(EXPAT CONFIG QUIET)
-    if(NOT EXPAT_FOUND)
-    find_package(EXPAT MODULE REQUIRED)
-    endif()
-
-    # Normalize the target name:
-    set(_EXPAT_CANDIDATES expat::expat EXPAT::EXPAT Expat::expat EXPAT::expat)
-    unset(EXPAT_TARGET)
-    foreach(t IN LISTS _EXPAT_CANDIDATES)
-    if(TARGET ${t})
-        set(EXPAT_TARGET ${t})
-        break()
-    endif()
-    endforeach()
-    if(NOT EXPAT_TARGET)
-    message(FATAL_ERROR "Expat target not found.")
-    endif()
-
-    message("EXPAT_TARGET: ${EXPAT_TARGET}")
+if (NEXTAPP_EXPAT_FIX)
+    message("Applying NEXTAPP_EXPAT_FIX")
     find_package(Fontconfig REQUIRED)
+
+    find_package(expat CONFIG QUIET)
+    set(EXPAT_TARGET expat::expat)
+
+    # make Fontconfig depend on Expat at the INTERFACE level
+    if (TARGET Fontconfig::Fontconfig)
+    # Use APPEND to keep existing interface intact
+    set_property(TARGET Fontconfig::Fontconfig
+        APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${EXPAT_TARGET})
+    endif()
 endif()
 
 find_package(ZLIB REQUIRED)
@@ -838,8 +830,6 @@ target_link_libraries(${PROJECT_NAME}
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}
         miniaudio
-        # $<$<BOOL:${LINUX_BUILD}>:Fontconfig::Fontconfig>   # must come BEFORE expat
-        # $<$<BOOL:${LINUX_BUILD}>:${EXPAT_TARGET}>
 )
 
 if (APPLE)
