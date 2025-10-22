@@ -100,28 +100,27 @@ if (LINUX_BUILD OR WINDOWS_BUILD)
 endif()
 
 if (NOT ANDROID_BUILD)
-    # # Prefer CONFIG (vcpkg), fall back to MODULE:
-    # find_package(EXPAT CONFIG QUIET)
-    # if(NOT EXPAT_FOUND)
-    # find_package(EXPAT MODULE REQUIRED)
-    # endif()
-    #
-    # # Normalize the target name:
-    # set(_EXPAT_CANDIDATES expat::expat EXPAT::EXPAT Expat::expat EXPAT::expat)
-    # unset(EXPAT_TARGET)
-    # foreach(t IN LISTS _EXPAT_CANDIDATES)
-    # if(TARGET ${t})
-    #     set(EXPAT_TARGET ${t})
-    #     break()
-    # endif()
-    # endforeach()
-    # if(NOT EXPAT_TARGET)
-    # message(FATAL_ERROR "Expat target not found.")
-    # endif()
-    #
-    # message("EXPAT_TARGET: ${EXPAT_TARGET}")
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(FontConfig REQUIRED fontconfig)
+    # Prefer CONFIG (vcpkg), fall back to MODULE:
+    find_package(EXPAT CONFIG QUIET)
+    if(NOT EXPAT_FOUND)
+    find_package(EXPAT MODULE REQUIRED)
+    endif()
+
+    # Normalize the target name:
+    set(_EXPAT_CANDIDATES expat::expat EXPAT::EXPAT Expat::expat EXPAT::expat)
+    unset(EXPAT_TARGET)
+    foreach(t IN LISTS _EXPAT_CANDIDATES)
+    if(TARGET ${t})
+        set(EXPAT_TARGET ${t})
+        break()
+    endif()
+    endforeach()
+    if(NOT EXPAT_TARGET)
+    message(FATAL_ERROR "Expat target not found.")
+    endif()
+
+    message("EXPAT_TARGET: ${EXPAT_TARGET}")
+    find_package(Fontconfig REQUIRED)
 endif()
 
 find_package(ZLIB REQUIRED)
@@ -810,12 +809,10 @@ if(USE_STATIC_QT)
         )
 endif()
 
+message("FontConfig_LIBRARIES: ${FontConfig_LIBRARIES}")
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        #${EXPAT_TARGET}
-        #$<$<BOOL:${LINUX_BUILD}>:expat> # Required with qt 6.9 from vcpkg
-        #$<$<BOOL:${LINUX_BUILD}>:ZLIB::ZLIB>
         $<$<NOT:$<BOOL:${ANDROID}>>:Boost::multi_index>
         $<$<NOT:$<BOOL:${ANDROID}>>:Boost::type_index>
         $<$<NOT:$<BOOL:${ANDROID}>>:Boost::circular_buffer>
@@ -843,8 +840,8 @@ target_link_libraries(${PROJECT_NAME}
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}
         miniaudio
-        #${EXPAT_TARGET}
-        ${FontConfig_LIBRARIES}
+        $<$<BOOL:${LINUX_BUILD}>:Fontconfig::Fontconfig>   # must come BEFORE expat
+        $<$<BOOL:${LINUX_BUILD}>:${EXPAT_TARGET}>
 )
 
 if (APPLE)
