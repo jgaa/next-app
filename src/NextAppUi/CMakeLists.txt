@@ -838,16 +838,9 @@ target_link_libraries(${PROJECT_NAME}
         ${OPEN_SSL_DEPS}
         ${FMT_DEPS}
         miniaudio
-        $<$<BOOL:${LINUX_BUILD}>:Fontconfig::Fontconfig>   # must come BEFORE expat
-        $<$<BOOL:${LINUX_BUILD}>:${EXPAT_TARGET}>
+        # $<$<BOOL:${LINUX_BUILD}>:Fontconfig::Fontconfig>   # must come BEFORE expat
+        # $<$<BOOL:${LINUX_BUILD}>:${EXPAT_TARGET}>
 )
-
-target_link_libraries(${PROJECT_NAME} PRIVATE
-  LINK_GROUP RESCAN
-    Fontconfig::Fontconfig
-    ${EXPAT_TARGET}
-)
-
 
 if (APPLE)
     set(PLIST_IN   "${NEXTAPP_ROOT}/building/macos/Info.plist.in")

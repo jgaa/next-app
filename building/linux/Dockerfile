@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
-#FROM debian:13-slim # broken with vcpkg?
-FROM ubuntu:25.04
+FROM debian:13-slim
+# broken with vcpkg?
+# FROM ubuntu:25.04
 
 ARG UID=1000
 ARG GID=1000
