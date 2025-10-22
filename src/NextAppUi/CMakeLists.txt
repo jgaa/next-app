@@ -811,6 +811,10 @@ endif()
 
 message("FontConfig_LIBRARIES: ${FontConfig_LIBRARIES}")
 
+target_link_options(${PROJECT_NAME} PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,--start-group>
+)
+
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         $<$<NOT:$<BOOL:${ANDROID}>>:Boost::multi_index>
@@ -842,6 +846,10 @@ target_link_libraries(${PROJECT_NAME}
         miniaudio
         $<$<BOOL:${LINUX_BUILD}>:Fontconfig::Fontconfig>   # must come BEFORE expat
         $<$<BOOL:${LINUX_BUILD}>:${EXPAT_TARGET}>
+)
+
+target_link_options(${PROJECT_NAME} PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,--end-group>
 )
 
 if (APPLE)
