@@ -4,6 +4,12 @@
 //    apt install protobuf-compiler-grpc unzip cmake ninja-build
 
 pipeline {
+  parameters {
+    booleanParam(name: 'RUN_ANDROID', defaultValue: true, description: 'Run Android stage')
+    booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Run Windows stage')
+    booleanParam(name: 'RUN_LINUX', defaultValue: true, description: 'Run Linux stage')
+    booleanParam(name: 'RUN_MACOS', defaultValue: true, description: 'Run macOS stage')
+  }
   agent { label 'main' }
 
   options {
@@ -24,13 +30,8 @@ pipeline {
       parallel {
         stage('Windows Build') {
             when {
-              expression {
-                // Use source branch for PRs if present, otherwise normal branch,
-                // and fall back to GIT_BRANCH for non-multibranch jobs.
-                def b = (env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: env.GIT_BRANCH ?: '').toLowerCase()
-                // Skip Windows build if branch name contains "android"
-                !b.contains('android')
-              }
+              beforeAgent true
+              expression { return params.RUN_WINDOWS }
             }
             // Assumes cmake, nsis, ninja and exists
             //
@@ -89,6 +90,10 @@ pipeline {
           } // win
 
           stage('Android Build') {
+            when {
+              beforeAgent true
+              expression { return params.RUN_ANDROID }
+            }
             agent { label 'linux' }
 
             environment {
@@ -101,6 +106,8 @@ pipeline {
             }
 
             steps {
+                echo "Runner: node=${env.NODE_NAME}, labels=${env.NODE_LABELS}, executor=${env.EXECUTOR_NUMBER}"
+                sh 'echo "Host:" $(hostname)'
 
                 checkout scm
 
@@ -124,6 +131,134 @@ pipeline {
               }
             }
           } // android
+
+          stage('Linux and flatpak Build') {
+            when {
+              beforeAgent true
+              expression { return params.RUN_LINUX }
+            }
+
+            agent { label 'linux' }
+
+            environment {
+              BUILD_DIR  = "${WORKSPACE}/build"
+              VCPKG_ROOT = "${HOME}/vcpkg"
+              ASSETS_DIR = "${WORKSPACE}/build/assets"
+              CACHE_DIR  = "${HOME}/cache"
+            }
+
+            steps {
+                echo "Runner: node=${env.NODE_NAME}, labels=${env.NODE_LABELS}, executor=${env.EXECUTOR_NUMBER}"
+
+                sh 'echo "Host:" $(hostname)'
+
+                checkout scm
+
+                sh 'git submodule update --init'
+
+                sh '''
+                #!/bin/bash
+                set -Eeuo pipefail
+
+                cd building/linux
+                docker buildx build -t nextapp-builder --build-arg UID=$(id -u) --build-arg GID=$(id -g) .
+
+                cd ../../
+
+                mkdir -p ${BUILD_DIR}
+                mkdir -p ${CACHE_DIR}
+                mkdir -p ${ASSETS_DIR}
+
+                # --- Make sure vcpkg is present and up to date
+                if [ ! -d "$VCPKG_ROOT/.git" ]; then
+                    echo "Installing vcpkg";
+                    git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT";
+                    ( cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics );
+                else
+                    echo "Updating vcpkg";
+                    ( cd "$VCPKG_ROOT" && git pull --ff-only );
+                fi
+
+                echo "Building nextapp with static QT"
+                docker run --rm -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
+
+                echo "Building flatpak"
+                ./building/linux/build-flatpak.sh
+
+              '''
+              }
+
+            post {
+              always {
+                // Archive whatever the builds produced
+                archiveArtifacts artifacts: 'build/assets/**', fingerprint: true
+              }
+            }
+          } //Linux
+
+        // Add this new stage inside your existing `parallel { ... }` block
+        stage('macOS Build (arm64)') {
+          when {
+            beforeAgent true
+            expression { return params.RUN_MACOS }
+          }
+          // Your mac runner label; ensure Xcode + codesign tools installed
+          agent { label 'macos' }
+
+          environment {
+            SRC_DIR        = "${WORKSPACE}"
+            BUILD_DIR      = "${WORKSPACE}/build"
+            VCPKG_ROOT     = "/Volumes/devel/src/vcpkg"
+            VCPKG_MANIFEST_MODE = "ON"
+            VCPKG_INSTALL_OPTIONS = "--clean-after-build"
+            SIGN_ID        = "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"           }
+
+          steps {
+            echo "Runner: node=${env.NODE_NAME}, labels=${env.NODE_LABELS}, executor=${env.EXECUTOR_NUMBER}"
+            sh 'echo "Host:" $(hostname)'
+
+            checkout scm
+            sh 'git submodule update --init'
+
+            withCredentials([
+              file(credentialsId: 'MACOS_P12_FILE', variable: 'P12_FILE'),    // create in Jenkins
+              string(credentialsId: 'MACOS_P12_PASS', variable: 'P12_PASS')
+            ]) {
+              sh '''#!/usr/bin/env bash
+                set -Eeuo pipefail
+
+                # 2) Ensure vcpkg "cache" dir exists
+                mkdir -p "$VCPKG_ROOT"
+                if [ ! -d "$VCPKG_ROOT/.git" ]; then
+                  echo "Installing vcpkg into $VCPKG_ROOT"
+                  git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+                  (cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics)
+                else
+                  echo "Updating vcpkg in $VCPKG_ROOT"
+                  (cd "$VCPKG_ROOT" && git pull --ff-only)
+                fi
+
+                # 3) Run your macOS build script
+                chmod +x ./building/macos/build-nextapp.sh
+                ./building/macos/build-nextapp.sh
+
+                # 4) Read version
+                ver="$(< "${BUILD_DIR}/VERSION.txt")"
+                echo "✅ NEXTAPP_VERSION=$ver"
+                echo "$ver" > "${BUILD_DIR}/.nextapp_version"
+              '''
+            }
+
+            script {
+              // lift the version into env so we can name the artifact nicely, like your Windows stage does :contentReference[oaicite:7]{index=7}
+              env.NEXTAPP_VERSION = readFile("${env.BUILD_DIR}/.nextapp_version").trim()
+            }
+
+            // 5) Archive DMG (GA uploads '*.dmg' with retention) :contentReference[oaicite:8]{index=8}
+            archiveArtifacts artifacts: 'build/*.dmg', fingerprint: true
+          }
+        } // macos
+
       } //parallel
     } // Build
   } // stages

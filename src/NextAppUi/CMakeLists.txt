@@ -36,6 +36,7 @@ option(USE_STATIC_QT "Build with static Qt libraries" OFF)
 option(UI_USE_STATIC_BOOST "Build with static Boost libraries" ON)
 option(WITH_TESTS "Enable Tests" ON)
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
+option(NEXTAPP_EXPAT_FIX "Injects a dependency for expat in fontconfig to deal with a breakage in vcpkg/fontconfig/qtbase" OFF)
 
 if (ANDROID_BUILD)
     option(NEXTAPP_USE_JNI "Use JNI for Android builds" ON)
@@ -99,7 +100,21 @@ if (LINUX_BUILD OR WINDOWS_BUILD)
   find_package(Protobuf REQUIRED)
 endif()
 
-find_package(EXPAT REQUIRED)
+if (NEXTAPP_EXPAT_FIX)
+    message("Applying NEXTAPP_EXPAT_FIX")
+    find_package(Fontconfig REQUIRED)
+
+    find_package(expat CONFIG QUIET)
+    set(EXPAT_TARGET expat::expat)
+
+    # make Fontconfig depend on Expat at the INTERFACE level
+    if (TARGET Fontconfig::Fontconfig)
+    # Use APPEND to keep existing interface intact
+    set_property(TARGET Fontconfig::Fontconfig
+        APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${EXPAT_TARGET})
+    endif()
+endif()
+
 find_package(ZLIB REQUIRED)
 
 if (LINUX_BUILD)
@@ -419,14 +434,21 @@ if(NOT HAS_STD_FORMAT OR ANDROID OR APPLE)
     set(FMT_DEPS fmt::fmt)
 endif()
 
+
+# Make sure every target that includes <boost/...> links the interface target
+target_link_libraries(${PROJECT_NAME} PRIVATE ${_boost_headers_target})
+
 if (NOT ANDROID)
-    find_package(Boost ${USE_BOOST_VERSION} CONFIG REQUIRED)
+    find_package(Boost CONFIG REQUIRED COMPONENTS
+        multi_index
+        type_index
+        circular_buffer
+    )
     find_package(OpenSSL CONFIG QUIET)
     if(NOT OpenSSL_FOUND)
         find_package(OpenSSL REQUIRED)
     endif()
 
-    target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 else()
     # TODO: Get the header only libraries we use from the system or download them
     # If NEXTAPP_BOOST_ROOT is already set and non-empty, keep it.
@@ -781,8 +803,10 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        $<$<BOOL:${LINUX_BUILD}>:expat> # Required with qt 6.9 from vcpkg
-        $<$<BOOL:${LINUX_BUILD}>:ZLIB::ZLIB>
+        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::multi_index>
+        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::type_index>
+        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::circular_buffer>
+        ZLIB::ZLIB
         na_proto_lib
         na_grpc_lib
         QCoro6::Core

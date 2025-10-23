@@ -6,7 +6,7 @@ manifest_dir=$(pwd)
 
 export BUILD_DIR="${BUILD_DIR:-/var/local/build}"
 export APP_BUILD_DIR="${APP_BUILD_DIR:-${BUILD_DIR}/next-app-linux}"
-
+export ASSETS_DIR=${ASSETS_DIR:-${APP_BUILD_DIR}/assets}
 
 src_dir="$(realpath "$(pwd)/../../")"
 REPO_DIR="${REPO_DIR:-${APP_BUILD_DIR}/flatpak-repo}"
@@ -18,8 +18,15 @@ FP_BUILD_DIR=${APP_BUILD_DIR}/flatpak-build
 echo SRC_DIR: ${src_dir}
 
 cd ${APP_BUILD_DIR}
+
+MAIN_BINARY="${ASSETS_DIR}/nextapp"
+if [[ ! -f "$MAIN_BINARY" ]]; then
+  echo "Error: $MAIN_BINARY not found. The script won't find dependencies for your main app."
+  exit 1
+fi
+
 echo "Nextapp dependencies:"
-ldd bin/nextapp
+ldd "${MAIN_BINARY}"
 
 ############################
 # Parse version from CMakeLists.txt
@@ -79,17 +86,9 @@ add_missing_libs() {
   done
 }
 
-############################
-# 4) Run the function on your main binary
-############################
-MAIN_BINARY="bin/nextapp"
-if [[ ! -f "$MAIN_BINARY" ]]; then
-  echo "Warning: $MAIN_BINARY not found. The script won't find dependencies for your main app."
-  echo "Press Ctrl+C to abort or wait to continue..."
-  sleep 3
-fi
-
 add_missing_libs "$MAIN_BINARY"
+
+echo "MISSING_LIBS: ${MISSING_LIBS}"
 
 ############################
 # Write out the final Flatpak manifest
@@ -125,7 +124,7 @@ cat << EOF > ${MANIFEST}
       "sources": [
         {
           "type": "file",
-          "path": "bin/nextapp"
+          "path": "${MAIN_BINARY}"
         }
       ]
     },
@@ -176,7 +175,7 @@ fi
 
 flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install -y --user flathub org.freedesktop.Sdk//${FLATPAK_RUNTIME_VERSION} org.freedesktop.Platform//${FLATPAK_RUNTIME_VERSION}
-flatpak-builder --user --force-clean --default-branch=stable  --repo="${REPO_DIR}" "${FP_BUILD_DIR}" "${MANIFEST}"
+flatpak-builder --user --disable-rofiles-fuse --force-clean --default-branch=stable  --repo="${REPO_DIR}" "${FP_BUILD_DIR}" "${MANIFEST}"
 
 FP_NAME=NextApp-${VERSION}-x86_64-stable.flatpak
 
@@ -186,5 +185,7 @@ flatpak build-bundle ${REPO_DIR} \
   --arch=x86_64 \
   --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
-echo Flatpak file is: $(pwd)/${FP_NAME}
+cp -v ${FP_NAME} "${ASSETS_DIR}"
+
+echo Flatpak file is: ${ASSETS_DIR}/${FP_NAME}
 

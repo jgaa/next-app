@@ -1,19 +1,21 @@
 {
 "name": "qtstuff",
 "dependencies": [
-    "boost-circular-buffer",
     "boost-multi-index",
-    "boost-program-options",
     "boost-type-index",
-    "brotli",
+    "boost-circular-buffer",
+    "abseil",
     "grpc",
-    "libpng",
-    "openssl",
     "protobuf",
-    "zlib",
+    "pcre2",
+    "double-conversion",
+    "libpng",
+    "libjpeg-turbo",
+    "brotli",
+    "openssl",
+    "expat",
     {
     "name": "qtbase",
-    "version>=": "6.8.2",
     "features": [
         "concurrent",
         "testlib",
@@ -25,25 +27,14 @@
         "jpeg",
         "opengl",
         "openssl"
-    ]
+      ]
     },
-    {
-    "name": "qtdeclarative",
-    "version>=": "6.8.3"
-    },
-    {
-    "name": "qtgraphs",
-    "version>=": "6.8.3"
-    },
-    {
-    "name": "qtsvg",
-    "version>=": "6.8.3"
-    },
-    {
-    "name": "qtgrpc",
-    "version>=": "6.8.3"
-    }
+    "qtdeclarative",
+    "qtcharts",
+    "qtsvg",
+    "qtgrpc",
+    "qtgraphs"
 ],
 
-"builtin-baseline": "e0b65b8ccab766d7570a6734b9b2e6388a27bf41"
+"builtin-baseline": "74e6536215718009aae747d86d84b78376bf9e09"
 }

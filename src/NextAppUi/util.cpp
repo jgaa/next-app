@@ -13,6 +13,7 @@
 #include <regex>
 
 #include <zlib.h>
+#include <span>
 
 #include "util.h"
 #include "logging.h"

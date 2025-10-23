@@ -1,6 +1,8 @@
 #!/bin/bash
 set -eo pipefail
 
+unset ANDROID ANDROID_NDK_ROOT ANDROID_HOME ANDROID_SDK_ROOT
+
 # -------------------------
 # Args
 # -------------------------
@@ -50,6 +52,7 @@ manifest_dir=$(pwd)
 
 export BUILD_DIR="${BUILD_DIR:-/var/local/build}"
 export APP_BUILD_DIR="${APP_BUILD_DIR:-${BUILD_DIR}/next-app-linux}"
+export ASSETS_DIR=${ASSETS_DIR:-${APP_BUILD_DIR}/assets}
 
 echo Building NextApp from sources using vcpkg.
 echo BUILD_DIR: ${BUILD_DIR}
@@ -68,14 +71,30 @@ fi
 mkdir -p ${APP_BUILD_DIR}
 cd ${APP_BUILD_DIR}
 cp -v ${manifest_dir}/vcpkg.json .
+mkdir -p ${ASSETS_DIR}
 
 # --- vcpkg setup ---
 VCPKG_ROOT="${VCPKG_ROOT:-/var/local/src/vcpkg}"
-VCPKG="${VCPKG:-$VCPKG_ROOT/vcpkg}"
+vcpkg="${vcpkg:-$VCPKG_ROOT/vcpkg}"
 TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake
 export VCPKG_INSTALLED_DIR="${APP_BUILD_DIR}/vcpkg_installed"
 echo TOOLCHAIN_FILE: ${TOOLCHAIN_FILE}
 export VCPKG_BUILD_TYPE=release
+
+# --- Make sure vcpkg is present and up to date
+if [ ! -d "$VCPKG_ROOT/.git" ]; then
+    echo "Installing vcpkg";
+    git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT";
+    ( cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics );
+else
+    echo "Updating vcpkg";
+    ( cd "$VCPKG_ROOT" && git pull --ff-only );
+fi
+
+if [ -n "$VCPKG_DEFAULT_BINARY_CACHE" ]; then
+    echo "Creating binary cache directory: $VCPKG_DEFAULT_BINARY_CACHE"
+    mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+fi
 
 # Ensure manifest mode (usually auto when vcpkg.json exists)
 export VCPKG_FEATURE_FLAGS=manifests
@@ -83,7 +102,18 @@ export VCPKG_FEATURE_FLAGS=manifests
 # Use release triplet to avoid building debug versions of everything
 TRIPLET="${TRIPLET:-x64-linux-release}"
 
-vcpkg install --clean-buildtrees-after-build --clean-downloads-after-build --triplet ${TRIPLET}
+echo Using triplet ${TRIPLET}
+
+echo checking for android envvars.
+env | grep ANDROID || true
+
+echo Running vcpkg install
+# --clean-after-build
+#${vcpkg} install --triplet ${TRIPLET} --debug --overlay-ports ${manifest_dir}/vcpkg-overlays
+
+${vcpkg} install --triplet ${TRIPLET} --debug
+
+echo Running cmake for nextapp...
 
 cmake -S "$src_dir" \
   -G Ninja \
@@ -96,12 +126,16 @@ cmake -S "$src_dir" \
   -DCMAKE_PREFIX_PATH=${APP_BUILD_DIR}/vcpkg_installed \
   -DNEXTAPP_WITH_TESTS=OFF \
   -DNEXTAPP_WITH_BACKEND=OFF \
-  -DNEXTAPP_WITH_SIGNUP=OFF
+  -DNEXTAPP_WITH_SIGNUP=OFF \
+  -DNEXTAPP_EXPAT_FIX=ON
 
-export PATH="${PATH}:${APP_BUILD_DIR}/vcpkg_installed/x64-linux/tools/Qt6/bin/:${APP_BUILD_DIR}/vcpkg_installed/x64-linux-release/tools/Qt6/bin"
+export PATH="${VCPKG_ROOT}:${PATH}:${APP_BUILD_DIR}/vcpkg_installed/x64-linux/tools/Qt6/bin/:${APP_BUILD_DIR}/vcpkg_installed/x64-linux-release/tools/Qt6/bin"
 
 echo "Building NextApp..."
 
 cmake --build . -j
 
-echo Done. Executable is in $(pwd)/bin
+cp -v bin/nextapp "${ASSETS_DIR}"
+
+echo Done. Executable is in ${ASSETS_DIR}
+
