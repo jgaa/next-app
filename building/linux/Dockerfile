@@ -32,7 +32,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-dev libegl1-mesa-dev libgbm-dev libdrm-dev mesa-common-dev libglvnd-dev \
     libsm-dev libice-dev libxau-dev libxdmcp-dev libudev-dev \
     libxcb-cursor-dev libxcb-xkb-dev libgtk-3-dev libatspi2.0-dev \
-    flatpak flatpak-builder ostree bubblewrap \
     libxcursor-dev libxinerama-dev libxxf86vm-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -90,5 +89,5 @@ ENV ASSETS_DIR=/artifacts
 #     fi
 
 # --- Default build command ---
-CMD ["/bin/bash", "-c", "echo $UID && cd /src && ./building/linux/build.sh && ./building/linux/build-flatpak.sh"]
+CMD ["/bin/bash", "-c", "echo building as UID=$UID && cd /src && ./building/linux/build.sh"]
 

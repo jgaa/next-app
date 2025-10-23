@@ -179,8 +179,11 @@ pipeline {
                     ( cd "$VCPKG_ROOT" && git pull --ff-only );
                 fi
 
+                echo "Building nextapp with static QT"
+                docker run --rm -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
 
-                docker run --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined --rm -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
+                echo "Building flatpak"
+                ./building/linux/build-flatpak.sh
 
               '''
               }

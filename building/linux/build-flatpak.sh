@@ -18,8 +18,15 @@ FP_BUILD_DIR=${APP_BUILD_DIR}/flatpak-build
 echo SRC_DIR: ${src_dir}
 
 cd ${APP_BUILD_DIR}
+
+MAIN_BINARY="${ASSETS_DIR}/nextapp"
+if [[ ! -f "$MAIN_BINARY" ]]; then
+  echo "Error: $MAIN_BINARY not found. The script won't find dependencies for your main app."
+  exit 1
+fi
+
 echo "Nextapp dependencies:"
-ldd bin/nextapp
+ldd "${MAIN_BINARY}"
 
 ############################
 # Parse version from CMakeLists.txt
@@ -79,17 +86,9 @@ add_missing_libs() {
   done
 }
 
-############################
-# 4) Run the function on your main binary
-############################
-MAIN_BINARY="bin/nextapp"
-if [[ ! -f "$MAIN_BINARY" ]]; then
-  echo "Warning: $MAIN_BINARY not found. The script won't find dependencies for your main app."
-  echo "Press Ctrl+C to abort or wait to continue..."
-  sleep 3
-fi
-
 add_missing_libs "$MAIN_BINARY"
+
+echo "MISSING_LIBS: ${MISSING_LIBS}"
 
 ############################
 # Write out the final Flatpak manifest
@@ -125,7 +124,7 @@ cat << EOF > ${MANIFEST}
       "sources": [
         {
           "type": "file",
-          "path": "bin/nextapp"
+          "path": "${MAIN_BINARY}"
         }
       ]
     },
