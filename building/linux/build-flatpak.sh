@@ -176,7 +176,7 @@ fi
 
 flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install -y --user flathub org.freedesktop.Sdk//${FLATPAK_RUNTIME_VERSION} org.freedesktop.Platform//${FLATPAK_RUNTIME_VERSION}
-flatpak-builder --user --disable-rofiles-fuse  --disable-sandbox  --force-clean --default-branch=stable  --repo="${REPO_DIR}" "${FP_BUILD_DIR}" "${MANIFEST}"
+flatpak-builder --user --disable-rofiles-fuse --force-clean --default-branch=stable  --repo="${REPO_DIR}" "${FP_BUILD_DIR}" "${MANIFEST}"
 
 FP_NAME=NextApp-${VERSION}-x86_64-stable.flatpak
 
