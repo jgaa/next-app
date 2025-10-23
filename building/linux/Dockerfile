@@ -75,6 +75,9 @@ ENV VCPKG_ROOT=/vcpkg
 ENV PATH=$VCPKG_ROOT:$PATH
 ENV VCPKG_DEFAULT_BINARY_CACHE=/cache/vcpkg
 
+# --- No fuse in the container
+ENV FLATPAK_BUILDER_DISABLE_ROFILES_FUSE=1
+
 # --- Env for the build scripts
 ENV BUILD_DIR=/build
 ENV ASSETS_DIR=/artifacts
