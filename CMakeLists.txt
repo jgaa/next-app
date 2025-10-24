@@ -218,7 +218,7 @@ if(WINDOWS_BUILD)
         "${CMAKE_BINARY_DIR}/bin/libcrypto-3-x64.dll"
         "${CMAKE_BINARY_DIR}/bin/brotlidec.dll"
         "${CMAKE_BINARY_DIR}/bin/brotlicommon.dll"
-        "${CMAKE_BINARY_DIR}/bin/brotlidec.dll"
+        "${CMAKE_BINARY_DIR}/bin/zlib.dll"
         DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT Application
     )
