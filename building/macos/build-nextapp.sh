@@ -108,13 +108,13 @@ cmake -G Ninja \
 echo "Building…"
 cmake --build . --config Release
 
-# # —————————————————————————————
-# #  Sign
-# # —————————————————————————————
-# 
-# codesign --deep --force --verbose \
-#   --sign "$SIGN_ID" \
-#   "$BUILD_DIR/bin/nextapp.app"
+# —————————————————————————————
+#  Sign
+# —————————————————————————————
+
+codesign --deep --force --verbose \
+  --sign "$SIGN_ID" \
+  "$BUILD_DIR/bin/nextapp.app"
 
 # —————————————————————————————
 #  Package
