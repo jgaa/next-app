@@ -227,7 +227,45 @@ pipeline {
               sh '''#!/usr/bin/env bash
                 set -Eeuo pipefail
 
-                # 2) Ensure vcpkg "cache" dir exists
+                # --- Signing keychain (re-entrant) ---
+                KEYCHAIN_NAME="ci-signing"
+                KEYCHAIN_FILE="$KEYCHAIN_NAME.keychain"
+                KEYCHAIN_DB="$HOME/Library/Keychains/$KEYCHAIN_NAME.keychain-db"
+                KEYCHAIN_PWD="${P12_PASS}"   # reuse your P12 password to avoid another secret
+
+                # 0) Create keychain if missing
+                if [ ! -f "$KEYCHAIN_DB" ] && [ ! -f "$HOME/Library/Keychains/$KEYCHAIN_FILE" ]; then
+                  security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_FILE"
+                fi
+
+                # 1) Unlock + set a reasonable timeout (6h)
+                security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_FILE" || true
+                security set-keychain-settings -lut 21600 "$KEYCHAIN_FILE"
+
+                # 2) Ensure our keychain is first in the user search list (so codesign finds it)
+                #    Keep login.keychain in the list as well.
+                if ! security list-keychains -d user | grep -q "$KEYCHAIN_FILE"; then
+                  security list-keychains -d user -s "$KEYCHAIN_FILE" login.keychain
+                fi
+
+                # 3) Import the Developer ID .p12 if SIGN_ID not present in this keychain
+                if ! security find-identity -p codesigning "$KEYCHAIN_FILE" | grep -Fq "$SIGN_ID"; then
+                  security import "$P12_FILE" \
+                    -k "$KEYCHAIN_FILE" \
+                    -P "$P12_PASS" \
+                    -A \
+                    -T /usr/bin/codesign \
+                    -T /usr/bin/productsign
+                fi
+
+                # 4) Allow non-interactive access for codesign
+                security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_FILE"
+
+                # (Optional) sanity check
+                security find-identity -v -p codesigning "$KEYCHAIN_FILE" || true
+
+
+                # Ensure vcpkg "cache" dir exists
                 mkdir -p "$VCPKG_ROOT"
                 if [ ! -d "$VCPKG_ROOT/.git" ]; then
                   echo "Installing vcpkg into $VCPKG_ROOT"
@@ -238,14 +276,25 @@ pipeline {
                   (cd "$VCPKG_ROOT" && git pull --ff-only)
                 fi
 
-                # 3) Run your macOS build script
+                # Run your macOS build script
                 chmod +x ./building/macos/build-nextapp.sh
                 ./building/macos/build-nextapp.sh
 
-                # 4) Read version
+                # Read version
                 ver="$(< "${BUILD_DIR}/VERSION.txt")"
                 echo "✅ NEXTAPP_VERSION=$ver"
                 echo "$ver" > "${BUILD_DIR}/.nextapp_version"
+
+                # --- Teardown (safe) ---
+                KEYCHAIN_NAME="ci-signing"
+                KEYCHAIN_FILE="$KEYCHAIN_NAME.keychain"
+
+                # Remove from user search list (login.keychain remains)
+                security list-keychains -d user -s login.keychain
+
+                # Lock the CI keychain
+                security lock-keychain "$KEYCHAIN_FILE" || true
+
               '''
             }
 
