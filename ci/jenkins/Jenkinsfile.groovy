@@ -197,7 +197,7 @@ pipeline {
           } //Linux
 
         // Add this new stage inside your existing `parallel { ... }` block
-        stage('macOS Build (arm64)') {
+        stage('macOS Build (x64)') {
           when {
             beforeAgent true
             expression { return params.RUN_MACOS }

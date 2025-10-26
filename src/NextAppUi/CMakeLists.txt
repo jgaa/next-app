@@ -832,7 +832,7 @@ target_link_libraries(${PROJECT_NAME}
         miniaudio
 )
 
-if (APPLE)
+if (MACOS_BUILD)
     set(PLIST_IN   "${NEXTAPP_ROOT}/building/macos/Info.plist.in")
     set(PLIST_OUT  "${CMAKE_BINARY_DIR}/Info.plist")
     configure_file("${PLIST_IN}" "${PLIST_OUT}" @ONLY)
@@ -847,16 +847,27 @@ if (APPLE)
         COMPONENT Application
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-    install(
-      FILES "${NEXTAPP_ROOT}/building/macos/NextApp.icns"
-      DESTINATION "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources"
-      COMPONENT Application
-    )
+    # install(
+    #   FILES "${NEXTAPP_ROOT}/building/macos/NextApp.icns"
+    #   DESTINATION "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources"
+    #   COMPONENT Application
+    # )
     install(
         FILES "${NEXTAPP_ROOT}/src/NextAppUi/LICENSE"
         DESTINATION "."
         COMPONENT Application
     )
+
+        # 1) Put the icon *into the bundle during build*
+    set(APP_ICON "${NEXTAPP_ROOT}/building/macos/NextApp.icns")
+    set_source_files_properties(${APP_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+    target_sources(${PROJECT_NAME} PRIVATE ${APP_ICON})
+
+    # 2) Tell macOS which icon the bundle uses
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+    MACOSX_BUNDLE_ICON_FILE "NextApp.icns"
+    )
+
 
 elseif(WIN32)
     install(TARGETS ${PROJECT_NAME}
