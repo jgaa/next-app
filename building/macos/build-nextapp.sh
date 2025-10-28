@@ -44,7 +44,7 @@ echo "VCPKG_TRIPLET is: ${VCPKG_TRIPLET}"
 # —————————————————————————————
 # Install system deps via Homebrew
 # —————————————————————————————
-echo "Updating brew and installing required packages…"
+echo "Updating brew and installing required packages..."
 brew update
 brew install automake autoconf libtool pkg-config autoconf-archive ninja
 
@@ -52,12 +52,12 @@ brew install automake autoconf libtool pkg-config autoconf-archive ninja
 # Clone or update vcpkg
 # —————————————————————————————
 if [[ -d "${VCPKG_ROOT}" ]]; then
-  echo "Updating existing vcpkg in ${VCPKG_ROOT}…"
+  echo "Updating existing vcpkg in ${VCPKG_ROOT}..."
   git -C "${VCPKG_ROOT}" pull --ff-only
 else
-  echo "Cloning vcpkg into ${VCPKG_ROOT}…"
+  echo "Cloning vcpkg into ${VCPKG_ROOT}..."
   git clone https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
-  echo "Bootstrapping vcpkg…"
+  echo "Bootstrapping vcpkg..."
   ( cd "${VCPKG_ROOT}" && ./bootstrap-vcpkg.sh )
 fi
 
@@ -74,7 +74,7 @@ cp -v "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" "${SOURCE_DIR}
 # Clean & create build dir
 # —————————————————————————————
 if [[ -d "${BUILD_DIR}" ]]; then
-  echo "Removing existing build directory ${BUILD_DIR}…"
+  echo "Removing existing build directory ${BUILD_DIR}..."
   rm -rf "${BUILD_DIR}"
 fi
 mkdir -p "${BUILD_DIR}"
@@ -83,7 +83,7 @@ cd "${BUILD_DIR}"
 # —————————————————————————————
 # Install all vcpkg packages
 # —————————————————————————————
-echo "Installing vcpkg packages…"
+echo "Installing vcpkg packages..."
 cp -v "${SOURCE_DIR}/building/macos/build-configs/vcpkg-all.json" vcpkg.json
 vcpkg install ${VCPKG_INSTALL_OPTIONS} --triplet "${VCPKG_TRIPLET}"
 echo "Done installing vcpkg packages."
@@ -91,7 +91,7 @@ echo "Done installing vcpkg packages."
 # —————————————————————————————
 #  Configure
 # —————————————————————————————
-echo "Configuring CMake…"
+echo "Configuring CMake..."
 cmake -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN_FILE}" \
   -DVCPKG_TARGET_TRIPLET="${VCPKG_TRIPLET}" \
@@ -105,22 +105,23 @@ cmake -G Ninja \
 #  Build
 # —————————————————————————————
 
-echo "Building…"
+echo "Building..."
 cmake --build . --config Release
 
-# # —————————————————————————————
-# #  Sign
-# # —————————————————————————————
-# 
-# codesign --deep --force --verbose \
-#   --sign "$SIGN_ID" \
-#   "$BUILD_DIR/bin/nextapp.app"
+# —————————————————————————————
+#  Sign
+# —————————————————————————————
+
+echo "Signing..."
+codesign --deep --force --verbose \
+  --sign "$SIGN_ID" \
+  "$BUILD_DIR/bin/nextapp.app"
 
 # —————————————————————————————
 #  Package
 # —————————————————————————————
 
-echo "Packaging…"
+echo "Packaging..."
 cpack
 
 # —————————————————————————————

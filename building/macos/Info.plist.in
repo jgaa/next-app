@@ -25,10 +25,10 @@
         <string></string>
 
         <key>NSHumanReadableCopyright</key>
-        <string>Copyright 2025 by The Last Viking LTD.\nReleased under the GNU General Public License version ß3.</string>
+        <string>Copyright 2025 by The Last Viking LTD.\nReleased under the GNU General Public License version 3.</string>
 
         <key>CFBundleIconFile</key>
-        <string>NextApp</string>
+        <string>NextApp.icns</string>
 
         <key>CFBundleDevelopmentRegion</key>
         <string>en</string>
