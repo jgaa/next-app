@@ -439,11 +439,24 @@ endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE ${_boost_headers_target})
 
 if (NOT ANDROID)
-    find_package(Boost CONFIG REQUIRED COMPONENTS
-        multi_index
-        type_index
-        circular_buffer
-    )
+    # Try Boost config package first (vcpkg/Conan or CMake-installed Boost).
+   find_package(Boost CONFIG QUIET)
+   if (NOT Boost_FOUND)
+       # Fallback to CMake's FindBoost (module mode).
+       find_package(Boost REQUIRED)  # no COMPONENTS needed for header-only usage
+   endif()
+
+   # Unify on the header target name across modes.
+   set(BOOST_HEADERS_TARGET "")
+   if (TARGET Boost::headers)
+       set(BOOST_HEADERS_TARGET Boost::headers)
+   elseif (TARGET Boost::boost) # older CMake/FindBoost
+       set(BOOST_HEADERS_TARGET Boost::boost)
+   else()
+       message(FATAL_ERROR
+           "Found Boost, but neither Boost::headers nor Boost::boost is available.")
+   endif()
+
     find_package(OpenSSL CONFIG QUIET)
     if(NOT OpenSSL_FOUND)
         find_package(OpenSSL REQUIRED)
@@ -803,9 +816,7 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::multi_index>
-        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::type_index>
-        $<$<NOT:$<BOOL:${ANDROID}>>:Boost::circular_buffer>
+        ${BOOST_HEADERS_TARGET}
         ZLIB::ZLIB
         na_proto_lib
         na_grpc_lib
