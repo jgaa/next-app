@@ -1754,16 +1754,23 @@ QCoro::Task<void> ServerComm::startNextappSession()
         if (res.hasHello()) {
             session_id_ = res.hello().sessionId().toLatin1();
 
+            LOG_DEBUG_N << "Last seen update id: " << last_seen_update_id_
+                        << ", server last publish id: " << res.hello().lastPublishId()
+                        << ", last seen server instance: " << last_seen_server_instance_
+                        << ", server instance tag: " << res.hello().serverInstanceTag()
+                        << ", server-id: " << res.hello().serverId()
+                        << ", session-id: " << session_id_;
+
             if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
                 needs_sync = true;
                 last_seen_server_instance_ = res.hello().serverInstanceTag();
-                LOG_TRACE_N << "Server instance tag changed to " << last_seen_server_instance_;
+                LOG_INFO_N << "Needs sync. Server instance tag changed to " << last_seen_server_instance_;
             }
 
             if (res.hello().lastPublishId() != last_seen_update_id_) {
                 needs_sync = true;
                 last_seen_update_id_ = res.hello().lastPublishId();
-                LOG_TRACE_N << "Servers update id is " << res.hello().lastPublishId()
+                LOG_INFO_N << "Needs sync.  Servers update id is " << res.hello().lastPublishId()
                             << " (was " << last_seen_update_id_ << ")";
             }
 
@@ -1771,7 +1778,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
 
             if (res.hello().lastNotification() < NotificationsModel::instance()->lastUpdateSeen()) {
                 new_last_notification_update = NotificationsModel::instance()->lastUpdateSeen();
-                LOG_TRACE_N << "Server notification id is " << new_last_notification_update
+                LOG_DEBUG_N << "Server notification id is " << new_last_notification_update
                             << " (was " << NotificationsModel::instance()->lastUpdateSeen() << ")";
             }
 
@@ -2589,21 +2596,27 @@ void ServerComm::resetSignupStatus() {
 
 QCoro::Task<bool> ServerComm::needFullResync()
 {
-    if (QSettings{}.value("sync/resync", false).toBool()
-        || NextAppCore::instance()->db().dbWasInitialized()) {
+    if (QSettings{}.value("sync/resync", false).toBool()) {
+        LOG_INFO_N << "Full resync is required as the user requested it.";
+        co_return true;
+    }
 
-        LOG_TRACE_N << "Full resync is required as the user requested it or the db was initialized.";
+    if (NextAppCore::instance()->db().dbWasInitialized()) {
+        LOG_INFO_N << "Full resync is required because the db was initialized.";
         co_return true;
     }
 
     auto& db = NextAppCore::instance()->db();
     if (auto val = co_await db.queryOne<quint32>("SELECT data_epoc FROM nextapp WHERE id=1")) {
-        LOG_TRACE_N << "Data epoc in the database is: " << val.value() <<
+        LOG_INFO_N << "Data epoc in the database is: " << val.value() <<
             ", app epoc is: " << nextapp::app_data_epoc;
-        co_return val.value() != nextapp::app_data_epoc;
+        bool need_full_sync = val.value() != nextapp::app_data_epoc;
+        if (need_full_sync) {
+            LOG_INFO_N << "Data epoc mismatch. Full resync is required.";
+        }
     }
 
-    LOG_TRACE_N << "No data epoc found in the database. Full resync is required.";
+    LOG_INFO_N << "No data epoc found in the database. Full resync is required.";
     co_return true;
 }
 
