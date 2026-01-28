@@ -491,7 +491,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               active TINYINT(1) NOT NULL DEFAULT 1,
               system_tenant TINYINT(1)))",
 
-        R"(CREATE TABLE user (
+        R"(CREATE TABLE `user` (
               id UUID not NULL default UUID() PRIMARY KEY,
               tenant UUID NOT NULL,
               name VARCHAR(128) NOT NULL,
@@ -499,19 +499,19 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               descr TEXT,
               active TINYINT(1) NOT NULL DEFAULT 1,
               system_user TINYINT(1),
-        FOREIGN KEY(tenant) REFERENCES tenant(id)))",
+        CONSTRAINT user_ibfk_1 FOREIGN KEY (tenant) REFERENCES tenant(id)))",
 
         R"(CREATE TABLE node (
               id UUID not NULL default UUID() PRIMARY KEY,
-              user UUID NOT NULL,
+              `user` UUID NOT NULL,
               name VARCHAR(128) NOT NULL,
               kind INTEGER NOT NULL DEFAULT 0,
               status INTEGER NOT NULL DEFAULT 0,
               descr TEXT,
               active INTEGER NOT NULL DEFAULT 1,
               parent UUID,
-        FOREIGN KEY(parent) REFERENCES node(id),
-        FOREIGN KEY(user) REFERENCES user(id)))",
+        CONSTRAINT `node_parent_fk`  FOREIGN KEY(parent) REFERENCES node(id),
+        CONSTRAINT `node_ibfk_2` FOREIGN KEY(user) REFERENCES user(id)))",
 
         R"(CREATE TABLE work(
               id UUID not NULL default UUID() PRIMARY KEY,
@@ -523,7 +523,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               paused INTEGER NOT NULL DEFAULT 0,
               name TEXT NOT NULL,
               note TEXT,
-          FOREIGN KEY(node) REFERENCES node(id)))",
+          CONSTRAINT work_ibfk_1 FOREIGN KEY(node) REFERENCES node(id)))",
 
         // If tenant is NULL, the row is a system-defined color
         R"(CREATE TABLE day_colors(
@@ -532,7 +532,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               score INTEGER NOT NULL DEFAULT 0,
               color varchar(32) NOT NULL,
               name varchar(255) NOT NULL,
-          FOREIGN KEY(tenant) REFERENCES tenant(id)))",
+          CONSTRAINT day_colors_ibfk_1 FOREIGN KEY(tenant) REFERENCES tenant(id)))",
 
         // color: see QML colors at https://doc.qt.io/qt-6/qml-color.html
         R"(INSERT INTO day_colors (id, name, color, score) VALUES
@@ -546,19 +546,19 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE TABLE day (
               date DATE NOT NULL DEFAULT CURDATE(),
-              user UUID NOT NULL,
+              `user` UUID NOT NULL,
               color UUID,
               notes TEXT,
               report TEXT,
         PRIMARY KEY (user, date),
-        FOREIGN KEY(color) REFERENCES day_colors(id),
-        FOREIGN KEY(user) REFERENCES user(id)))",
+        CONSTRAINT day_ibfk_1 FOREIGN KEY(color) REFERENCES day_colors(id),
+        CONSTRAINT day_ibfk_2 FOREIGN KEY(user) REFERENCES user(id)))",
     });
 
     static constexpr auto v2_upgrade = to_array<string_view>({
         "ALTER TABLE tenant ADD COLUMN properties JSON",
-        "ALTER TABLE user ADD COLUMN email varchar(255) NOT NULL default 'jgaa@jgaa.com'",
-        "ALTER TABLE user ADD COLUMN properties JSON",
+        "ALTER TABLE `user` ADD COLUMN email varchar(255) NOT NULL default 'jgaa@jgaa.com'",
+        "ALTER TABLE `user` ADD COLUMN properties JSON",
         "ALTER TABLE node ADD COLUMN version INT NOT NULL DEFAULT 1",
         "UPDATE day_colors SET color = 'hotpink' WHERE id = 'c0f7cb16-a95d-11ee-9da5-b3f4aed7f930'",
         "UPDATE day_colors SET color = 'fuchsia' WHERE id = 'c5dfe53c-a95d-11ee-9465-73e10d6c4ad9'",
@@ -567,7 +567,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "CREATE UNIQUE INDEX ix_tenant_name ON tenant(name)",
         "CREATE UNIQUE INDEX ix_user_email ON user(email)",
         "ALTER TABLE tenant CHANGE kind kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'guest'",
-        "ALTER TABLE node DROP CONSTRAINT IF EXISTS node_ibfk_1",
+        "ALTER TABLE node DROP CONSTRAINT IF EXISTS node_parent_fk",
         R"(ALTER TABLE node ADD CONSTRAINT node_parent_fk
             FOREIGN KEY(parent) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
     });
@@ -581,14 +581,14 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE OR REPLACE TABLE location (
             id UUID not NULL default UUID() PRIMARY KEY,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             name TEXT NOT NULL,
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `location_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         R"(CREATE OR REPLACE TABLE action (
             id UUID not NULL default UUID() PRIMARY KEY,
             node UUID NOT NULL,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             origin UUID,
             priority ENUM ('pri_critical', 'pri_very_impornant', 'pri_higher', 'pri_high', 'pri_normal', 'pri_medium', 'pri_low', 'pri_insignificant') NOT NULL DEFAULT ('pri_normal'),
             status ENUM ('active', 'done', 'onhold') NOT NULL DEFAULT 'active',
@@ -608,9 +608,9 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             repeat_when ENUM('at_date', 'at_dayspec'),
             repeat_after INTEGER,
             version INT NOT NULL DEFAULT 1,
-        FOREIGN KEY(node) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-        FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-        FOREIGN KEY(origin) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+        CONSTRAINT `action_ibfk_1` FOREIGN KEY(node) REFERENCES node(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+        CONSTRAINT `action_ibfk_2` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+        CONSTRAINT `action_ibfk_3` FOREIGN KEY(origin) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         R"(CREATE INDEX action_ix2 ON action (user, status, start_time, due_by_time))",
         R"(CREATE INDEX action_ix3 ON action (origin))",
@@ -621,15 +621,15 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             action UUID NOT NULL,
             location UUID NOT NULL,
             PRIMARY KEY (action, location),
-            FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-            FOREIGN KEY(location) REFERENCES location(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `action2location_ibfk_1` FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            CONSTRAINT `action2location_ibfk_2` FOREIGN KEY(location) REFERENCES location(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         R"(CREATE INDEX action2location_ix2 ON action2location (location, action))",
 
         R"(CREATE OR REPLACE TABLE work_session (
             id UUID not NULL default UUID() PRIMARY KEY,
             action UUID NOT NULL,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             state ENUM('active', 'paused', 'done') NOT NULL DEFAULT 'active',
             version INT NOT NULL DEFAULT 1,
             touch_time TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
@@ -640,8 +640,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             name VARCHAR(256) NOT NULL DEFAULT '',
             note TEXT,
             events BLOB, -- The events for the session saved as a protobuf message
-            FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `work_session_ibfk_1` FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            CONSTRAINT `work_session_ibfk_2` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         R"(CREATE INDEX work_session_ix1 ON work_session (user, action, state, start_time))",
         R"(CREATE INDEX work_session_ix2 ON work_session (user, start_time, end_time))",
@@ -653,7 +653,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     static constexpr auto v5_upgrade = to_array<string_view>({
         "SET FOREIGN_KEY_CHECKS=0",
         R"(CREATE OR REPLACE TABLE user_settings (
-            user UUID not NULL default UUID() PRIMARY KEY,
+            `user` UUID not NULL default UUID() PRIMARY KEY,
             settings BLOB, -- The settings saved as a protobuf message
             FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
@@ -665,10 +665,10 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE OR REPLACE TABLE action_category (
             id UUID not NULL default UUID() PRIMARY KEY,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             name VARCHAR(128) NOT NULL,
             descr TEXT,
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `user_settings_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         R"(CREATE INDEX action_category_ix1 ON action_category (user, name))",
 
@@ -680,13 +680,13 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE OR REPLACE TABLE time_block (
             id UUID not NULL default UUID() PRIMARY KEY,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             start_time DATETIME NOT NULL,
             end_time DATETIME NOT NULL,
             kind ENUM ('reservation', 'actions') NOT NULL DEFAULT 'reservation',
             category UUID,
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-            FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE CASCADE ON UPDATE RESTRICT
+            CONSTRAINT `time_block_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            CONSTRAINT `time_block_ibfk_2` FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE CASCADE ON UPDATE RESTRICT
         ))",
 
         R"(CREATE INDEX time_block_ix1 ON time_block (user, start_time, end_time))",
@@ -695,8 +695,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             time_block UUID NOT NULL,
             action UUID NOT NULL,
             PRIMARY KEY (time_block, action),
-            FOREIGN KEY(time_block) REFERENCES time_block(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-            FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT
+            CONSTRAINT `time_block_actions_ibfk_1` FOREIGN KEY(time_block) REFERENCES time_block(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            CONSTRAINT `time_block_actions_ibfk_2` FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE ON UPDATE RESTRICT
         ))",
 
         R"(CREATE INDEX time_block_actions_ix1 ON time_block_actions (action))",
@@ -709,13 +709,13 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE OR REPLACE TABLE action_category (
             id UUID not NULL default UUID() PRIMARY KEY,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             name VARCHAR(128) NOT NULL,
             color VARCHAR(32) NOT NULL DEFAULT 'blue',
             descr TEXT,
             version INT NOT NULL DEFAULT 1,
             icon VARCHAR(128),
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `action_category_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         R"(CREATE INDEX action_category_ix1 ON action_category (user, name))",
 
@@ -730,7 +730,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE OR REPLACE TABLE time_block (
             id UUID not NULL default UUID() PRIMARY KEY,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             name VARCHAR(128) NOT NULL DEFAULT '',
             start_time DATETIME NOT NULL,
             end_time DATETIME NOT NULL,
@@ -738,8 +738,8 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             category UUID,
             version INT NOT NULL DEFAULT 1,
             actions BLOB, -- repeatable string, saved as a protobuf message
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-            FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE RESTRICT ON UPDATE RESTRICT
+            CONSTRAINT `time_block_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            CONSTRAINT `time_block_ibfk_2` FOREIGN KEY(category) REFERENCES action_category(id) ON DELETE RESTRICT ON UPDATE RESTRICT
         ))",
 
         R"(CREATE INDEX time_block_ix1 ON time_block (user, start_time, end_time))",
@@ -773,12 +773,12 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
           END)",
 
         R"(CREATE OR REPLACE TABLE notification (
-            user UUID not NULL default UUID() PRIMARY KEY,
+            `user` UUID not NULL default UUID() PRIMARY KEY,
             device UUID,
             is_read BOOLEAN NOT NULL DEFAULT FALSE,
             created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
             content BLOB, -- The notification saved as a protobuf message
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `fk_notification_user` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         "CREATE INDEX notification_ix1 ON notification (user, created, is_read)",
 
@@ -804,7 +804,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE OR REPLACE TABLE device (
             id UUID not NULL default UUID() PRIMARY KEY,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             name VARCHAR(256) NOT NULL,
             created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
             hostName VARCHAR(256),
@@ -816,25 +816,25 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             arch VARCHAR(32),
             prettyName VARCHAR(256),
             certHash BLOB,
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `device_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         "CREATE INDEX device_ix1 ON device (user, created)",
 
         // Hash is from string(id) + / + email + / + otp
         R"(CREATE OR REPLACE TABLE otp (
             id UUID not NULL default UUID() PRIMARY KEY,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             otp_hash VARCHAR(256) NOT NULL,
             email VARCHAR(256) NOT NULL,
             kind ENUM ('new_device', 'new_user') NOT NULL,
             created TIMESTAMP NOT NULL DEFAULT UTC_TIMESTAMP,
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `otp_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         "CREATE INDEX otp_ix1 ON otp (user)",
         "CREATE INDEX otp_ix2 ON otp (email)",
 
-        "ALTER TABLE user DROP FOREIGN KEY user_ibfk_1",
-        "ALTER TABLE user ADD CONSTRAINT user_ibfk_1 FOREIGN KEY (tenant) REFERENCES tenant(id) ON DELETE CASCADE ON UPDATE RESTRICT",
+        "ALTER TABLE `user` DROP FOREIGN KEY user_ibfk_1",
+        "ALTER TABLE `user` ADD CONSTRAINT user_ibfk_1 FOREIGN KEY (tenant) REFERENCES tenant(id) ON DELETE CASCADE ON UPDATE RESTRICT",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
@@ -917,28 +917,28 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE TABLE IF NOT EXISTS deleted (
             id UUID NOT NULL PRIMARY KEY,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             kind enum ('action', 'action_category', 'node', 'day', 'day_colors') NOT NULL,
             deleted TIMESTAMP(6) NOT NULL DEFAULT UTC_TIMESTAMP(6),
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `deleted_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         R"(CREATE TABLE IF NOT EXISTS versions (
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             kind ENUM ('action_category', 'settings', 'locations') NOT NULL,
             version INT NOT NULL DEFAULT 1,
             PRIMARY KEY (user, kind),
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `versions_ibfk_1` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         R"(CREATE TRIGGER update_action_category_version
             AFTER UPDATE ON action_category
             FOR EACH ROW
             BEGIN
-                -- Check if a version entry for this user and kind 'action_category' already exists
-                IF EXISTS (SELECT 1 FROM versions WHERE user = NEW.user AND kind = 'action_category') THEN
+                -- Check if a version entry for this `user` and kind 'action_category' already exists
+                IF EXISTS (SELECT 1 FROM versions WHERE `user` = NEW.user AND kind = 'action_category') THEN
                     -- If the entry exists, increment the version
                     UPDATE versions
                     SET version = version + 1
-                    WHERE user = NEW.user AND kind = 'action_category';
+                    WHERE `user` = NEW.user AND kind = 'action_category';
                 ELSE
                     -- If the entry does not exist, insert a new row with version 1
                     INSERT INTO versions (user, kind, version)
@@ -1092,9 +1092,9 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             ADD COLUMN IF NOT EXISTS system_user TINYINT(1))",
 
         "UPDATE tenant set properties=NULL", // We are changing from json to protobuf binary format
-        "UPDATE user set properties=NULL",
+        "UPDATE `user` set properties=NULL",
         "ALTER TABLE tenant MODIFY COLUMN properties BLOB",
-        "ALTER TABLE user MODIFY COLUMN properties BLOB",
+        "ALTER TABLE `user` MODIFY COLUMN properties BLOB",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
@@ -1142,11 +1142,11 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         // We don't store each read notification, just the id of the last read notification for each user.
         R"(CREATE OR REPLACE TABLE notification_last_read (
             notification_id INT NOT NULL,
-            user UUID NOT NULL,
+            `user` UUID NOT NULL,
             PRIMARY KEY (notification_id, user),
             KEY idx_user_notificatiion (user, notification_id),
-            FOREIGN KEY(notification_id) REFERENCES notification(id) ON DELETE CASCADE ON UPDATE RESTRICT,
-            FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
+            CONSTRAINT `notification_last_read_ibfk_1` FOREIGN KEY(notification_id) REFERENCES notification(id) ON DELETE CASCADE ON UPDATE RESTRICT,
+            CONSTRAINT `notification_last_read_ibfk_2` FOREIGN KEY(user) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT))",
 
         "SET FOREIGN_KEY_CHECKS=1"
     });
@@ -1193,7 +1193,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(ALTER TABLE node
             ADD CONSTRAINT node_ibfk_2
-            FOREIGN KEY (user) REFERENCES user (id)
+            FOREIGN KEY (user) REFERENCES `user` (id)
             ON DELETE CASCADE ON UPDATE NO ACTION)",
 
         "ALTER TABLE day_colors DROP FOREIGN KEY day_colors_ibfk_1",
@@ -1239,7 +1239,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
         R"(CREATE TABLE feedback (
               id                UUID NOT NULL,
-              user              UUID NOT NULL,
+              `user`              UUID NOT NULL,
               deviceId          VARCHAR(191) NOT NULL,
               kind              ENUM('bug','idea','thoughts','other') NOT NULL,
               emoji             ENUM('smile','frown','neutral','angry','love','sad') NOT NULL,
