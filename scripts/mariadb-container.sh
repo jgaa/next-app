@@ -10,7 +10,17 @@ if [ -z "${NA_ROOT_DBPASSWD}" ] ; then
   echo "NA_ROOT_DBPASSWD is: ${NA_ROOT_DBPASSWD}"
 fi
 
+if [ -z "${NA_MARIADB_PORT}" ] ; then
+  NA_MARIADB_PORT=3306
+  echo "NA_MARIADB_PORT is: ${NA_MARIADB_PORT}"
+fi
+
+if [ -z "${NA_MARIADB_NAME}" ] ; then
+  NA_MARIADB_NAME="na-mariadb"
+  echo "NA_MARIADB_NAME is: ${NA_MARIADB_NAME}"
+fi
+
 echo "NA_ROOT_DBPASSWD is preset to: ${NA_ROOT_DBPASSWD}"
 
-docker run --rm --detach --name na-mariadb -p 127.0.0.1:3306:3306 --env MARIADB_ROOT_PASSWORD=${NA_ROOT_DBPASSWD}  mariadb:latest
+docker run --rm --detach --name ${NA_MARIADB_NAME} -p 127.0.0.1:${NA_MARIADB_PORT}:3306 --env MARIADB_ROOT_PASSWORD=${NA_ROOT_DBPASSWD}  mariadb:latest
 
