@@ -42,20 +42,20 @@ void Server::init()
     initCtx(config().svr.io_threads);
 
     if (config_.cluster.eula_path.empty()) {
-        LOG_ERROR << "Missing EULA path!";
-        throw runtime_error{"Missing EULA path"};
+        LOG_WARN_N << "Missing EULA path!";
+        eula_text_ = "EULA placeholder. Start the server with --eula <path> to load an actual EULA text.";
+    } else {
+        eula_text_ = readFileToBuffer(config_.cluster.eula_path);
+        LOG_DEBUG_N << "EULA text loaded from " << config_.cluster.eula_path;
     }
 
     if (config_.cluster.welcome_path.empty()) {
-        LOG_ERROR << "Missing welcome path!";
-        throw runtime_error{"Missing welcome path"};
+        LOG_WARN_N << "Missing welcome path!";
+        welcome_text_ = "Welcome placeholder. Start the server with --welcome <path> to load an actual welcome text.";
+    } else {
+        welcome_text_ = readFileToBuffer(config_.cluster.welcome_path);
+        LOG_DEBUG_N << "Welcome text loaded from " << config_.cluster.welcome_path;
     }
-
-    eula_text_ = readFileToBuffer(config_.cluster.eula_path);
-    LOG_DEBUG << "EULA text loaded from " << config_.cluster.eula_path;
-
-    welcome_text_ = readFileToBuffer(config_.cluster.welcome_path);
-    LOG_DEBUG << "Welcome text loaded from " << config_.cluster.welcome_path;
 
     db_.emplace(ctx_, config().db);
 
