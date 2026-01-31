@@ -1,8 +1,8 @@
 project(proto)
-INCLUDE(FindProtobuf)
 
-find_package(Protobuf CONFIG)
+find_package(Protobuf CONFIG REQUIRED)
 if(NOT Protobuf_FOUND)
+  message("Falling back to: find_package(Protobuf)")
   find_package(Protobuf REQUIRED)
 endif()
 
