@@ -526,9 +526,9 @@ GrpcServer::GrpcServer(Server &server)
         auto regions = reply->mutable_regions();
         for(const auto& row : res.rows()) {
             auto *r = regions->add_regions();
-            r->mutable_uuid()->set_uuid(row[Cols::ID].as_string());
-            r->set_name(row[Cols::NAME].as_string());
-            r->set_description(toStringIfValue(row, Cols::DESCRIPTION));
+            r->mutable_uuid()->set_uuid(pb_adapt(row[Cols::ID].as_string()));
+            r->set_name(pb_adapt(row[Cols::NAME].as_string()));
+            r->set_description(pb_adapt(toStringIfValue(row, Cols::DESCRIPTION)));
 
             {
                 auto name = row[Cols::STATE].as_string();

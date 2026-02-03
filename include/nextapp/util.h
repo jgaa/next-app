@@ -190,24 +190,38 @@ struct UuidHash {
 };
 
 template <ProtoMessage T>
-std::string toJson(const T& obj, int mode = 1) {
+    std::string toJson(const T& obj, int mode = 1) {
     if (!mode) {
         return {};
     }
 
     std::string str;
+
+// Don't we all just love when API's change.
+// It's so cool to spend the weekend refactorint into the latest trends!
+#if GOOGLE_PROTOBUF_VERSION >= 2500000
+    google::protobuf::util::JsonPrintOptions opts;
+    opts.add_whitespace = (mode == 2);
+    opts.preserve_proto_field_names = true;
+#else
     google::protobuf::util::JsonOptions opts;
     opts.always_print_primitive_fields = true;
-    opts.add_whitespace = mode == 2;
-    auto res = google::protobuf::util::MessageToJsonString(obj, &str, opts);
+    opts.add_whitespace = (mode == 2);
+#endif
+
+    const auto res =
+        google::protobuf::util::MessageToJsonString(obj, &str, opts);
+
     if (!res.ok()) {
         LOG_DEBUG << "Failed to convert object to json: "
                   << typeid(T).name() << ": "
                   << res.ToString();
         throw std::runtime_error{"Failed to convert object to json"};
     }
+
     return str;
 }
+
 
 template <typename T>
 concept ProtoStringStringMap = std::is_same_v<std::remove_cv<T>, std::remove_cv<::google::protobuf::Map<std::string, std::string>>>;

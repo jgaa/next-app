@@ -528,8 +528,8 @@ ORDER BY t.id;
                     }
                     // Fill in the tenant-data
                     current_tenant_id = tenant_id;
-                    tenant->set_uuid(tenant_id);
-                    tenant->set_name(toStringIfValue(row, TENANT_NAME));
+                    tenant->set_uuid(pb_adapt(tenant_id));
+                    tenant->set_name(pb_adapt(toStringIfValue(row, TENANT_NAME)));
                     // kind enum
                     {
                         const auto kind = toUpper((toStringIfValue(row, TENANT_KIND)));
@@ -538,7 +538,7 @@ ORDER BY t.id;
                             tenant->set_kind(kind_value);
                         }
                     }
-                    tenant->set_descr(toStringIfValue(row, TENANT_DESCR));
+                    tenant->set_descr(pb_adapt(toStringIfValue(row, TENANT_DESCR)));
                     {
                         // Read it from protobuf binary format
                         auto *p = tenant->mutable_properties();
@@ -567,9 +567,9 @@ ORDER BY t.id;
                 if (!user_id.empty()) {
                     // Fill in the user data
                     auto * u = tenant->add_users();
-                    u->set_uuid(user_id);
-                    u->set_tenant(tenant_id);
-                    u->set_name(toStringIfValue(row, USER_NAME));
+                    u->set_uuid(pb_adapt(user_id));
+                    u->set_tenant(pb_adapt(tenant_id));
+                    u->set_name(pb_adapt(toStringIfValue(row, USER_NAME)));
 
                     // kind enum
                     {
@@ -579,10 +579,10 @@ ORDER BY t.id;
                             u->set_kind(kind_value);
                         }
                     }
-                    u->set_descr(toStringIfValue(row, USER_DESCR));
+                    u->set_descr(pb_adapt(toStringIfValue(row, USER_DESCR)));
                     auto active = row.at(USER_ACTIVE);
                     u->set_active(!active.is_null() && active.as_int64() > 0);
-                    u->set_email(toStringIfValue(row, USER_EMAIL));
+                    u->set_email(pb_adapt(toStringIfValue(row, USER_EMAIL)));
                     {
                         // Read it from protobuf binary format
                         auto *p = u->mutable_properties();
@@ -730,11 +730,11 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                 ++total_rows;
 
                 auto * f = reply.mutable_feedback();
-                f->set_id(row.at(ID).as_string());
-                f->set_userid(row.at(USER).as_string());
-                f->set_useremail(row.at(EMAIL).as_string());
+                f->set_id(pb_adapt(row.at(ID).as_string()));
+                f->set_userid(pb_adapt(row.at(USER).as_string()));
+                f->set_useremail(pb_adapt(row.at(EMAIL).as_string()));
                 f->set_userisactive(row.at(ACTIVE).as_int64() != 0);
-                f->set_tenantid(row.at(TENANT).as_string());
+                f->set_tenantid(pb_adapt(row.at(TENANT).as_string()));
                 f->mutable_created()->set_unixtime(toTimeT(row[CREATED_AT].as_datetime(), uctx->tz()));
 
                 auto * fb = f->mutable_feedback();
@@ -766,7 +766,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                         fb->set_haslog(false);
                     }
                 }
-                fb->set_message(toStringIfValue(row, MESSAGE));
+                fb->set_message(pb_adapt(toStringIfValue(row, MESSAGE)));
                 fb->set_requestsanswer(row.at(REQUESTS_ANSWER).as_int64() != 0);
 
                 co_await stream->sendMessage(std::move(reply), boost::asio::use_awaitable);
@@ -1289,16 +1289,16 @@ boost::asio::awaitable<pb::User> GrpcServer::getUser(jgaa::mysqlpool::Mysqlpool:
 
     pb::User u;
     const auto& row = res.rows().front();
-    u.set_uuid(row.at(ID).as_string());
-    u.set_tenant(row.at(TENANT).as_string());
-    u.set_name(row.at(NAME).as_string());
-    u.set_email(row.at(EMAIL).as_string());
+    u.set_uuid(pb_adapt(row.at(ID).as_string()));
+    u.set_tenant(pb_adapt(row.at(TENANT).as_string()));
+    u.set_name(pb_adapt(row.at(NAME).as_string()));
+    u.set_email(pb_adapt(row.at(EMAIL).as_string()));
     pb::User::Kind kind_value{};
     if (pb::User::Kind_Parse(toUpper(row.at(KIND).as_string()), &kind_value)) {
         u.set_kind(kind_value);
     }
     u.set_active(row.at(ACTIVE).as_int64() > 0);
-    u.set_descr(row.at(DESCR).as_string());
+    u.set_descr(pb_adapt(row.at(DESCR).as_string()));
     if (auto kv = KeyValueFromBlob(row.at(PROPERTIES))) {
         u.mutable_properties()->CopyFrom(*kv);
     }
