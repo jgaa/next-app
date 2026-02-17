@@ -1,13 +1,13 @@
-package @PACKAGE_NAME@;
+package eu.lastviking.nextapp.app;
 
-import @PACKAGE_NAME@.R;
+import eu.lastviking.nextapp.app.R;
 
 import android.util.Log;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
 public class NextappFirebaseMessagingService extends FirebaseMessagingService {
-    private static final String TAG = "@APP_LABEL@FcmService";
+    private static final String TAG = "NextappFcmService";
 
     static {
         Log.d(TAG, "The NextappFirebaseMessagingService class is available");

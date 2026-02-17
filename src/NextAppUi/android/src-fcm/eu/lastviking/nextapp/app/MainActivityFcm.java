@@ -1,4 +1,4 @@
-package @PACKAGE_NAME@;
+package eu.lastviking.nextapp.app;
 
 import android.Manifest;
 import android.content.ComponentName;
@@ -23,7 +23,7 @@ import com.google.firebase.FirebaseOptions;
 
 
 public class MainActivityFcm extends MainActivity {
-    private static final String TAG = "@PACKAGE_NAME@-MainActivityFcm";
+    private static final String TAG = BuildConfig.APPLICATION_ID + "-MainActivityFcm";
     private static String sFcmToken;
     private static String sFcmProjectId;
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 1001;

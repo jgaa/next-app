@@ -1,4 +1,4 @@
-package @PACKAGE_NAME@;
+package eu.lastviking.nextapp.app;
 
 import android.Manifest;
 import android.content.ComponentName;
@@ -22,8 +22,8 @@ import java.util.ArrayList;
 
 
 public class MainActivity extends QtActivity {
-    private static final String TAG = "@PACKAGE_NAME@-MainActivity";
-    private static final String FILE_PROVIDER_AUTHORITY = "@PACKAGE_NAME@.qtprovider";
+    private static final String TAG = BuildConfig.APPLICATION_ID + "-MainActivity";
+    private static final String FILE_PROVIDER_AUTHORITY = BuildConfig.APPLICATION_ID + ".qtprovider";
     private static MainActivity self = null;
     private boolean consumedLaunchIntent = false;
 
@@ -86,7 +86,7 @@ public class MainActivity extends QtActivity {
     //     File file = new File(path);
     //     Uri uri = FileProvider.getUriForFile(
     //         this,
-    //         "@PACKAGE_NAME@.qtprovider",  // must match your manifest/provider
+    //         BuildConfig.APPLICATION_ID + ".qtprovider",  // must match your manifest/provider
     //         file
     //     );
 
@@ -104,7 +104,7 @@ public class MainActivity extends QtActivity {
     //     File file = new File(path);
     //     Uri uri = FileProvider.getUriForFile(
     //         this,
-    //         "@PACKAGE_NAME@.fileprovider",
+    //         BuildConfig.APPLICATION_ID + ".fileprovider",
     //         file
     //     );
 
@@ -228,7 +228,7 @@ public class MainActivity extends QtActivity {
         }
     }
 
-    /** Return the app-specific media dir: /storage/.../Android/media/@PACKAGE_NAME@ */
+    /** Return the app-specific media dir: /storage/.../Android/media/<applicationId> */
     public static String getAppMediaDir() {
         if (self == null) {
             Log.e(TAG, "getAppMediaDir: self is null");

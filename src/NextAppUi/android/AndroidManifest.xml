@@ -1,0 +1,69 @@
+<?xml version="1.0"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!--<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>-->
+
+    <!-- %%INSERT_PERMISSIONS -->
+
+    <!-- %%INSERT_FEATURES -->
+
+    <!-- Required Qt metadata -->
+    <application android:name="org.qtproject.qt.android.bindings.QtApplication"
+        android:hardwareAccelerated="true"
+        android:label="${appName}"
+        android:requestLegacyExternalStorage="true"
+        android:allowBackup="true"
+        android:fullBackupOnly="false"
+        android:icon="@drawable/icon">
+        <activity android:name="eu.lastviking.nextapp.app.MainActivity"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:launchMode="singleTop"
+            android:screenOrientation="unspecified"
+            android:exported="true" android:label="${appName}">
+            <intent-filter>
+                    <action android:name="android.intent.action.MAIN"/>
+                    <category android:name="android.intent.category.LAUNCHER"/>
+                </intent-filter>
+            <meta-data android:name="android.app.lib_name" android:value="${appLibName}"/>
+            <meta-data android:name="android.app.arguments" android:value=""/>
+
+            <!-- We need the main message-loop running in order to process updates trough push notifications -->
+            <meta-data android:name="android.app.background_running" android:value="true"/>
+
+            <intent-filter>
+                <!-- user taps a .nextapp file or clicks “Open” -->
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <!-- lets the file manager include “Open with…” -->
+                <category android:name="android.intent.category.OPENABLE"/>
+                <!-- lets web-links also open, if you ever expose HTTP URLs -->
+                <category android:name="android.intent.category.BROWSABLE"/>
+
+                <!-- match classic file:// URIs ending in .nextapp -->
+                <data
+                    android:scheme="file"
+                    android:pathPattern=".*\\.nextapp"
+                    android:mimeType="*/*"/>
+
+                <!-- match Storage Access Framework (content://…) docs ending in .nextapp -->
+                <data
+                    android:scheme="content"
+                    android:host="*"
+                    android:pathSuffix=".nextapp"
+                    android:mimeType="*/*"/>
+            </intent-filter>
+        </activity>
+
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.qtprovider" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/qtprovider_paths"/>
+        </provider>
+
+    </application>
+</manifest>

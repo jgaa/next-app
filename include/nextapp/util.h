@@ -189,6 +189,15 @@ struct UuidHash {
     }
 };
 
+template <typename T>
+void setPrintDefaultFields(T& opts) {
+    if constexpr (requires (T& o) { o.always_print_fields_with_no_presence = true; }) {
+        opts.always_print_fields_with_no_presence = true;
+    } else if constexpr (requires (T& o) { o.always_print_primitive_fields = true; }) {
+        opts.always_print_primitive_fields = true;
+    }
+}
+
 template <ProtoMessage T>
 std::string toJson(const T& obj, int mode = 1) {
     if (!mode) {
@@ -196,8 +205,8 @@ std::string toJson(const T& obj, int mode = 1) {
     }
 
     std::string str;
-    google::protobuf::util::JsonOptions opts;
-    opts.always_print_primitive_fields = true;
+    google::protobuf::util::JsonPrintOptions opts;
+    setPrintDefaultFields(opts);
     opts.add_whitespace = mode == 2;
     auto res = google::protobuf::util::MessageToJsonString(obj, &str, opts);
     if (!res.ok()) {
@@ -256,13 +265,13 @@ std::optional<std::string_view> toStringViewOrNull(const std::optional<T>& val) 
 }
 
 template <typename T>
-auto toStringIfValue(const T& row, size_t col) -> decltype(row[0].as_string()) {
+auto toStringIfValue(const T& row, size_t col) {
     const auto &r = row.at(col);
     if (r.is_null()) {
-        return {};
+        return pb_adapt(std::string_view{});
     };
 
-    return r.as_string();
+    return pb_adapt(r.as_string());
 }
 
 template <typename T>

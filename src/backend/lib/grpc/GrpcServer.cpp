@@ -51,18 +51,18 @@ struct ToDevice {
     static constexpr string_view columns = "id, user, name, created, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, lastSeen, enabled, numSessions";
 
     static void assign(const boost::mysql::row_view& row, pb::Device &device, const chrono::time_zone& tz) {
-        device.set_id(row[ID].as_string());
-        device.set_user(row[USER].as_string());
-        device.set_name(row[NAME].as_string());
+        device.set_id(pb_adapt(row[ID].as_string()));
+        device.set_user(pb_adapt(row[USER].as_string()));
+        device.set_name(pb_adapt(row[NAME].as_string()));
         device.mutable_created()->set_seconds(toTimeT(row[CREATED].as_datetime(), tz));
-        if (!row[HOSTNAME].is_null()) device.set_hostname(row[HOSTNAME].as_string());
-        if (!row[OS].is_null()) device.set_os(row[OS].as_string());
-        if (!row[OSVERSION].is_null()) device.set_osversion(row[OSVERSION].as_string());
-        if (!row[APPVERSION].is_null()) device.set_appversion(row[APPVERSION].as_string());
-        if (!row[PRODUCTTYPE].is_null()) device.set_producttype(row[PRODUCTTYPE].as_string());
-        if (!row[PRODUCTVERSION].is_null()) device.set_productversion(row[PRODUCTVERSION].as_string());
-        if (!row[ARCH].is_null()) device.set_arch(row[ARCH].as_string());
-        if (!row[PRETTYNAME].is_null()) device.set_prettyname(row[PRETTYNAME].as_string());
+        if (!row[HOSTNAME].is_null()) device.set_hostname(pb_adapt(row[HOSTNAME].as_string()));
+        if (!row[OS].is_null()) device.set_os(pb_adapt(row[OS].as_string()));
+        if (!row[OSVERSION].is_null()) device.set_osversion(pb_adapt(row[OSVERSION].as_string()));
+        if (!row[APPVERSION].is_null()) device.set_appversion(pb_adapt(row[APPVERSION].as_string()));
+        if (!row[PRODUCTTYPE].is_null()) device.set_producttype(pb_adapt(row[PRODUCTTYPE].as_string()));
+        if (!row[PRODUCTVERSION].is_null()) device.set_productversion(pb_adapt(row[PRODUCTVERSION].as_string()));
+        if (!row[ARCH].is_null()) device.set_arch(pb_adapt(row[ARCH].as_string()));
+        if (!row[PRETTYNAME].is_null()) device.set_prettyname(pb_adapt(row[PRETTYNAME].as_string()));
         if (!row[LASTSEEN].is_null()) device.mutable_lastseen()->set_seconds(toTimeT(row[LASTSEEN].as_datetime(), tz));
         device.set_enabled(row[ENABLED].as_int64() == 1);
         device.set_numsessions(row[NUM_SESSIONS].as_int64());
@@ -80,18 +80,18 @@ struct ToDevice {
         if (!row[VALID_TO].is_null()) {
             notification.mutable_validto()->set_unixtime(toTimeT(row[VALID_TO].as_datetime(), tz));
         }
-        notification.set_subject(row[SUBJECT].as_string());
+        notification.set_subject(pb_adapt(row[SUBJECT].as_string()));
         if (!row[MESSAGE].is_null()) {
-            notification.set_message(row[MESSAGE].as_string());
+            notification.set_message(pb_adapt(row[MESSAGE].as_string()));
         }
-        notification.set_senderid(row[SENDER_ID].as_string());
+        notification.set_senderid(pb_adapt(row[SENDER_ID].as_string()));
         if (!row[TO_TENANT].is_null()) {
-            notification.mutable_totenant()->set_uuid(row[TO_TENANT].as_string());
+            notification.mutable_totenant()->set_uuid(pb_adapt(row[TO_TENANT].as_string()));
         }
         if (!row[TO_USER].is_null()) {
-            notification.mutable_touser()->set_uuid(row[TO_USER].as_string());
+            notification.mutable_touser()->set_uuid(pb_adapt(row[TO_USER].as_string()));
         }
-        notification.mutable_uuid()->set_uuid(row[UUID].as_string());
+        notification.mutable_uuid()->set_uuid(pb_adapt(row[UUID].as_string()));
         if (!row[KIND].is_null()) {
             auto k = toUpper(row[KIND].as_string());
             pb::Notification_Kind kind{};
@@ -100,7 +100,7 @@ struct ToDevice {
             }
         }
         if (!row[DATA].is_null()) {
-            notification.set_data(row[DATA].as_string());
+            notification.set_data(pb_adapt(row[DATA].as_string()));
         }
     }
 };
@@ -1030,5 +1030,4 @@ void GrpcServer::setLastNotificationUpdated(uint64_t lastNotificationUpdated) no
 
 
 } // ns
-
 
