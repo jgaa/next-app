@@ -1,4 +1,3 @@
-def useFcm = @FCM_ENABLED@
 def appId = "@PACKAGE_NAME@"
 def appName = "@NEXTAPP_APP_NAME@"
 def appLibName = "@APP_LIB@"
@@ -13,7 +12,7 @@ buildscript {
     dependencies {
         //noinspection AndroidGradlePluginVersion
         classpath 'com.android.tools.build:gradle:8.6.0'
-        if (useFcm) {
+        if (@FCM_ENABLED@) {
             classpath 'com.google.gms:google-services:4.4.3'
         }
     }
@@ -25,7 +24,7 @@ repositories {
 }
 
 apply plugin: qtGradlePluginType
-if (useFcm) {
+if (@FCM_ENABLED@) {
     apply plugin: 'com.google.gms.google-services'
 }
 
@@ -34,7 +33,7 @@ dependencies {
     //noinspection GradleDependency
     implementation 'androidx.core:core:1.13.1'
 
-    if (useFcm) {
+    if (@FCM_ENABLED@) {
         implementation platform('com.google.firebase:firebase-bom:33.16.0')
         implementation "com.google.firebase:firebase-messaging:24.1.2"
     }
@@ -65,9 +64,9 @@ android {
 
     sourceSets {
         main {
-            manifest.srcFile useFcm ? 'AndroidManifest.fcm.xml' : 'AndroidManifest.xml'
+            manifest.srcFile @FCM_ENABLED@ ? 'AndroidManifest.fcm.xml' : 'AndroidManifest.xml'
             java.srcDirs = [qtAndroidDir + '/src', 'src', 'java']
-            if (useFcm) {
+            if (@FCM_ENABLED@) {
                 java.srcDirs += ['src-fcm']
             }
             aidl.srcDirs = [qtAndroidDir + '/src', 'src', 'aidl']
@@ -109,5 +108,15 @@ android {
         minSdkVersion qtMinSdkVersion
         targetSdkVersion qtTargetSdkVersion
         ndk.abiFilters = qtTargetAbiList.split(",")
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            manifestPlaceholders.appName = appName + " Debug"
+        }
+        release {
+            manifestPlaceholders.appName = appName
+        }
     }
 }

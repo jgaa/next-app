@@ -22,8 +22,7 @@ import java.util.ArrayList;
 
 
 public class MainActivity extends QtActivity {
-    private static final String TAG = BuildConfig.APPLICATION_ID + "-MainActivity";
-    private static final String FILE_PROVIDER_AUTHORITY = BuildConfig.APPLICATION_ID + ".qtprovider";
+    private static final String TAG = "MainActivity";
     private static MainActivity self = null;
     private boolean consumedLaunchIntent = false;
 
@@ -203,7 +202,7 @@ public class MainActivity extends QtActivity {
     public void shareFile(String absolutePath, String mimeType) {
         Log.i(TAG, "shareFile called with path: " + absolutePath + ", mimeType: " + mimeType);
         try {
-            Uri uri = FileProvider.getUriForFile(this, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".qtprovider", new File(absolutePath));
             Intent share = new Intent(Intent.ACTION_SEND);
             share.setType(mimeType);
             share.putExtra(Intent.EXTRA_STREAM, uri);
@@ -218,7 +217,7 @@ public class MainActivity extends QtActivity {
     public void viewFile(String absolutePath, String mimeType) {
         Log.i(TAG, "viewFile called with path: " + absolutePath + ", mimeType: " + mimeType);
         try {
-            Uri uri = FileProvider.getUriForFile(this, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".qtprovider", new File(absolutePath));
             Intent view = new Intent(Intent.ACTION_VIEW);
             view.setDataAndType(uri, mimeType);
             view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
