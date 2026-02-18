@@ -3,7 +3,11 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QJniObject>
 
+#if defined(__ANDROID__)
+#include <jni.h>
+#else
 struct JNIEnv;
+#endif
 
 // A simple QObject to emit signals
 class AndroidFcmBridge : public QObject {

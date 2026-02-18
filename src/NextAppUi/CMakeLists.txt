@@ -759,8 +759,8 @@ if(USE_STATIC_QT)
         )
 endif()
 
-if(NOT BOOST_HEADERS_TARGET)
-  target_include_directories(your_target PRIVATE ${Boost_INCLUDE_DIRS})
+if(NOT BOOST_HEADERS_TARGET AND Boost_INCLUDE_DIRS)
+  target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 endif()
 
 target_link_libraries(${PROJECT_NAME}

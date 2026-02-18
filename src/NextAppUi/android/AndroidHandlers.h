@@ -3,7 +3,11 @@
 #include <QString>
 #include <QJniObject>
 
+#if defined(__ANDROID__)
+#include <jni.h>
+#else
 struct JNIEnv;
+#endif
 
 namespace nextapp {
 namespace android {
