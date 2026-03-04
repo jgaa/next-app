@@ -1,3 +1,8 @@
+def appId = "@PACKAGE_NAME@"
+def appName = "@NEXTAPP_APP_NAME@"
+def appLibName = "@APP_LIB@"
+def appNamespace = "eu.lastviking.nextapp.app"
+
 buildscript {
     repositories {
         google()
@@ -7,7 +12,9 @@ buildscript {
     dependencies {
         //noinspection AndroidGradlePluginVersion
         classpath 'com.android.tools.build:gradle:8.6.0'
-        classpath 'com.google.gms:google-services:4.4.3'
+        if (@FCM_ENABLED@) {
+            classpath 'com.google.gms:google-services:4.4.3'
+        }
     }
 }
 
@@ -17,15 +24,19 @@ repositories {
 }
 
 apply plugin: qtGradlePluginType
-apply plugin: 'com.google.gms.google-services'
+if (@FCM_ENABLED@) {
+    apply plugin: 'com.google.gms.google-services'
+}
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
     //noinspection GradleDependency
     implementation 'androidx.core:core:1.13.1'
 
-    implementation platform('com.google.firebase:firebase-bom:33.16.0')
-    implementation "com.google.firebase:firebase-messaging:24.1.2"
+    if (@FCM_ENABLED@) {
+        implementation platform('com.google.firebase:firebase-bom:33.16.0')
+        implementation "com.google.firebase:firebase-messaging:24.1.2"
+    }
 }
 
 android {
@@ -43,7 +54,7 @@ android {
      * Changing them manually might break the compilation!
      *******************************************************/
 
-    namespace androidPackageName
+    namespace appNamespace
     compileSdkVersion androidCompileSdkVersion
     buildToolsVersion androidBuildToolsVersion
     ndkVersion androidNdkVersion
@@ -53,8 +64,11 @@ android {
 
     sourceSets {
         main {
-            manifest.srcFile 'AndroidManifest.xml'
+            manifest.srcFile @FCM_ENABLED@ ? 'AndroidManifest.fcm.xml' : 'AndroidManifest.xml'
             java.srcDirs = [qtAndroidDir + '/src', 'src', 'java']
+            if (@FCM_ENABLED@) {
+                java.srcDirs += ['src-fcm']
+            }
             aidl.srcDirs = [qtAndroidDir + '/src', 'src', 'aidl']
             res.srcDirs = [qtAndroidDir + '/res', 'res']
             resources.srcDirs = ['resources']
@@ -84,8 +98,25 @@ android {
 
     defaultConfig {
         resConfig "en"
+        applicationId appId
+        versionName "@NEXTAPP_VERSION@"
+        versionCode @VERSION_CODE@
+        manifestPlaceholders = [
+            appName: appName,
+            appLibName: appLibName
+        ]
         minSdkVersion qtMinSdkVersion
         targetSdkVersion qtTargetSdkVersion
         ndk.abiFilters = qtTargetAbiList.split(",")
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            manifestPlaceholders.appName = appName + " Debug"
+        }
+        release {
+            manifestPlaceholders.appName = appName
+        }
     }
 }

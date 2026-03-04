@@ -16,7 +16,7 @@ if [ -z "${NA_MARIADB_PORT}" ] ; then
 fi
 
 if [ -z "${NA_MARIADB_NAME}" ] ; then
-  NA_MARIADB_NAME="na-mariadb"
+  NA_MARIADB_NAME="na-mariadb-tmp"
   echo "NA_MARIADB_NAME is: ${NA_MARIADB_NAME}"
 fi
 

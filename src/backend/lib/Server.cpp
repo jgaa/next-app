@@ -1256,6 +1256,113 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    // We add the database table and fields for plans, even if NEXTAPP_WITH_PLANS is off.
+    // This is because we want to be able to enable it later without needing a complex migration.
+    // NEXTAPP_WITH_PLANS enables enforcement of the plans.
+    static constexpr auto v24_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE TABLE IF NOT EXISTS plan (
+            name              VARCHAR(32) NOT NULL,
+            active            BOOLEAN NOT NULL DEFAULT TRUE,
+            createdAt         DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            max_users         INT NOT NULL DEFAULT 1,
+            max_devices       INT NOT NULL DEFAULT 5,
+            max_nodes         INT NOT NULL DEFAULT 2000,
+            max_actions       INT NOT NULL DEFAULT 1240,
+            max_worksessions  INT NOT NULL DEFAULT 1240,
+            max_time_blocks   INT NOT NULL DEFAULT 1240,
+            mobile_only       BOOLEAN NOT NULL DEFAULT FALSE,
+            PRIMARY KEY (name)
+  ))",
+
+        R"(INSERT INTO plan
+            (name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only)
+          VALUES
+            ('free',  TRUE, 1, 1, 2000, 1240, 1240, 1240, TRUE)
+          ON DUPLICATE KEY UPDATE
+            active=VALUES(active),
+            max_users=VALUES(max_users),
+            max_devices=VALUES(max_devices),
+            max_nodes=VALUES(max_nodes),
+            max_actions=VALUES(max_actions),
+            max_worksessions=VALUES(max_worksessions),
+            max_time_blocks=VALUES(max_time_blocks),
+            mobile_only=VALUES(mobile_only))",
+
+        R"(INSERT INTO plan
+            (name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only)
+          VALUES
+            ('trial', TRUE, 1, 5, 2000, 1240, 1240, 1240, FALSE)
+          ON DUPLICATE KEY UPDATE
+            active=VALUES(active),
+            max_users=VALUES(max_users),
+            max_devices=VALUES(max_devices),
+            max_nodes=VALUES(max_nodes),
+            max_actions=VALUES(max_actions),
+            max_worksessions=VALUES(max_worksessions),
+            max_time_blocks=VALUES(max_time_blocks),
+            mobile_only=VALUES(mobile_only))",
+
+        R"(INSERT INTO plan
+    (name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only)
+          VALUES
+            ('pro',   TRUE, 1, 5, 2000, 1240, 1240, 1240, FALSE)
+          ON DUPLICATE KEY UPDATE
+            active=VALUES(active),
+            max_users=VALUES(max_users),
+            max_devices=VALUES(max_devices),
+            max_nodes=VALUES(max_nodes),
+            max_actions=VALUES(max_actions),
+            max_worksessions=VALUES(max_worksessions),
+            max_time_blocks=VALUES(max_time_blocks),
+            mobile_only=VALUES(mobile_only))",
+
+        // Tenant plan fields
+        R"(ALTER TABLE tenant ADD COLUMN IF NOT EXISTS plan VARCHAR(32) NOT NULL DEFAULT 'trial')",
+        R"(ALTER TABLE tenant ADD COLUMN IF NOT EXISTS plan_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+        R"(ALTER TABLE tenant ADD COLUMN IF NOT EXISTS plan_expires TIMESTAMP NULL)",
+        R"(ALTER TABLE tenant ADD COLUMN IF NOT EXISTS plan_seats INT NOT NULL DEFAULT 1)",
+        R"(ALTER TABLE tenant ADD COLUMN IF NOT EXISTS grace_period_expires TIMESTAMP NULL)",
+        R"(ALTER TABLE tenant ADD COLUMN IF NOT EXISTS account_expires TIMESTAMP NULL)",
+
+        // Sanitize any pre-existing/garbage values before FK is added
+        R"(UPDATE tenant
+      SET plan='trial'
+      WHERE plan NOT IN (SELECT name FROM plan))",
+
+        // Assign desired plans/timers
+        R"(UPDATE tenant
+              SET
+                plan = 'trial',
+                plan_updated = UTC_TIMESTAMP(),
+                plan_seats = 1,
+                plan_expires = UTC_TIMESTAMP() + INTERVAL 30 DAY,
+                grace_period_expires = UTC_TIMESTAMP() + INTERVAL 40 DAY,
+                account_expires = UTC_TIMESTAMP() + INTERVAL 220 DAY
+              WHERE kind <> 'super')",
+
+        R"(UPDATE tenant
+              SET
+                plan = 'pro',
+                plan_updated = UTC_TIMESTAMP(),
+                plan_seats = 1,
+                plan_expires = NULL,
+                grace_period_expires = NULL,
+                account_expires = NULL
+              WHERE kind = 'super')",
+
+        // FK needs an index on tenant.plan (don’t rely on implicit behavior)
+        R"(CREATE INDEX IF NOT EXISTS idx_tenant_plan ON tenant(plan))",
+
+        R"(ALTER TABLE tenant
+              ADD CONSTRAINT fk_tenant_plan__plan
+              FOREIGN KEY (plan)
+              REFERENCES plan(name)
+              ON DELETE RESTRICT
+              ON UPDATE CASCADE)",
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
@@ -1281,19 +1388,11 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v21_upgrade,
         v22_upgrade,
         v23_upgrade,
+        v24_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
              << " to version " << latest_version;
-
-    // auto cfg = config_.db;
-    // cfg.max_connections = 1;
-
-    // mysqlpool::Mysqlpool db{ctx_, cfg};
-
-    // co_await asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
-    //     co_await db.init();
-    //     {
 
     auto handle = co_await db().getConnection();
     auto trx = co_await handle.transaction();

@@ -1,5 +1,6 @@
 
 #include <QDebug>
+#include <jni.h>
 
 #include "QCoreApplication"
 
@@ -7,11 +8,10 @@
 #include "logging.h"
 #include "JniGuard.h"
 
-extern "C" JNIEXPORT void JNICALL
-Java_@PACKAGE_NAME_UNDERSCORES@_MainActivity_nativeOnSharedNextapp(
-        JNIEnv *env,
-        jobject /* activity */,
-        jstring jPath)
+namespace {
+constexpr const char* kMainActivityClass = "eu/lastviking/nextapp/app/MainActivity";
+
+void nativeOnSharedNextapp(JNIEnv *env, jobject /* activity */, jstring jPath)
 {
     LOG_DEBUG_N << "Got a shared-file event.";
     qDebug() << "Got a shared-file event.";
@@ -23,18 +23,47 @@ Java_@PACKAGE_NAME_UNDERSCORES@_MainActivity_nativeOnSharedNextapp(
 
     NextAppCore::handleSharedFile(qPath);
 }
+} // namespace
 
 namespace nextapp::android {
+
+bool registerAndroidHandlersNatives(JNIEnv* env) {
+    if (!env) {
+        LOG_ERROR_N << "registerAndroidHandlersNatives: JNIEnv is null";
+        return false;
+    }
+
+    jclass cls = env->FindClass(kMainActivityClass);
+    if (!cls) {
+        LOG_ERROR_N << "registerAndroidHandlersNatives: class not found: " << kMainActivityClass;
+        return false;
+    }
+
+    static const JNINativeMethod methods[] = {
+        {"nativeOnSharedNextapp", "(Ljava/lang/String;)V",
+         reinterpret_cast<void*>(nativeOnSharedNextapp)},
+    };
+
+    if (env->RegisterNatives(cls, methods, sizeof(methods) / sizeof(methods[0])) != 0) {
+        LOG_ERROR_N << "registerAndroidHandlersNatives: RegisterNatives failed for "
+                    << kMainActivityClass;
+        env->DeleteLocalRef(cls);
+        return false;
+    }
+
+    env->DeleteLocalRef(cls);
+    return true;
+}
 
 QString getMediaDir() {
 #ifdef NEXTAPP_USE_JNI
     requireStaticMethod(
-        "@PACKAGE_NAME_SLASHES@/MainActivity",
+        kMainActivityClass,
         "getAppMediaDir",
         "()Ljava/lang/String;");
 
     static const QString dir = QJniObject::callStaticObjectMethod(
-    "@PACKAGE_NAME_SLASHES@/MainActivity",
+    kMainActivityClass,
     "getAppMediaDir",
     "()Ljava/lang/String;"
     ).toString();
@@ -49,12 +78,12 @@ QString getMediaDir() {
 QString getLogsDir() {
 #ifdef NEXTAPP_USE_JNI
     requireStaticMethod(
-        "@PACKAGE_NAME_SLASHES@/MainActivity",
+        kMainActivityClass,
         "ensureMediaSubdir",
         "(Ljava/lang/String;)Ljava/lang/String;");
 
     static const QString dir = QJniObject::callStaticObjectMethod(
-    "@PACKAGE_NAME_SLASHES@/MainActivity",
+    kMainActivityClass,
     "ensureMediaSubdir",
     "(Ljava/lang/String;)Ljava/lang/String;",
     QJniObject::fromString("Logs").object<jstring>()
@@ -69,12 +98,12 @@ QString getLogsDir() {
 QString getNamedDir(const QString& name) {
 #ifdef NEXTAPP_USE_JNI
     requireStaticMethod(
-        "@PACKAGE_NAME_SLASHES@/MainActivity",
+        kMainActivityClass,
         "ensureMediaSubdir",
         "(Ljava/lang/String;)Ljava/lang/String;");
 
     static const QString dir = QJniObject::callStaticObjectMethod(
-    "@PACKAGE_NAME_SLASHES@/MainActivity",
+    kMainActivityClass,
     "ensureMediaSubdir",
     "(Ljava/lang/String;)Ljava/lang/String;",
     QJniObject::fromString(name).object<jstring>()
@@ -87,4 +116,3 @@ QString getNamedDir(const QString& name) {
 }
 
 } // ns
-

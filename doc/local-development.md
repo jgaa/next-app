@@ -101,7 +101,7 @@ Finally, start the signup server so the desktop app can connect to the backend.
   --db-passwd also-secret \
   --db-port 33006 \
   -l trace \
-  -L /tmp/nextappd.log \
+  -L /tmp/signupd.log \
   -T \
   -c '' \
   --grpc-tls-mode none

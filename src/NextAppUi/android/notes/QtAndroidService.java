@@ -1,6 +1,6 @@
-// package @PACKAGE_NAME@;
+// package eu.lastviking.nextapp.app;
 //
-// import @PACKAGE_NAME@.R;
+// import eu.lastviking.nextapp.app.R;
 // import android.content.Context;
 // import android.content.Intent;
 // import android.util.Log;
@@ -20,7 +20,7 @@
 // public class QtAndroidService extends QtService
 // {
 //     private static String sFcmToken;
-//     private static final String TAG = "@PACKAGE_NAME@-QtAndroidService";
+//     private static final String TAG = "QtAndroidService";
 //     private static final String CHANNEL_ID = "nextapp_service_channel";
 //
 //     public void createTestChannel() {

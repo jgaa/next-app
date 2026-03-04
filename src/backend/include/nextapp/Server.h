@@ -25,7 +25,7 @@ class GrpcServer;
 
 class Server {
 public:
-    static constexpr uint latest_version = 23;
+    static constexpr uint latest_version = 24;
 
     struct BootstrapOptions {
         bool drop_old_db = false;

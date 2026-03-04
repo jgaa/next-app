@@ -97,7 +97,10 @@ endif()
 
 if (LINUX_BUILD OR WINDOWS_BUILD)
   find_package(gRPC CONFIG REQUIRED)
-  find_package(Protobuf REQUIRED)
+  find_package(Protobuf CONFIG)
+  if(NOT Protobuf_FOUND)
+    find_package(Protobuf REQUIRED)
+  endif()
 endif()
 
 if (NEXTAPP_EXPAT_FIX)
@@ -159,11 +162,8 @@ if(ANDROID)
     message(STATUS "APP_LABEL (lowercase): ${APP_LABEL}")
     set(APP_LIB "${PROJECT_NAME}")
     set(PACKAGE_NAME "${NEXTAPP_APP_DOMAIN}.${APP_LABEL}")
-    string(REPLACE "." "_" PACKAGE_NAME_UNDERSCORES ${PACKAGE_NAME})
-    string(REPLACE "." "/" PACKAGE_NAME_SLASHES ${PACKAGE_NAME})
     set(ANDROID_OUT_DIR    "${CMAKE_BINARY_DIR}/android")
     file(MAKE_DIRECTORY    ${ANDROID_OUT_DIR})
-    set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivity")
 
     add_definitions(-DNEXTAPP_PACKAGE_NAME=\"${PACKAGE_NAME}\")
 
@@ -173,15 +173,7 @@ if(ANDROID)
         "Android applicationId / package name")
 
     if (NEXTAPP_WITH_FCM)
-        set(APP_ACTIVITY "${PACKAGE_NAME}.MainActivityFcm")
-        set(FCM_SERVICE
-        "<service
-            android:name=\"${PACKAGE_NAME}.NextappFirebaseMessagingService\"
-            android:exported=\"true\">
-            <intent-filter>
-                <action android:name=\"com.google.firebase.MESSAGING_EVENT\" />
-            </intent-filter>
-        </service>")
+        set(FCM_ENABLED "true")
 
         message(STATUS "Enabling Firebase Cloud Messaging support: ${GOOGLE_SERVICES_PATH} --> ${ANDROID_OUT_DIR}/google-services.json")
         configure_file(
@@ -189,81 +181,36 @@ if(ANDROID)
             "${ANDROID_OUT_DIR}/google-services.json"
             COPYONLY
         )
-
-        configure_file(
-            "${CMAKE_CURRENT_SOURCE_DIR}/android/build.gradle.fcm"
-            "${ANDROID_OUT_DIR}/build.gradle"
-            COPYONLY
-        )
-
-        configure_file(
-          "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivityFcm.java.in"
-          "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivityFcm.java"
-          @ONLY
-        )
-
-        configure_file(
-          "${CMAKE_CURRENT_SOURCE_DIR}/android/src/NextappFirebaseMessagingService.java.in"
-          "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/NextappFirebaseMessagingService.java"
-          @ONLY
-        )
-
-        ## The QtAndroidService.java is not currently being used. Kept here for further experimentation
-        # configure_file(
-        #   "${CMAKE_CURRENT_SOURCE_DIR}/android/src/QtAndroidService.java.in"
-        #   "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/QtAndroidService.java"
-        #   @ONLY
-        # )
-
-        configure_file(
-          "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.h.in"
-          "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h"
-          @ONLY
-        )
-
-        configure_file(
-          "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.cpp.in"
-          "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
-          @ONLY
-        )
-
         set (FCM_SOURCES
-            "${CMAKE_BINARY_DIR}/AndroidFcmBridge.cpp"
-            "${CMAKE_BINARY_DIR}/AndroidFcmBridge.h")
+            "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidFcmBridge.h")
+    else()
+        set(FCM_ENABLED "false")
     endif()
 
     configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/src/MainActivity.java.in"
-      "${ANDROID_OUT_DIR}/src/main/java/eu/lastviking/${APP_LABEL}/MainActivity.java"
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/build.gradle.in"
+      "${ANDROID_OUT_DIR}/build.gradle"
       @ONLY
     )
 
-    configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/JniGuard.h.in"
-      "${CMAKE_BINARY_DIR}/JniGuard.h"
-      @ONLY
+    file(COPY
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml"
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.fcm.xml"
+      DESTINATION ${ANDROID_OUT_DIR}
     )
 
-    configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidManifest.xml.in"
-      "${ANDROID_OUT_DIR}/AndroidManifest.xml"
-      @ONLY
+    file(COPY
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/src"
+      "${CMAKE_CURRENT_SOURCE_DIR}/android/src-fcm"
+      DESTINATION ${ANDROID_OUT_DIR}
     )
 
-    configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidHandlers.h.in"
-      "${CMAKE_BINARY_DIR}/AndroidHandlers.h"
-      @ONLY
-    )
-    configure_file(
-      "${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidHandlers.cpp.in"
-      "${CMAKE_BINARY_DIR}/AndroidHandlers.cpp"
-      @ONLY
-    )
     set (EXTRA_SOURCE_FILES ${EXTRA_SOURCE_FILES}
-        ${CMAKE_BINARY_DIR}/AndroidHandlers.h
-        ${CMAKE_BINARY_DIR}/AndroidHandlers.cpp
-        ${CMAKE_BINARY_DIR}/JniGuard.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidHandlers.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidHandlers.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/android/JniGuard.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/android/JniRegistration.cpp
     )
 
     file(COPY
@@ -397,6 +344,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     PRIVATE src
 )
 
+if (ANDROID)
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/android
+    )
+endif()
+
 # Check if std::format is available
 include(CheckCXXSourceCompiles)
 check_cxx_source_compiles("
@@ -439,29 +392,20 @@ endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE ${_boost_headers_target})
 
 if (NOT ANDROID)
-    # Try Boost config package first (vcpkg/Conan or CMake-installed Boost).
-   find_package(Boost CONFIG QUIET)
-   if (NOT Boost_FOUND)
-       # Fallback to CMake's FindBoost (module mode).
-       find_package(Boost REQUIRED)  # no COMPONENTS needed for header-only usage
-   endif()
-
-   # Unify on the header target name across modes.
-   set(BOOST_HEADERS_TARGET "")
-   if (TARGET Boost::headers)
-       set(BOOST_HEADERS_TARGET Boost::headers)
-   elseif (TARGET Boost::boost) # older CMake/FindBoost
-       set(BOOST_HEADERS_TARGET Boost::boost)
-   else()
-       message(FATAL_ERROR
-           "Found Boost, but neither Boost::headers nor Boost::boost is available.")
-   endif()
-
+    find_package(Boost CONFIG REQUIRED COMPONENTS)
     find_package(OpenSSL CONFIG QUIET)
     if(NOT OpenSSL_FOUND)
         find_package(OpenSSL REQUIRED)
     endif()
 
+    if(TARGET Boost::headers)
+        set(BOOST_HEADERS_TARGET Boost::headers)
+    elseif(TARGET Boost::boost)
+        set(BOOST_HEADERS_TARGET Boost::boost)
+    else()
+        # Very old FindBoost: just use include dirs
+        set(BOOST_HEADERS_TARGET "")
+    endif()
 else()
     # TODO: Get the header only libraries we use from the system or download them
     # If NEXTAPP_BOOST_ROOT is already set and non-empty, keep it.
@@ -812,6 +756,10 @@ if(USE_STATIC_QT)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         QT_QPA_STATIC
         )
+endif()
+
+if(NOT BOOST_HEADERS_TARGET AND Boost_INCLUDE_DIRS)
+  target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 endif()
 
 target_link_libraries(${PROJECT_NAME}

@@ -3,6 +3,11 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QJniObject>
 
+#if defined(__ANDROID__)
+#include <jni.h>
+#else
+struct JNIEnv;
+#endif
 
 // A simple QObject to emit signals
 class AndroidFcmBridge : public QObject {
@@ -30,16 +35,4 @@ private:
     QString packageId_;
 };
 
-extern "C" {
-
-// Called when onNewToken fires
-JNIEXPORT void JNICALL
-Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnNewToken(
-    JNIEnv *env, jobject /*thiz*/, jstring jtoken);
-
-// Called when onMessageReceived fires
-JNIEXPORT void JNICALL
-Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnMessage(
-    JNIEnv *env, jobject /*thiz*/,
-    jstring jmsgId, jstring jnotif, jstring jdata);
-} // extern "C"
+bool registerAndroidFcmBridgeNatives(JNIEnv* env);

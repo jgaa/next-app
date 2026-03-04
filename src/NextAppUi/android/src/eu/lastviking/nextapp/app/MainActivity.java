@@ -1,4 +1,4 @@
-package @PACKAGE_NAME@;
+package eu.lastviking.nextapp.app;
 
 import android.Manifest;
 import android.content.ComponentName;
@@ -22,8 +22,7 @@ import java.util.ArrayList;
 
 
 public class MainActivity extends QtActivity {
-    private static final String TAG = "@PACKAGE_NAME@-MainActivity";
-    private static final String FILE_PROVIDER_AUTHORITY = "@PACKAGE_NAME@.qtprovider";
+    private static final String TAG = "MainActivity";
     private static MainActivity self = null;
     private boolean consumedLaunchIntent = false;
 
@@ -86,7 +85,7 @@ public class MainActivity extends QtActivity {
     //     File file = new File(path);
     //     Uri uri = FileProvider.getUriForFile(
     //         this,
-    //         "@PACKAGE_NAME@.qtprovider",  // must match your manifest/provider
+    //         BuildConfig.APPLICATION_ID + ".qtprovider",  // must match your manifest/provider
     //         file
     //     );
 
@@ -104,7 +103,7 @@ public class MainActivity extends QtActivity {
     //     File file = new File(path);
     //     Uri uri = FileProvider.getUriForFile(
     //         this,
-    //         "@PACKAGE_NAME@.fileprovider",
+    //         BuildConfig.APPLICATION_ID + ".fileprovider",
     //         file
     //     );
 
@@ -203,7 +202,7 @@ public class MainActivity extends QtActivity {
     public void shareFile(String absolutePath, String mimeType) {
         Log.i(TAG, "shareFile called with path: " + absolutePath + ", mimeType: " + mimeType);
         try {
-            Uri uri = FileProvider.getUriForFile(this, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".qtprovider", new File(absolutePath));
             Intent share = new Intent(Intent.ACTION_SEND);
             share.setType(mimeType);
             share.putExtra(Intent.EXTRA_STREAM, uri);
@@ -218,7 +217,7 @@ public class MainActivity extends QtActivity {
     public void viewFile(String absolutePath, String mimeType) {
         Log.i(TAG, "viewFile called with path: " + absolutePath + ", mimeType: " + mimeType);
         try {
-            Uri uri = FileProvider.getUriForFile(this, FILE_PROVIDER_AUTHORITY, new File(absolutePath));
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".qtprovider", new File(absolutePath));
             Intent view = new Intent(Intent.ACTION_VIEW);
             view.setDataAndType(uri, mimeType);
             view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -228,7 +227,7 @@ public class MainActivity extends QtActivity {
         }
     }
 
-    /** Return the app-specific media dir: /storage/.../Android/media/@PACKAGE_NAME@ */
+    /** Return the app-specific media dir: /storage/.../Android/media/<applicationId> */
     public static String getAppMediaDir() {
         if (self == null) {
             Log.e(TAG, "getAppMediaDir: self is null");

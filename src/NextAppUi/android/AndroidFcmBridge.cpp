@@ -1,14 +1,18 @@
 #include "AndroidFcmBridge.h"
 #include "logging.h"
 #include "QCoreApplication"
+#include <jni.h>
 
 namespace {
+constexpr const char* kMainActivityFcmClass = "eu/lastviking/nextapp/app/MainActivityFcm";
+constexpr const char* kFcmServiceClass = "eu/lastviking/nextapp/app/NextappFirebaseMessagingService";
+
 QString fetchFcmTokenFromJava() {
 // Make sure the JVM is up and the activity is created:
     QJniEnvironment env;
     // Call the static Java method you added:
     QJniObject tokenObj = QJniObject::callStaticObjectMethod(
-        "@PACKAGE_NAME_SLASHES@/MainActivityFcm",  // Java class FQN
+        kMainActivityFcmClass,  // Java class FQN
         "getFcmToken",                              // method name
         "()Ljava/lang/String;"                      // JNI signature
     );
@@ -29,7 +33,7 @@ QString fetchFcmPackageIdFromJava() {
     QJniEnvironment env;
     // Call the static Java method you added:
     QJniObject tokenObj = QJniObject::callStaticObjectMethod(
-        "@PACKAGE_NAME_SLASHES@/MainActivityFcm",  // Java class FQN
+        kMainActivityFcmClass,  // Java class FQN
         "getFcmProjectId",                              // method name
         "()Ljava/lang/String;"                      // JNI signature
     );
@@ -68,10 +72,8 @@ QString AndroidFcmBridge::getPackageId() {
     return packageId_;
 }
 
-// Called when onNewToken fires
-JNIEXPORT void JNICALL
-Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnNewToken(
-    JNIEnv *env, jobject /*thiz*/, jstring jtoken)
+namespace {
+void nativeOnNewToken(JNIEnv *env, jobject /*thiz*/, jstring jtoken)
 {
     nextapp::logging::initAndroidLogging();
     LOG_DEBUG_N << "Fcm Called";
@@ -86,10 +88,7 @@ Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnNewToken
     env->ReleaseStringUTFChars(jtoken, token);
 }
 
-// Called when onMessageReceived fires
-JNIEXPORT void JNICALL
-Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnMessage(
-    JNIEnv *env, jobject /*thiz*/,
+void nativeOnMessage(JNIEnv *env, jobject /*thiz*/,
     jstring jmsgId, jstring jnotif, jstring jdata)
 {
     nextapp::logging::initAndroidLogging();
@@ -116,4 +115,34 @@ Java_@PACKAGE_NAME_UNDERSCORES@_NextappFirebaseMessagingService_nativeOnMessage(
                               },
                               Qt::QueuedConnection);
 }
+} // namespace
 
+bool registerAndroidFcmBridgeNatives(JNIEnv* env) {
+    if (!env) {
+        LOG_ERROR_N << "registerAndroidFcmBridgeNatives: JNIEnv is null";
+        return false;
+    }
+
+    jclass cls = env->FindClass(kFcmServiceClass);
+    if (!cls) {
+        LOG_ERROR_N << "registerAndroidFcmBridgeNatives: class not found: " << kFcmServiceClass;
+        return false;
+    }
+
+    static const JNINativeMethod methods[] = {
+        {"nativeOnNewToken", "(Ljava/lang/String;)V",
+         reinterpret_cast<void*>(nativeOnNewToken)},
+        {"nativeOnMessage", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+         reinterpret_cast<void*>(nativeOnMessage)},
+    };
+
+    if (env->RegisterNatives(cls, methods, sizeof(methods) / sizeof(methods[0])) != 0) {
+        LOG_ERROR_N << "registerAndroidFcmBridgeNatives: RegisterNatives failed for "
+                    << kFcmServiceClass;
+        env->DeleteLocalRef(cls);
+        return false;
+    }
+
+    env->DeleteLocalRef(cls);
+    return true;
+}
