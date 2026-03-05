@@ -691,6 +691,23 @@ ORDER BY t.id;
         }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetSubscription(
+    ::grpc::CallbackServerContext *ctx, const pb::GetSubscriptionReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+
+            // TODO: Handle refresh
+
+            if (auto *p = reply->mutable_subscription()) {
+                *p = rctx.uctx->getSubscription();
+            }
+
+            co_return;
+        }, __func__);
+}
+
 ::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::GetFeedback(::grpc::CallbackServerContext *ctx, const pb::GetFeedbackReq *req)
 {
     return writeStreamHandler(ctx, req,

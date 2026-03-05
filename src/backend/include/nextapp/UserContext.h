@@ -95,6 +95,39 @@ private:
     std::variant<T, std::vector<T>> storage;
 };
 
+/*! Plans are loaded at startup and cached in memory. They are not expected to change frequently, and are not expected to be modified by the server.
+ *
+ *  They are used to determine the features and limits of a tenant.
+ */
+class Plan {
+public:
+    std::string name;
+    bool active{true};
+    std::chrono::system_clock::time_point created_at{};
+    uint16_t max_users{0};
+    uint16_t max_devices{0};
+    uint16_t max_nodes{0};
+    uint16_t max_actions{0};
+    uint16_t max_worksessions{0};
+    uint16_t max_time_blocks{0};
+    bool mobile_only{false};
+};
+
+/*! A tenants plan.
+ *
+ *  This is used to determine the features and limits of a tenant. It is loaded from the database and cached in memory.
+ *  It can be updated when the tenant's plan changes, but it is not expected to change frequently.
+ */
+class TenantPlan {
+public:
+    std::shared_ptr<Plan> plan;
+    using time_point_t = std::optional<std::chrono::system_clock::time_point>;
+    time_point_t updated_at;
+    time_point_t expires_at;
+    time_point_t grace_expires_at;
+    time_point_t account_expires_at;
+    uint16_t max_users{1};
+};
 
 class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
@@ -242,7 +275,7 @@ public:
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid,
                 pb::User::Kind kind,
-                const pb::UserGlobalSettings& settings);
+                const pb::UserGlobalSettings& settings, std::shared_ptr<TenantPlan> tenantPlan);
 
     ~UserContext() = default;
 
@@ -364,7 +397,19 @@ public:
     //                                        std::shared_ptr<jgaa::cpp_push::Pusher> pusher);
     // boost::asio::awaitable<void> removePusher(const boost::uuids::uuid& deviceId);
 
-    static bool isForPush(const pb::Update& update) ;
+    static bool isForPush(const pb::Update& update);
+
+    const std::shared_ptr<TenantPlan>& tenantPlan() const noexcept {
+        std::shared_lock lock(mutex_);
+        return tenant_plan_;
+    }
+
+    void setTenantPlan(std::shared_ptr<TenantPlan> plan) {
+        std::unique_lock lock(mutex_);
+        tenant_plan_ = std::move(plan);
+    }
+
+    nextapp::pb::Subscription getSubscription() const;
 
 private:
     static boost::uuids::uuid newUuid();
@@ -383,9 +428,10 @@ private:
     std::vector<std::weak_ptr<Publisher>> publishers_;
     std::map<boost::uuids::uuid, Device> devices_;
     std::atomic_int32_t last_read_notification_id_{-1};
-    mutable std::shared_mutex mutex_;
-    mutable std::mutex instance_mutex_;
+    mutable PaddedMutex<std::shared_mutex> mutex_;
+    mutable PaddedMutex<std::mutex> instance_mutex_;
     std::atomic_bool valid_{true}; // Indicates if the user context is still valid.
+    std::shared_ptr<TenantPlan> tenant_plan_;
 };
 
 class Publisher {
@@ -429,9 +475,19 @@ public:
 
     void shutdown();
 
+    /*! Loads and re-load plans.
+     *
+     *  Does not affect logged-in users, as they have a cached copy of their plan in their UserContext. Only affects new sessions, and sessions that reload their plan.
+     *
+     *  This is called at startup, and can be called later to reload plans if they are updated in the database.
+     */
+    boost::asio::awaitable<void> loadPlans();
+
     boost::asio::awaitable<pb::UserSessions> listSessions();
 
     boost::asio::awaitable<void> publishNotification(const nextapp::pb::Notification& notification);
+
+    std::shared_ptr<Plan> getPlan(const std::string_view planName) const;
 
 private:
     void removeSession_(const boost::uuids::uuid& sessionId);
@@ -440,12 +496,15 @@ private:
     static boost::asio::io_context& ioContext() noexcept ;
     boost::asio::awaitable<std::shared_ptr<UserContext>> getUserContext(const boost::uuids::uuid& deviceId, const ::grpc::ServerContextBase* context);
 
-    std::shared_mutex mutex_;
     std::unordered_map<boost::uuids::uuid, UserContext::Session *, UuidHash> sessions_;
     std::unordered_map<boost::uuids::uuid, std::shared_ptr<UserContext>, UuidHash> users_;
+
+    std::unordered_map<std::string_view, std::shared_ptr<Plan>> plans_;
     Server& server_;
     boost::asio::steady_timer timer_{ioContext()};
     const bool skip_tls_auth_;
+    mutable PaddedMutex<std::shared_mutex> mutex_;
+    mutable PaddedMutex<std::shared_mutex> plan_mutex_;
 };
 
 } // ns

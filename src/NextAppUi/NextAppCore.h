@@ -37,6 +37,7 @@ public:
     Q_PROPERTY(nextapp::pb::UserDataInfo dbInfo READ getDbInfo NOTIFY dbInfoChanged)
     Q_PROPERTY(QModelIndex selectNode MEMBER selectNode_ NOTIFY selectNodeChanged)
     Q_PROPERTY(QString selectAction MEMBER selectAction_ NOTIFY selectActionChanged)
+    Q_PROPERTY(bool plansEnabled READ plansEnabled NOTIFY plansEnabledChanged)
 
     enum class ClickInitiator {
         NONE,
@@ -199,6 +200,12 @@ public:
 
     nextapp::pb::UserDataInfo getDbInfo();
 
+    bool plansEnabled() const noexcept {
+        return plans_enabled_;
+    }
+
+    void setPlansEnabled(bool enable);
+
 public slots:
     void handlePrepareForSleep(bool sleep);
 
@@ -223,6 +230,7 @@ signals:
     void selectNodeChanged();
     void selectActionChanged();
     void clickInitiatorChanged();
+    void plansEnabledChanged();
 
 private:
     void setState(State state);
@@ -241,8 +249,6 @@ private:
     int height_{0};
     int width_{0};
     bool drag_enabled_{};
-    // std::optional<QAudioOutput> audio_output_;
-    // std::optional<QMediaPlayer> audio_player_;
     QTimer audio_play_delay_;
     QTimer tomorrow_timer_;
     QString sound_file_;
@@ -260,4 +266,5 @@ private:
     QModelIndex selectNode_;
     QString selectAction_;
     ClickInitiator clickInitiator_{ClickInitiator::NONE};
+    bool plans_enabled_{false};
 };

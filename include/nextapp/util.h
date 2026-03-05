@@ -9,6 +9,7 @@
 #include <span>
 #include <string_view>
 #include <format>
+#include <new>
 
 #include <boost/json.hpp>
 #include <boost/uuid/random_generator.hpp>
@@ -93,6 +94,34 @@ concept AtomicLike =
         { v.load(std::memory_order_relaxed) } -> std::convertible_to<T>;
         { v.compare_exchange_weak(t, t, std::memory_order_relaxed, std::memory_order_relaxed) } -> std::same_as<bool>;
     };
+
+#if defined(__cpp_lib_hardware_interference_size)
+constexpr std::size_t CACHELINE_SIZE = std::hardware_destructive_interference_size;
+#else
+constexpr std::size_t CACHELINE_SIZE = 64;
+#endif
+
+template <typename Mutex>
+struct alignas(CACHELINE_SIZE) PaddedMutex {
+    Mutex m;
+
+    char padding[
+        CACHELINE_SIZE > sizeof(Mutex)
+            ? CACHELINE_SIZE - sizeof(Mutex)
+            : 1
+    ];
+
+
+    // exclusive locking (for std::unique_lock)
+    void lock()               { m.lock(); }
+    void unlock()             { m.unlock(); }
+    bool try_lock()           { return m.try_lock(); }
+
+    // shared locking (for std::shared_lock on shared_mutex)
+    void lock_shared()        { m.lock_shared(); }
+    void unlock_shared()      { m.unlock_shared(); }
+    bool try_lock_shared()    { return m.try_lock_shared(); }
+};
 
 template <range_of<char> T>
 auto pb_adapt(const T& v) {

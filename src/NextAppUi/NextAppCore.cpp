@@ -714,6 +714,14 @@ nextapp::pb::UserDataInfo NextAppCore::getDbInfo()
     return db_info_cached_;
 }
 
+void NextAppCore::setPlansEnabled(bool enable)
+{
+    if (plans_enabled_ != enable) {
+        plans_enabled_ = enable;
+        emit plansEnabledChanged();
+    }
+}
+
 void NextAppCore::handlePrepareForSleep(bool sleep)
 {
     LOG_DEBUG_N << "Prepare for sleep: " << sleep;

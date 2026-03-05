@@ -30,6 +30,14 @@ struct GrpcConfig {
     unsigned max_ping_strikes = 7;
 };
 
+struct PaymentOptions {
+    /*! Enable Plan
+     *
+     *  Enables tenant limits and payed plans.
+     */
+    bool enable_plan = false;
+};
+
 struct ServerOptions {
     /*! Print protobuf messages to the log as json
      *  - 1 enable
@@ -109,6 +117,7 @@ struct Config {
     yahat::HttpConfig http;
     jgaa::cpp_push::Config push;
     bool push_enabled = false;
+    PaymentOptions payment;
 };
 
 } // ns

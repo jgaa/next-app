@@ -113,11 +113,13 @@ struct ToDevice {
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
         LOG_DEBUG << "Hello from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid() << " at " << ctx->peer();
         if (auto hello = reply->mutable_hello()) {
+            const auto& server = owner_.server();
             hello->set_sessionid(to_string(rctx.session().sessionId()));
-            hello->set_serverid(Server::instance().serverId());
-            hello->set_serverinstancetag(Server::instance().instanceTag());
+            hello->set_serverid(server.serverId());
+            hello->set_serverinstancetag(server.instanceTag());
             hello->set_lastpublishid(rctx.uctx->currentPublishId());
             hello->set_lastnotification(owner_.getLastNotificationUpdated());
+            hello->set_plansenabled(server.config().payment.enable_plan);
         };
 
         co_return;
@@ -867,10 +869,16 @@ GrpcServer::GrpcServer(Server &server)
 
 void GrpcServer::start() {
 
-    // Load the certificate and key for the gRPC server.
+    // Load the certificate and key for the gRPC server and tenant plans
     boost::asio::co_spawn(server_.ctx(), [&]() -> boost::asio::awaitable<void> {
         co_await loadCert();
         co_await initNotifications();
+
+        if (server().config().payment.enable_plan) {
+            co_await sessionManager_.loadPlans();
+        } else {
+            LOG_DEBUG_N << "Payment plans are disabled. Not loading plans.";
+        }
     }, boost::asio::use_future).get();
 
     ::grpc::ServerBuilder builder;

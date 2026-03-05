@@ -249,6 +249,12 @@ int main(int argc, char* argv[]) {
              "Maximum compressed size in bytes for feedback log entries")
             ;
 
+        po::options_description payment("Plans and payment");
+        payment.add_options()
+            ("enable-plans", po::bool_switch(&config.payment.enable_plan),
+             "Enable Plans feature (limits tenants and users within the bounds of their active plan.)")
+            ;
+
         po::options_description metrics("Metrics");
         metrics.add_options()
             ("enable-metrics", po::bool_switch(&config.options.enable_http),
@@ -459,7 +465,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        cmdline_options.add(general).add(svr).add(metrics).add(db);
+        cmdline_options.add(general).add(svr).add(payment).add(metrics).add(db);
         po::variables_map vm;        
         try {
             po::store(po::command_line_parser(argc, argv).options(cmdline_options).run(), vm);

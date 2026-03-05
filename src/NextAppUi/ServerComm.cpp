@@ -1759,7 +1759,8 @@ QCoro::Task<void> ServerComm::startNextappSession()
                         << ", last seen server instance: " << last_seen_server_instance_
                         << ", server instance tag: " << res.hello().serverInstanceTag()
                         << ", server-id: " << res.hello().serverId()
-                        << ", session-id: " << session_id_;
+                        << ", session-id: " << session_id_
+                        << ", plans enabled: " << res.hello().plansEnabled();
 
             if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
                 needs_sync = true;
@@ -1782,6 +1783,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
                             << " (was " << NotificationsModel::instance()->lastUpdateSeen() << ")";
             }
 
+            NextAppCore::instance()->setPlansEnabled(res.hello().plansEnabled());
         } else {
             LOG_ERROR <<  "Server did not send a Hello message!";
             goto failed;

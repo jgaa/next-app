@@ -85,6 +85,31 @@ message User {
     bool system_user = 9;
 }
 
+// If enabled, this is a fixed plan with the specified limits.
+message Plan {
+    string name = 1;
+    bool active = 2;
+    common.Time createdAt = 3;
+    uint32 maxUsers = 4;
+    uint32 maxDevices = 5;
+    uint32 maxNodes = 6;
+    uint32 maxActions = 7;
+    uint32 maxWorkSessions = 8;
+    uint32 maxTimeBlocks = 9;
+    bool mobileOnly = 10;
+}
+
+// The subscription of a tenant (if plans are enabled)
+// If optional fields are unset, there is no limit for that field, and the subscription is valid until further notice.
+message Subscription {
+    Plan plan = 1;
+    common.Time planUpdatedAt = 2;
+    optional common.Time planExpires = 3;
+    optional uint32 planSeats = 4;
+    optional common.Time gracePeriodExpires = 5;
+    optional common.Time accountExpires = 6;
+}
+
 message Tenant {
     enum Kind {
         SUPER = 0;
@@ -919,6 +944,7 @@ message Hello {
     uint64 serverInstanceTag = 3; // Used to detect server restarts
     uint32 lastPublishId = 4; // Last published message-id to the user
     uint64 lastNotification = 5; // Last notification update timestamp visible to the user
+    bool plansEnabled = 6; // If true, the server has plans enabled, and the subscription info is relevant
 }
 
 // Debug info about the user-sessions on the server
@@ -1038,6 +1064,10 @@ message FullFeedback {
 
 message GetFeedbackReq {}
 
+message GetSubscriptionReq {
+    bool forceRefresh = 1; // Force refresh of the subscription info at the payment server.
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -1080,6 +1110,7 @@ message Status {
         uint32 lastReadNotificationId = 40;
         UserDataInfo userDataInfo = 41;
         FullFeedback feedback = 42;
+        Subscription subscription = 43;
     }
 }
 
@@ -1161,5 +1192,5 @@ service Nextapp {
     rpc SetPushNotificationConfig(PushNotificationConfig) returns (Status) {}
     rpc SendFeedback(Feedback) returns (Status) {}
     rpc GetFeedback(GetFeedbackReq) returns (stream Status) {}
-
+    rpc GetSubscription(GetSubscriptionReq) returns (Status) {}
 }

@@ -49,6 +49,51 @@ SessionManager::SessionManager(Server &server)
     startNextTimer();
 }
 
+boost::asio::awaitable<void> SessionManager::loadPlans()
+{
+    LOG_DEBUG_N << "Loading plans from database...";
+    auto db = co_await server_.db().getConnection();
+
+    // Query the plans
+    auto res = co_await db.exec("SELECT name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only FROM plan");
+    enum Cols {
+        NAME,
+        ACTIVE,
+        MAX_USERS,
+        MAX_DEVICES,
+        MAX_NODES,
+        MAX_ACTIONS,
+        MAX_WORKSESSIONS,
+        MAX_TIME_BLOCKS,
+        MOBILE_ONLY
+    };
+
+    decltype (plans_) new_plans;
+
+    for(const auto& row : res.rows()) {
+        auto pp = make_shared<Plan>();
+
+        pp->name = row[NAME].as_string();
+        pp->active = row[ACTIVE].as_int64() != 0;
+        pp->max_users = row[MAX_USERS].as_int64();
+        pp->max_devices = row[MAX_DEVICES].as_int64();
+        pp->max_nodes = row[MAX_NODES].as_int64();
+        pp->max_actions = row[MAX_ACTIONS].as_int64();
+        pp->max_worksessions = row[MAX_WORKSESSIONS].as_int64();
+        pp->max_time_blocks = row[MAX_TIME_BLOCKS].as_int64();
+        pp->mobile_only = row[MOBILE_ONLY].as_int64() != 0;
+
+        const string_view plan_name = pp->name;
+        new_plans[plan_name] = std::move(pp);
+    }
+
+    {
+        LOG_DEBUG_N << "Loaded " << new_plans.size() << " plans.";
+        unique_lock lock{plan_mutex_};
+        plans_ = std::move(new_plans);
+    }
+}
+
 boost::asio::awaitable<pb::UserSessions> SessionManager::listSessions()
 {
     pb::UserSessions us;
@@ -172,6 +217,18 @@ boost::asio::awaitable<void> SessionManager::publishNotification(const pb::Notif
     co_return;
 }
 
+std::shared_ptr<Plan> SessionManager::getPlan(const std::string_view planName) const
+{
+    // read lock to plan_mutex_
+    shared_lock lock{plan_mutex_};
+    if (auto it = plans_.find(planName); it != plans_.end()) {
+        return it->second;
+    }
+
+    LOG_WARN_N << "Plan " << planName << " not found.";
+    return {};
+}
+
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone, bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions)
     : user_uuid_{userUuid},
     tenant_uuid_{tenantUuid},
@@ -192,9 +249,9 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid,
                          pb::User::Kind kind,
-                         const pb::UserGlobalSettings &settings)
+                         const pb::UserGlobalSettings &settings, std::shared_ptr<TenantPlan> tenantPlan)
     : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings)
-    , kind_{kind} {
+    , kind_{kind}, tenant_plan_{std::move(tenantPlan)} {
 
     try {
         if (settings_.timezone().empty()) [[unlikely]] {
@@ -341,6 +398,43 @@ void UserContext::purgeExpiredPublishers()
         LOG_DEBUG_N << "Purged " << num_purged << " expired publishers"
                                                   " for user " << userUuid();
     };
+}
+
+pb::Subscription UserContext::getSubscription() const
+{
+    pb::Subscription s;
+
+    if (tenant_plan_) {
+        const auto& tp = *tenant_plan_;
+        if (auto p = s.mutable_plan()) {
+            auto& plan = *p;
+            plan.set_name(tp.plan->name);
+            plan.set_active(tp.plan->active);
+            plan.mutable_createdat()->set_unixtime(std::chrono::system_clock::to_time_t(tp.plan->created_at));
+            plan.set_maxusers(tp.plan->max_users);
+            plan.set_maxdevices(tp.plan->max_devices);
+            plan.set_maxnodes(tp.plan->max_nodes);
+            plan.set_maxactions(tp.plan->max_actions);
+            plan.set_maxworksessions(tp.plan->max_worksessions);
+            plan.set_maxtimeblocks(tp.plan->max_time_blocks);
+            plan.set_mobileonly(tp.plan->mobile_only);
+        }
+        if (tp.updated_at) {
+            s.mutable_planupdatedat()->set_unixtime(std::chrono::system_clock::to_time_t(*tp.updated_at));
+        }
+        if (tp.expires_at) {
+            s.mutable_planexpires()->set_unixtime(std::chrono::system_clock::to_time_t(*tp.expires_at));
+        }
+        if (tp.grace_expires_at) {
+            s.mutable_graceperiodexpires()->set_unixtime(std::chrono::system_clock::to_time_t(*tp.grace_expires_at));
+        }
+        if (tp.account_expires_at) {
+            s.mutable_accountexpires()->set_unixtime(std::chrono::system_clock::to_time_t(*tp.account_expires_at));
+        }
+        s.set_planseats(tp.max_users);
+    }
+
+    return s;
 }
 
 boost::asio::awaitable<bool>
@@ -1002,12 +1096,15 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
     }
 
     auto res = co_await db.exec(
-        "SELECT u.tenant, t.kind, u.kind, t.state, u.active, s.settings FROM user u "
+        "SELECT u.tenant, t.kind, u.kind, t.state, u.active, s.settings, "
+        "t.plan, t.plan_updated, t.plan_expires, t.plan_seats, t.grace_period_expires, t.account_expires "
+        "FROM user u "
         "JOIN tenant t on t.id=u.tenant "
         "LEFT JOIN user_settings s on s.user=u.id "
         "WHERE u.id=? ", uid);
 
-    enum Cols { TENANT, TENANT_KIND, USER_KIND, TENANT_STATE, USER_ACTIVE, SETTINGS };
+    enum Cols { TENANT, TENANT_KIND, USER_KIND, TENANT_STATE, USER_ACTIVE, SETTINGS,
+                PLAN, PLAN_UPDATED, PLAN_EXPIRES, PLAN_SEATS, GRACE_PERIOD_EXPIRES, ACCOUNT_EXPIRES};
     if (res.rows().empty()) [[unlikely]] {
         LOG_ERROR << "Database inconsistency found. A device " << devid
                   << " is linked to a user " << uid << " that does not exist.";
@@ -1047,14 +1144,39 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
             LOG_INFO << "Activated pending tenant " << tenant << " because user " << uid << " logged in.";
         }
 
-        auto ucx = make_shared<UserContext>(tenant, uid, ukind, tmp_settings);
+        shared_ptr<TenantPlan> tenant_plan;
+        if (server_.config().payment.enable_plan) {
+            tenant_plan = make_shared<TenantPlan>();
+            tenant_plan->plan = getPlan(row.at(PLAN).as_string());
+            if (row.at(PLAN_UPDATED).is_datetime()) {
+                tenant_plan->updated_at = row.at(PLAN_UPDATED).as_datetime().as_time_point();
+            }
+            if (row.at(PLAN_EXPIRES).is_datetime()) {
+                tenant_plan->expires_at = row.at(PLAN_EXPIRES).as_datetime().as_time_point();
+            }
+            if (row.at(GRACE_PERIOD_EXPIRES).is_datetime()) {
+                tenant_plan->grace_expires_at = row.at(GRACE_PERIOD_EXPIRES).as_datetime().as_time_point();
+            }
+            if (row.at(ACCOUNT_EXPIRES).is_datetime()) {
+                tenant_plan->account_expires_at = row.at(ACCOUNT_EXPIRES).as_datetime().as_time_point();
+            }
+            if (row.at(PLAN_SEATS).is_int64()) {
+                tenant_plan->max_users = row.at(PLAN_SEATS).as_int64();
+            } else {
+                LOG_DEBUG_N << "Tenant " << tenant << " has no user limit in the database. Assuming unlimited users.";
+                tenant_plan->max_users = 0; // Unlimited
+            }
+
+            // TODO: Enforce account expiration and grace period here.
+        }
+
+        auto ucx = make_shared<UserContext>(tenant, uid, ukind, tmp_settings, tenant_plan);
         {
             unique_lock lock{mutex_};
             users_[toUuid(uid)] = ucx;
         }
 
         co_await ucx->reloadPushers();
-
         co_return ucx;
     }
 
