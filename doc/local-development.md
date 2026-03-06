@@ -25,13 +25,12 @@ NA_ROOT_DBPASSWD=secret \
   NA_MARIADB_PORT=33006 \
   NA_MARIADB_NAME=nadb-tmp \
   ./scripts/mariadb-container.sh
-
-$ docker ps
-CONTAINER ID   IMAGE            COMMAND                  CREATED         STATUS         PORTS                       NAMES
-344518659cd4   mariadb:latest   "docker-entrypoint.s…"   3 seconds ago   Up 2 seconds   127.0.0.1:33006->3306/tcp   nadb-tmp
 ```
 
 Now, let’s bootstrap the NextApp backend. We start with the main server, `nextappd`.
+
+Use `--db-host 127.0.0.1` with the Docker setup above. Some Linux distributions resolve
+`localhost` to `::1` first, while the container port mapping is IPv4-only (`127.0.0.1`).
 
 Change to the build directory and run:
 
@@ -39,6 +38,7 @@ Change to the build directory and run:
 ./bin/nextappd bootstrap \
   --root-db-passwd secret \
   --db-passwd also-secret \
+  --db-host 127.0.0.1 \
   --db-port 33006 \
   -l trace \
   -L /tmp/nextappd.log \
@@ -52,6 +52,7 @@ Next, we need to create a client certificate for the `signupd` service.
 ```sh
 ./bin/nextappd create-client-cert \
   --db-passwd also-secret \
+  --db-host 127.0.0.1 \
   --db-port 33006 \
   -l trace \
   -L /tmp/nextappd.log \
@@ -72,6 +73,7 @@ If you want to see full gRPC messages in the logs, add the CLI argument `--log-m
 ```sh
 ./bin/nextappd \
   --db-passwd also-secret \
+  --db-host 127.0.0.1 \
   --db-port 33006 \
   -l trace \
   -L /tmp/nextappd.log \
@@ -85,6 +87,7 @@ Now, open another shell and change to your build directory. We must also start t
 ./bin/signupd bootstrap \
   --root-db-passwd secret \
   --db-passwd also-secret \
+  --db-host 127.0.0.1 \
   --db-port 33006 \
   -l trace \
   -L /tmp/nextappd.log \
@@ -99,6 +102,7 @@ Finally, start the signup server so the desktop app can connect to the backend.
 ```sh
 ./bin/signupd \
   --db-passwd also-secret \
+  --db-host 127.0.0.1 \
   --db-port 33006 \
   -l trace \
   -L /tmp/signupd.log \
@@ -107,10 +111,13 @@ Finally, start the signup server so the desktop app can connect to the backend.
   --grpc-tls-mode none
 ```
 
-The `--grpc-tls-mode none` argument tells the server **not** to use a TLS certificate for the gRPC interface used by the client. **Never do this in staging or production.**
+The `--grpc-tls-mode none` argument tells the server **not** to use a TLS certificate for the gRPC interface used by the client. **Never do this in staging or production.** The reason we do this here is that the TLS certs required by signupd's gRPC interface must be a normal, signed cert, similar to what you probably use on your website. Getting one of those for your local setup and IP is out of scope for this tutorial.
 
 With this setting, the NextApp desktop app must connect to:
 
 ```
 http://localhost:10322
 ```
+
+If you want to also test the mobile app, or to test the backend from another PC, you musr run the backends on the IP address of your PC (or `0.0.0.0`) in stead of localhost.
+

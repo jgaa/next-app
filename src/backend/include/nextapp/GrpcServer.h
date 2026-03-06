@@ -208,6 +208,7 @@ public:
         ::grpc::ServerUnaryReactor *SendFeedback(::grpc::CallbackServerContext *ctx, const pb::Feedback *req, pb::Status *reply) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetFeedback(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetFeedbackReq *req) override;
         ::grpc::ServerUnaryReactor *GetSubscription(::grpc::CallbackServerContext *ctx, const pb::GetSubscriptionReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetPaymentsPage(::grpc::CallbackServerContext *ctx, const pb::PaymentsPageReq *req, pb::Status *reply) override;
 
 
     private:
@@ -653,4 +654,3 @@ private:
 
 
 std::ostream& operator << (std::ostream& out, const nextapp::grpc::RequestCtx& ctx);
-

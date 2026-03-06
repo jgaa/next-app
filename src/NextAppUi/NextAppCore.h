@@ -4,6 +4,8 @@
 #include <QQmlEngine>
 #include <QQmlApplicationEngine>
 #include <QGuiApplication>
+#include <QVariantMap>
+#include <optional>
 
 #include "DbStore.h"
 #include "WorkModel.h"
@@ -38,6 +40,12 @@ public:
     Q_PROPERTY(QModelIndex selectNode MEMBER selectNode_ NOTIFY selectNodeChanged)
     Q_PROPERTY(QString selectAction MEMBER selectAction_ NOTIFY selectActionChanged)
     Q_PROPERTY(bool plansEnabled READ plansEnabled NOTIFY plansEnabledChanged)
+    Q_PROPERTY(nextapp::pb::Subscription currentPlan READ currentPlan NOTIFY currentPlanChanged)
+    Q_PROPERTY(QVariantMap currentPlanView READ currentPlanView NOTIFY currentPlanChanged)
+    Q_PROPERTY(bool hasCurrentPlan READ hasCurrentPlan NOTIFY currentPlanChanged)
+    Q_PROPERTY(bool currentPlanLoading READ currentPlanLoading NOTIFY currentPlanLoadingChanged)
+    Q_PROPERTY(bool paymentsPageLoading READ paymentsPageLoading NOTIFY paymentsPageLoadingChanged)
+    Q_PROPERTY(QString lastPaymentsUrl READ lastPaymentsUrl NOTIFY lastPaymentsUrlChanged)
 
     enum class ClickInitiator {
         NONE,
@@ -206,6 +214,27 @@ public:
 
     void setPlansEnabled(bool enable);
 
+    nextapp::pb::Subscription currentPlan();
+    QVariantMap currentPlanView() const;
+    Q_INVOKABLE void ensureCurrentPlanLoaded(bool forceRefresh = false);
+    Q_INVOKABLE void getPaymentsUrl();
+
+    bool hasCurrentPlan() const noexcept {
+        return current_plan_.has_value();
+    }
+
+    bool currentPlanLoading() const noexcept {
+        return current_plan_fetching_;
+    }
+
+    bool paymentsPageLoading() const noexcept {
+        return payments_page_loading_;
+    }
+
+    QString lastPaymentsUrl() const noexcept {
+        return last_payments_url_;
+    }
+
 public slots:
     void handlePrepareForSleep(bool sleep);
 
@@ -231,6 +260,11 @@ signals:
     void selectActionChanged();
     void clickInitiatorChanged();
     void plansEnabledChanged();
+    void currentPlanChanged();
+    void currentPlanLoadingChanged();
+    void paymentsPageLoadingChanged();
+    void lastPaymentsUrlChanged();
+    void paymentsPageOpened(const QString& url);
 
 private:
     void setState(State state);
@@ -240,6 +274,8 @@ private:
     void emitSettingsChanged();
     QCoro::Task<void> refreshDbData();
     void selectNode(const QString& uuid);
+    QCoro::Task<void> fetchCurrentPlan(bool forceRefresh);
+    QCoro::Task<void> doGetPaymentsUrl();
 
     static NextAppCore *instance_;
     State state_{State::STARTING_UP};
@@ -267,4 +303,8 @@ private:
     QString selectAction_;
     ClickInitiator clickInitiator_{ClickInitiator::NONE};
     bool plans_enabled_{false};
+    std::optional<nextapp::pb::Subscription> current_plan_;
+    bool current_plan_fetching_{false};
+    bool payments_page_loading_{false};
+    QString last_payments_url_;
 };

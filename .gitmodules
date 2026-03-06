@@ -22,3 +22,6 @@
 [submodule "dependencies/cpp-push"]
 	path = dependencies/cpp-push
 	url = https://github.com/jgaa/cpp-push.git
+[submodule "dependencies/payments-pub"]
+	path = dependencies/payments-pub
+	url = https://github.com/lastviking/payments-pub.git

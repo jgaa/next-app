@@ -959,6 +959,31 @@ QCoro::Task<nextapp::pb::Status> ServerComm::fetchDevices()
     co_return co_await rpc({}, &nextapp::pb::Nextapp::Client::GetDevices);
 }
 
+QCoro::Task<std::optional<nextapp::pb::Subscription>> ServerComm::fetchSubscription(bool forceRefresh)
+{
+    nextapp::pb::GetSubscriptionReq req;
+    req.setForceRefresh(forceRefresh);
+
+    auto res = co_await rpc(req, &nextapp::pb::Nextapp::Client::GetSubscription);
+    if (res.error() != nextapp::pb::ErrorGadget::Error::OK) {
+        LOG_WARN_N << "Failed to get subscription data: " << res.message();
+        co_return std::nullopt;
+    }
+
+    if (!res.hasSubscription()) {
+        LOG_INFO_N << "Subscription data is not available from server.";
+        co_return std::nullopt;
+    }
+
+    co_return res.subscription();
+}
+
+QCoro::Task<nextapp::pb::Status> ServerComm::fetchPaymentsPage()
+{
+    nextapp::pb::PaymentsPageReq req;
+    co_return co_await rpc(req, &nextapp::pb::Nextapp::Client::GetPaymentsPage);
+}
+
 QCoro::Task<nextapp::pb::Status> ServerComm::enableDevice(const QString &deviceId, bool enabled)
 {
     nextapp::pb::DeviceUpdateReq req;

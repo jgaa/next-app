@@ -10,6 +10,7 @@
 #include <QQuickStyle>
 #include <QSslSocket>
 #include <QQuickWindow>
+#include <optional>
 
 #include "ServerComm.h"
 #include "MainTreeModel.h"

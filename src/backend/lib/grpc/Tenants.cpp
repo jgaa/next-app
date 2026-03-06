@@ -708,6 +708,19 @@ ORDER BY t.id;
         }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetPaymentsPage(
+    ::grpc::CallbackServerContext *ctx, const pb::PaymentsPageReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            //setError(*reply, pb::Error::NOT_FOUND, "Payments page is not available.");
+            if (auto *p = reply->mutable_paymentspage()) {
+                p->set_url("https://example.com");
+            }
+            co_return;
+        }, __func__);
+}
+
 ::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::GetFeedback(::grpc::CallbackServerContext *ctx, const pb::GetFeedbackReq *req)
 {
     return writeStreamHandler(ctx, req,

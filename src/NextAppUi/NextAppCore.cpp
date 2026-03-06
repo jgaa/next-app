@@ -9,6 +9,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QDebug>
+#include <QLocale>
+#include <QUrl>
 
 #ifdef LINUX_BUILD
 #include <QDBusConnection>
@@ -35,6 +37,21 @@ QDate getDefaultDate(time_t when) {
         return QDateTime::fromSecsSinceEpoch(when).date();
     }
     return QDate::currentDate();
+}
+
+QString formatPlanDate(const common::Time &time)
+{
+    const auto secs = static_cast<qint64>(time.unixTime());
+    if (secs <= 0) {
+        return {};
+    }
+
+    return QLocale().toString(QDateTime::fromSecsSinceEpoch(secs).date(), QLocale::LongFormat);
+}
+
+QString formatPlanLimit(quint32 value)
+{
+    return value == 0 ? QObject::tr("Unlimited") : QString::number(value);
 }
 
 #ifdef WIN32
@@ -720,6 +737,139 @@ void NextAppCore::setPlansEnabled(bool enable)
         plans_enabled_ = enable;
         emit plansEnabledChanged();
     }
+}
+
+nextapp::pb::Subscription NextAppCore::currentPlan()
+{
+    if (current_plan_ && current_plan_->hasPlan()) {
+        LOG_TRACE_N << "Returning cached plan: " << current_plan_->plan().name();
+        return *current_plan_;
+    }
+
+    fetchCurrentPlan(false);
+    return {};
+}
+
+QVariantMap NextAppCore::currentPlanView() const
+{
+    QVariantMap view;
+    view["available"] = false;
+
+    if (!current_plan_ || !current_plan_->hasPlan()) {
+        return view;
+    }
+
+    const auto &subscription = *current_plan_;
+    const auto &plan = subscription.plan();
+    const auto effective_users = subscription.hasPlanSeats() && subscription.planSeats() > 0
+        ? subscription.planSeats()
+        : plan.maxUsers();
+
+    view["available"] = true;
+    view["planName"] = plan.name();
+    view["planUpdated"] = subscription.hasPlanUpdatedAt()
+        ? formatPlanDate(subscription.planUpdatedAt())
+        : tr("Not set");
+    view["planExpires"] = subscription.hasPlanExpires()
+        ? formatPlanDate(subscription.planExpires())
+        : tr("No expiration");
+    view["gracePeriodExpires"] = subscription.hasGracePeriodExpires()
+        ? formatPlanDate(subscription.gracePeriodExpires())
+        : tr("Not set");
+    view["accountExpires"] = subscription.hasAccountExpires()
+        ? formatPlanDate(subscription.accountExpires())
+        : tr("No expiration");
+    view["usersLimit"] = formatPlanLimit(effective_users);
+    view["devicesLimit"] = formatPlanLimit(plan.maxDevices());
+    view["nodesLimit"] = formatPlanLimit(plan.maxNodes());
+    view["actionsLimit"] = formatPlanLimit(plan.maxActions());
+    view["workSessionsLimit"] = formatPlanLimit(plan.maxWorkSessions());
+    view["timeBlocksLimit"] = formatPlanLimit(plan.maxTimeBlocks());
+    view["mobileOnly"] = plan.mobileOnly() ? tr("Yes") : tr("No");
+
+    return view;
+}
+
+void NextAppCore::ensureCurrentPlanLoaded(bool forceRefresh)
+{
+    if (!plans_enabled_) {
+        return;
+    }
+
+    if (forceRefresh || !current_plan_ || !current_plan_->hasPlan()) {
+        fetchCurrentPlan(forceRefresh);
+    }
+}
+
+void NextAppCore::getPaymentsUrl()
+{
+    if (payments_page_loading_) {
+        return;
+    }
+
+    doGetPaymentsUrl();
+}
+
+QCoro::Task<void> NextAppCore::fetchCurrentPlan(bool forceRefresh)
+{
+    LOG_DEBUG_N << "Fetching plan from server...";
+    if (current_plan_fetching_) {
+        LOG_DEBUG_N << "Already fetching...";
+        co_return;
+    }
+
+    current_plan_fetching_ = true;
+    emit currentPlanLoadingChanged();
+
+    auto fetched_plan = co_await ServerComm::instance().fetchSubscription(forceRefresh);
+    if (fetched_plan) {
+        if (!fetched_plan->hasPlan()) {
+            LOG_ERROR_N << "Received subscription without a plan from server!";
+        } else {
+            current_plan_ = std::move(*fetched_plan);
+            assert(current_plan_->hasPlan());
+            LOG_DEBUG_N << "Received plan from server: " << current_plan_->plan().name();
+        }
+    } else if (forceRefresh) {
+        current_plan_.reset();
+    }
+
+    current_plan_fetching_ = false;
+    emit currentPlanLoadingChanged();
+    emit currentPlanChanged();
+}
+
+QCoro::Task<void> NextAppCore::doGetPaymentsUrl()
+{
+    last_payments_url_.clear();
+    emit lastPaymentsUrlChanged();
+
+    payments_page_loading_ = true;
+    emit paymentsPageLoadingChanged();
+
+    try {
+        auto status = co_await ServerComm::instance().fetchPaymentsPage();
+        if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
+            LOG_WARN_N << "Failed to get payments page: " << status.message();
+        } else if (status.hasPaymentsPage() && !status.paymentsPage().url().isEmpty()) {
+            const auto url = QUrl{status.paymentsPage().url()};
+            if (url.isValid()) {
+                last_payments_url_ = url.toString();
+                emit lastPaymentsUrlChanged();
+                QDesktopServices::openUrl(url);
+                emit paymentsPageOpened(last_payments_url_);
+            } else {
+                LOG_WARN_N << "Received invalid payments URL: " << status.paymentsPage().url();
+            }
+        }
+    } catch (const std::exception &e) {
+        LOG_WARN_N << "Failed to get payments page: " << e.what();
+    } catch (...) {
+        LOG_WARN_N << "Failed to get payments page: Unknown error";
+    }
+
+    payments_page_loading_ = false;
+    emit paymentsPageLoadingChanged();
 }
 
 void NextAppCore::handlePrepareForSleep(bool sleep)

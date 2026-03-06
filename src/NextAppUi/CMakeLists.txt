@@ -551,6 +551,7 @@ qt_add_qml_module(${PROJECT_NAME}
         qml/settings/DeleteAccountConfirmation.qml
         qml/settings/GlobalSettings.qml
         qml/settings/NotificationSettings.qml
+        qml/settings/PlanSettings.qml
         qml/settings/PrefSettings.qml
         qml/settings/ResetConfirmation.qml
         qml/settings/ServerSettings.qml

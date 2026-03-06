@@ -56,6 +56,12 @@ Dialog {
             }
 
             TabButton {
+                visible: NaCore.plansEnabled
+                text: qsTr("Plan")
+                width: implicitWidth
+            }
+
+            TabButton {
                 text: qsTr("Appearance")
                 width: implicitWidth
             }
@@ -82,6 +88,11 @@ Dialog {
             Item {
                 id: globalTab
                 GlobalSettings {id: global}
+            }
+            Item {
+                id: planTab
+                visible: NaCore.plansEnabled
+                PlanSettings {id: plan}
             }
             Item {
                 id: preferencesTab
@@ -113,4 +124,3 @@ Dialog {
         close()
     }
 }
-

@@ -1068,6 +1068,13 @@ message GetSubscriptionReq {
     bool forceRefresh = 1; // Force refresh of the subscription info at the payment server.
 }
 
+message PaymentsPageReq {
+}
+
+message PaymentsPage {
+    string url = 1;
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -1111,6 +1118,7 @@ message Status {
         UserDataInfo userDataInfo = 41;
         FullFeedback feedback = 42;
         Subscription subscription = 43;
+        PaymentsPage paymentsPage = 44;
     }
 }
 
@@ -1193,4 +1201,5 @@ service Nextapp {
     rpc SendFeedback(Feedback) returns (Status) {}
     rpc GetFeedback(GetFeedbackReq) returns (stream Status) {}
     rpc GetSubscription(GetSubscriptionReq) returns (Status) {}
+    rpc GetPaymentsPage(PaymentsPageReq) returns (Status) {}
 }

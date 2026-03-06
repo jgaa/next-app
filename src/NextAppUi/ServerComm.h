@@ -3,6 +3,7 @@
 #include <queue>
 #include <qqmlregistration.h>
 #include <memory>
+#include <optional>
 
 #include <boost/type_index.hpp>
 
@@ -263,6 +264,8 @@ public:
     std::shared_ptr<GrpcIncomingStream> synchNotifications(const nextapp::pb::GetNewReq& req);
 
     QCoro::Task<nextapp::pb::Status> fetchDevices();
+    QCoro::Task<std::optional<nextapp::pb::Subscription>> fetchSubscription(bool forceRefresh = false);
+    QCoro::Task<nextapp::pb::Status> fetchPaymentsPage();
     QCoro::Task<nextapp::pb::Status> enableDevice(const QString &deviceId, bool enabled);
     QCoro::Task<nextapp::pb::Status> deleteDevice(const QString &deviceId);
     QCoro::Task<void> setLastReadNotification(uint32_t id);
