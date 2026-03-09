@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - devel
+      - plans
   release:
     types: [published]  # Run when a release is published
 
