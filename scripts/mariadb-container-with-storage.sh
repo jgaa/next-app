@@ -3,6 +3,7 @@
 ## Access after bootstrapping:
 ##  mysql -h 127.0.0.1 -u nextapp -p nextapp
 
+DB_PATH=/var/tmp/nextapp/mariadb
 echo "Starting a disposable mariadb container for testing..."
 
 if [ -z "${NA_ROOT_DBPASSWD}" ] ; then
@@ -12,13 +13,16 @@ fi
 
 echo "NA_ROOT_DBPASSWD is preset to: ${NA_ROOT_DBPASSWD}"
 
-docker run --rm --detach --name na-mariadb -v /var/tmp/nextapp/mariadb:/var/lib/mysql:Z -p 127.0.0.1:3306:3306 --env MARIADB_ROOT_PASSWORD=${NA_ROOT_DBPASSWD}  mariadb:latest
+mkdir -p ${DB_PATH}
+
+docker run --rm --detach --name na-mariadb -v ${DB_PATH}:/var/lib/mysql:Z -p 127.0.0.1:3306:3306 --env MARIADB_ROOT_PASSWORD=${NA_ROOT_DBPASSWD}  mariadb:latest
 
 echo "Waiting for MariaDB to become ready on 127.0.0.1:3306 ..."
 i=0
 while [ ${i} -lt 60 ]; do
   if docker exec na-mariadb mariadb-admin --host=127.0.0.1 --port=3306 --user=root --password="${NA_ROOT_DBPASSWD}" ping >/dev/null 2>&1 ; then
     echo "MariaDB is ready."
+    echo "Db is stored at  ${DB_PATH}"
     exit 0
   fi
   sleep 1
