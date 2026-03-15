@@ -283,8 +283,11 @@ string toMsDateTime(uint64_t msSinceEpoch, const chrono::time_zone& tz, bool rou
     // Get the local_time in the specified time zone
     auto local_tp = zoned.get_local_time();
 
-    // Format the local time without any further time zone conversion
-    return format("{:%F %T}", local_tp);
+    const auto local_seconds = floor<seconds>(local_tp);
+    const auto fractional = duration_cast<microseconds>(local_tp - local_seconds).count();
+
+    // Format the local time without any further time zone conversion.
+    return format("{:%F %T}.{:06}", local_seconds, fractional);
 }
 
 } // ns

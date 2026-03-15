@@ -1760,15 +1760,36 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const uint64_t since,
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
     const auto batch_size = server().config().options.stream_batch_size;
+    static const auto prefixed_cols = prefixNames(ToAction::allSelectCols(), "a.");
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
-    co_await  dbh.start_exec(
-        format("SELECT {} from action WHERE user=? AND updated > ? {} ORDER BY created_date",
-               ToAction::allSelectCols(),
-               removeDeleted ? "AND status != 'deleted'" : ""),
-        uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));
+    const auto sql = format(R"(
+        WITH RECURSIVE action_tree AS (
+            SELECT
+                {0},
+                CAST(id AS CHAR(1024)) AS sort_path
+            FROM action
+            WHERE user=? AND origin IS NULL
+            UNION ALL
+            SELECT
+                {1},
+                CONCAT(action_tree.sort_path, '/', a.id) AS sort_path
+            FROM action AS a
+            INNER JOIN action_tree ON a.origin = action_tree.id
+            WHERE a.user=?
+        )
+        SELECT {0}
+        FROM action_tree
+        WHERE updated > ? {2}
+        ORDER BY updated, sort_path, created_date, id)",
+        ToAction::allSelectCols(),
+        prefixed_cols,
+        removeDeleted ? "AND status != 'deleted'" : "");
+    co_await dbh.start_exec(
+        sql,
+        uctx->dbOptions(), cuser, cuser, toMsDateTime(since, uctx->tz()));
 
     nextapp::pb::Status reply;
 

@@ -324,7 +324,7 @@ public:
     }
 
     void addSession(std::shared_ptr<Session> session) {
-        std::shared_lock lock(mutex_);
+        std::unique_lock lock(mutex_);
         sessions_.push_back(std::move(session));
     }
 
@@ -415,6 +415,7 @@ private:
     static boost::uuids::uuid newUuid();
     void validateInstanceId(uint instanceId);
     boost::asio::awaitable<void> saveLastReqIds(const boost::uuids::uuid& deviceId);
+    // Requires mutex_ to be held exclusively.
     void purgeExpiredPublishers();
 
     std::string user_uuid_;

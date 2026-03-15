@@ -710,7 +710,7 @@ failed:
             FROM notification WHERE updated > ?
             AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
             AND (valid_to IS NULL OR valid_to > NOW())
-            ORDER BY updated)", ToNotification::fields);
+            ORDER BY updated, id)", ToNotification::fields);
         co_await  rctx.dbh->start_exec(sql,
           uctx->dbOptions(), toMsDateTime(req->since(), uctx->tz()), cuser, rctx.uctx->tenantUuid());
 
@@ -1038,4 +1038,3 @@ void GrpcServer::setLastNotificationUpdated(uint64_t lastNotificationUpdated) no
 
 
 } // ns
-

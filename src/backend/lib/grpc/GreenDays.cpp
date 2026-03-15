@@ -309,7 +309,8 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     assert(rctx.dbh);
     co_await  rctx.dbh->start_exec(
         R"(SELECT deleted, updated, date, color, notes, report FROM day
-                   WHERE user=? AND updated > ?)",
+                   WHERE user=? AND updated > ?
+                   ORDER BY updated, date)",
         uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz(), true));
 
     enum Cols {
@@ -400,7 +401,8 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
         auto res = co_await rctx.dbh->exec(
             "SELECT id, name, color, score, updated "
             "FROM day_colors "
-            "WHERE tenant IS NULL AND updated > ?",
+            "WHERE tenant IS NULL AND updated > ? "
+            "ORDER BY updated, id",
             rctx.uctx->dbOptions(),
             toMsDateTime(req->since(), rctx.uctx->tz()));
 

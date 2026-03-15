@@ -325,7 +325,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
     co_await  rctx.dbh->start_exec(
-        format("SELECT {} from time_block WHERE user=? AND updated > ? {}",
+        format("SELECT {} from time_block WHERE user=? AND updated > ? {} ORDER BY updated, start_time, end_time, id",
                ToTimeBlock::columns,
                removeDeleted ? "AND kind != 'deleted'" : ""),
         uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));

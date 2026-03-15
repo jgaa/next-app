@@ -1034,7 +1034,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportWork(
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
     co_await  rctx.dbh->start_exec(
-        format("SELECT {} from work_session WHERE user=? AND updated > ? {}",
+        format("SELECT {} from work_session WHERE user=? AND updated > ? {} ORDER BY updated, action, start_time, id",
                ToWorkSession::selectCols,
                removeDeleted ? "AND state != 'deleted' AND action is NOT NULL" : ""),
         uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));

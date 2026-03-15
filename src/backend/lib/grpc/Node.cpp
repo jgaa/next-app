@@ -438,16 +438,36 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
     const auto batch_size = server().config().options.stream_batch_size;
+    static const auto prefixed_cols = prefixNames(ToNode::selectCols, "n.");
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    co_await  rctx.dbh->start_exec(
-        format("SELECT {} from node WHERE user=? AND updated > ? {}",
-               ToNode::selectCols,
-               removeDeleted ? "AND deleted=0" : ""),
-        uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));
+    const auto sql = format(R"(
+        WITH RECURSIVE node_tree AS (
+            SELECT
+                {0},
+                CAST(id AS CHAR(1024)) AS sort_path
+            FROM node
+            WHERE user=? AND parent IS NULL
+            UNION ALL
+            SELECT
+                {1},
+                CONCAT(node_tree.sort_path, '/', n.id) AS sort_path
+            FROM node AS n
+            INNER JOIN node_tree ON n.parent = node_tree.id
+            WHERE n.user=?
+        )
+        SELECT {0}
+        FROM node_tree
+        WHERE updated > ? {2}
+        ORDER BY updated, sort_path, id)",
+        ToNode::selectCols,
+        prefixed_cols,
+        removeDeleted ? "AND deleted=0" : "");
+    co_await rctx.dbh->start_exec(sql,
+        uctx->dbOptions(), cuser, cuser, toMsDateTime(since, uctx->tz()));
 
     nextapp::pb::Status reply;
 

@@ -294,36 +294,36 @@ void UserContext::removePublisher(const boost::uuids::uuid &uuid)
 }
 
 void UserContext::publishUpdates(std::shared_ptr<pb::Update> &update, set<boost::uuids::uuid>* devices) {
-    {
-        update->set_messageid(++publish_message_id_);
-        LOG_TRACE_N << "Publishing "
-                    << pb::Update::Operation_Name(update->op())
-                    << " update to " << publishers_.size() << " subscribers, Json: "
-                    << toJsonForLog(*update);
+    unique_lock lock{mutex_};
 
-        shared_lock lock{mutex_};
-        purgeExpiredPublishers();
-        for(auto& weak_pub: publishers_) {
-            if (auto pub = weak_pub.lock()) {
-                if (auto session = pub->getSessionWeakPtr().lock()) {
-                    LOG_TRACE_N << "Publish #" << update->messageid() << " to " << pub->uuid();
-                    if (pub->publish(update)) {
-                        // The device-list will exclude the sessions device device from push notification for this update.
-                        // We only add the device to the list if publish() succeeded and the update was
-                        // accepted for delivery over gRPC.
-                        if (devices) {
-                            devices->emplace(session->deviceId());
-                        }
+    // Keep message-id assignment and subscriber fan-out in one ordered critical section.
+    purgeExpiredPublishers();
+    update->set_messageid(++publish_message_id_);
+    LOG_TRACE_N << "Publishing "
+                << pb::Update::Operation_Name(update->op())
+                << " update to " << publishers_.size() << " subscribers, Json: "
+                << toJsonForLog(*update);
+
+    for(auto& weak_pub: publishers_) {
+        if (auto pub = weak_pub.lock()) {
+            if (auto session = pub->getSessionWeakPtr().lock()) {
+                LOG_TRACE_N << "Publish #" << update->messageid() << " to " << pub->uuid();
+                if (pub->publish(update)) {
+                    // The device-list will exclude the sessions device device from push notification for this update.
+                    // We only add the device to the list if publish() succeeded and the update was
+                    // accepted for delivery over gRPC.
+                    if (devices) {
+                        devices->emplace(session->deviceId());
                     }
-                } else {
-                    LOG_TRACE_N << "Publisher " << pub->uuid() << " has no valid session. Skipping.";
                 }
             } else {
-                LOG_WARN_N << "Failed to get a pointer to a publisher."
-                           << " for user " << userUuid();
+                LOG_TRACE_N << "Publisher " << pub->uuid() << " has no valid session. Skipping.";
             }
+        } else {
+            LOG_WARN_N << "Failed to get a pointer to a publisher."
+                       << " for user " << userUuid();
         }
-    } // unlock
+    }
 }
 
 boost::asio::awaitable<void> UserContext::publish(std::shared_ptr<pb::Update> &update)
@@ -331,19 +331,6 @@ boost::asio::awaitable<void> UserContext::publish(std::shared_ptr<pb::Update> &u
     set<boost::uuids::uuid> devices;
 
     publishUpdates(update, &devices);
-
-    {
-        unique_lock lock{mutex_};
-        // Remove all publishers that are no longer valid
-        ranges::remove_if(publishers_, [&](const auto& weak_pub) {
-            if (auto pub = weak_pub.lock()) {
-                return false; // Keep valid publishers
-            } else {
-                LOG_TRACE_N << "Removing expired publisher for user " << userUuid();
-                return true; // Remove expired weak_ptrs
-            }
-        });
-    }
 
     // Filter out updates that are not for push notifications
     if (!isForPush(*update)) {
