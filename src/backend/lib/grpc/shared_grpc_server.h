@@ -55,6 +55,19 @@ std::chrono::year_month_day toYearMonthDay(const time_t when, const chrono::time
 int64_t toMsTimestamp(const boost::mysql::datetime& from, const chrono::time_zone& tz);
 std::string toMsDateTime(uint64_t msSinceEpoc, const chrono::time_zone& tz, bool roundUp = true);
 
+struct IncrementalSyncCursor {
+    bool use_updated_id = false;
+    uint64_t since = 0;
+};
+
+inline IncrementalSyncCursor getIncrementalSyncCursor(const pb::GetNewReq& req) noexcept {
+    IncrementalSyncCursor cursor;
+    cursor.use_updated_id = req.has_protocolversion()
+        && req.protocolversion() >= pb::ProtopcolVersion::USE_UPDATED_ID;
+    cursor.since = req.since();
+    return cursor;
+}
+
 // For TIMESTAMP
 std::time_t toTimeT(const boost::mysql::datetime& from, const chrono::time_zone& tz);
 

@@ -40,6 +40,7 @@ public:
     QCoro::Task<bool> saveBatch(const QList<nextapp::pb::WorkSession>& items) override;
     QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
     QCoro::Task<bool> save(const QProtobufMessage& item) override;
+    QCoro::Task<bool> finalizeSyncPersistence() override;
     QCoro::Task<bool> loadFromCache() override;
     bool hasItems(const nextapp::pb::Status& status) const noexcept override {
         return status.hasWorkSessions();
@@ -82,6 +83,7 @@ private:
     void purge();
     void onTimer();
     void updateSessionsDurations();
+    QCoro::Task<bool> validateStoredWorkSessions();
     QCoro::Task<void> remove(const QUuid& id);
     static Outcome updateOutcome(nextapp::pb::WorkSession &work);
 

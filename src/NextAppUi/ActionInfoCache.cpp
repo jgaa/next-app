@@ -8,6 +8,7 @@
 #include <QProtobufSerializer>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QSet>
 
 #include "ActionInfoCache.h"
 #include "MainTreeModel.h"
@@ -51,8 +52,8 @@ static const QString insert_query = R"(INSERT INTO action
         (id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date,
         due_kind, start_time, due_by_time, due_timezone, completed_time,
         time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after,
-        kind, category, time_spent, version, updated, score, tags, tags_hash) VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        kind, category, time_spent, version, updated, updated_id, score, tags, tags_hash) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
         node = EXCLUDED.node,
         origin = EXCLUDED.origin,
@@ -81,6 +82,7 @@ static const QString insert_query = R"(INSERT INTO action
         time_spent = EXCLUDED.time_spent,
         version = EXCLUDED.version,
         updated = EXCLUDED.updated,
+        updated_id = EXCLUDED.updated_id,
         score = EXCLUDED.score,
         tags = EXCLUDED.tags,
         tags_hash = EXCLUDED.tags_hash
@@ -167,6 +169,7 @@ QList<QVariant> getParams(const pb::Action& action) {
     params << static_cast<quint32>(action.timeSpent());
     params.append(static_cast<quint32>(action.version()));
     params.append(static_cast<qlonglong>(action.updated()));
+    params.append(static_cast<qulonglong>(action.updatedId()));
     params << ActionInfoCache::getScore(action);
 
     if (!action.tags().empty()) {
@@ -306,6 +309,11 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
 } // anon ns
 
 ActionInfoCache *ActionInfoCache::instance_;
+
+bool ActionInfoCache::shouldStageOriginRepair() const noexcept
+{
+    return state() == State::SYNCHING;
+}
 
 ActionInfoCache::ActionInfoCache(QObject *parent)
 : QObject(parent)
@@ -693,14 +701,40 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
     if (update->hasAction()) {
         const auto &action = update->action();
         const auto uuid = toQuid(action.id_proto());
+        const auto resyncOnFailure = [id = action.id_proto()] {
+            QTimer::singleShot(0, &ServerComm::instance(), [id] {
+                LOG_ERROR_N << "Action apply failed for " << id << ". Requesting resync.";
+                ServerComm::instance().resync();
+            });
+        };
+        const auto origin_uuid = toQuid(action.origin());
+        const bool needs_reference_reload = deleted
+            || (action.hasOrigin()
+                && !action.origin().isEmpty()
+                && hot_cache_.find(origin_uuid) == hot_cache_.end());
         if (deleted) [[unlikely ]] {
             assert(action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED);
-            co_await save(action);
+            if (!co_await save(action)) {
+                resyncOnFailure();
+                co_return;
+            }
             hot_cache_.erase(uuid);
             emit actionDeleted(uuid);
+            if (needs_reference_reload && !co_await reloadCacheFromStorage()) {
+                resyncOnFailure();
+            }
         } else {
             assert(action.status() != nextapp::pb::ActionStatusGadget::ActionStatus::DELETED);
-            co_await save(action);
+            if (!co_await save(action)) {
+                resyncOnFailure();
+                co_return;
+            }
+            if (needs_reference_reload) {
+                if (!co_await reloadCacheFromStorage()) {
+                    resyncOnFailure();
+                }
+                co_return;
+            }
             const auto changed = add(hot_cache_, action);
             if (update->op() == nextapp::pb::Update::Operation::ADDED) {
                 LOG_TRACE_N << "Action " << action.id_proto() << ' ' << action.name() << " added.";
@@ -717,10 +751,36 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
     }
 }
 
+QCoro::Task<bool> ActionInfoCache::finalizeSyncPersistence()
+{
+    if (!co_await repairStoredOrigins()) {
+        co_return false;
+    }
+    co_return co_await validateStoredOrigins();
+}
+
 QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &items)
 {
     auto& db = NextAppCore::instance()->db();
     static const QString delete_query = "DELETE FROM action WHERE id = ?";
+    QList<nextapp::pb::Action> stored_items;
+    stored_items.reserve(items.size());
+    std::map<QString, QString> repairs;
+    std::set<QString> cleared_repairs;
+    for (const auto& action : items) {
+        if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED
+            || action.origin().isEmpty()
+            || !shouldStageOriginRepair()) {
+            cleared_repairs.insert(action.id_proto());
+            stored_items.push_back(action);
+            continue;
+        }
+
+        auto staged = action;
+        staged.setOrigin(QString{});
+        stored_items.push_back(std::move(staged));
+        repairs[action.id_proto()] = action.origin();
+    }
     auto isDeleted = [](const auto& action) -> bool {
         return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED;
     };
@@ -731,7 +791,18 @@ QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &i
         return updateTagsDirect(action);
     };
 
-    co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId, perRowfn);
+    if (!co_await db.queryBatch(insert_query, delete_query, stored_items, getParams, isDeleted, getId, perRowfn)) {
+        co_return false;
+    }
+
+    for (const auto& id : cleared_repairs) {
+        pending_origin_repairs_.erase(id);
+    }
+    for (const auto& [child_id, origin_id] : repairs) {
+        pending_origin_repairs_[child_id] = origin_id;
+    }
+
+    co_return true;
 }
 
 QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
@@ -750,6 +821,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
             LOG_WARN_N << "Failed to delete action " << action.id_proto() << " " << action.name()
             << " err=" << rval.error();
         }
+        pending_origin_repairs_.erase(action.id_proto());
         co_return true; // TODO: Add proper error handling. Probably a full resynch if the action is in the db.
     }
 
@@ -769,7 +841,13 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         }
     }
 
-    params = getParams(action);
+    auto stored_action = action;
+    const auto staged_origin = action.origin();
+    if (shouldStageOriginRepair() && !staged_origin.isEmpty()) {
+        stored_action.setOrigin(QString{});
+    }
+
+    params = getParams(stored_action);
     const auto rval = co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update action: " << action.id_proto() << " " << action.name()
@@ -778,7 +856,15 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     }
 
     if (need_tags_update) {
-        co_await updateTags(action);
+        if (!co_await updateTags(action)) {
+            co_return false;
+        }
+    }
+
+    if (shouldStageOriginRepair() && !staged_origin.isEmpty()) {
+        pending_origin_repairs_[action.id_proto()] = staged_origin;
+    } else {
+        pending_origin_repairs_.erase(action.id_proto());
     }
 
     co_return true;
@@ -877,6 +963,10 @@ QCoro::Task<bool> ActionInfoCache::loadFromCache()
 QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
 {
     auto& db = NextAppCore::instance()->db();
+    if (!id && !co_await validateStoredOrigins()) {
+        co_return false;
+    }
+
     QString query = "SELECT id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, created_date, "
                           " due_kind, start_time, due_by_time, due_timezone, completed_time, "
                           " kind, version, category, time_estimate, time_spent, score, tags, "
@@ -915,6 +1005,10 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
     };
 
     uint count = 0;
+
+    if (!id) {
+        hot_cache_.clear();
+    }
 
     auto rval = co_await db.legacyQuery(query);
     if (rval) {
@@ -993,6 +1087,87 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
     co_return true;
 }
 
+QCoro::Task<bool> ActionInfoCache::reloadCacheFromStorage()
+{
+    clear();
+    emit cacheReloaded();
+    if (!co_await loadFromCache()) {
+        co_return false;
+    }
+    emit cacheReloaded();
+    co_return true;
+}
+
+QCoro::Task<bool> ActionInfoCache::repairStoredOrigins()
+{
+    if (pending_origin_repairs_.empty()) {
+        co_return true;
+    }
+
+    auto& db = NextAppCore::instance()->db();
+    const auto rows = co_await db.legacyQuery("SELECT id FROM action");
+    if (!rows) {
+        LOG_ERROR_N << "Failed to load actions for origin repair: " << rows.error();
+        co_return false;
+    }
+
+    QSet<QString> existing_actions;
+    existing_actions.reserve(rows->size());
+    for (const auto& row : *rows) {
+        existing_actions.insert(row.at(0).toString());
+    }
+
+    for (const auto& [child_id, origin_id] : pending_origin_repairs_) {
+        if (!existing_actions.contains(origin_id)) {
+            LOG_ERROR_N << "Unresolved action origin reference after repair pass: action="
+                        << child_id << " origin=" << origin_id;
+            co_return false;
+        }
+
+        if (!existing_actions.contains(child_id)) {
+            continue;
+        }
+
+        const auto updated = co_await db.query(
+            "UPDATE action SET origin = ? WHERE id = ?",
+            origin_id,
+            child_id);
+        if (!updated) {
+            LOG_ERROR_N << "Failed to repair action origin reference for " << child_id
+                        << " err=" << updated.error();
+            co_return false;
+        }
+    }
+
+    pending_origin_repairs_.clear();
+    co_return true;
+}
+
+QCoro::Task<bool> ActionInfoCache::validateStoredOrigins()
+{
+    auto& db = NextAppCore::instance()->db();
+    const auto unresolved = co_await db.query(
+        R"(SELECT child.id, child.origin
+           FROM action AS child
+           LEFT JOIN action AS parent ON parent.id = child.origin
+           WHERE child.origin IS NOT NULL
+             AND child.origin != ''
+             AND parent.id IS NULL)");
+    if (!unresolved) {
+        LOG_ERROR_N << "Failed to validate action origin references: " << unresolved.error();
+        co_return false;
+    }
+    if (!unresolved.value().rows.empty()) {
+        for (const auto& row : unresolved.value().rows) {
+            LOG_ERROR_N << "Unresolved action origin reference: action="
+                        << row.at(0).toString()
+                        << " origin=" << row.at(1).toString();
+        }
+        co_return false;
+    }
+    co_return true;
+}
+
 std::shared_ptr<GrpcIncomingStream> ActionInfoCache::openServerStream(nextapp::pb::GetNewReq req)
 {
     return ServerComm::instance().synchActions(req);
@@ -1001,6 +1176,7 @@ std::shared_ptr<GrpcIncomingStream> ActionInfoCache::openServerStream(nextapp::p
 void ActionInfoCache::clear()
 {
     hot_cache_.clear();
+    pending_origin_repairs_.clear();
 }
 
 std::shared_ptr<nextapp::pb::ActionInfo> ActionInfoCache::get_(const QUuid &action_uuid)

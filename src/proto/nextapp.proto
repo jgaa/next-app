@@ -171,6 +171,7 @@ message Node {
     int64 updated = 10; // time_t as ms
     bool excludeFromWeeklyReview = 11;
     string category = 12;
+    uint64 updatedId = 13;
 }
 
 message WorkEvent {
@@ -223,6 +224,7 @@ message WorkSession {
     string name = 12;
     string notes = 13;
     uint64 updated = 14; // time_t ms (updated automatically oin changes)
+    uint64 updatedId = 15;
 }
 
 message WorkSessions {
@@ -401,6 +403,7 @@ message ActionInfo {
     int32 timeSpent = 16; // minutes
     float score = 17; // Used to sort the actions
     repeated string tags = 18; // Tags for the action
+    uint64 updatedId = 19;
 }
 
 message Actions {
@@ -479,6 +482,7 @@ message Action {
     float score = 24; // Used to sort the actions. Used locally in the client
     repeated string tags = 25; // Tags for the action
     bool hasDescr = 26;
+    uint64 updatedId = 27;
 }
 
 // Allow updating multiple actions at once, without altering the other fields.
@@ -502,6 +506,7 @@ message DayColor {
     string color = 4;
     string name = 5;
     uint64 updated = 6; // time_t
+    uint64 updatedId = 7;
 }
 
 message DayColorDefinitions {
@@ -523,6 +528,7 @@ message Day {
     bool hasReport = 5;
     uint64 updated = 6; // time_t
     bool deleted = 7;
+    uint64 updatedId = 8;
 }
 
 //message ColorAtDay {
@@ -591,6 +597,7 @@ message TimeBlock {
     StringList actions = 7;
     int32 version = 8;
     uint64 updated = 9; // time_t as ms
+    uint64 updatedId = 10;
 }
 
 message TimeBlocks {
@@ -708,6 +715,7 @@ message Notification {
     Kind kind = 11;
     string data = 12; // Depends on context
     uint64 updated = 13; // time_t as ms;
+    uint64 updatedId = 14;
 }
 
 message Notifications {
@@ -778,6 +786,7 @@ message PushNotificationConfig {
 
 message UpdatesReq{
     optional PushNotificationConfig withPush = 1; // Optional push notification token. If unset, no push notifications are sent
+    optional uint32 fromMessageId = 2; // Replay retained updates with messageId > fromMessageId before switching to live delivery
 }
 
 // Some updates will be sent as push-notifications if the device has no active connection to the server.
@@ -927,8 +936,14 @@ message OtpResponse {
     string email = 2;
 }
 
+enum ProtopcolVersion {
+    LEGACY = 0;
+    USE_UPDATED_ID = 1;
+}
+
 message GetNewReq {
-    int64 since = 3; // time_t. Use 0 to fetch all
+    int64 since = 3; // time_t. Use 0 to fetch all. For protocolVersion >= USE_UPDATED_ID, this carries the updated_id cursor.
+    optional ProtopcolVersion protocolVersion = 4;
 }
 
 message ListTenantsReq {
@@ -945,6 +960,7 @@ message Hello {
     uint32 lastPublishId = 4; // Last published message-id to the user
     uint64 lastNotification = 5; // Last notification update timestamp visible to the user
     bool plansEnabled = 6; // If true, the server has plans enabled, and the subscription info is relevant
+    bool supportsUpdatedId = 7; // If true, the server supports stronger updated_id-based incremental sync
 }
 
 // Debug info about the user-sessions on the server

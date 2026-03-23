@@ -545,34 +545,34 @@ public:
 
     using export_flush_fn_t = std::function<boost::asio::awaitable<void>(pb::Status& req)>;
     boost::asio::awaitable<uint64_t> exportActions(
-        const uint64_t since,
+        const pb::GetNewReq& req,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
         RequestCtx& rctx,
         bool removeDeleted = false);
 
     boost::asio::awaitable<uint64_t> exportDays(
-        const uint64_t since,
+        const pb::GetNewReq& req,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
         RequestCtx& rctx);
 
     boost::asio::awaitable<uint64_t> exportNodes(
-        const uint64_t since,
+        const pb::GetNewReq& req,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
         RequestCtx& rctx,
         bool removeDeleted = false);
 
     boost::asio::awaitable<uint64_t> exportWork(
-        const uint64_t since,
+        const pb::GetNewReq& req,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
         RequestCtx& rctx,
         bool removeDeleted = false);
 
     boost::asio::awaitable<uint64_t> exportTimeBlocks(
-        const uint64_t since,
+        const pb::GetNewReq& req,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
         RequestCtx& rctx,

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <chrono>
+#include <deque>
 #include <memory>
 #include <shared_mutex>
 
@@ -131,6 +132,11 @@ public:
 
 class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
+    enum class SubscribeReplayResult {
+        LIVE_ONLY,
+        REPLAY_QUEUED,
+        REPLAY_UNAVAILABLE,
+    };
 
     /*! \brief Sends push notifications to a user on a specific device.
      *
@@ -343,7 +349,8 @@ public:
         settings_ = std::move(settings);
     }
 
-    void addPublisher(const std::shared_ptr<Publisher>& publisher);
+    [[nodiscard]] SubscribeReplayResult addPublisher(const std::shared_ptr<Publisher>& publisher,
+                                                     std::optional<uint32_t> fromMessageId = {});
     void removePublisher(const boost::uuids::uuid& uuid);
     [[nodiscard]] boost::asio::awaitable<void> publish(std::shared_ptr<pb::Update>& message);
     void publishUpdates(std::shared_ptr<pb::Update> &update, std::set<boost::uuids::uuid>* devices = {});
@@ -417,6 +424,7 @@ private:
     boost::asio::awaitable<void> saveLastReqIds(const boost::uuids::uuid& deviceId);
     // Requires mutex_ to be held exclusively.
     void purgeExpiredPublishers();
+    void retainPublishedUpdate(const std::shared_ptr<pb::Update>& update);
 
     std::string user_uuid_;
     std::string tenant_uuid_;
@@ -427,6 +435,7 @@ private:
     pb::User::Kind kind_{pb::User::Kind::User_Kind_REGULAR};
     std::vector<std::shared_ptr<Session>> sessions_; // NB: Circular reference.
     std::vector<std::weak_ptr<Publisher>> publishers_;
+    std::deque<std::shared_ptr<pb::Update>> retained_updates_;
     std::map<boost::uuids::uuid, Device> devices_;
     std::atomic_int32_t last_read_notification_id_{-1};
     mutable PaddedMutex<std::shared_mutex> mutex_;

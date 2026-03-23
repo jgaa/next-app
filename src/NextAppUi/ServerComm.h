@@ -296,7 +296,13 @@ public:
     }
 
     const auto& getLocalDataVersions() const noexcept {
-        return server_data_versions_;
+        return local_data_versions_;
+    }
+
+    void setLocalActionCategoryVersion(uint64_t version);
+
+    bool shouldUseUpdatedIdSync() const noexcept {
+        return server_supports_updated_id_ && updated_id_sync_initialized_;
     }
 
     static bool isTemporaryError(nextapp::pb::ErrorGadget::Error error);
@@ -353,6 +359,9 @@ private:
     void clearMessages();
     void addMessage(const QString &msg);
     void setMessage(const QString &msg);
+    void loadLocalDataVersions();
+    void persistLocalDataVersions() const;
+    QString localActionCategoryVersionKey() const;
     QString lastSeenUpdateIdKey() const;
     QString lastSeenServerInstance() const;
     QCoro::Task<void> doSendFeedback(nextapp::pb::Feedback feedback);
@@ -669,7 +678,10 @@ private:
     int queued_requests_count_{0};
     bool retrying_requests_{false};
     uint last_seen_update_id_{0};
+    uint session_start_publish_id_{0};
     uint64_t last_seen_server_instance_{};
+    bool server_supports_updated_id_{false};
+    bool updated_id_sync_initialized_{false};
     bool closed_{false};
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
     bool fcm_requested_{false};

@@ -11,24 +11,26 @@
 
 namespace {
     static const QString insert_query = R"(INSERT INTO notification (
-            id, uuid, time, kind, updated, data
-        ) VALUES (?, ?, ?, ?, ?, ?)
+            id, uuid, time, kind, updated, updated_id, data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             time = excluded.time,
             kind = excluded.kind,
             updated = excluded.updated,
+            updated_id = excluded.updated_id,
             data = excluded.data
     )";
 
     QList<QVariant> getParams(const nextapp::pb::Notification &notification)
     {
         QList<QVariant> params;
-        params.reserve(6);
+        params.reserve(7);
         params << static_cast<quint32>(notification.id_proto());
         params << notification.uuid().uuid();
         params << QDateTime::fromSecsSinceEpoch(notification.createdTime().unixTime());
         params << static_cast<quint32>(notification.kind());
         params << static_cast<qlonglong>(notification.updated());
+        params << static_cast<qulonglong>(notification.updatedId());
 
         QProtobufSerializer serializer;
         params << notification.serialize(&serializer);
@@ -299,4 +301,3 @@ NotificationsModel::NotificationsModel() {
     last_read_ = s.value("notificatins/last_read", 0).toUInt();
     last_update_seen_ = s.value("notificatins/last_seen", 0).toULongLong();
 }
-

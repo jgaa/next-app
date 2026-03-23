@@ -28,7 +28,10 @@ ActionCategoriesModel::ActionCategoriesModel(QObject *parent)
 
     none_ = tr("-- None --");
 
-    connect(&ServerComm::instance(), &ServerComm::onUpdate, this, &ActionCategoriesModel::onUpdate);
+    connect(&ServerComm::instance(), &ServerComm::onUpdate, this,
+            [this](const std::shared_ptr<nextapp::pb::Update>& update) {
+                onUpdate(update);
+            });
 
     connect(NextAppCore::instance(), &NextAppCore::onlineChanged, this, [this] (bool online) {
         onOnlineChanged(online);
@@ -232,6 +235,8 @@ ActionCategoriesModel &ActionCategoriesModel::instance()
 
 QCoro::Task<bool> ActionCategoriesModel::synch(bool fullSync)
 {
+    setValid(false);
+
     // See if we need to fetch from server
     const auto server_ver = ServerComm::instance().getServerDataVersions().actionCategoryVersion();
     const auto local_ver = ServerComm::instance().getLocalDataVersions().actionCategoryVersion();
@@ -241,40 +246,29 @@ QCoro::Task<bool> ActionCategoriesModel::synch(bool fullSync)
         }
     }
 
-    co_return co_await loadFromDb();
+    if (!co_await loadFromDb()) {
+        co_return false;
+    }
+
+    if (fullSync || server_ver == 0 || server_ver > local_ver) {
+        ServerComm::instance().setLocalActionCategoryVersion(server_ver);
+    }
+
+    co_return true;
 }
 
 QCoro::Task<void> ActionCategoriesModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 {
-    if (update->hasActionCategory()) {
-
-        // We need a copy since update lilkely goes out of scope before we finish.
-        const auto cat = update->actionCategory();
-
-        auto it = std::find_if(action_categories_.begin(), action_categories_.end(),
-                               [&cat](const nextapp::pb::ActionCategory& c) {
-            return c.id_proto() == cat.id_proto();
-        });
-
-        if (update->op() == nextapp::pb::Update::Operation::DELETED) {
-            action_categories_.erase(it);
-            co_await remove(cat.id_proto());
-            beginResetModel();
-            endResetModel();
-        } else {
-            co_await save(cat);
-            if (it != action_categories_.end()) {
-                *it = cat;
-            } else {
-                action_categories_.push_back(cat);
-            }
-
-            beginResetModel();
-            ranges::sort(action_categories_, compare);
-            endResetModel();
-        }
+    if (!update->hasActionCategory()) {
+        co_return;
     }
 
+    if (!valid_) {
+        pending_updates_.push_back(update);
+        co_return;
+    }
+
+    co_await applyUpdate(update);
 }
 
 void ActionCategoriesModel::setOnline(bool value) {
@@ -322,28 +316,80 @@ QCoro::Task<bool> ActionCategoriesModel::synchFromServer()
 QCoro::Task<bool> ActionCategoriesModel::loadFromDb()
 {
     auto& db = NextAppCore::instance()->db();
-    beginResetModel();
-    endResetModel();
-
     auto res = co_await db.legacyQuery("SELECT data FROM action_category");
     if (res.has_value()) {
-        action_categories_.clear();
+        QList<nextapp::pb::ActionCategory> action_categories;
         for(const auto& row : res.value()) {
             const auto& data = row.at(0).toByteArray();
             nextapp::pb::ActionCategory cat;
             QProtobufSerializer serializer;
             cat.deserialize(&serializer, data);
-            action_categories_.push_back(cat);
+            action_categories.push_back(cat);
         }
 
-        ranges::sort(action_categories_, compare);
         beginResetModel();
+        action_categories_ = std::move(action_categories);
+        ranges::sort(action_categories_, compare);
         endResetModel();
+
+        co_await applyPendingUpdates();
         setValid(true);
         co_return true;
     }
 
     co_return false;
+}
+
+QCoro::Task<void> ActionCategoriesModel::applyUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
+{
+    // We need a copy since update likely goes out of scope before we finish.
+    const auto cat = update->actionCategory();
+
+    auto it = std::find_if(action_categories_.begin(), action_categories_.end(),
+                           [&cat](const nextapp::pb::ActionCategory& c) {
+        return c.id_proto() == cat.id_proto();
+    });
+
+    if (update->op() == nextapp::pb::Update::Operation::DELETED) {
+        if (!co_await remove(cat.id_proto())) {
+            LOG_WARN_N << "Failed to remove category from local cache: " << cat.id_proto();
+            co_return;
+        }
+
+        if (it != action_categories_.end()) {
+            action_categories_.erase(it);
+            beginResetModel();
+            endResetModel();
+        }
+        co_return;
+    }
+
+    if (!co_await save(cat)) {
+        LOG_WARN_N << "Failed to persist category in local cache: " << cat.id_proto();
+        co_return;
+    }
+
+    if (it != action_categories_.end()) {
+        *it = cat;
+    } else {
+        action_categories_.push_back(cat);
+    }
+
+    beginResetModel();
+    ranges::sort(action_categories_, compare);
+    endResetModel();
+}
+
+QCoro::Task<void> ActionCategoriesModel::applyPendingUpdates()
+{
+    while (!pending_updates_.empty()) {
+        auto pending = std::move(pending_updates_);
+        pending_updates_.clear();
+
+        for (const auto& update : pending) {
+            co_await applyUpdate(update);
+        }
+    }
 }
 
 QCoro::Task<bool> ActionCategoriesModel::save(const nextapp::pb::ActionCategory &category)

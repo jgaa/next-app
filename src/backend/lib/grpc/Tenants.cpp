@@ -1276,11 +1276,13 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
         msg.mutable_daycolordefinitions()->CopyFrom(
             co_await owner_.getDayColorDefinitions(dbh, rctx.uctx->tenantUuid()));
 
+        pb::GetNewReq export_req;
+
         // Green days
-        co_await owner_.exportDays(0, dbh, flush, rctx);
+        co_await owner_.exportDays(export_req, dbh, flush, rctx);
 
         // Nodes
-        co_await owner_.exportNodes(0, dbh, flush, rctx, true);
+        co_await owner_.exportNodes(export_req, dbh, flush, rctx, true);
 
         // Categories
         msg.Clear();
@@ -1290,13 +1292,13 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
         co_await stream->sendMessage(std::move(msg), boost::asio::use_awaitable);
 
         // Actions
-        co_await owner_.exportActions(0, dbh, flush, rctx, true);
+        co_await owner_.exportActions(export_req, dbh, flush, rctx, true);
 
         // Work sessions
-        co_await owner_.exportWork(0, dbh, flush, rctx, true);
+        co_await owner_.exportWork(export_req, dbh, flush, rctx, true);
 
         // Time blocks
-        co_await owner_.exportTimeBlocks(0, dbh, flush, rctx, true);
+        co_await owner_.exportTimeBlocks(export_req, dbh, flush, rctx, true);
 
         msg.Clear();
         msg.set_error(pb::Error::OK);

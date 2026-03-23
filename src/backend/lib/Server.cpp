@@ -1364,6 +1364,186 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v25_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE TABLE IF NOT EXISTS sync_updated_id_seq (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            PRIMARY KEY (id)
+        ))",
+
+        "ALTER TABLE day ADD COLUMN IF NOT EXISTS updated_id BIGINT UNSIGNED NOT NULL DEFAULT 0",
+        "ALTER TABLE day_colors ADD COLUMN IF NOT EXISTS updated_id BIGINT UNSIGNED NOT NULL DEFAULT 0",
+        "ALTER TABLE node ADD COLUMN IF NOT EXISTS updated_id BIGINT UNSIGNED NOT NULL DEFAULT 0",
+        "ALTER TABLE action ADD COLUMN IF NOT EXISTS updated_id BIGINT UNSIGNED NOT NULL DEFAULT 0",
+        "ALTER TABLE work_session ADD COLUMN IF NOT EXISTS updated_id BIGINT UNSIGNED NOT NULL DEFAULT 0",
+        "ALTER TABLE time_block ADD COLUMN IF NOT EXISTS updated_id BIGINT UNSIGNED NOT NULL DEFAULT 0",
+        "ALTER TABLE notification ADD COLUMN IF NOT EXISTS updated_id BIGINT UNSIGNED NOT NULL DEFAULT 0",
+
+        "CREATE INDEX day_updated_id_ix ON day (user, updated_id)",
+        "CREATE INDEX day_colors_updated_id_ix ON day_colors (tenant, updated_id)",
+        "CREATE INDEX node_updated_id_ix ON node (user, updated_id)",
+        "CREATE INDEX action_updated_id_ix ON action (user, updated_id)",
+        "CREATE INDEX work_session_updated_id_ix ON work_session (user, updated_id)",
+        "CREATE INDEX time_block_updated_id_ix ON time_block (user, updated_id)",
+        "CREATE INDEX notification_updated_id_ix ON notification (updated_id, to_tenant, to_user)",
+
+        "DROP TRIGGER IF EXISTS updated_day_timestamp",
+        "DROP TRIGGER IF EXISTS updated_day_colors_timestamp",
+        "DROP TRIGGER IF EXISTS tr_before_update_node",
+        "DROP TRIGGER IF EXISTS tr_before_update_action",
+        "DROP TRIGGER IF EXISTS tr_before_update_work_session",
+        "DROP TRIGGER IF EXISTS tr_before_update_time_block",
+        "DROP TRIGGER IF EXISTS updated_notification_timestamp",
+
+        "DROP TRIGGER IF EXISTS tr_before_insert_day_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_update_day_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_insert_day_colors_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_update_day_colors_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_insert_node_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_update_node_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_insert_action_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_update_action_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_insert_work_session_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_update_work_session_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_insert_time_block_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_update_time_block_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_insert_notification_updated_cursor",
+        "DROP TRIGGER IF EXISTS tr_before_update_notification_updated_cursor",
+
+        R"(CREATE TRIGGER tr_before_insert_day_updated_cursor
+            BEFORE INSERT ON day
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_update_day_updated_cursor
+            BEFORE UPDATE ON day
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_insert_day_colors_updated_cursor
+            BEFORE INSERT ON day_colors
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_update_day_colors_updated_cursor
+            BEFORE UPDATE ON day_colors
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_insert_node_updated_cursor
+            BEFORE INSERT ON node
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_update_node_updated_cursor
+            BEFORE UPDATE ON node
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.version = OLD.version + 1;
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_insert_action_updated_cursor
+            BEFORE INSERT ON action
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_update_action_updated_cursor
+            BEFORE UPDATE ON action
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.version = OLD.version + 1;
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_insert_work_session_updated_cursor
+            BEFORE INSERT ON work_session
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_update_work_session_updated_cursor
+            BEFORE UPDATE ON work_session
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.version = OLD.version + 1;
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_insert_time_block_updated_cursor
+            BEFORE INSERT ON time_block
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_update_time_block_updated_cursor
+            BEFORE UPDATE ON time_block
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.version = OLD.version + 1;
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_insert_notification_updated_cursor
+            BEFORE INSERT ON notification
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        R"(CREATE TRIGGER tr_before_update_notification_updated_cursor
+            BEFORE UPDATE ON notification
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO sync_updated_id_seq VALUES (NULL);
+                SET NEW.updated = UTC_TIMESTAMP(6);
+                SET NEW.updated_id = LAST_INSERT_ID();
+            END)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -1389,6 +1569,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v22_upgrade,
         v23_upgrade,
         v24_upgrade,
+        v25_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

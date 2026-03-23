@@ -1,6 +1,7 @@
 #pragma once
 
 #include <set>
+#include <vector>
 
 #include <QObject>
 #include <QQmlEngine>
@@ -69,6 +70,8 @@ signals:
 
 private:
     QCoro::Task<void> onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    QCoro::Task<void> applyUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    QCoro::Task<void> applyPendingUpdates();
     void setOnline(bool value);
     void setValid(bool value);
     // void fetchIf();
@@ -82,6 +85,7 @@ private:
     bool online_{};
     bool valid_{};
     QList<nextapp::pb::ActionCategory> action_categories_;
+    std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
     std::set<QString> deleted_entries_;
     static ActionCategoriesModel *instance_;
     QString none_;

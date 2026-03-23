@@ -7,10 +7,10 @@ namespace {
 
 struct ToNode {
     enum Cols {
-        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION, UPDATED, DELETED, EXCLUDE_FROM_WR, CATEGORY
+        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION, UPDATED, UPDATED_ID, DELETED, EXCLUDE_FROM_WR, CATEGORY
     };
 
-    static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version, updated, deleted, exclude_from_wr, category ";
+    static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version, updated, updated_id, deleted, exclude_from_wr, category ";
 
     static void assign(const boost::mysql::row_view& row, pb::Node& node, const RequestCtx& rctx) {
         node.set_uuid(pb_adapt(row.at(ID).as_string()));
@@ -32,6 +32,7 @@ struct ToNode {
         }
         node.set_deleted(row.at(ToNode::DELETED).as_int64() == 1);
         node.set_updated(toMsTimestamp(row.at(ToNode::UPDATED).as_datetime(), rctx.uctx->tz()));
+        node.set_updatedid(row.at(ToNode::UPDATED_ID).as_uint64());
         if (row.at(EXCLUDE_FROM_WR).is_int64() && row.at(EXCLUDE_FROM_WR).as_int64() != 0) {
             node.set_excludefromweeklyreview(true);
         }
@@ -420,7 +421,7 @@ GrpcServer::NextappImpl::GetNewNodes(::grpc::CallbackServerContext *ctx, const p
             };
 
             const auto total_rows = co_await owner_.exportNodes(
-                req->since(), *rctx.dbh, flush, rctx);
+                *req, *rctx.dbh, flush, rctx);
 
             LOG_DEBUG_N << "Sent " << total_rows << " nodes to client.";
             co_return;
@@ -429,7 +430,7 @@ GrpcServer::NextappImpl::GetNewNodes(::grpc::CallbackServerContext *ctx, const p
 
 
 boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
-    const uint64_t since,
+    const pb::GetNewReq& req,
     jgaa::mysqlpool::Mysqlpool::Handle& dbh,
     const export_flush_fn_t& flush_fn,
     RequestCtx& rctx,
@@ -444,6 +445,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
+    const auto cursor = getIncrementalSyncCursor(req);
+    const auto where_clause = cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto order_clause = cursor.use_updated_id ? "updated_id, sort_path, id" : "updated, sort_path, id";
     const auto sql = format(R"(
         WITH RECURSIVE node_tree AS (
             SELECT
@@ -461,13 +465,20 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
         )
         SELECT {0}
         FROM node_tree
-        WHERE updated > ? {2}
-        ORDER BY updated, sort_path, id)",
+        WHERE {2} {3}
+        ORDER BY {4})",
         ToNode::selectCols,
         prefixed_cols,
-        removeDeleted ? "AND deleted=0" : "");
-    co_await rctx.dbh->start_exec(sql,
-        uctx->dbOptions(), cuser, cuser, toMsDateTime(since, uctx->tz()));
+        where_clause,
+        removeDeleted ? "AND deleted=0" : "",
+        order_clause);
+    if (cursor.use_updated_id) {
+        co_await rctx.dbh->start_exec(sql,
+            uctx->dbOptions(), cuser, cuser, cursor.since);
+    } else {
+        co_await rctx.dbh->start_exec(sql,
+            uctx->dbOptions(), cuser, cuser, toMsDateTime(cursor.since, uctx->tz()));
+    }
 
     nextapp::pb::Status reply;
 

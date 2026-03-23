@@ -70,13 +70,14 @@ struct ToDevice {
 };
 
     struct ToNotification {
-    static constexpr string_view fields = "id, created_time, updated, valid_to, subject, message, sender_type, sender_id, to_tenant, to_user, uuid, kind, data";
-    enum Cols { ID, CREATED_TIME, UPDATED, VALID_TO, SUBJECT, MESSAGE, SENDER_TYPE, SENDER_ID, TO_TENANT, TO_USER, UUID, KIND, DATA };
+    static constexpr string_view fields = "id, created_time, updated, updated_id, valid_to, subject, message, sender_type, sender_id, to_tenant, to_user, uuid, kind, data";
+    enum Cols { ID, CREATED_TIME, UPDATED, UPDATED_ID, VALID_TO, SUBJECT, MESSAGE, SENDER_TYPE, SENDER_ID, TO_TENANT, TO_USER, UUID, KIND, DATA };
 
     static void assign(const boost::mysql::row_view& row, pb::Notification &notification, const chrono::time_zone& tz) {
         notification.set_id(row[ID].as_int64());
         notification.mutable_createdtime()->set_unixtime(toTimeT(row[CREATED_TIME].as_datetime(), tz));
         notification.set_updated(toMsTimestamp(row[UPDATED].as_datetime(), tz));
+        notification.set_updatedid(row[UPDATED_ID].as_uint64());
         if (!row[VALID_TO].is_null()) {
             notification.mutable_validto()->set_unixtime(toTimeT(row[VALID_TO].as_datetime(), tz));
         }
@@ -120,6 +121,7 @@ struct ToDevice {
             hello->set_lastpublishid(rctx.uctx->currentPublishId());
             hello->set_lastnotification(owner_.getLastNotificationUpdated());
             hello->set_plansenabled(server.config().payment.enable_plan);
+            hello->set_supportsupdatedid(true);
         };
 
         co_return;
@@ -211,7 +213,13 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                         self->close();
                     }
                 });
-                session->user().addPublisher(self_);
+
+                std::optional<uint32_t> replay_from_message_id;
+                if (req && req->has_frommessageid()) {
+                    replay_from_message_id = req->frommessageid();
+                }
+
+                const auto replay_result = session->user().addPublisher(self_, replay_from_message_id);
                 if (req && req->has_withpush()) {
                     LOG_TRACE_N << "Remote client " << context_->peer()
                                 << " is subscribing to updates with push config: "
@@ -222,6 +230,14 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 LOG_DEBUG << "Remote client " << context_->peer() << " is subscribing to updates as subscriber " << uuid()
                           << " from session " << session->sessionId()
                           << " for user " << session->user().userUuid();
+
+                if (replay_result == UserContext::SubscribeReplayResult::REPLAY_UNAVAILABLE) {
+                    LOG_INFO_N << "Replay is unavailable for subscriber " << uuid()
+                               << " on user " << session->user().userUuid()
+                               << ". Requesting full resync.";
+                    queueResyncAndClose();
+                    return;
+                }
             } catch (const server_err& err) {
                 LOG_WARN << "Caught server error when fetching session for connection from "
                          << context_->peer()
@@ -338,22 +354,46 @@ failed:
         }
 
     private:
+        void queueResyncAndClose() {
+            auto update = std::make_shared<pb::Update>();
+            update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+            update->set_resync(true);
+            publish(update);
+            requestCloseAfterDrain();
+        }
+
+        void requestCloseAfterDrain() {
+            {
+                scoped_lock lock{mutex_};
+                close_after_drain_ = true;
+            }
+            reply();
+        }
+
         void reply() {
-            scoped_lock lock{mutex_};
-            if (state_ != State::READY || updates_.empty()) {
-                return;
+            bool should_finish = false;
+            {
+                scoped_lock lock{mutex_};
+                if (state_ != State::READY) {
+                    return;
+                }
+
+                if (updates_.empty()) {
+                    should_finish = close_after_drain_ || !owner_.active();
+                } else if (!owner_.active()) {
+                    should_finish = true;
+                } else {
+                    StartWrite(updates_.front().get());
+                    state_ = State::WAITING_ON_WRITE;
+
+                    if (auto session = session_.lock()) {
+                        session->touch();
+                    }
+                }
             }
 
-            if (!owner_.active()) {
-                close();
-                return;
-            }
-
-            StartWrite(updates_.front().get());
-            state_ = State::WAITING_ON_WRITE;
-
-            if (auto session = session_.lock()) {
-                session->touch();
+            if (should_finish) {
+                finish(::grpc::Status::OK);
             }
 
             // TODO: Implement finish if the server shuts down.
@@ -433,6 +473,7 @@ failed:
         Metrics::gauge_scoped_t session_subscriptions_{owner_.server().metrics().session_subscriptions().scoped()};
         boost::uuids::uuid device_uuid_;
         bool session_has_push_{false};
+        bool close_after_drain_{false};
     };
 
     try {
@@ -706,13 +747,21 @@ failed:
         // without running out of memory.
         // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
         assert(rctx.dbh);
+        const auto cursor = getIncrementalSyncCursor(*req);
         const auto sql = format(R"(SELECT {}
-            FROM notification WHERE updated > ?
+            FROM notification WHERE {} ?
             AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
             AND (valid_to IS NULL OR valid_to > NOW())
-            ORDER BY updated, id)", ToNotification::fields);
-        co_await  rctx.dbh->start_exec(sql,
-          uctx->dbOptions(), toMsDateTime(req->since(), uctx->tz()), cuser, rctx.uctx->tenantUuid());
+            ORDER BY {}, id)", ToNotification::fields,
+            cursor.use_updated_id ? "updated_id >" : "updated >",
+            cursor.use_updated_id ? "updated_id" : "updated");
+        if (cursor.use_updated_id) {
+            co_await  rctx.dbh->start_exec(sql,
+              uctx->dbOptions(), cursor.since, cuser, rctx.uctx->tenantUuid());
+        } else {
+            co_await  rctx.dbh->start_exec(sql,
+              uctx->dbOptions(), toMsDateTime(req->since(), uctx->tz()), cuser, rctx.uctx->tenantUuid());
+        }
 
         nextapp::pb::Status reply;
 

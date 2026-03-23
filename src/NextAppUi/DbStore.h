@@ -42,7 +42,7 @@ public:
     // Useful for debugging weird behaviour and performance testing
     static auto constexpr use_worker_thread = true;
 
-    static constexpr uint latest_version = 1;
+    static constexpr uint latest_version = 2;
     enum Error {
         OK,
         GENERIC_ERROR,
@@ -239,4 +239,3 @@ private:
     bool db_was_initialized_{false};
     std::mutex mutex_;
 };
-

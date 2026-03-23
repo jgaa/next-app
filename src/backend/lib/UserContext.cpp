@@ -30,6 +30,7 @@ std::pair<bool /* json */, std::string /* content or json */> toLog(const nextap
 namespace nextapp {
 
 namespace {
+constexpr size_t kReplayBacklogLimit = 1024;
 
 auto to_string_view(::grpc::string_ref ref) {
     return string_view{ref.data(), ref.size()};
@@ -273,11 +274,60 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
     db_options_.reconnect_and_retry_query = true;
 }
 
-void UserContext::addPublisher(const std::shared_ptr<Publisher> &publisher)
+UserContext::SubscribeReplayResult
+UserContext::addPublisher(const std::shared_ptr<Publisher> &publisher, std::optional<uint32_t> fromMessageId)
 {
     LOG_TRACE_N << "Adding publisher " << publisher->uuid() << " to user context for user " << userUuid();
     unique_lock lock{mutex_};
+    purgeExpiredPublishers();
+
+    if (fromMessageId.has_value()) {
+        const auto from = *fromMessageId;
+        const auto current = publish_message_id_;
+        if (from > current) {
+            LOG_WARN_N << "Replay request from future message id " << from
+                       << " when current publish id is " << current
+                       << " for user " << userUuid();
+            return SubscribeReplayResult::REPLAY_UNAVAILABLE;
+        }
+
+        if (from < current) {
+            if (retained_updates_.empty()) {
+                LOG_WARN_N << "Replay requested from message id " << from
+                           << " for user " << userUuid()
+                           << ", but no retained updates are available.";
+                return SubscribeReplayResult::REPLAY_UNAVAILABLE;
+            }
+
+            const auto oldest_available = retained_updates_.front()->messageid();
+            if (static_cast<uint64_t>(from) + 1 < oldest_available) {
+                LOG_WARN_N << "Replay requested from message id " << from
+                           << " for user " << userUuid()
+                           << ", but oldest retained message id is " << oldest_available;
+                return SubscribeReplayResult::REPLAY_UNAVAILABLE;
+            }
+
+            for (const auto& update : retained_updates_) {
+                if (update->messageid() > from && !publisher->publish(update)) {
+                    LOG_WARN_N << "Failed to queue retained update #" << update->messageid()
+                               << " for publisher " << publisher->uuid();
+                    return SubscribeReplayResult::REPLAY_UNAVAILABLE;
+                }
+            }
+        }
+    }
+
     publishers_.push_back(publisher);
+    return fromMessageId.has_value() ? SubscribeReplayResult::REPLAY_QUEUED
+                                     : SubscribeReplayResult::LIVE_ONLY;
+}
+
+void UserContext::retainPublishedUpdate(const std::shared_ptr<pb::Update>& update)
+{
+    retained_updates_.push_back(update);
+    while (retained_updates_.size() > kReplayBacklogLimit) {
+        retained_updates_.pop_front();
+    }
 }
 
 void UserContext::removePublisher(const boost::uuids::uuid &uuid)
@@ -299,6 +349,7 @@ void UserContext::publishUpdates(std::shared_ptr<pb::Update> &update, set<boost:
     // Keep message-id assignment and subscriber fan-out in one ordered critical section.
     purgeExpiredPublishers();
     update->set_messageid(++publish_message_id_);
+    retainPublishedUpdate(update);
     LOG_TRACE_N << "Publishing "
                 << pb::Update::Operation_Name(update->op())
                 << " update to " << publishers_.size() << " subscribers, Json: "

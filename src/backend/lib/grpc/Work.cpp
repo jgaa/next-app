@@ -25,11 +25,11 @@ auto eventsToBlob(const pb::WorkSession& ws) {
 
 struct ToWorkSession {
     enum Cols {
-        ID, ACTION, USER, START, END, DURATION, PAUSED, STATE, VERSION, TOUCHED, NAME, NOTES, EVENTS, UPDATED
+        ID, ACTION, USER, START, END, DURATION, PAUSED, STATE, VERSION, TOUCHED, NAME, NOTES, EVENTS, UPDATED, UPDATED_ID
     };
 
     static constexpr string_view selectCols = "id, action, user, start_time, end_time, duration, paused, state, version, touch_time, "
-                                              "name, note, events, updated";
+                                              "name, note, events, updated, updated_id";
 
 
     static void assign(const boost::mysql::row_view& row, pb::WorkSession& ws, const UserContext& uctx) {
@@ -79,6 +79,7 @@ struct ToWorkSession {
         }
 
         ws.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
+        ws.set_updatedid(row.at(UPDATED_ID).as_uint64());
 
         //LOG_TRACE_N << "Loaded WorkSession: " << toJson(ws, 2);
     }
@@ -1010,7 +1011,7 @@ boost::asio::awaitable<void> GrpcServer::syncActiveWork(RequestCtx&  rctx)
         };
 
         const auto total_rows = co_await owner_.exportWork(
-            req->since(), *rctx.dbh, flush, rctx);
+            *req, *rctx.dbh, flush, rctx);
 
         LOG_DEBUG_N << "Sent " << total_rows << " work-sessions to client.";
         co_return;
@@ -1019,7 +1020,7 @@ boost::asio::awaitable<void> GrpcServer::syncActiveWork(RequestCtx&  rctx)
 }
 
 boost::asio::awaitable<uint64_t> GrpcServer::exportWork(
-    const uint64_t since,
+    const pb::GetNewReq& req,
     jgaa::mysqlpool::Mysqlpool::Handle& dbh,
     const export_flush_fn_t& flush_fn,
     RequestCtx& rctx,
@@ -1028,16 +1029,22 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportWork(
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
     const auto batch_size = server().config().options.stream_batch_size;
+    const auto cursor = getIncrementalSyncCursor(req);
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    co_await  rctx.dbh->start_exec(
-        format("SELECT {} from work_session WHERE user=? AND updated > ? {} ORDER BY updated, action, start_time, id",
-               ToWorkSession::selectCols,
-               removeDeleted ? "AND state != 'deleted' AND action is NOT NULL" : ""),
-        uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));
+    const auto sql = format("SELECT {} from work_session WHERE user=? AND {} ? {} ORDER BY {}",
+                            ToWorkSession::selectCols,
+                            cursor.use_updated_id ? "updated_id >" : "updated >",
+                            removeDeleted ? "AND state != 'deleted' AND action is NOT NULL" : "",
+                            cursor.use_updated_id ? "updated_id, action, start_time, id" : "updated, action, start_time, id");
+    if (cursor.use_updated_id) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
+    } else {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
+    }
 
     nextapp::pb::Status reply;
 

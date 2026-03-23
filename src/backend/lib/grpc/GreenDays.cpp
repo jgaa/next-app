@@ -51,11 +51,11 @@ GrpcServer::fetchDay(const pb::Date& date, RequestCtx& rctx) {
     const auto& cuser = uctx->userUuid();
 
     auto res = co_await rctx.dbh->exec(
-        "SELECT date, color, notes, report, updated FROM day WHERE user=? AND date=? AND deleted=0 ORDER BY date",
+        "SELECT date, color, notes, report, updated, updated_id FROM day WHERE user=? AND date=? AND deleted=0 ORDER BY date",
         uctx->dbOptions(), cuser, toAnsiDate(date));
 
     enum Cols {
-        DATE, COLOR, NOTES, REPORT, UPDATED
+        DATE, COLOR, NOTES, REPORT, UPDATED, UPDATED_ID
     };
 
     pb::CompleteDay reply;
@@ -78,6 +78,7 @@ GrpcServer::fetchDay(const pb::Date& date, RequestCtx& rctx) {
         }
 
         day->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
+        day->set_updatedid(row.at(UPDATED_ID).as_uint64());
 
         co_return reply;
     }
@@ -286,7 +287,7 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
 
             assert(rctx.dbh);
             const auto total_rows = co_await owner_.exportDays(
-                req->since(), rctx.dbh.value(), flush, rctx);
+                *req, rctx.dbh.value(), flush, rctx);
 
             LOG_DEBUG_N << "Sent " << total_rows << " days to client.";
             co_return;
@@ -294,7 +295,7 @@ GrpcServer::NextappImpl::GetNewDays(::grpc::CallbackServerContext* ctx, const ::
 }
 
 boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
-    const uint64_t since,
+    const pb::GetNewReq& req,
     jgaa::mysqlpool::Mysqlpool::Handle& dbh,
     const export_flush_fn_t& flush_fn,
     RequestCtx& rctx) {
@@ -302,19 +303,27 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
     const auto batch_size = server().config().options.stream_batch_size;
+    const auto cursor = getIncrementalSyncCursor(req);
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    co_await  rctx.dbh->start_exec(
-        R"(SELECT deleted, updated, date, color, notes, report FROM day
+    const auto sql = cursor.use_updated_id
+        ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
+                   WHERE user=? AND updated_id > ?
+                   ORDER BY updated_id, date)"
+        : R"(SELECT deleted, updated, 0, date, color, notes, report FROM day
                    WHERE user=? AND updated > ?
-                   ORDER BY updated, date)",
-        uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz(), true));
+                   ORDER BY updated, date)";
+    if (cursor.use_updated_id) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
+    } else {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz(), true));
+    }
 
     enum Cols {
-        DELETED, UPDATED, DATE, COLOR, NOTES, REPORT
+        DELETED, UPDATED, UPDATED_ID, DATE, COLOR, NOTES, REPORT
     };
 
     nextapp::pb::Status reply;
@@ -355,6 +364,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
             assert(row.at(DELETED).is_int64());
             d->set_deleted(row.at(DELETED).as_int64() == 1);
             d->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
+            d->set_updatedid(row.at(UPDATED_ID).as_uint64());
             const auto date_val = row.at(DATE).as_date();
             if (!date_val.valid()) {
                 LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
@@ -398,16 +408,22 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     return unaryHandler(ctx, req, reply,
     [this, req] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
-        auto res = co_await rctx.dbh->exec(
-            "SELECT id, name, color, score, updated "
-            "FROM day_colors "
-            "WHERE tenant IS NULL AND updated > ? "
-            "ORDER BY updated, id",
-            rctx.uctx->dbOptions(),
-            toMsDateTime(req->since(), rctx.uctx->tz()));
+        const auto cursor = getIncrementalSyncCursor(*req);
+        const auto sql = cursor.use_updated_id
+            ? "SELECT id, name, color, score, updated, updated_id "
+              "FROM day_colors "
+              "WHERE tenant IS NULL AND updated_id > ? "
+              "ORDER BY updated_id, id"
+            : "SELECT id, name, color, score, updated, 0 "
+              "FROM day_colors "
+              "WHERE tenant IS NULL AND updated > ? "
+              "ORDER BY updated, id";
+        auto res = cursor.use_updated_id
+            ? co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions(), cursor.since)
+            : co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions(), toMsDateTime(req->since(), rctx.uctx->tz()));
 
         enum Cols {
-            ID, NAME, COLOR, SCORE, UPDATED
+            ID, NAME, COLOR, SCORE, UPDATED, UPDATED_ID
         };
 
         if (auto *dcd = reply->mutable_daycolordefinitions()) {
@@ -418,6 +434,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
                 dc->set_name(pb_adapt(row.at(NAME).as_string()));
                 dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
                 dc->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
+                dc->set_updatedid(row.at(UPDATED_ID).as_uint64());
             }
         } else {
             assert(false);

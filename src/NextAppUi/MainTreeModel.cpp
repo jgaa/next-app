@@ -44,12 +44,13 @@ ostream& operator << (ostream& o, const QModelIndex& v) {
 namespace {
 
 static const QString insert_query = R"(INSERT INTO node
-        (uuid, parent, name, active, updated, exclude_from_wr, data) VALUES (?, ?, ?, ?, ?, ?, ?)
+        (uuid, parent, name, active, updated, updated_id, exclude_from_wr, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(uuid) DO UPDATE SET
         parent=excluded.parent,
         name=excluded.name,
         active=excluded.active,
         updated=excluded.updated,
+        updated_id=excluded.updated_id,
         exclude_from_wr=excluded.exclude_from_wr,
         data=excluded.data)";
 
@@ -108,6 +109,11 @@ void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, i
 }
 
 } // anon ns
+
+bool MainTreeModel::shouldStageParentRepair() const noexcept
+{
+    return state() == State::SYNCHING;
+}
 
 
 MainTreeModel::MainTreeModel(QObject *parent)
@@ -255,6 +261,7 @@ void MainTreeModel::clear()
 {
     root_.children().clear();
     uuid_index_.clear();
+    pending_parent_repairs_.clear();
 }
 
 QModelIndex MainTreeModel::useRoot()
@@ -440,33 +447,67 @@ QCoro::Task<void> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb:
         }
     }
 
+    const auto resyncOnFailure = [this, id = node.uuid()] {
+        QTimer::singleShot(0, this, [this, id] {
+            LOG_ERROR_N << "Node apply failed for " << id << ". Requesting resync.";
+            ServerComm::instance().resync();
+        });
+    };
+
     switch(op) {
     case Update::Operation::ADDED:
 added:
         assert(current == nullptr);
-        assert(parent);
-        co_await save(node);
+        if (!co_await save(node)) {
+            resyncOnFailure();
+            co_return;
+        }
+        if (!parent) {
+            LOG_WARN_N << "Deferring node " << node.uuid() << " because parent "
+                       << node.parent() << " is not loaded yet.";
+            if (!co_await doLoadLocally()) {
+                resyncOnFailure();
+            }
+            co_return;
+        }
         addNode(parent, node);
         break;
     case Update::Operation::UPDATED:
-        assert(current);
+        if (!current) {
+            LOG_WARN_N << "Updated node " << node.uuid() << " is not loaded. Rebuilding tree from cache.";
+            if (!co_await save(node) || !co_await doLoadLocally()) {
+                resyncOnFailure();
+            }
+            co_return;
+        }
         {
             auto cix = getIndex(current);
             current->node() = node;
-            co_await save(node);
+            if (!co_await save(node)) {
+                resyncOnFailure();
+                co_return;
+            }
             emit dataChanged(cix, cix);
         }
         break;
     case Update::Operation::MOVED:
         if (current) {
-            assert(parent);
+            if (!co_await save(node)) {
+                resyncOnFailure();
+                co_return;
+            }
+            if (!parent) {
+                LOG_WARN_N << "Deferred moved node " << node.uuid() << " because parent "
+                           << node.parent() << " is not loaded yet.";
+                if (!co_await doLoadLocally()) {
+                    resyncOnFailure();
+                }
+                co_return;
+            }
             assert(parent != current->parent());
             moveNode(parent, current, node);
-            co_await save(parent->node());
-            co_await save(node);
         } else {
-            // Add it!
-            LOG_WARN << "Failed to locate moved node " << current->node().uuid() << ". Will add it.";
+            LOG_WARN_N << "Moved node " << node.uuid() << " is not loaded. Will treat it as an add.";
             goto added;
         }
         break;
@@ -487,8 +528,10 @@ added:
                 }
             }
 
-            co_await save(node);
-            co_await doLoadLocally();
+            if (!co_await save(node) || !co_await doLoadLocally()) {
+                resyncOnFailure();
+                co_return;
+            }
             emit nodeDeleted();
         }
         break;
@@ -536,26 +579,19 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
 {
     auto& db = NextAppCore::instance()->db();
 
-    QString query = R"(WITH RECURSIVE node_tree AS (
-        -- Select the root nodes (those without a parent)
-        SELECT uuid, parent, active, updated, data
-        FROM node
-        WHERE parent IS NULL
-
-        UNION ALL
-
-        -- Recursively select the child nodes
-        SELECT n.uuid, n.parent, n.active, n.updated, n.data
-        FROM node n
-        INNER JOIN node_tree nt ON n.parent = nt.uuid
-    )
-    SELECT uuid, data FROM node_tree)";
+    QString query = R"(SELECT uuid, parent, data
+                       FROM node
+                       ORDER BY CASE WHEN parent IS NULL OR parent = '' THEN 0 ELSE 1 END,
+                                updated,
+                                uuid)";
 
     enum Cols {
         UUID = 0,
+        PARENT,
         DATA
     };
 
+    QList<nextapp::pb::Node> pending;
     auto rval = co_await db.legacyQuery(query);
     if (rval) {
         for (const auto& row : rval.value()) {
@@ -564,16 +600,128 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
             const auto& data = row.at(DATA).toByteArray();
             node.deserialize(&serializer, data);
             assert(node.uuid() == row.at(UUID).toString());
+            pending.push_back(std::move(node));
+        }
+    } else {
+        co_return false;
+    }
 
-            // The query is supposed to return parents first.
-            auto parent = lookupTreeNode(QUuid{node.parent()});
-            assert(parent);
+    bool made_progress = false;
+    do {
+        made_progress = false;
+        QList<nextapp::pb::Node> remaining;
+        remaining.reserve(pending.size());
+
+        for (auto& node : pending) {
+            auto *parent = lookupTreeNode(QUuid{node.parent()});
             if (parent) {
                 addNode(parent, node);
+                made_progress = true;
             } else {
-                LOG_WARN_N << "Missing parent for tree node: " << node.uuid() << " " << node.name();
+                remaining.push_back(std::move(node));
             }
         }
+
+        pending = std::move(remaining);
+    } while (made_progress && !pending.empty());
+
+    if (!pending.empty()) {
+        for (const auto& node : pending) {
+            LOG_ERROR_N << "Missing parent for tree node: " << node.uuid()
+                        << " parent=" << node.parent()
+                        << " name=" << node.name();
+        }
+        co_return false;
+    }
+
+    co_return true;
+}
+
+QCoro::Task<bool> MainTreeModel::finalizeSyncPersistence()
+{
+    if (!co_await repairStoredNodes()) {
+        co_return false;
+    }
+    co_return co_await validateStoredNodes();
+}
+
+QCoro::Task<bool> MainTreeModel::repairStoredNodes()
+{
+    if (pending_parent_repairs_.empty()) {
+        co_return true;
+    }
+
+    auto& db = NextAppCore::instance()->db();
+    const auto rows = co_await db.legacyQuery("SELECT uuid, data FROM node");
+    if (!rows) {
+        LOG_ERROR_N << "Failed to load nodes for parent repair: " << rows.error();
+        co_return false;
+    }
+
+    QHash<QString, QByteArray> serialized_nodes;
+    serialized_nodes.reserve(rows->size());
+    for (const auto& row : *rows) {
+        serialized_nodes.insert(row.at(0).toString(), row.at(1).toByteArray());
+    }
+
+    for (const auto& [child_id, parent_id] : pending_parent_repairs_) {
+        if (!serialized_nodes.contains(parent_id)) {
+            LOG_ERROR_N << "Unresolved node parent reference after repair pass: node="
+                        << child_id << " parent=" << parent_id;
+            co_return false;
+        }
+
+        const auto child_it = serialized_nodes.constFind(child_id);
+        if (child_it == serialized_nodes.cend()) {
+            continue;
+        }
+
+        QProtobufSerializer serializer;
+        nextapp::pb::Node node;
+        if (!node.deserialize(&serializer, child_it.value())) {
+            LOG_ERROR_N << "Failed to deserialize cached node during parent repair: " << child_id;
+            co_return false;
+        }
+
+        node.setParent(parent_id);
+        QByteArray updated_blob = node.serialize(&serializer);
+        const auto updated = co_await db.query(
+            "UPDATE node SET parent = ?, data = ? WHERE uuid = ?",
+            parent_id,
+            updated_blob,
+            child_id);
+        if (!updated) {
+            LOG_ERROR_N << "Failed to repair node parent reference for " << child_id
+                        << " err=" << updated.error();
+            co_return false;
+        }
+    }
+
+    pending_parent_repairs_.clear();
+    co_return true;
+}
+
+QCoro::Task<bool> MainTreeModel::validateStoredNodes()
+{
+    auto& db = NextAppCore::instance()->db();
+    const auto unresolved = co_await db.query(
+        R"(SELECT child.uuid, child.parent
+           FROM node AS child
+           LEFT JOIN node AS parent ON parent.uuid = child.parent
+           WHERE child.parent IS NOT NULL
+             AND child.parent != ''
+             AND parent.uuid IS NULL)");
+    if (!unresolved) {
+        LOG_ERROR_N << "Failed to validate node parent references: " << unresolved.error();
+        co_return false;
+    }
+
+    if (!unresolved->rows.empty()) {
+        for (const auto& row : unresolved->rows) {
+            LOG_ERROR_N << "Unresolved node parent reference: node="
+                        << row.at(0).toString() << " parent=" << row.at(1).toString();
+        }
+        co_return false;
     }
 
     co_return true;
@@ -632,24 +780,38 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
             LOG_WARN_N << "Failed to delete node " << node.uuid() << " " << node.name()
                         << " err=" << rval.error();
         }
+        pending_parent_repairs_.erase(node.uuid());
         co_return true; // TODO: Add proper error handling. Probably a full resynch if the node is in the db.
+    }
+
+    auto stored_node = node;
+    const auto staged_parent = node.parent();
+    if (shouldStageParentRepair() && !staged_parent.isEmpty()) {
+        stored_node.setParent(QString{});
     }
 
     QProtobufSerializer serializer;
 
-    params << node.uuid();
-    params << node.parent();
-    params << node.name();
-    params << node.active();
-    params << qlonglong{node.updated()};
-    params << node.excludeFromWeeklyReview();
-    params << node.serialize(&serializer);
+    params << stored_node.uuid();
+    params << stored_node.parent();
+    params << stored_node.name();
+    params << stored_node.active();
+    params << qlonglong{stored_node.updated()};
+    params << qulonglong{stored_node.updatedId()};
+    params << stored_node.excludeFromWeeklyReview();
+    params << stored_node.serialize(&serializer);
 
     const auto rval = co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update node: " << node.uuid() << " " << node.name()
                     << " err=" << rval.error();
         co_return false; // TODO: Add proper error handling. Probably a full resynch.
+    }
+
+    if (shouldStageParentRepair() && !staged_parent.isEmpty()) {
+        pending_parent_repairs_[node.uuid()] = staged_parent;
+    } else {
+        pending_parent_repairs_.erase(node.uuid());
     }
 
     co_return true;
@@ -659,6 +821,23 @@ QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items
 {
     auto& db = NextAppCore::instance()->db();
     static const QString delete_query = R"(DELETE FROM node WHERE uuid = ?)";
+    QList<nextapp::pb::Node> stored_items;
+    stored_items.reserve(items.size());
+    std::map<QString, QString> repairs;
+    std::set<QString> cleared_repairs;
+    for (const auto& node : items) {
+        if (node.deleted() || node.parent().isEmpty() || !shouldStageParentRepair()) {
+            cleared_repairs.insert(node.uuid());
+            stored_items.push_back(node);
+            continue;
+        }
+
+        auto staged = node;
+        staged.setParent(QString{});
+        stored_items.push_back(std::move(staged));
+        repairs[node.uuid()] = node.parent();
+    }
+
     auto getParams = [](const nextapp::pb::Node& node) {
         QList<QVariant> params;
         QProtobufSerializer serializer;
@@ -667,6 +846,7 @@ QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items
         params << node.name();
         params << node.active();
         params << qlonglong{node.updated()};
+        params << qulonglong{node.updatedId()};
         params << node.excludeFromWeeklyReview();
         params << node.serialize(&serializer);
         return params;
@@ -674,7 +854,18 @@ QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items
     auto isDeleted = [](const nextapp::pb::Node& node) { return node.deleted(); };
     auto getId = [](const nextapp::pb::Node& node) { return node.uuid(); };
 
-    co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
+    if (!co_await db.queryBatch(insert_query, delete_query, stored_items, getParams, isDeleted, getId)) {
+        co_return false;
+    }
+
+    for (const auto& id : cleared_repairs) {
+        pending_parent_repairs_.erase(id);
+    }
+    for (const auto& [child_id, parent_id] : repairs) {
+        pending_parent_repairs_[child_id] = parent_id;
+    }
+
+    co_return true;
 }
 
 MainTreeModel::TreeNode::node_list_t &MainTreeModel::getListFromChild(TreeNode &child)

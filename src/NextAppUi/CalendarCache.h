@@ -61,7 +61,9 @@ private:
     QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
     QCoro::Task<bool> save(const QProtobufMessage& item) override;
     QCoro::Task<bool> save_(const nextapp::pb::TimeBlock& block);
+    QCoro::Task<bool> finalizeSyncPersistence() override;
     QCoro::Task<bool> loadFromCache() override;
+    QCoro::Task<bool> repairStoredTimeBlocks();
     QCoro::Task<void> setAudioTimers();
     void onAudioEvent();
     QCoro::Task<void> updateActionsOnCalendarCache();

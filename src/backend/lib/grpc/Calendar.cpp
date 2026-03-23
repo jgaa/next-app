@@ -25,10 +25,10 @@ namespace {
 
 struct ToTimeBlock {
     enum Columns {
-        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY, ACTIONS, VERSION, UPDATED
+        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY, ACTIONS, VERSION, UPDATED, UPDATED_ID
     };
 
-    static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, actions, version, updated";
+    static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, actions, version, updated, updated_id";
 
     static void assign(const boost::mysql::row_view& row, pb::TimeBlock& tb, const UserContext& uctx) {
         tb.set_id(pb_adapt(row.at(ID).as_string()));
@@ -63,6 +63,7 @@ struct ToTimeBlock {
 
         tb.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
         tb.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
+        tb.set_updatedid(row.at(UPDATED_ID).as_uint64());
     }
 };
 
@@ -301,7 +302,7 @@ GrpcServer::NextappImpl::GetNewTimeBlocks(::grpc::CallbackServerContext *ctx, co
         };
 
         const auto total_rows = co_await owner_.exportTimeBlocks(
-            req->since(), *rctx.dbh, flush, rctx);
+            *req, *rctx.dbh, flush, rctx);
 
         LOG_DEBUG_N << "Sent " << total_rows << " time-blocks to client.";
         co_return;
@@ -310,7 +311,7 @@ GrpcServer::NextappImpl::GetNewTimeBlocks(::grpc::CallbackServerContext *ctx, co
 }
 
 boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
-    const uint64_t since,
+    const pb::GetNewReq& req,
     jgaa::mysqlpool::Mysqlpool::Handle& dbh,
     const export_flush_fn_t& flush_fn,
     RequestCtx& rctx,
@@ -319,16 +320,22 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
     const auto batch_size = server().config().options.stream_batch_size;
+    const auto cursor = getIncrementalSyncCursor(req);
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    co_await  rctx.dbh->start_exec(
-        format("SELECT {} from time_block WHERE user=? AND updated > ? {} ORDER BY updated, start_time, end_time, id",
-               ToTimeBlock::columns,
-               removeDeleted ? "AND kind != 'deleted'" : ""),
-        uctx->dbOptions(), cuser, toMsDateTime(since, uctx->tz()));
+    const auto sql = format("SELECT {} from time_block WHERE user=? AND {} ? {} ORDER BY {}",
+                            ToTimeBlock::columns,
+                            cursor.use_updated_id ? "updated_id >" : "updated >",
+                            removeDeleted ? "AND kind != 'deleted'" : "",
+                            cursor.use_updated_id ? "updated_id, start_time, end_time, id" : "updated, start_time, end_time, id");
+    if (cursor.use_updated_id) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
+    } else {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
+    }
 
     nextapp::pb::Status reply;
 

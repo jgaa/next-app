@@ -14,13 +14,14 @@ using namespace nextapp;
 
 namespace {
     const QString insert_query = R"(INSERT INTO day
-        (date, color, notes, report, updated)
-        VALUES (?, ?, ?, ?, ?)
+        (date, color, notes, report, updated, updated_id)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(date) DO UPDATE SET
             color=excluded.color,
             notes=excluded.notes,
             report=excluded.report,
-            updated=excluded.updated)";
+            updated=excluded.updated,
+            updated_id=excluded.updated_id)";
 
     QList<QVariant> getParams(const nextapp::pb::CompleteDay& fullDay) {
         QList<QVariant> params;
@@ -31,6 +32,7 @@ namespace {
         params.append(fullDay.hasNotes() ? fullDay.notes() : QVariant{});
         params.append(fullDay.hasReport() ? fullDay.report(): QVariant{});
         params.append(updated);
+        params.append(static_cast<qulonglong>(day.updatedId()));
         return params;
     }
 } // anon ns
@@ -199,7 +201,11 @@ QCoro::Task<void> GreenDaysModel::onUpdatedDay(nextapp::pb::CompleteDay complete
 {
     const auto date = completeDay.day().date();
 
-    co_await storeDay(completeDay);
+    if (!co_await storeDay(completeDay)) {
+        LOG_ERROR_N << "Failed to persist updated day locally. Requesting resync.";
+        ServerComm::instance().resync();
+        co_return;
+    }
     auto *di = lookup(date.year(), date.month() + 1, date.mday());
     if (di) {
         toDayInfo(completeDay.day(), *di);
@@ -268,9 +274,12 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
     auto& db = NextAppCore::instance()->db();
 
     LOG_TRACE_N << "Getting last updated";
-    const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day_colors");
-
-    if (last_updated) {
+    if (ServerComm::instance().shouldUseUpdatedIdSync()) {
+        req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
+        if (const auto last_updated_id = co_await db.queryOne<qulonglong>("SELECT MAX(updated_id) FROM day_colors"); last_updated_id) {
+            req.setSince(static_cast<qlonglong>(last_updated_id.value()));
+        }
+    } else if (const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day_colors"); last_updated) {
         LOG_TRACE_N << "Setting last updated " << last_updated.value();
         req.setSince(last_updated.value());
     }
@@ -282,13 +291,14 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
             for(const auto cdd : res.dayColorDefinitions().dayColors()) {
                 QList<QVariant> params;
                 QString sql = R"(INSERT INTO day_colors
-                    (id, color, score, name, updated)
-                    VALUES (?, ?, ?, ?, ?)
+                    (id, color, score, name, updated, updated_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         color=excluded.color,
                         score=excluded.score,
                         name=excluded.name,
-                        updated=excluded.updated)";
+                        updated=excluded.updated,
+                        updated_id=excluded.updated_id)";
 
                 const qlonglong updated = cdd.updated();
                 const int score = cdd.score();
@@ -297,6 +307,7 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
                 params.append(score);
                 params.append(cdd.name());
                 params.append(updated);
+                params.append(static_cast<qulonglong>(cdd.updatedId()));
                 const auto rval = co_await db.legacyQuery(sql, &params);
                 if (!rval) {
                     LOG_ERROR_N << "Failed to update day color "
@@ -323,9 +334,12 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
     auto& db = NextAppCore::instance()->db();
 
     LOG_TRACE_N << "Getting last updated";
-    const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day");
-
-    if (last_updated) {
+    if (ServerComm::instance().shouldUseUpdatedIdSync()) {
+        req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
+        if (const auto last_updated_id = co_await db.queryOne<qulonglong>("SELECT MAX(updated_id) FROM day"); last_updated_id) {
+            req.setSince(static_cast<qlonglong>(last_updated_id.value()));
+        }
+    } else if (const auto last_updated = co_await db.queryOne<qlonglong>("SELECT MAX(updated) FROM day"); last_updated) {
         LOG_TRACE_N << "Setting last updated " << last_updated.value();
         req.setSince(last_updated.value());
     }
@@ -345,7 +359,10 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
                 if (u.hasDays()) {
                     LOG_TRACE_N << "Got days from server. Count=" << u.days().days().size();
                     for(const auto& item : u.days().days()) {
-                        co_await storeDay(item);
+                        if (!co_await storeDay(item)) {
+                            LOG_ERROR_N << "Failed to persist green day batch item locally. Aborting sync.";
+                            co_return false;
+                        }
                     }
                  }
 

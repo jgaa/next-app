@@ -173,6 +173,7 @@ ServerComm::ServerComm()
 #endif
 
     setDefaulValuesInUserSettings();
+    loadLocalDataVersions();
 
     if (!settings.contains("deviceName")) {
         const auto name = QSysInfo::machineHostName();
@@ -1451,12 +1452,16 @@ void ServerComm::onUpdateMessage()
 #endif
             LOG_TRACE << "Got update: #" << msg->messageId() << " " << msg->when().seconds();
             const auto msgid = msg->messageId();
+            if (msgid <= last_seen_update_id_) {
+                LOG_WARN_N << "Ignoring duplicate or stale update #" << msgid
+                           << " because last_seen_update_id_ is " << last_seen_update_id_;
+                return;
+            }
+
             if (msgid != last_seen_update_id_ + 1) {
                 LOG_WARN_N << "Received out of order update #" << msgid
                            << ". I expected messageid #" << (last_seen_update_id_ + 1);
 
-                last_seen_update_id_ = msgid;
-                saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "out of order update");
                 // We need to sync.
                 // Execute later
                 QTimer::singleShot(0, [this] {
@@ -1532,6 +1537,8 @@ void ServerComm::onUpdateMessage()
             }
 
             emit onUpdate(std::move(msg));
+            last_seen_update_id_ = msgid;
+            saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "applied update");
         }
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();
@@ -1697,6 +1704,35 @@ QString ServerComm::lastSeenUpdateIdKey() const {
     return AppInstanceMgr::instance()->name() + "/last_seen_update_id";
 }
 
+QString ServerComm::localActionCategoryVersionKey() const
+{
+    return AppInstanceMgr::instance()->name() + "/sync/action_category_version";
+}
+
+void ServerComm::loadLocalDataVersions()
+{
+    QSettings settings;
+    local_data_versions_.setActionCategoryVersion(
+        settings.value(localActionCategoryVersionKey(), 0).toULongLong());
+}
+
+void ServerComm::persistLocalDataVersions() const
+{
+    QSettings settings;
+    settings.setValue(localActionCategoryVersionKey(),
+                      QVariant::fromValue(local_data_versions_.actionCategoryVersion()));
+}
+
+void ServerComm::setLocalActionCategoryVersion(uint64_t version)
+{
+    if (local_data_versions_.actionCategoryVersion() == version) {
+        return;
+    }
+
+    local_data_versions_.setActionCategoryVersion(version);
+    persistLocalDataVersions();
+}
+
 QString ServerComm::lastSeenServerInstance() const
 {
     return AppInstanceMgr::instance()->name() + "/last_seen_server_instance";
@@ -1739,25 +1775,19 @@ QCoro::Task<void> ServerComm::startNextappSession()
 
     QSettings settings;
     session_id_.clear();
+    updated_id_sync_initialized_ = settings.value("sync/updatedIdInitialized", false).toBool();
+    server_supports_updated_id_ = false;
 
     {
         auto prev_version = settings.value("client/version", "").toString();
         if (prev_version != NEXTAPP_UI_VERSION) {
             LOG_INFO << "Client version changed from " << prev_version << " to " << NEXTAPP_UI_VERSION;
             settings.setValue("client/version", NEXTAPP_UI_VERSION);
-            //settings.setValue("sync/resync", "true");
             settings.sync();
         }
     }
 
-    const bool full_sync = co_await needFullResync();
-    if (full_sync) {
-        LOG_WARN << "Resyncing from the server. Will delete the local cache.";
-        addMessage(tr("Doing a full synch with the server. This may take a few moments..."));
-
-        // Clear the local cache.
-        co_await NextAppCore::instance()->db().clear();
-    }
+    bool full_sync = co_await needFullResync();
 
     setStatus(Status::CONNECTING);
 
@@ -1771,7 +1801,8 @@ QCoro::Task<void> ServerComm::startNextappSession()
     };
 
     bool needs_sync = false;
-    uint64_t new_last_notification_update{0};
+    uint64_t notification_sync_target{0};
+    uint64_t hello_last_notification{0};
     auto res = co_await rpc(nextapp::pb::Empty{},
                             &nextapp::pb::Nextapp::Client::Hello,
                             options);
@@ -1785,30 +1816,45 @@ QCoro::Task<void> ServerComm::startNextappSession()
                         << ", server instance tag: " << res.hello().serverInstanceTag()
                         << ", server-id: " << res.hello().serverId()
                         << ", session-id: " << session_id_
-                        << ", plans enabled: " << res.hello().plansEnabled();
+                        << ", plans enabled: " << res.hello().plansEnabled()
+                        << ", supports updated_id: " << res.hello().supportsUpdatedId();
 
+            session_start_publish_id_ = res.hello().lastPublishId();
+            hello_last_notification = res.hello().lastNotification();
+            server_supports_updated_id_ = res.hello().supportsUpdatedId();
             if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
                 needs_sync = true;
                 last_seen_server_instance_ = res.hello().serverInstanceTag();
                 LOG_INFO_N << "Needs sync. Server instance tag changed to " << last_seen_server_instance_;
-            }
-
-            if (res.hello().lastPublishId() != last_seen_update_id_) {
+            } else if (res.hello().lastPublishId() < last_seen_update_id_) {
                 needs_sync = true;
-                last_seen_update_id_ = res.hello().lastPublishId();
-                LOG_INFO_N << "Needs sync.  Servers update id is " << res.hello().lastPublishId()
-                            << " (was " << last_seen_update_id_ << ")";
+                LOG_INFO_N << "Needs sync. Server last publish id "
+                            << res.hello().lastPublishId()
+                            << " is behind our last applied update id "
+                            << last_seen_update_id_;
+            } else if (res.hello().lastPublishId() > last_seen_update_id_) {
+                LOG_INFO_N << "Server has " << (res.hello().lastPublishId() - last_seen_update_id_)
+                           << " unapplied updates. Will request replay from message id "
+                           << last_seen_update_id_;
             }
 
             saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "server hello");
 
-            if (res.hello().lastNotification() < NotificationsModel::instance()->lastUpdateSeen()) {
-                new_last_notification_update = NotificationsModel::instance()->lastUpdateSeen();
-                LOG_DEBUG_N << "Server notification id is " << new_last_notification_update
-                            << " (was " << NotificationsModel::instance()->lastUpdateSeen() << ")";
+            if (hello_last_notification > NotificationsModel::instance()->lastUpdateSeen()) {
+                notification_sync_target = hello_last_notification;
+                LOG_DEBUG_N << "Server notification watermark advanced to " << notification_sync_target
+                            << " from local " << NotificationsModel::instance()->lastUpdateSeen();
             }
 
             NextAppCore::instance()->setPlansEnabled(res.hello().plansEnabled());
+
+            if (server_supports_updated_id_ && !updated_id_sync_initialized_) {
+                LOG_INFO_N << "Server supports updated_id sync, but local baseline is not initialized. Forcing one full sync.";
+                full_sync = true;
+                needs_sync = true;
+            } else if (!server_supports_updated_id_ && updated_id_sync_initialized_) {
+                LOG_INFO_N << "Server does not support updated_id sync. Falling back to legacy since-based sync.";
+            }
         } else {
             LOG_ERROR <<  "Server did not send a Hello message!";
             goto failed;
@@ -1860,6 +1906,9 @@ failed:
     }
 
     nextapp::pb::UpdatesReq ureq;
+    if (!full_sync && !needs_sync && session_start_publish_id_ >= last_seen_update_id_) {
+        ureq.setFromMessageId(last_seen_update_id_);
+    }
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
     auto fcn_config = getPushConfig(settings);
     fcm_requested_ = fcn_config.kind() != nextapp::pb::PushNotificationConfig::Kind::DISABLE;
@@ -1889,6 +1938,11 @@ failed:
     });
 
     if (needs_sync || full_sync) {
+        if (full_sync) {
+            LOG_WARN << "Resyncing from the server. Will delete the local cache.";
+            addMessage(tr("Doing a full synch with the server. This may take a few moments..."));
+            co_await NextAppCore::instance()->db().clear();
+        }
 
         // Do the initial synch.
         LOG_DEBUG_N << "Fetching data versions...";
@@ -1956,6 +2010,8 @@ failed:
             LOG_WARN_N << "Failed to get notifications.";
             goto failed;
         }
+        NotificationsModel::instance()->setLastUpdateSeen(
+            std::max(NotificationsModel::instance()->lastUpdateSeen(), hello_last_notification));
 
     } else {
         LOG_INFO << "Omitting server-sync as the local cache is up to date.";
@@ -1992,14 +2048,15 @@ failed:
             goto failed;
         }
 
-        if (new_last_notification_update) {
+        if (notification_sync_target) {
             LOG_DEBUG_N << "Fetching notifications...";
             if (!co_await NotificationsModel::instance()->synch(false)) {
                 LOG_WARN_N << "Failed to get notifications.";
                 goto failed;
-
-                co_await updateLastReadNotification();
             }
+            NotificationsModel::instance()->setLastUpdateSeen(
+                std::max(NotificationsModel::instance()->lastUpdateSeen(), notification_sync_target));
+            co_await updateLastReadNotification();
         } else {
             if (!co_await NotificationsModel::instance()->loadLocally()) {
                 LOG_WARN_N << "Failed to load notifications locally";
@@ -2008,8 +2065,9 @@ failed:
         }
     }
 
-    if (new_last_notification_update) {
-        NotificationsModel::instance()->setLastUpdateSeen(new_last_notification_update);
+    if ((needs_sync || full_sync) && last_seen_update_id_ < session_start_publish_id_) {
+        last_seen_update_id_ = session_start_publish_id_;
+        saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "completed sync baseline");
     }
 
     if (userGlobalSettings_.version() == 0) {
@@ -2026,6 +2084,10 @@ failed:
     NextAppCore::instance()->db().clearDbInitializedFlag();
     if (full_sync) {
         settings.setValue("sync/resync", "false");
+        if (server_supports_updated_id_) {
+            settings.setValue("sync/updatedIdInitialized", true);
+            updated_id_sync_initialized_ = true;
+        }
         co_await updateDataEpoc();
     }
 
@@ -2641,6 +2703,7 @@ QCoro::Task<bool> ServerComm::needFullResync()
         if (need_full_sync) {
             LOG_INFO_N << "Data epoc mismatch. Full resync is required.";
         }
+        co_return need_full_sync;
     }
 
     LOG_INFO_N << "No data epoc found in the database. Full resync is required.";

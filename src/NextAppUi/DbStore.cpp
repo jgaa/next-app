@@ -591,10 +591,12 @@ bool DbStore::updateSchema(uint version)
             "notes" TEXT,
             "report" TEXT,
             "updated" INTEGER NOT NULL,
+            "updated_id" INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY("date")
         ))",
 
         "CREATE INDEX IF NOT EXISTS day_updated_ix ON day(updated)",
+        "CREATE INDEX IF NOT EXISTS day_updated_id_ix ON day(updated_id)",
 
         R"(CREATE TABLE IF NOT EXISTS "day_colors" (
             "id" VARCHAR(32) NOT NULL,
@@ -602,10 +604,12 @@ bool DbStore::updateSchema(uint version)
             "color" VARCHAR(32) NOT NULL,
             "name" VARCHAR(255) NOT NULL,
             "updated" INTEGER NOT NULL,
+            "updated_id" INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY("id")
         ))",
 
         "CREATE INDEX IF NOT EXISTS day_colors_updated_ix ON day_colors(updated)",
+        "CREATE INDEX IF NOT EXISTS day_colors_updated_id_ix ON day_colors(updated_id)",
 
         // The nodes will be cached in memory, so no need to store much data for indexing
         R"(CREATE TABLE IF NOT EXISTS "node" (
@@ -613,6 +617,7 @@ bool DbStore::updateSchema(uint version)
             "parent" VARCHAR(32),
             "active" BOOLEAN NOT NULL,
             "updated" INTEGER NOT NULL,
+            "updated_id" INTEGER NOT NULL DEFAULT 0,
             "name" VARCHAR(256) NOT NULL,
             "exclude_from_wr" BOOLEAN NOT NULL,
             "data" BLOB NOT NULL,
@@ -620,6 +625,7 @@ bool DbStore::updateSchema(uint version)
         ))",
 
         "CREATE INDEX IF NOT EXISTS node_updated_ix ON node(updated)",
+        "CREATE INDEX IF NOT EXISTS node_updated_id_ix ON node(updated_id)",
 
         R"(CREATE TABLE IF NOT EXISTS "action_category" (
             "id" VARCHAR(32) NOT NULL,
@@ -657,6 +663,7 @@ bool DbStore::updateSchema(uint version)
             "kind" INTEGER NOT NULL,
             "version" INTEGER NOT NULL,
             "updated" INTEGER NOT NULL,
+            "updated_id" INTEGER NOT NULL DEFAULT 0,
             "time_spent" INT NULL,
             "score" FLOAT NULL,
             "tags" TEXT NULL,
@@ -665,6 +672,7 @@ bool DbStore::updateSchema(uint version)
         ))",
 
         "CREATE INDEX IF NOT EXISTS action_updated_ix ON action(updated)",
+        "CREATE INDEX IF NOT EXISTS action_updated_id_ix ON action(updated_id)",
         "CREATE INDEX IF NOT EXISTS action_node_ix ON action(node, status)",
         "CREATE INDEX IF NOT EXISTS action_created_date_ix ON action(created_date, status)",
         "CREATE INDEX IF NOT EXISTS action_start_time_ix ON action(start_time, status)",
@@ -690,12 +698,14 @@ bool DbStore::updateSchema(uint version)
             "paused" INTEGER,
             "data" BLOB NOT NULL,
             "updated" INTEGER NOT NULL,
+            "updated_id" INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY("id"),
             FOREIGN KEY(action) REFERENCES action(id) ON DELETE CASCADE)
         )",
 
         "CREATE INDEX IF NOT EXISTS work_session_action_state ON work_session(state, start_time)",
         "CREATE INDEX IF NOT EXISTS work_session_updated ON work_session(updated, state)",
+        "CREATE INDEX IF NOT EXISTS work_session_updated_id ON work_session(updated_id, state)",
         "CREATE INDEX IF NOT EXISTS work_session_action ON work_session(action, state)",
         "CREATE INDEX IF NOT EXISTS work_session_start_time ON work_session(start_time, state)",
 
@@ -706,12 +716,14 @@ bool DbStore::updateSchema(uint version)
             "kind" INTEGER,
             "data" BLOB NOT NULL,
             "updated" INTEGER NOT NULL,
+            "updated_id" INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY("id"))
         )",
 
         "CREATE INDEX IF NOT EXISTS time_block_start_time ON time_block(start_time)",
         "CREATE INDEX IF NOT EXISTS time_block_end_time ON time_block(end_time)",
         "CREATE INDEX IF NOT EXISTS time_block_updated ON time_block(updated)",
+        "CREATE INDEX IF NOT EXISTS time_block_updated_id ON time_block(updated_id)",
 
         R"(CREATE TABLE IF NOT EXISTS time_block_actions (
             time_block VARCHAR(32) NOT NULL,
@@ -736,13 +748,31 @@ bool DbStore::updateSchema(uint version)
             time INTEGER NOT NULL,
             kind INTEGER NOT NULL,
             updated INTEGER NOT NULL,
+            updated_id INTEGER NOT NULL DEFAULT 0,
             data BLOB NOT NULL)
         )",
 
     });
 
+    static constexpr auto v2_upgrade = to_array<string_view>({
+        R"(ALTER TABLE day ADD COLUMN updated_id INTEGER NOT NULL DEFAULT 0)",
+        R"(CREATE INDEX IF NOT EXISTS day_updated_id_ix ON day(updated_id))",
+        R"(ALTER TABLE day_colors ADD COLUMN updated_id INTEGER NOT NULL DEFAULT 0)",
+        R"(CREATE INDEX IF NOT EXISTS day_colors_updated_id_ix ON day_colors(updated_id))",
+        R"(ALTER TABLE node ADD COLUMN updated_id INTEGER NOT NULL DEFAULT 0)",
+        R"(CREATE INDEX IF NOT EXISTS node_updated_id_ix ON node(updated_id))",
+        R"(ALTER TABLE action ADD COLUMN updated_id INTEGER NOT NULL DEFAULT 0)",
+        R"(CREATE INDEX IF NOT EXISTS action_updated_id_ix ON action(updated_id))",
+        R"(ALTER TABLE work_session ADD COLUMN updated_id INTEGER NOT NULL DEFAULT 0)",
+        R"(CREATE INDEX IF NOT EXISTS work_session_updated_id ON work_session(updated_id, state))",
+        R"(ALTER TABLE time_block ADD COLUMN updated_id INTEGER NOT NULL DEFAULT 0)",
+        R"(CREATE INDEX IF NOT EXISTS time_block_updated_id ON time_block(updated_id))",
+        R"(ALTER TABLE notification ADD COLUMN updated_id INTEGER NOT NULL DEFAULT 0)",
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
+        v2_upgrade,
     });
 
     if (version == latest_version) {

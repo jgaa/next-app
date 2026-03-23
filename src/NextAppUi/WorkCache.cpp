@@ -6,14 +6,15 @@
 #include "WorkCache.h"
 #include "DbStore.h"
 #include "NextAppCore.h"
+#include "ServerComm.h"
 #include "format_wrapper.h"
 
 using namespace std;
 
 namespace {
 static const QString insert_query = R"(INSERT INTO work_session (
-        id, action, state, start_time, end_time, duration, paused, data, updated
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, action, state, start_time, end_time, duration, paused, data, updated, updated_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
         action = EXCLUDED.action,
         state = EXCLUDED.state,
@@ -22,7 +23,8 @@ static const QString insert_query = R"(INSERT INTO work_session (
         duration = EXCLUDED.duration,
         paused = EXCLUDED.paused,
         data = EXCLUDED.data,
-        updated = EXCLUDED.updated
+        updated = EXCLUDED.updated,
+        updated_id = EXCLUDED.updated_id
     )";
 
     QList<QVariant> getParams(const nextapp::pb::WorkSession& work) {
@@ -49,6 +51,7 @@ static const QString insert_query = R"(INSERT INTO work_session (
         QProtobufSerializer serializer;
         params << work.serialize(&serializer);
         params << static_cast<qlonglong>(work.updated());
+        params << static_cast<qulonglong>(work.updatedId());
 
         return params;
     }
@@ -65,6 +68,18 @@ static const QString insert_query = R"(INSERT INTO work_session (
             }
             return false;
         });
+    }
+
+    bool removeFromActive(WorkCache::active_t& active, const QString& session_id)
+    {
+        if (auto it = std::ranges::find_if(active, [&session_id](const auto& ws) {
+            return ws->id_proto() == session_id;
+        }); it != active.end()) {
+            active.erase(it);
+            return true;
+        }
+
+        return false;
     }
 }
 
@@ -121,7 +136,13 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
                 wsp = std::make_shared<nextapp::pb::WorkSession>(work);
                 items_.emplace(id, wsp);
             }
-            co_await save(*wsp);
+            if (!co_await save(*wsp)) {
+                QTimer::singleShot(0, &ServerComm::instance(), [id] {
+                    LOG_ERROR_N << "Failed to persist work session " << id.toString() << ". Requesting resync.";
+                    ServerComm::instance().resync();
+                });
+                co_return;
+            }
 
             if (wsp->state() == nextapp::pb::WorkSession::State::ACTIVE
                 || wsp->state() == nextapp::pb::WorkSession::State::PAUSED) {
@@ -144,17 +165,36 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
     } else if (update->hasAction()) {
         if (op == nextapp::pb::Update::Operation::DELETED || op == nextapp::pb::Update::Operation::MOVED) {
             auto action_id = update->action().id_proto();
-            if (ranges::find_if(items_, [&action_id](const auto& pair) {
-                return pair.second->action() == action_id;
-            }) != items_.end()) {
-                const auto id = QUuid{action_id};
+            QList<QUuid> affected_sessions;
+            bool active_changed = false;
+            for (auto it = items_.begin(); it != items_.end();) {
+                if (it->second->action() != action_id) {
+                    ++it;
+                    continue;
+                }
+
+                const auto session_id = it->first;
+                affected_sessions.append(session_id);
+                active_changed = removeFromActive(active_, it->second->id_proto()) || active_changed;
+
                 if (op == nextapp::pb::Update::Operation::DELETED) {
-                    items_.erase(id);
-                    co_await remove(id);
-                    emit WorkSessionDeleted(id);
+                    it = items_.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+
+            if (active_changed) {
+                sortActive(active_);
+                emit activeChanged();
+            }
+
+            for (const auto& session_id : affected_sessions) {
+                if (op == nextapp::pb::Update::Operation::DELETED) {
+                    emit WorkSessionDeleted(session_id);
                 } else {
                     // If the action is moved, any model may need to re-query the db to sync with the selected node
-                    emit WorkSessionActionMoved(id);
+                    emit WorkSessionActionMoved(session_id);
                 }
             }
         }
@@ -195,12 +235,45 @@ QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
     co_return true;
 }
 
+QCoro::Task<bool> WorkCache::finalizeSyncPersistence()
+{
+    co_return co_await validateStoredWorkSessions();
+}
+
+QCoro::Task<bool> WorkCache::validateStoredWorkSessions()
+{
+    auto& db = NextAppCore::instance()->db();
+    const auto unresolved = co_await db.query(R"(SELECT ws.id, ws.action
+FROM work_session AS ws
+LEFT JOIN action AS a ON a.id = ws.action
+WHERE ws.state < ?
+  AND a.id IS NULL)", static_cast<uint>(nextapp::pb::WorkSession::State::DONE));
+    if (!unresolved) {
+        LOG_ERROR_N << "Failed to validate work session action references: " << unresolved.error();
+        co_return false;
+    }
+
+    if (!unresolved->rows.empty()) {
+        for (const auto& row : unresolved->rows) {
+            LOG_ERROR_N << "Unresolved work session action reference: session="
+                        << row.at(0).toString() << " action=" << row.at(1).toString();
+        }
+        co_return false;
+    }
+
+    co_return true;
+}
+
 QCoro::Task<bool> WorkCache::loadFromCache()
 {
     // Load the active sessions
     auto& db = NextAppCore::instance()->db();
     DbStore::param_t params;
     params << static_cast<uint>(nextapp::pb::WorkSession::State::DONE);
+    if (!co_await validateStoredWorkSessions()) {
+        co_return false;
+    }
+
     auto res = co_await db.legacyQuery("SELECT data FROM work_session WHERE state <?", &params);
 
     if (res) {

@@ -2,8 +2,10 @@
 
 #include "qcorotask.h"
 #include "nextapp.qpb.h"
+#include <QSettings>
 
 #include "NextAppCore.h"
+#include "ServerComm.h"
 #include "logging.h"
 #include "format_wrapper.h"
 
@@ -31,6 +33,7 @@ public:
     virtual QCoro::Task<bool> save(const QProtobufMessage& item) = 0;
     virtual QCoro::Task<bool> saveBatch(const QList<T>& items) {co_return false;}
     virtual bool haveBatch() const noexcept { return false; }
+    virtual QCoro::Task<bool> finalizeSyncPersistence() { co_return true; }
     virtual QCoro::Task<bool> loadFromCache() = 0;
     virtual bool hasItems(const nextapp::pb::Status& status) const noexcept = 0;
     virtual QList<T> getItems(const nextapp::pb::Status& status) = 0;
@@ -60,7 +63,9 @@ public:
 
         setState(State::SYNCHING);
         clear();
-        if (co_await synchFromServer() && co_await loadLocally(false)) {
+        if (co_await synchFromServer()
+            && co_await finalizeSyncPersistence()
+            && co_await loadLocally(false)) {
             co_return true;
         }
 
@@ -102,16 +107,29 @@ public:
         co_return 0;
     }
 
+    virtual QCoro::Task<qulonglong> getLastUpdatedId()
+    {
+        auto& db = NextAppCore::instance()->db();
+        static const QString query = QString::fromStdString(::nextapp::format("SELECT MAX(updated_id) FROM {}", itemName()));
+        const auto last_updated_id = co_await db.queryOne<qulonglong>(query);
+        if (last_updated_id) {
+            co_return last_updated_id.value();
+        }
+        co_return 0;
+    }
+
     QCoro::Task<bool> synchFromServer()
     {
         nextapp::pb::GetNewReq req;
-        if (auto last_updated = co_await getLastUpdate(); last_updated > 0) {
+        if (ServerComm::instance().shouldUseUpdatedIdSync()) {
+            req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
+            req.setSince(static_cast<qlonglong>(co_await getLastUpdatedId()));
+        } else if (auto last_updated = co_await getLastUpdate(); last_updated > 0) {
             req.setSince(last_updated);
         }
 
         auto stream = openServerStream(req);
 
-        bool looks_ok = false;
         LOG_TRACE_N << "Entering message-loop";
         while (auto update = co_await stream->template next<nextapp::pb::Status>()) {
 
@@ -125,10 +143,18 @@ public:
                         const auto& items = getItems(u);
                         LOG_TRACE_N << "Got " << itemName() << " from server. Count=" << items.size();
                         if (haveBatch()) {
-                            co_await saveBatch(items);
+                            if (!co_await saveBatch(items)) {
+                                LOG_ERROR_N << "Failed to persist " << itemName()
+                                            << " batch locally. Aborting sync.";
+                                co_return false;
+                            }
                         } else {
                             for(const auto& item : items) {
-                                co_await save(item);
+                                if (!co_await save(item)) {
+                                    LOG_ERROR_N << "Failed to persist " << itemName()
+                                                << " item locally. Aborting sync.";
+                                    co_return false;
+                                }
                             }
                         }
                     }

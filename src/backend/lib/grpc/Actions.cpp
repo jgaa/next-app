@@ -32,7 +32,7 @@ struct ToActionCategory {
 
 struct ToAction {
     enum Cols {
-        ID, NODE, USER, VERSION, UPDATED, CREATED_DATE, ORIGIN, PRIORITY, URGENCY, IMPORTANCE, STATUS, FAVORITE, NAME, DUE_KIND,START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
+        ID, NODE, USER, VERSION, UPDATED, UPDATED_ID, CREATED_DATE, ORIGIN, PRIORITY, URGENCY, IMPORTANCE, STATUS, FAVORITE, NAME, DUE_KIND,START_TIME, DUE_BY_TIME, DUE_TIMEZONE, COMPLETED_TIME, CATEGORY, // core
         DESCR, TIME_ESTIMATE, DIFFICULTY, REPEAT_KIND, REPEAT_UNIT, REPEAT_WHEN, REPEAT_AFTER, TIME_SPENT, TAGS // remaining
     };
 
@@ -154,6 +154,7 @@ struct ToAction {
             obj.set_node(pb_adapt(row.at(NODE).as_string()));
         }
         obj.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
+        obj.set_updatedid(row.at(UPDATED_ID).as_uint64());
 
         if (row.at(ORIGIN).is_string()) {
             obj.set_origin(pb_adapt(row.at(ORIGIN).as_string()));
@@ -318,12 +319,13 @@ struct ToAction {
     }
 
 private:
-    static constexpr array<pair<string_view, ColType>, 28> cols_ = {{
+    static constexpr array<pair<string_view, ColType>, 29> cols_ = {{
         make_pair("id", ColType::IDS),
         make_pair("node", ColType::IDS),
         make_pair("user", ColType::IDS),
         make_pair("version", ColType::READ_ONLY),
         make_pair("updated", ColType::READ_ONLY),
+        make_pair("updated_id", ColType::READ_ONLY),
         make_pair("created_date", ColType::READ_ONLY),
         make_pair("origin", ColType::CORE),
         make_pair("priority", ColType::CORE),
@@ -1743,7 +1745,7 @@ GrpcServer::NextappImpl::GetNewActions(::grpc::CallbackServerContext *ctx, const
             co_await stream->sendMessage(std::move(status), boost::asio::use_awaitable);
         };
 
-        const auto total_rows = co_await owner_.exportActions(req->since(), *rctx.dbh, flush, rctx);
+        const auto total_rows = co_await owner_.exportActions(*req, *rctx.dbh, flush, rctx);
 
         LOG_DEBUG_N << "Sent " << total_rows << " actions to client.";
         co_return;
@@ -1751,7 +1753,7 @@ GrpcServer::NextappImpl::GetNewActions(::grpc::CallbackServerContext *ctx, const
     }, __func__);
 }
 
-boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const uint64_t since,
+boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& req,
                                                            jgaa::mysqlpool::Mysqlpool::Handle& dbh,
                                                            const export_flush_fn_t& flush_fn,
                                                            RequestCtx& rctx,
@@ -1761,6 +1763,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const uint64_t since,
     const auto& cuser = uctx->userUuid();
     const auto batch_size = server().config().options.stream_batch_size;
     static const auto prefixed_cols = prefixNames(ToAction::allSelectCols(), "a.");
+    const auto cursor = getIncrementalSyncCursor(req);
+    const auto where_clause = cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto order_clause = cursor.use_updated_id ? "updated_id, sort_path, created_date, id" : "updated, sort_path, created_date, id";
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
@@ -1782,14 +1787,22 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const uint64_t since,
         )
         SELECT {0}
         FROM action_tree
-        WHERE updated > ? {2}
-        ORDER BY updated, sort_path, created_date, id)",
+        WHERE {2} {3}
+        ORDER BY {4})",
         ToAction::allSelectCols(),
         prefixed_cols,
-        removeDeleted ? "AND status != 'deleted'" : "");
-    co_await dbh.start_exec(
-        sql,
-        uctx->dbOptions(), cuser, cuser, toMsDateTime(since, uctx->tz()));
+        where_clause,
+        removeDeleted ? "AND status != 'deleted'" : "",
+        order_clause);
+    if (cursor.use_updated_id) {
+        co_await dbh.start_exec(
+            sql,
+            uctx->dbOptions(), cuser, cuser, cursor.since);
+    } else {
+        co_await dbh.start_exec(
+            sql,
+            uctx->dbOptions(), cuser, cuser, toMsDateTime(cursor.since, uctx->tz()));
+    }
 
     nextapp::pb::Status reply;
 
