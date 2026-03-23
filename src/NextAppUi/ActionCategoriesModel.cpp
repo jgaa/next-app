@@ -246,8 +246,10 @@ QCoro::Task<bool> ActionCategoriesModel::synch(bool fullSync)
         }
     }
 
-    if (!co_await loadFromDb()) {
-        co_return false;
+    if (load_after_sync_) {
+        if (!co_await loadFromDb()) {
+            co_return false;
+        }
     }
 
     if (fullSync || server_ver == 0 || server_ver > local_ver) {
@@ -296,7 +298,7 @@ QCoro::Task<bool> ActionCategoriesModel::synchFromServer()
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasActionCategories()) {
 
-            auto& db = NextAppCore::instance()->db();
+            auto& db = dbStore();
             auto r = co_await db.legacyQuery("DELETE FROM action_category");
 
             const auto& cats = res.actionCategories();
@@ -315,7 +317,7 @@ QCoro::Task<bool> ActionCategoriesModel::synchFromServer()
 
 QCoro::Task<bool> ActionCategoriesModel::loadFromDb()
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = dbStore();
     auto res = co_await db.legacyQuery("SELECT data FROM action_category");
     if (res.has_value()) {
         QList<nextapp::pb::ActionCategory> action_categories;
@@ -394,7 +396,7 @@ QCoro::Task<void> ActionCategoriesModel::applyPendingUpdates()
 
 QCoro::Task<bool> ActionCategoriesModel::save(const nextapp::pb::ActionCategory &category)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = dbStore();
     QProtobufSerializer serializer;
     QList<QVariant> params;
 
@@ -419,7 +421,7 @@ QCoro::Task<bool> ActionCategoriesModel::save(const nextapp::pb::ActionCategory 
 
 QCoro::Task<bool> ActionCategoriesModel::remove(const QString &id)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = dbStore();
     DbStore::param_t params;
     params.append(id);
     const auto res = co_await db.legacyQuery("DELETE FROM action_category WHERE id = ?", &params);

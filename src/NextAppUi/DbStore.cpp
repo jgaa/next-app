@@ -14,6 +14,7 @@
 #include "qcorofuture.h"
 #include <QSqlError>
 #include <QSqlRecord>
+#include <QUuid>
 #include "qcorosignal.h"
 #include "qcorotimer.h"
 
@@ -133,8 +134,10 @@ bool sha3OfQuery(QCryptographicHash& h, QSqlDatabase db, const QString& sql)
 
 } // anon ns
 
-DbStore::DbStore(QObject *parent)
-    : QObject{parent}, thread_{new QThread{this}}
+DbStore::DbStore(const QString& db_file_name, QObject *parent)
+    : QObject{parent}, thread_{new QThread{this}},
+      db_file_name_{db_file_name},
+      connection_name_{QUuid::createUuid().toString(QUuid::WithoutBraces)}
 {
     mutex_.lock();
     if constexpr (use_worker_thread) {
@@ -230,7 +233,8 @@ void DbStore::createDbObject()
     bool is_retry{false};
 
 again:
-    db_ = make_unique<QSqlDatabase>(QSqlDatabase::addDatabase("QSQLITE"));
+    destroyDbObject();
+    db_ = make_unique<QSqlDatabase>(QSqlDatabase::addDatabase("QSQLITE", connection_name_));
     data_dir_ = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + AppInstanceMgr::instance()->name() + "/";
     LOG_INFO << "Using data dir: " << data_dir_;
     if (!QFile::exists(data_dir_)) {
@@ -243,7 +247,7 @@ again:
         }
     }
 
-    db_path_ = data_dir_ + "/db.sqlite";
+    db_path_ = data_dir_ + "/" + db_file_name_;
 
     if (clear_pending_) {
         QFile file(db_path_);
@@ -293,8 +297,20 @@ again:
     }
 }
 
+void DbStore::destroyDbObject()
+{
+    if (db_) {
+        if (db_->isOpen()) {
+            db_->close();
+        }
+        db_.reset();
+        QSqlDatabase::removeDatabase(connection_name_);
+    }
+}
+
 QCoro::Task<DbStore::rval_t> DbStore::legacyQuery(const QString &sql, const QList<QVariant> *params)
 {
+    co_await waitForTransactionAccess(std::nullopt);
     QPromise<rval_t> promise;
 
     if constexpr (use_worker_thread) {
@@ -306,6 +322,143 @@ QCoro::Task<DbStore::rval_t> DbStore::legacyQuery(const QString &sql, const QLis
     auto future = promise.future();
 
     co_return co_await qCoro(future).takeResult();
+}
+
+QCoro::Task<DbStore::rval_t> DbStore::legacyQueryInTransaction(const transaction_token_t token,
+                                                               const QString &sql,
+                                                               const QList<QVariant> *params)
+{
+    co_await waitForTransactionAccess(token);
+    QPromise<rval_t> promise;
+
+    if constexpr (use_worker_thread) {
+        emit doQuery(sql, params, &promise);
+    } else {
+        queryImpl(sql, params, &promise);
+    }
+
+    auto future = promise.future();
+
+    co_return co_await qCoro(future).takeResult();
+}
+
+QCoro::Task<void> DbStore::waitForTransactionAccess(
+    const std::optional<transaction_token_t>& transaction_token)
+{
+    while (true) {
+        {
+            lock_guard lock{transaction_mutex_};
+            if (!active_transaction_token_ || active_transaction_token_ == transaction_token) {
+                co_return;
+            }
+        }
+
+        co_await QCoro::sleepFor(1ms);
+    }
+}
+
+QCoro::Task<DbStore::transaction_result_t> DbStore::beginExclusiveTransaction()
+{
+    transaction_token_t token{};
+
+    while (true) {
+        {
+            lock_guard lock{transaction_mutex_};
+            if (!active_transaction_token_) {
+                token = next_transaction_token_++;
+                active_transaction_token_ = token;
+                break;
+            }
+        }
+
+        co_await QCoro::sleepFor(1ms);
+    }
+
+    const auto ok = co_await runInWorkerThread<bool>([this]() -> bool {
+        if (!db_ || !db_->isOpen()) {
+            LOG_ERROR_N << "Cannot begin transaction: database is not open";
+            return false;
+        }
+        if (!db_->transaction()) {
+            LOG_ERROR_N << "Failed to begin transaction: " << db_->lastError().text();
+            return false;
+        }
+        return true;
+    });
+
+    if (!ok) {
+        lock_guard lock{transaction_mutex_};
+        if (active_transaction_token_ == token) {
+            active_transaction_token_.reset();
+        }
+        co_return tl::make_unexpected(GENERIC_ERROR);
+    }
+
+    co_return token;
+}
+
+QCoro::Task<bool> DbStore::commitExclusiveTransaction(const transaction_token_t token)
+{
+    {
+        lock_guard lock{transaction_mutex_};
+        if (active_transaction_token_ != token) {
+            LOG_ERROR_N << "Refusing to commit transaction with non-owner token";
+            co_return false;
+        }
+    }
+
+    const auto ok = co_await runInWorkerThread<bool>([this]() -> bool {
+        if (!db_ || !db_->isOpen()) {
+            LOG_ERROR_N << "Cannot commit transaction: database is not open";
+            return false;
+        }
+        if (!db_->commit()) {
+            LOG_ERROR_N << "Failed to commit transaction: " << db_->lastError().text();
+            return false;
+        }
+        return true;
+    });
+
+    {
+        lock_guard lock{transaction_mutex_};
+        if (active_transaction_token_ == token) {
+            active_transaction_token_.reset();
+        }
+    }
+
+    co_return ok;
+}
+
+QCoro::Task<bool> DbStore::rollbackExclusiveTransaction(const transaction_token_t token)
+{
+    {
+        lock_guard lock{transaction_mutex_};
+        if (active_transaction_token_ != token) {
+            LOG_ERROR_N << "Refusing to roll back transaction with non-owner token";
+            co_return false;
+        }
+    }
+
+    const auto ok = co_await runInWorkerThread<bool>([this]() -> bool {
+        if (!db_ || !db_->isOpen()) {
+            LOG_ERROR_N << "Cannot roll back transaction: database is not open";
+            return false;
+        }
+        if (!db_->rollback()) {
+            LOG_ERROR_N << "Failed to roll back transaction: " << db_->lastError().text();
+            return false;
+        }
+        return true;
+    });
+
+    {
+        lock_guard lock{transaction_mutex_};
+        if (active_transaction_token_ == token) {
+            active_transaction_token_.reset();
+        }
+    }
+
+    co_return ok;
 }
 
 QCoro::Task<bool> DbStore::init() {
@@ -325,10 +478,7 @@ void DbStore::close()
 {
     LOG_DEBUG_N << "Closing the database";
     QMetaObject::invokeMethod(this, [&]() {
-        if (db_ && db_->isOpen()) {
-            db_->close();
-            db_.reset();
-        }
+        destroyDbObject();
     });
     // We need to waut for the worker thread to finish
     if constexpr (use_worker_thread) {
@@ -356,11 +506,8 @@ bool DbStore::clear_()
         return false;
     }
 
-    if (db_->isOpen()) {
-        LOG_DEBUG_N << "Closing the database before clearing it";
-        db_->close();
-        db_.reset();
-    }
+    LOG_DEBUG_N << "Closing the database before clearing it";
+    destroyDbObject();
 
     // delete the file pointed to by db_path
     QFile file(db_path_);
@@ -380,14 +527,11 @@ QCoro::Task<void> DbStore::closeAndDeleteDb()
 {
     LOG_DEBUG_N << "Closing and deleting the database";
     QMetaObject::invokeMethod(this, [&]() {
-        if (db_ && db_->isOpen()) {
-            db_->close();
-            db_.reset();
-            if constexpr (use_worker_thread) {
-                if (thread_ && thread_->isRunning()) {
-                    LOG_DEBUG_N << "Stopping the worker thread";
-                    thread_->quit();
-                }
+        destroyDbObject();
+        if constexpr (use_worker_thread) {
+            if (thread_ && thread_->isRunning()) {
+                LOG_DEBUG_N << "Stopping the worker thread";
+                thread_->quit();
             }
         }
     });
@@ -411,6 +555,48 @@ QCoro::Task<void> DbStore::closeAndDeleteDb()
     LOG_DEBUG_N << "Database closed and deleted";
 
     co_return;
+}
+
+QCoro::Task<bool> DbStore::replaceWithDatabaseFile(const QString& source_db_path)
+{
+    co_return co_await runInWorkerThread<bool>([this, source_db_path]() -> bool {
+        if (source_db_path.isEmpty() || source_db_path == db_path_) {
+            LOG_ERROR_N << "Refusing to replace database with invalid source path: " << source_db_path;
+            return false;
+        }
+
+        QFile source{source_db_path};
+        if (!source.exists()) {
+            LOG_ERROR_N << "Staged database file does not exist: " << source_db_path;
+            return false;
+        }
+
+        const QString backup_path = db_path_ + ".swap-backup";
+        QFile::remove(backup_path);
+
+        destroyDbObject();
+
+        QFile live{db_path_};
+        if (live.exists() && !live.rename(backup_path)) {
+            LOG_ERROR_N << "Failed to move live database out of the way: " << db_path_;
+            return false;
+        }
+
+        if (!source.rename(db_path_)) {
+            LOG_ERROR_N << "Failed to move staged database into place: " << source_db_path;
+            if (QFile::exists(backup_path)) {
+                QFile backup{backup_path};
+                if (!backup.rename(db_path_)) {
+                    LOG_ERROR_N << "Failed to restore live database after swap failure";
+                }
+            }
+            return false;
+        }
+
+        QFile::remove(backup_path);
+        createDbObject();
+        return true;
+    });
 }
 
 tl::expected<QString, DbStore::Error> DbStore::getDbDataHash()
@@ -481,8 +667,13 @@ DbStore::qrval_t DbStore::executeQuery(const QString &sql, const QList<QVariant>
     return result;
 }
 
-QCoro::Task<DbStore::qrval_t> DbStore::runQueryInWorker(const QString &sql, const QList<QVariant> &params) {
+QCoro::Task<DbStore::qrval_t> DbStore::runQueryInWorker(
+    const QString &sql,
+    const QList<QVariant> &params,
+    const std::optional<transaction_token_t>& transaction_token) {
     QMetaObject::Connection conn;
+
+    co_await waitForTransactionAccess(transaction_token);
 
     if (QThread::currentThread() == thread_) {
         // Run immediately if already in the correct thread

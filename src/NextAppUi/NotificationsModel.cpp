@@ -43,7 +43,7 @@ namespace {
 
 QCoro::Task<bool> NotificationsModel::saveBatch(const QList<nextapp::pb::Notification> &items)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     static const QString delete_query = "DELETE FROM notification WHERE id = ?";
     auto isDeleted = [](const auto& notification) {
         return notification.kind() == nextapp::pb::Notification::Kind::DELETED;
@@ -51,6 +51,10 @@ QCoro::Task<bool> NotificationsModel::saveBatch(const QList<nextapp::pb::Notific
     auto getId = [](const auto& work) {
         return static_cast<quint32>(work.id_proto());
     };
+
+    if (const auto token = syncTransactionToken()) {
+        co_return co_await db.queryBatchInTransaction(*token, insert_query, delete_query, items, getParams, isDeleted, getId);
+    }
 
     co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
 }
@@ -65,7 +69,7 @@ QCoro::Task<void> NotificationsModel::pocessUpdate(const std::shared_ptr<nextapp
             co_return;
         }
 
-        auto& db = NextAppCore::instance()->db();
+        auto& db = syncDb();
         static const QString delete_query = "DELETE FROM notification WHERE id = ?";
         auto isDeleted = [](const auto& notification) {
             return notification.kind() == nextapp::pb::Notification::Kind::DELETED;
@@ -94,7 +98,7 @@ QCoro::Task<void> NotificationsModel::pocessUpdate(const std::shared_ptr<nextapp
 QCoro::Task<bool> NotificationsModel::save(const QProtobufMessage &item)
 {
     const auto& notification = static_cast<const nextapp::pb::Notification&>(item);
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
 
     if (notification.kind() == nextapp::pb::Notification::Kind::DELETED) {
         static const QString delete_query = "DELETE FROM notification WHERE id = ?";
@@ -117,7 +121,7 @@ QCoro::Task<bool> NotificationsModel::loadFromCache()
 {
     clear();
 
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     static const QString query = "SELECT id, data FROM notification ORDER BY id DESC";
     enum Cols {
         ID = 0,

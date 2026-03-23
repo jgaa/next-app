@@ -5,6 +5,7 @@
 #include "logging.h"
 
 #include <QSettings>
+#include <QFile>
 #include <QGrpcHttp2Channel>
 #include <QtConcurrent/QtConcurrent>
 #include <QSslKey>
@@ -1937,23 +1938,73 @@ failed:
         }
     });
 
+    std::unique_ptr<DbStore> staged_db;
+    const auto configure_sync_targets = [&](DbStore* db_override, bool load_after_sync) {
+        GreenDaysModel::instance()->setSyncDbOverride(db_override);
+        GreenDaysModel::instance()->setLoadAfterSync(load_after_sync);
+        MainTreeModel::instance()->setSyncDbOverride(db_override);
+        MainTreeModel::instance()->setLoadAfterSync(load_after_sync);
+        ActionCategoriesModel::instance().setSyncDbOverride(db_override);
+        ActionCategoriesModel::instance().setLoadAfterSync(load_after_sync);
+        ActionInfoCache::instance()->setSyncDbOverride(db_override);
+        ActionInfoCache::instance()->setLoadAfterSync(load_after_sync);
+        WorkCache::instance()->setSyncDbOverride(db_override);
+        WorkCache::instance()->setLoadAfterSync(load_after_sync);
+        CalendarCache::instance()->setSyncDbOverride(db_override);
+        CalendarCache::instance()->setLoadAfterSync(load_after_sync);
+        NotificationsModel::instance()->setSyncDbOverride(db_override);
+        NotificationsModel::instance()->setLoadAfterSync(load_after_sync);
+    };
+    ScopedExit reset_sync_targets{[&] {
+        configure_sync_targets(nullptr, true);
+    }};
+    const auto abort_staged_full_sync = [&]() -> QCoro::Task<void> {
+        if (!staged_db) {
+            co_return;
+        }
+
+        (void) co_await staged_db->legacyQuery("ROLLBACK");
+        co_await staged_db->closeAndDeleteDb();
+        staged_db.reset();
+        configure_sync_targets(nullptr, true);
+    };
+
     if (needs_sync || full_sync) {
         if (full_sync) {
-            LOG_WARN << "Resyncing from the server. Will delete the local cache.";
+            LOG_WARN << "Resyncing from the server using a staged local database.";
             addMessage(tr("Doing a full synch with the server. This may take a few moments..."));
-            co_await NextAppCore::instance()->db().clear();
+            staged_db = std::make_unique<DbStore>(QStringLiteral("db.staging.sqlite"));
+            co_await staged_db->init();
+            if (!co_await staged_db->legacyQuery("SELECT 1")) {
+                LOG_WARN_N << "Failed to initialize staged database connection.";
+                co_await abort_staged_full_sync();
+                goto failed;
+            }
+            if (!co_await staged_db->clear()) {
+                LOG_WARN_N << "Failed to initialize staged database.";
+                co_await abort_staged_full_sync();
+                goto failed;
+            }
+            configure_sync_targets(staged_db.get(), false);
+            if (!co_await staged_db->legacyQuery("BEGIN IMMEDIATE")) {
+                LOG_WARN_N << "Failed to start transaction for staged full sync.";
+                co_await abort_staged_full_sync();
+                goto failed;
+            }
         }
 
         // Do the initial synch.
         LOG_DEBUG_N << "Fetching data versions...";
         if (!co_await getDataVersions()) {
             LOG_WARN_N << "Failed to get data versions.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
 
         LOG_DEBUG_N << "Fetching global settings...";
         if (!co_await fetchGlobalSettings(full_sync)) {
             LOG_WARN_N << "Failed to get global settings.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
 
@@ -1961,6 +2012,7 @@ failed:
         LOG_DEBUG_N << "Fetching green days...";
         if (!co_await GreenDaysModel::instance()->synchFromServer()) {
             LOG_WARN_N << "Failed to get green days.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
 
@@ -1968,12 +2020,14 @@ failed:
         LOG_DEBUG_N << "Fetching nodes...";
         if (!co_await MainTreeModel::instance()->doSynch(full_sync)) {
             LOG_WARN_N << "Failed to get nodes.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
 
         LOG_DEBUG_N << "Fetching  action categories...";
         if (!co_await ActionCategoriesModel::instance().synch(full_sync)) {
             LOG_WARN_N << "Failed to get action categories.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
 
@@ -1981,6 +2035,7 @@ failed:
         LOG_DEBUG_N << "Fetching  actions...";
         if (!co_await ActionInfoCache::instance()->synch(full_sync)) {
             LOG_WARN_N << "Failed to get action info.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
 
@@ -1988,6 +2043,7 @@ failed:
         LOG_DEBUG_N << "Fetching work sessions...";
         if (!co_await WorkCache::instance()->synch(full_sync)) {
             LOG_WARN_N << "Failed to get work sessions.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
 
@@ -1995,6 +2051,7 @@ failed:
         LOG_DEBUG_N << "Fetching time blocks...";
         if (!co_await CalendarCache::instance()->synch(full_sync)) {
             LOG_WARN_N << "Failed to get time-blocks for the calendar.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
 
@@ -2008,10 +2065,66 @@ failed:
         LOG_DEBUG_N << "Fetching notifications...";
         if (!co_await NotificationsModel::instance()->synch(full_sync)) {
             LOG_WARN_N << "Failed to get notifications.";
+            co_await abort_staged_full_sync();
             goto failed;
         }
         NotificationsModel::instance()->setLastUpdateSeen(
             std::max(NotificationsModel::instance()->lastUpdateSeen(), hello_last_notification));
+
+        if (full_sync) {
+            if (!co_await staged_db->legacyQuery("COMMIT")) {
+                LOG_WARN_N << "Failed to commit staged full sync transaction.";
+                co_await abort_staged_full_sync();
+                goto failed;
+            }
+
+            staged_db->close();
+            if (!co_await NextAppCore::instance()->db().replaceWithDatabaseFile(staged_db->dbPath())) {
+                LOG_WARN_N << "Failed to replace live database with staged full sync database.";
+                QFile::remove(staged_db->dbPath());
+                staged_db.reset();
+                configure_sync_targets(nullptr, true);
+                goto failed;
+            }
+
+            staged_db.reset();
+            configure_sync_targets(nullptr, true);
+
+            if (!co_await GreenDaysModel::instance()->loadFromCache()) {
+                LOG_WARN_N << "Failed to load green days from swapped full-sync database.";
+                goto failed;
+            }
+
+            if (!co_await MainTreeModel::instance()->doLoadLocally()) {
+                LOG_WARN_N << "Failed to load nodes from swapped full-sync database.";
+                goto failed;
+            }
+
+            if (!co_await ActionCategoriesModel::instance().loadFromDb()) {
+                LOG_WARN_N << "Failed to load action categories from swapped full-sync database.";
+                goto failed;
+            }
+
+            if (!co_await ActionInfoCache::instance()->loadLocally()) {
+                LOG_WARN_N << "Failed to load actions from swapped full-sync database.";
+                goto failed;
+            }
+
+            if (!co_await WorkCache::instance()->loadLocally()) {
+                LOG_WARN_N << "Failed to load work sessions from swapped full-sync database.";
+                goto failed;
+            }
+
+            if (!co_await CalendarCache::instance()->loadLocally(true)) {
+                LOG_WARN_N << "Failed to load calendar data from swapped full-sync database.";
+                goto failed;
+            }
+
+            if (!co_await NotificationsModel::instance()->loadLocally()) {
+                LOG_WARN_N << "Failed to load notifications from swapped full-sync database.";
+                goto failed;
+            }
+        }
 
     } else {
         LOG_INFO << "Omitting server-sync as the local cache is up to date.";

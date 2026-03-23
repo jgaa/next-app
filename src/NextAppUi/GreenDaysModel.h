@@ -15,6 +15,7 @@
 #include "nextapp.qpb.h"
 
 class GreenDayModel;
+class DbStore;
 
 union PackedDate {
     uint32_t as_number;
@@ -130,6 +131,8 @@ public:
 
     QCoro::Task<bool> synchFromServer();
     QCoro::Task<bool> loadFromCache();
+    void setSyncDbOverride(DbStore* db) noexcept { sync_db_override_ = db; }
+    void setLoadAfterSync(bool load_after_sync) noexcept { load_after_sync_ = load_after_sync; }
 
 signals:
     void validChanged();
@@ -157,6 +160,7 @@ private:
     QCoro::Task<bool> loadDaysFromCache();
     QCoro::Task<bool> storeDay(const nextapp::pb::CompleteDay& day);
     QCoro::Task<bool> storeDays(const QList<nextapp::pb::CompleteDay>& days);
+    DbStore& dbStore() const noexcept;
 
     State state_{State::LOCAL};
     // Year as an int, month as 1 - 12
@@ -173,10 +177,10 @@ private:
     //nextapp::pb::DayColorDefinitions color_definitions_;
     std::map<QUuid, uint> color_definitions_;
     std::vector<ColorDef> color_data_;
+    DbStore* sync_db_override_{};
+    bool load_after_sync_{true};
     static GreenDaysModel *instance_;
 };
-
-
 
 
 

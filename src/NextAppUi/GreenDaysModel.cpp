@@ -206,6 +206,9 @@ QCoro::Task<void> GreenDaysModel::onUpdatedDay(nextapp::pb::CompleteDay complete
         ServerComm::instance().resync();
         co_return;
     }
+    if (!load_after_sync_) {
+        co_return;
+    }
     auto *di = lookup(date.year(), date.month() + 1, date.mday());
     if (di) {
         toDayInfo(completeDay.day(), *di);
@@ -259,7 +262,9 @@ QCoro::Task<bool>  GreenDaysModel::synchFromServer()
 
     if (co_await synchColorsFromServer() && co_await synchDaysFromServer()) {
             setState(State::SYNCHED);
-            co_await loadFromCache();
+            if (load_after_sync_) {
+                co_await loadFromCache();
+            }
             co_return true;
     }
 
@@ -271,7 +276,7 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
 {
     LOG_DEBUG_N << "Synching colors from server";
     nextapp::pb::GetNewReq req;
-    auto& db = NextAppCore::instance()->db();
+    auto& db = dbStore();
 
     LOG_TRACE_N << "Getting last updated";
     if (ServerComm::instance().shouldUseUpdatedIdSync()) {
@@ -331,7 +336,7 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
     // Get a stream of updates from servercomm.
     LOG_DEBUG_N << "Synching days from server";
     nextapp::pb::GetNewReq req;
-    auto& db = NextAppCore::instance()->db();
+    auto& db = dbStore();
 
     LOG_TRACE_N << "Getting last updated";
     if (ServerComm::instance().shouldUseUpdatedIdSync()) {
@@ -401,7 +406,7 @@ QCoro::Task<bool> GreenDaysModel::loadFromCache()
 
 QCoro::Task<bool> GreenDaysModel::loadColorDefsFromCache()
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = dbStore();
 
     QString query = "SELECT id, score, color, name FROM day_colors";
     enum Cols {
@@ -433,7 +438,7 @@ QCoro::Task<bool> GreenDaysModel::loadColorDefsFromCache()
 
 QCoro::Task<bool> GreenDaysModel::loadDaysFromCache()
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = dbStore();
 
     string where;
     assert(!years_to_cache_.empty());
@@ -492,7 +497,7 @@ QCoro::Task<bool> GreenDaysModel::loadDaysFromCache()
 
 QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullDay)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = dbStore();
     QList<QVariant> params;
 
     const auto& day = fullDay.day();
@@ -534,7 +539,7 @@ QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullD
 
 QCoro::Task<bool> GreenDaysModel::storeDays(const QList<nextapp::pb::CompleteDay> &days)
 {
-    co_return co_await NextAppCore::instance()->db().queryBatch(insert_query, "DELETE FROM day WHERE date = ?",
+    co_return co_await dbStore().queryBatch(insert_query, "DELETE FROM day WHERE date = ?",
         days,
         getParams,
         /* isDeleted */ [](const auto& fullDay) { return fullDay.day().deleted(); },
@@ -542,6 +547,11 @@ QCoro::Task<bool> GreenDaysModel::storeDays(const QList<nextapp::pb::CompleteDay
               // Not really an id, but...
               return QDate{fullDay.day().date().year(), fullDay.day().date().month() + 1, fullDay.day().date().mday()};}
         );
+}
+
+DbStore& GreenDaysModel::dbStore() const noexcept
+{
+    return sync_db_override_ ? *sync_db_override_ : NextAppCore::instance()->db();
 }
 
 uint32_t GreenDaysModel::getKey(int year, int month) noexcept

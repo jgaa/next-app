@@ -577,7 +577,7 @@ QCoro::Task<void> MainTreeModel::onOnline()
 
 QCoro::Task<bool> MainTreeModel::loadFromCache()
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
 
     QString query = R"(SELECT uuid, parent, data
                        FROM node
@@ -651,8 +651,11 @@ QCoro::Task<bool> MainTreeModel::repairStoredNodes()
         co_return true;
     }
 
-    auto& db = NextAppCore::instance()->db();
-    const auto rows = co_await db.legacyQuery("SELECT uuid, data FROM node");
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
+    const auto rows = token
+        ? co_await db.legacyQueryInTransaction(*token, "SELECT uuid, data FROM node")
+        : co_await db.legacyQuery("SELECT uuid, data FROM node");
     if (!rows) {
         LOG_ERROR_N << "Failed to load nodes for parent repair: " << rows.error();
         co_return false;
@@ -685,11 +688,18 @@ QCoro::Task<bool> MainTreeModel::repairStoredNodes()
 
         node.setParent(parent_id);
         QByteArray updated_blob = node.serialize(&serializer);
-        const auto updated = co_await db.query(
-            "UPDATE node SET parent = ?, data = ? WHERE uuid = ?",
-            parent_id,
-            updated_blob,
-            child_id);
+        const auto updated = token
+            ? co_await db.queryInTransaction(
+                *token,
+                "UPDATE node SET parent = ?, data = ? WHERE uuid = ?",
+                parent_id,
+                updated_blob,
+                child_id)
+            : co_await db.query(
+                "UPDATE node SET parent = ?, data = ? WHERE uuid = ?",
+                parent_id,
+                updated_blob,
+                child_id);
         if (!updated) {
             LOG_ERROR_N << "Failed to repair node parent reference for " << child_id
                         << " err=" << updated.error();
@@ -703,9 +713,19 @@ QCoro::Task<bool> MainTreeModel::repairStoredNodes()
 
 QCoro::Task<bool> MainTreeModel::validateStoredNodes()
 {
-    auto& db = NextAppCore::instance()->db();
-    const auto unresolved = co_await db.query(
-        R"(SELECT child.uuid, child.parent
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
+    const auto unresolved = token
+        ? co_await db.queryInTransaction(
+            *token,
+            R"(SELECT child.uuid, child.parent
+           FROM node AS child
+           LEFT JOIN node AS parent ON parent.uuid = child.parent
+           WHERE child.parent IS NOT NULL
+             AND child.parent != ''
+             AND parent.uuid IS NULL)")
+        : co_await db.query(
+            R"(SELECT child.uuid, child.parent
            FROM node AS child
            LEFT JOIN node AS parent ON parent.uuid = child.parent
            WHERE child.parent IS NOT NULL
@@ -733,6 +753,10 @@ std::shared_ptr<GrpcIncomingStream> MainTreeModel::openServerStream(nextapp::pb:
 
 QCoro::Task<bool> MainTreeModel::doSynch(bool fullSync)
 {
+    if (fullSync && !shouldLoadAfterSync()) {
+        co_return co_await synch(fullSync);
+    }
+
     beginResetModel();
     endResetModel();
     suspend_model_notifications_ = true;
@@ -767,7 +791,8 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
 {
     const auto& node = static_cast<const nextapp::pb::Node&>(item);
 
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
     QList<QVariant> params;
 
     if (node.deleted()) {
@@ -775,7 +800,9 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
         params.append(node.uuid());
         LOG_TRACE_N << "Deleting node " << node.uuid() << " " << node.name();
 
-        const auto rval = co_await db.legacyQuery(sql, &params);
+        const auto rval = token
+            ? co_await db.legacyQueryInTransaction(*token, sql, &params)
+            : co_await db.legacyQuery(sql, &params);
         if (!rval) {
             LOG_WARN_N << "Failed to delete node " << node.uuid() << " " << node.name()
                         << " err=" << rval.error();
@@ -801,7 +828,9 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
     params << stored_node.excludeFromWeeklyReview();
     params << stored_node.serialize(&serializer);
 
-    const auto rval = co_await db.legacyQuery(insert_query, &params);
+    const auto rval = token
+        ? co_await db.legacyQueryInTransaction(*token, insert_query, &params)
+        : co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update node: " << node.uuid() << " " << node.name()
                     << " err=" << rval.error();
@@ -819,7 +848,8 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
 
 QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
     static const QString delete_query = R"(DELETE FROM node WHERE uuid = ?)";
     QList<nextapp::pb::Node> stored_items;
     stored_items.reserve(items.size());
@@ -854,7 +884,10 @@ QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items
     auto isDeleted = [](const nextapp::pb::Node& node) { return node.deleted(); };
     auto getId = [](const nextapp::pb::Node& node) { return node.uuid(); };
 
-    if (!co_await db.queryBatch(insert_query, delete_query, stored_items, getParams, isDeleted, getId)) {
+    const auto ok = token
+        ? co_await db.queryBatchInTransaction(*token, insert_query, delete_query, stored_items, getParams, isDeleted, getId)
+        : co_await db.queryBatch(insert_query, delete_query, stored_items, getParams, isDeleted, getId);
+    if (!ok) {
         co_return false;
     }
 

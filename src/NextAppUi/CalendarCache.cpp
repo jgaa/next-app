@@ -34,12 +34,15 @@ namespace {
         return params;
     };
 
-    QCoro::Task<std::optional<QSet<QString>>> loadExistingActionIds()
+    QCoro::Task<std::optional<QSet<QString>>> loadExistingActionIds(
+        DbStore& db,
+        const std::optional<DbStore::transaction_token_t>& token = std::nullopt)
     {
-        auto& db = NextAppCore::instance()->db();
         QSet<QString> existing;
 
-        const auto res = co_await db.legacyQuery("SELECT id FROM action");
+        const auto res = token
+            ? co_await db.legacyQueryInTransaction(*token, "SELECT id FROM action")
+            : co_await db.legacyQuery("SELECT id FROM action");
         if (!res) {
             LOG_ERROR_N << "Failed to load action ids for calendar repair: " << res.error();
             co_return std::nullopt;
@@ -129,7 +132,7 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
     const auto todays_date = QDate::currentDate();
 
     if (update->hasCalendarEvents()) {
-        const auto existing_actions = co_await loadExistingActionIds();
+        const auto existing_actions = co_await loadExistingActionIds(syncDb());
         if (!existing_actions) {
             ServerComm::instance().resync();
             co_return;
@@ -227,8 +230,9 @@ QCoro::Task<bool> CalendarCache::save(const QProtobufMessage &item)
 
 QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &items)
 {
-    auto& db = NextAppCore::instance()->db();
-    const auto existing_actions = co_await loadExistingActionIds();
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
+    const auto existing_actions = co_await loadExistingActionIds(db, token);
     if (!existing_actions) {
         co_return false;
     }
@@ -242,24 +246,39 @@ QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &
 
     if (!isFullSync()) {
         // First we must delete any references in the actions/timeblock table
-        if (!co_await db.queryBatch("DELETE FROM time_block_actions WHERE time_block = ?", "", sanitized_items,
+        const auto deleted_old_refs = token
+            ? co_await db.queryBatchInTransaction(*token, "DELETE FROM time_block_actions WHERE time_block = ?", "", sanitized_items,
+            /* getArgs */ [](const nextapp::pb::TimeBlock& tb) {
+                return tb.id_proto();
+            },
+            /* isDeleted */[](const auto&) {return false;},
+            /* getId */ [](auto&){assert(false); return "";})
+            : co_await db.queryBatch("DELETE FROM time_block_actions WHERE time_block = ?", "", sanitized_items,
             /* getArgs */ [](const nextapp::pb::TimeBlock& tb) {
                 return tb.id_proto();
             },
             /* isDeleted */[](const auto&) {return false;},
             /* getId */ [](auto&){assert(false); return "";}
-        )) {
+        );
+        if (!deleted_old_refs) {
             success = false;
         }
     }
 
     // Now, insert the new time blocks
-    if (!co_await db.queryBatch(insert_query, "DELETE FROM time_block WHERE id = ?", sanitized_items,
+    const auto updated_blocks = token
+        ? co_await db.queryBatchInTransaction(*token, insert_query, "DELETE FROM time_block WHERE id = ?", sanitized_items,
+        getParams,
+        /* isDeleted */ [](const nextapp::pb::TimeBlock& tb) {return tb.kind() == nextapp::pb::TimeBlock::Kind::DELETED;
+        },
+        /* getId */ [](const nextapp::pb::TimeBlock& tb){return tb.id_proto();})
+        : co_await db.queryBatch(insert_query, "DELETE FROM time_block WHERE id = ?", sanitized_items,
         getParams,
         /* isDeleted */ [](const nextapp::pb::TimeBlock& tb) {return tb.kind() == nextapp::pb::TimeBlock::Kind::DELETED;
         },
         /* getId */ [](const nextapp::pb::TimeBlock& tb){return tb.id_proto();}
-    )) {
+    );
+    if (!updated_blocks) {
         success = false;
     }
 
@@ -274,13 +293,21 @@ QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &
         }
     };
 
-    if (!co_await db.queryBatch("INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", "", refs,
+    const auto inserted_refs = token
+        ? co_await db.queryBatchInTransaction(*token, "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", "", refs,
+        /* getArgs */ [](const auto& ref) {
+            return QList<QString>{ref.first, ref.second};
+        },
+        /* isDeleted */ [](const auto&) {return false;},
+        /* getId */ [](const auto&){assert(false); return "";})
+        : co_await db.queryBatch("INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", "", refs,
         /* getArgs */ [](const auto& ref) {
             return QList<QString>{ref.first, ref.second};
         },
         /* isDeleted */ [](const auto&) {return false;},
         /* getId */ [](const auto&){assert(false); return "";}
-    )) {
+    );
+    if (!inserted_refs) {
         success = false;
     }
 
@@ -289,8 +316,9 @@ QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &
 
 QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
 {
-    auto& db = NextAppCore::instance()->db();
-    const auto existing_actions = co_await loadExistingActionIds();
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
+    const auto existing_actions = co_await loadExistingActionIds(db, token);
     if (!existing_actions) {
         co_return false;
     }
@@ -301,7 +329,9 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
         QList<QVariant> params;
         const QString sql = "DELETE FROM time_block_actions WHERE time_block = ?";
         params << sanitized.id_proto();
-        const auto rval = co_await db.legacyQuery(sql, &params);
+        const auto rval = token
+            ? co_await db.legacyQueryInTransaction(*token, sql, &params)
+            : co_await db.legacyQuery(sql, &params);
         if (!rval) {
             LOG_ERROR_N << "Failed to delete time block: " << sanitized.id_proto() << " err=" << rval.error();
             co_return false;
@@ -312,14 +342,18 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
         QList<QVariant> params;
         params << sanitized.id_proto();
         QString sql = "DELETE FROM time_block WHERE id = ?";
-        const auto rval = co_await db.legacyQuery(sql, &params);
+        const auto rval = token
+            ? co_await db.legacyQueryInTransaction(*token, sql, &params)
+            : co_await db.legacyQuery(sql, &params);
         if (!rval) {
             LOG_ERROR_N << "Failed to delete time block: " << sanitized.id_proto() << " err=" << rval.error();
             co_return false;
         }
     } else {
         const auto params = getParams(sanitized);
-        const auto rval = co_await db.legacyQuery(insert_query, &params);
+        const auto rval = token
+            ? co_await db.legacyQueryInTransaction(*token, insert_query, &params)
+            : co_await db.legacyQuery(insert_query, &params);
         if (!rval) {
             LOG_ERROR_N << "Failed to update action: " << sanitized.id_proto() << " " << sanitized.name()
             << " err=" << rval.error();
@@ -336,7 +370,9 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
             params.clear();
             params << sanitized.id_proto();
             params << aid;
-            const auto rval = co_await db.legacyQuery(sql, &params);
+            const auto rval = token
+                ? co_await db.legacyQueryInTransaction(*token, sql, &params)
+                : co_await db.legacyQuery(sql, &params);
             if (!rval) {
                 LOG_WARN_N << "Failed to insert time block reference: " << sanitized.id_proto() << " err=" << rval.error();
                 co_return false;
@@ -363,12 +399,15 @@ QCoro::Task<bool> CalendarCache::finalizeSyncPersistence()
 
 QCoro::Task<bool> CalendarCache::repairStoredTimeBlocks()
 {
-    auto& db = NextAppCore::instance()->db();
-    const auto existing_actions = co_await loadExistingActionIds();
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
+    const auto existing_actions = co_await loadExistingActionIds(db, token);
     if (!existing_actions) {
         co_return false;
     }
-    const auto res = co_await db.legacyQuery("SELECT data FROM time_block");
+    const auto res = token
+        ? co_await db.legacyQueryInTransaction(*token, "SELECT data FROM time_block")
+        : co_await db.legacyQuery("SELECT data FROM time_block");
     if (!res) {
         LOG_ERROR_N << "Failed to load time blocks for repair: " << res.error();
         co_return false;
@@ -454,7 +493,7 @@ QCoro::Task<void> CalendarCache::setAudioTimers()
     const auto pre_start_mins = settings.value("alarms/calendarEvent.SoonToStartMinutes", 1).toInt();
 
     // Get the next enevts that either start or ends after now.
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     QList<QVariant> params;
 
     auto ae = make_unique<AudioEvent>();
@@ -574,7 +613,7 @@ QCoro::Task<void> CalendarCache::updateActionsOnCalendarCache()
 
     std::vector<QUuid> actions;
 
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     auto res = co_await db.query(R"(SELECT tba.action FROM time_block_actions AS tba
 JOIN time_block AS tb ON tb.id = tba.time_block
 JOIN action AS a ON a.id = tba.action
@@ -611,7 +650,7 @@ void CalendarCache::clear()
 
 QCoro::Task<bool> CalendarCache::remove(const nextapp::pb::TimeBlock &tb)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     QList<QVariant> params;
 
     QString sql = "DELETE FROM time_block WHERE id = ?";
@@ -629,7 +668,7 @@ QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent> > > CalendarCache:
     LOG_TRACE_N << "Getting calendar events from " << start.toString() << " to " << end.toString();
     QList<std::shared_ptr<nextapp::pb::CalendarEvent>> events;
 
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     QList<QVariant> params;
 
     QString sql = "SELECT id, data FROM time_block WHERE start_time >= ? AND end_time < ? ORDER BY start_time";

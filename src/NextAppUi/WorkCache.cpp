@@ -203,7 +203,7 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
 
 QCoro::Task<bool> WorkCache::saveBatch(const QList<nextapp::pb::WorkSession> &items)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     static const QString delete_query = "DELETE FROM work_session WHERE id = ?";
     auto isDeleted = [](const auto& work) {
         return work.state() == nextapp::pb::WorkSession::State::DELETED;
@@ -211,6 +211,10 @@ QCoro::Task<bool> WorkCache::saveBatch(const QList<nextapp::pb::WorkSession> &it
     auto getId = [](const auto& work) {
         return work.id_proto();
     };
+
+    if (const auto token = syncTransactionToken()) {
+        co_return co_await db.queryBatchInTransaction(*token, insert_query, delete_query, items, getParams, isDeleted, getId);
+    }
 
     co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
 }
@@ -223,7 +227,7 @@ QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
         co_return true;
     }
 
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     const auto params = getParams(work);
     const auto rval = co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
@@ -242,8 +246,15 @@ QCoro::Task<bool> WorkCache::finalizeSyncPersistence()
 
 QCoro::Task<bool> WorkCache::validateStoredWorkSessions()
 {
-    auto& db = NextAppCore::instance()->db();
-    const auto unresolved = co_await db.query(R"(SELECT ws.id, ws.action
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
+    const auto unresolved = token
+        ? co_await db.queryInTransaction(*token, R"(SELECT ws.id, ws.action
+FROM work_session AS ws
+LEFT JOIN action AS a ON a.id = ws.action
+WHERE ws.state < ?
+  AND a.id IS NULL)", static_cast<uint>(nextapp::pb::WorkSession::State::DONE))
+        : co_await db.query(R"(SELECT ws.id, ws.action
 FROM work_session AS ws
 LEFT JOIN action AS a ON a.id = ws.action
 WHERE ws.state < ?
@@ -267,7 +278,7 @@ WHERE ws.state < ?
 QCoro::Task<bool> WorkCache::loadFromCache()
 {
     // Load the active sessions
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     DbStore::param_t params;
     params << static_cast<uint>(nextapp::pb::WorkSession::State::DONE);
     if (!co_await validateStoredWorkSessions()) {
@@ -314,7 +325,7 @@ void WorkCache::clear()
 QCoro::Task<std::vector<std::shared_ptr<nextapp::pb::WorkSession>>>
 WorkCache::getWorkSessions(nextapp::pb::GetWorkSessionsReq req)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     QList<QVariant> params;
     std::vector<std::shared_ptr<nextapp::pb::WorkSession>> sessions;
 
@@ -453,7 +464,7 @@ void WorkCache::updateSessionsDurations()
 
 QCoro::Task<void> WorkCache::remove(const QUuid &id)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     auto res = co_await db.query("DELETE FROM work_session WHERE id = ?",
                                  id.toString(QUuid::WithoutBraces));
     if (!res || !res->affected_rows.has_value() || res->affected_rows.value() != 1) {

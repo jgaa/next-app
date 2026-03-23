@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <QObject>
 #include <QVariant>
 #include <QThread>
@@ -53,16 +54,35 @@ public:
 
     using rval_t = tl::expected<QList<QList<QVariant>>, Error>;
     using param_t = QList<QVariant>;
+    using transaction_token_t = quint64;
+    using transaction_result_t = tl::expected<transaction_token_t, Error>;
 
-    explicit DbStore(QObject *parent = nullptr);
+    explicit DbStore(const QString& db_file_name = QStringLiteral("db.sqlite"),
+                     QObject *parent = nullptr);
     ~DbStore();
 
     //[[deprecated]]
     QCoro::Task<rval_t> legacyQuery(const QString& sql, const param_t *params = {});
+    QCoro::Task<rval_t> legacyQueryInTransaction(transaction_token_t token, const QString& sql,
+                                                 const param_t *params = {});
 
     template <typename T, typename... Args>
     QCoro::Task<tl::expected<T, Error>> queryOne(const QString& sql, Args&&... args) {
         auto res = co_await query(sql,std::forward<Args>(args)...);
+        if (!res) {
+            co_return tl::unexpected(QUERY_FAILED);
+        }
+        if (res.value().rows.empty() || res.value().rows.front().empty()) {
+            co_return tl::unexpected(EMPTY_RESULT);
+        }
+        co_return res.value().rows.front().front().template value<T>();
+    }
+
+    template <typename T, typename... Args>
+    QCoro::Task<tl::expected<T, Error>> queryOneInTransaction(transaction_token_t token,
+                                                              const QString& sql,
+                                                              Args&&... args) {
+        auto res = co_await queryInTransaction(token, sql, std::forward<Args>(args)...);
         if (!res) {
             co_return tl::unexpected(QUERY_FAILED);
         }
@@ -83,11 +103,21 @@ public:
     template<typename... Args>
     QCoro::Task<qrval_t> query(const QString &sql, Args&&... args) {
         QList<QVariant> params = { QVariant(std::forward<Args>(args))... };
-        co_return co_await runQueryInWorker(sql, params);
+        co_return co_await runQueryInWorker(sql, params, std::nullopt);
     }
 
     QCoro::Task<qrval_t> query(const QString &sql, QList<QVariant> params) {
-        co_return co_await runQueryInWorker(sql, std::move(params));
+        co_return co_await runQueryInWorker(sql, std::move(params), std::nullopt);
+    }
+
+    template<typename... Args>
+    QCoro::Task<qrval_t> queryInTransaction(transaction_token_t token, const QString &sql, Args&&... args) {
+        QList<QVariant> params = { QVariant(std::forward<Args>(args))... };
+        co_return co_await runQueryInWorker(sql, params, token);
+    }
+
+    QCoro::Task<qrval_t> queryInTransaction(transaction_token_t token, const QString &sql, QList<QVariant> params) {
+        co_return co_await runQueryInWorker(sql, std::move(params), token);
     }
 
     QCoro::Task<tl::expected<nextapp::pb::UserDataInfo, Error>> getDbDataInfo();
@@ -105,9 +135,41 @@ public:
         const D& isDeleted,
         const I& getId,
         const E& perRowFn = nullptr) {
+        co_return co_await queryBatchImpl(std::nullopt, insertQurey, deleteQuery, data,
+                                          getParams, isDeleted, getId, perRowFn);
+    }
 
+    template <typename T, typename P, typename D, typename I, typename E = std::nullptr_t> QCoro::Task<bool> queryBatchInTransaction(
+        transaction_token_t token,
+        const QString& insertQurey,
+        const QString& deleteQuery,
+        const T& data,
+        const P& getParams,
+        const D& isDeleted,
+        const I& getId,
+        const E& perRowFn = nullptr) {
+        co_return co_await queryBatchImpl(token, insertQurey, deleteQuery, data,
+                                          getParams, isDeleted, getId, perRowFn);
+    }
+
+    QCoro::Task<transaction_result_t> beginExclusiveTransaction();
+    QCoro::Task<bool> commitExclusiveTransaction(transaction_token_t token);
+    QCoro::Task<bool> rollbackExclusiveTransaction(transaction_token_t token);
+
+private:
+    template <typename T, typename P, typename D, typename I, typename E = std::nullptr_t> QCoro::Task<bool> queryBatchImpl(
+        const std::optional<transaction_token_t>& transaction_token,
+        const QString& insertQurey,
+        const QString& deleteQuery,
+        const T& data,
+        const P& getParams,
+        const D& isDeleted,
+        const I& getId,
+        const E& perRowFn = nullptr) {
         auto promise = QSharedPointer<QPromise<bool>>::create();
         auto future = promise->future();
+
+        co_await waitForTransactionAccess(transaction_token);
 
         // Wrap the operation in a lambda that will be executed in the DBs thread
         QMetaObject::invokeMethod(this, [&]() {
@@ -145,6 +207,7 @@ public:
         co_return future.result();
     }
 
+public:
     QCoro::Task<bool> init();
     void close();
 
@@ -167,6 +230,10 @@ public:
         return data_dir_.toStdString();
     }
 
+    QString dbPath() const noexcept {
+        return db_path_;
+    }
+
     QSqlDatabase& db() {
         if (!db_) {
             throw std::runtime_error("Database not initialized");
@@ -175,6 +242,7 @@ public:
     }
 
     QCoro::Task<void> closeAndDeleteDb();
+    QCoro::Task<bool> replaceWithDatabaseFile(const QString& source_db_path);
 
 
 
@@ -189,7 +257,9 @@ signals:
     void error(Error error);
 
 private:
-    QCoro::Task<qrval_t> runQueryInWorker(const QString &sql, const QList<QVariant> &params);
+    QCoro::Task<void> waitForTransactionAccess(const std::optional<transaction_token_t>& transaction_token);
+    QCoro::Task<qrval_t> runQueryInWorker(const QString &sql, const QList<QVariant> &params,
+                                          const std::optional<transaction_token_t>& transaction_token);
     tl::expected<QString, DbStore::Error> getDbDataHash();
 
     template <typename T, typename F>
@@ -223,6 +293,7 @@ private:
 
     void start();
     void createDbObject();
+    void destroyDbObject();
     void initImpl(QPromise<rval_t>& promise);
     bool updateSchema(uint version);
     uint getDbVersion();
@@ -235,7 +306,12 @@ private:
     bool ready_{false};
     QString data_dir_;
     QString db_path_;
+    QString db_file_name_;
+    QString connection_name_;
     bool clear_pending_{false};
     bool db_was_initialized_{false};
     std::mutex mutex_;
+    std::mutex transaction_mutex_;
+    std::optional<transaction_token_t> active_transaction_token_;
+    transaction_token_t next_transaction_token_{1};
 };

@@ -63,6 +63,8 @@ public:
 
     QCoro::Task<bool> synch(bool fullSync);
     QCoro::Task<bool> loadFromDb();
+    void setSyncDbOverride(DbStore* db) noexcept { sync_db_override_ = db; }
+    void setLoadAfterSync(bool load_after_sync) noexcept { load_after_sync_ = load_after_sync; }
 
 signals:
     void validChanged();
@@ -79,6 +81,9 @@ private:
     QCoro::Task<bool> synchFromServer();
     QCoro::Task<bool> save(const nextapp::pb::ActionCategory& category);
     QCoro::Task<bool> remove(const QString& id);
+    DbStore& dbStore() const noexcept {
+        return sync_db_override_ ? *sync_db_override_ : NextAppCore::instance()->db();
+    }
 
     nextapp::pb::ActionCategory *lookup(const QString& id);
 
@@ -87,6 +92,8 @@ private:
     QList<nextapp::pb::ActionCategory> action_categories_;
     std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
     std::set<QString> deleted_entries_;
+    DbStore* sync_db_override_{};
+    bool load_after_sync_{true};
     static ActionCategoriesModel *instance_;
     QString none_;
 };

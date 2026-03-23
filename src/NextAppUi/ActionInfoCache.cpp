@@ -519,7 +519,7 @@ QCoro::Task<void> ActionInfoCache::updateAllScores()
             values.emplace_back(action->id_proto(), new_score);
         }
 
-        auto& db = NextAppCore::instance()->db();
+        auto& db = syncDb();
         co_await db.queryBatch("UPDATE action SET score=? WHERE id=?", "", values, [&](const auto& v) -> QList<QVariant> {
                 QList<QVariant> p;
                 p << v.second << v.first;
@@ -560,7 +560,7 @@ QCoro::Task<std::shared_ptr<pb::ActionInfo> > ActionInfoCache::get(const QUuid &
 
 QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid &action_uuid)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     DbStore::param_t params;
     params << action_uuid.toString(QUuid::WithoutBraces);
 
@@ -761,7 +761,8 @@ QCoro::Task<bool> ActionInfoCache::finalizeSyncPersistence()
 
 QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &items)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
     static const QString delete_query = "DELETE FROM action WHERE id = ?";
     QList<nextapp::pb::Action> stored_items;
     stored_items.reserve(items.size());
@@ -791,7 +792,10 @@ QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &i
         return updateTagsDirect(action);
     };
 
-    if (!co_await db.queryBatch(insert_query, delete_query, stored_items, getParams, isDeleted, getId, perRowfn)) {
+    const auto ok = token
+        ? co_await db.queryBatchInTransaction(*token, insert_query, delete_query, stored_items, getParams, isDeleted, getId, perRowfn)
+        : co_await db.queryBatch(insert_query, delete_query, stored_items, getParams, isDeleted, getId, perRowfn);
+    if (!ok) {
         co_return false;
     }
 
@@ -809,14 +813,19 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
 {
     const auto& action = static_cast<const nextapp::pb::Action&>(item);
 
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
     QList<QVariant> params;
 
     if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
         LOG_TRACE_N << "Deleting action " << action.id_proto() << " " << action.name();
 
-        const auto _ = co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
-        const auto rval = co_await db.query("DELETE FROM action WHERE id = ?", action.id_proto());
+        const auto _ = token
+            ? co_await db.queryInTransaction(*token, "DELETE FROM tag WHERE action=?", action.id_proto())
+            : co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+        const auto rval = token
+            ? co_await db.queryInTransaction(*token, "DELETE FROM action WHERE id = ?", action.id_proto())
+            : co_await db.query("DELETE FROM action WHERE id = ?", action.id_proto());
         if (!rval) {
             LOG_WARN_N << "Failed to delete action " << action.id_proto() << " " << action.name()
             << " err=" << rval.error();
@@ -827,14 +836,18 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
 
     bool need_tags_update = true;
     {
-        const auto hash_rval = co_await db.query("SELECT tags_hash FROM action WHERE id=?", action.id_proto());
+        const auto hash_rval = token
+            ? co_await db.queryInTransaction(*token, "SELECT tags_hash FROM action WHERE id=?", action.id_proto())
+            : co_await db.query("SELECT tags_hash FROM action WHERE id=?", action.id_proto());
         if (hash_rval.has_value() && !hash_rval.value().rows.empty()) {
             const auto& hash = hash_rval.value().rows.front()[0].toByteArray();
             const auto new_hash = computeTagsHash(action.tags());
             if (hash == new_hash) {
                 need_tags_update = false;
             } else {
-                const auto _ = co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+                const auto _ = token
+                    ? co_await db.queryInTransaction(*token, "DELETE FROM tag WHERE action=?", action.id_proto())
+                    : co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
             }
         } else {
             need_tags_update = !action.tags().isEmpty();
@@ -848,7 +861,9 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     }
 
     params = getParams(stored_action);
-    const auto rval = co_await db.legacyQuery(insert_query, &params);
+    const auto rval = token
+        ? co_await db.legacyQueryInTransaction(*token, insert_query, &params)
+        : co_await db.legacyQuery(insert_query, &params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update action: " << action.id_proto() << " " << action.name()
         << " err=" << rval.error();
@@ -872,12 +887,15 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
 
 QCoro::Task<bool> ActionInfoCache::updateTags(const nextapp::pb::Action &action)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
 
     if (!action.tags().empty()) {
         QString sql = "INSERT INTO tag (action, name) VALUES (?, ?)";
         for(const auto& tag : action.tags()) {
-            const auto rval = co_await db.query(sql, action.id_proto(), tag);
+            const auto rval = token
+                ? co_await db.queryInTransaction(*token, sql, action.id_proto(), tag)
+                : co_await db.query(sql, action.id_proto(), tag);
             if (!rval) {
                 LOG_ERROR_N << "Failed to update action tags: " << action.id_proto() << " " << action.name()
                 << " err=" << rval.error();
@@ -891,7 +909,7 @@ QCoro::Task<bool> ActionInfoCache::updateTags(const nextapp::pb::Action &action)
 
 bool ActionInfoCache::updateTagsDirect(const nextapp::pb::Action& action)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     QSqlDatabase& sqlDb = db.db();
 
     QSqlQuery query(sqlDb);
@@ -962,7 +980,7 @@ QCoro::Task<bool> ActionInfoCache::loadFromCache()
 
 QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = syncDb();
     if (!id && !co_await validateStoredOrigins()) {
         co_return false;
     }
@@ -1104,8 +1122,11 @@ QCoro::Task<bool> ActionInfoCache::repairStoredOrigins()
         co_return true;
     }
 
-    auto& db = NextAppCore::instance()->db();
-    const auto rows = co_await db.legacyQuery("SELECT id FROM action");
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
+    const auto rows = token
+        ? co_await db.legacyQueryInTransaction(*token, "SELECT id FROM action")
+        : co_await db.legacyQuery("SELECT id FROM action");
     if (!rows) {
         LOG_ERROR_N << "Failed to load actions for origin repair: " << rows.error();
         co_return false;
@@ -1128,10 +1149,16 @@ QCoro::Task<bool> ActionInfoCache::repairStoredOrigins()
             continue;
         }
 
-        const auto updated = co_await db.query(
-            "UPDATE action SET origin = ? WHERE id = ?",
-            origin_id,
-            child_id);
+        const auto updated = token
+            ? co_await db.queryInTransaction(
+                *token,
+                "UPDATE action SET origin = ? WHERE id = ?",
+                origin_id,
+                child_id)
+            : co_await db.query(
+                "UPDATE action SET origin = ? WHERE id = ?",
+                origin_id,
+                child_id);
         if (!updated) {
             LOG_ERROR_N << "Failed to repair action origin reference for " << child_id
                         << " err=" << updated.error();
@@ -1145,9 +1172,19 @@ QCoro::Task<bool> ActionInfoCache::repairStoredOrigins()
 
 QCoro::Task<bool> ActionInfoCache::validateStoredOrigins()
 {
-    auto& db = NextAppCore::instance()->db();
-    const auto unresolved = co_await db.query(
-        R"(SELECT child.id, child.origin
+    auto& db = syncDb();
+    const auto token = syncTransactionToken();
+    const auto unresolved = token
+        ? co_await db.queryInTransaction(
+            *token,
+            R"(SELECT child.id, child.origin
+           FROM action AS child
+           LEFT JOIN action AS parent ON parent.id = child.origin
+           WHERE child.origin IS NOT NULL
+             AND child.origin != ''
+             AND parent.id IS NULL)")
+        : co_await db.query(
+            R"(SELECT child.id, child.origin
            FROM action AS child
            LEFT JOIN action AS parent ON parent.id = child.origin
            WHERE child.origin IS NOT NULL

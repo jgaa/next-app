@@ -62,11 +62,44 @@ public:
         }
 
         setState(State::SYNCHING);
-        clear();
-        if (co_await synchFromServer()
-            && co_await finalizeSyncPersistence()
-            && co_await loadLocally(false)) {
-            co_return true;
+        if (load_after_sync_) {
+            clear();
+        }
+        const bool use_transaction = !isFullSync;
+        auto& db = syncDb();
+
+        if (use_transaction) {
+            auto started = co_await db.beginExclusiveTransaction();
+            if (!started) {
+                LOG_ERROR_N << "Failed to start sync transaction for " << itemName();
+                setState(State::ERROR);
+                co_return false;
+            }
+            sync_transaction_token_ = started.value();
+        }
+
+        bool persisted = false;
+        if (co_await synchFromServer() && co_await finalizeSyncPersistence()) {
+            if (use_transaction) {
+                persisted = co_await db.commitExclusiveTransaction(*sync_transaction_token_);
+                sync_transaction_token_.reset();
+            } else {
+                persisted = true;
+            }
+        } else if (use_transaction) {
+            (void) co_await db.rollbackExclusiveTransaction(*sync_transaction_token_);
+            sync_transaction_token_.reset();
+        }
+
+        if (persisted) {
+            if (!load_after_sync_) {
+                setState(State::LOCAL);
+                co_return true;
+            }
+
+            if (co_await loadLocally(false)) {
+                co_return true;
+            }
         }
 
         setState(State::ERROR);
@@ -98,9 +131,11 @@ public:
 
     virtual QCoro::Task<qlonglong> getLastUpdate()
     {
-        auto& db = NextAppCore::instance()->db();
+        auto& db = syncDb();
         static const QString query = QString::fromStdString(::nextapp::format("SELECT MAX(updated) FROM {}", itemName()));
-        const auto last_updated = co_await db.queryOne<qlonglong>(query);
+        const auto last_updated = sync_transaction_token_
+            ? co_await db.template queryOneInTransaction<qlonglong>(*sync_transaction_token_, query)
+            : co_await db.template queryOne<qlonglong>(query);
         if (last_updated) {
             co_return last_updated.value();
         }
@@ -109,9 +144,11 @@ public:
 
     virtual QCoro::Task<qulonglong> getLastUpdatedId()
     {
-        auto& db = NextAppCore::instance()->db();
+        auto& db = syncDb();
         static const QString query = QString::fromStdString(::nextapp::format("SELECT MAX(updated_id) FROM {}", itemName()));
-        const auto last_updated_id = co_await db.queryOne<qulonglong>(query);
+        const auto last_updated_id = sync_transaction_token_
+            ? co_await db.template queryOneInTransaction<qulonglong>(*sync_transaction_token_, query)
+            : co_await db.template queryOne<qulonglong>(query);
         if (last_updated_id) {
             co_return last_updated_id.value();
         }
@@ -199,9 +236,34 @@ public:
         return full_sync_;
     }
 
+protected:
+    DbStore& syncDb() const noexcept {
+        return sync_db_override_ ? *sync_db_override_ : NextAppCore::instance()->db();
+    }
+
+    bool shouldLoadAfterSync() const noexcept {
+        return load_after_sync_;
+    }
+
+    std::optional<DbStore::transaction_token_t> syncTransactionToken() const noexcept {
+        return sync_transaction_token_;
+    }
+
+public:
+    void setSyncDbOverride(DbStore* db) noexcept {
+        sync_db_override_ = db;
+    }
+
+    void setLoadAfterSync(bool load_after_sync) noexcept {
+        load_after_sync_ = load_after_sync;
+    }
+
 private:
     State state_;
     std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
     bool full_sync_{};
+    bool load_after_sync_{true};
+    DbStore* sync_db_override_{};
+    std::optional<DbStore::transaction_token_t> sync_transaction_token_;
 
 };
