@@ -239,8 +239,11 @@ QCoro::Task<bool> ActionCategoriesModel::synch(bool fullSync)
 
     // See if we need to fetch from server
     const auto server_ver = ServerComm::instance().getServerDataVersions().actionCategoryVersion();
-    const auto local_ver = ServerComm::instance().getLocalDataVersions().actionCategoryVersion();
-    if (fullSync || server_ver == 0 || server_ver > local_ver) {
+    const auto local_ver = co_await loadLocalVersionFromDb();
+    ServerComm::instance().setLocalActionCategoryVersion(local_ver);
+
+    const bool need_sync = fullSync || server_ver == 0 || server_ver > local_ver;
+    if (need_sync) {
         if (!co_await synchFromServer()) {
             co_return false;
         }
@@ -252,7 +255,10 @@ QCoro::Task<bool> ActionCategoriesModel::synch(bool fullSync)
         }
     }
 
-    if (fullSync || server_ver == 0 || server_ver > local_ver) {
+    if (need_sync) {
+        if (!co_await storeLocalVersionInDb(server_ver)) {
+            co_return false;
+        }
         ServerComm::instance().setLocalActionCategoryVersion(server_ver);
     }
 
@@ -297,16 +303,7 @@ QCoro::Task<bool> ActionCategoriesModel::synchFromServer()
     auto res = co_await ServerComm::instance().getActionCategories({});
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasActionCategories()) {
-
-            auto& db = dbStore();
-            auto r = co_await db.legacyQuery("DELETE FROM action_category");
-
-            const auto& cats = res.actionCategories();
-            for(const auto cat : cats.categories()) {
-                if (!co_await save(cat)) {
-                    co_return false;
-                }
-            }
+            co_return co_await replaceAllFromServer(res.actionCategories());
         }
 
         co_return true;
@@ -392,6 +389,64 @@ QCoro::Task<void> ActionCategoriesModel::applyPendingUpdates()
             co_await applyUpdate(update);
         }
     }
+}
+
+QCoro::Task<uint64_t> ActionCategoriesModel::loadLocalVersionFromDb()
+{
+    auto& db = dbStore();
+    const auto version = co_await db.queryOne<qulonglong>(
+        "SELECT value FROM sync_state WHERE key = 'action_category_version'");
+    co_return version.value_or(0);
+}
+
+QCoro::Task<bool> ActionCategoriesModel::storeLocalVersionInDb(uint64_t version)
+{
+    auto& db = dbStore();
+    QList<QVariant> params;
+    params << QStringLiteral("action_category_version");
+    params << static_cast<qulonglong>(version);
+
+    const auto res = co_await db.legacyQuery(R"(INSERT INTO sync_state (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value)", &params);
+    co_return res.has_value();
+}
+
+QCoro::Task<bool> ActionCategoriesModel::replaceAllFromServer(const nextapp::pb::ActionCategories& categories)
+{
+    auto& db = dbStore();
+    const bool using_outer_transaction = sync_db_override_ && !load_after_sync_;
+
+    if (!using_outer_transaction && !co_await db.legacyQuery("BEGIN IMMEDIATE")) {
+        LOG_WARN_N << "Failed to start action-category refresh transaction.";
+        co_return false;
+    }
+
+    const auto rollback = [&]() -> QCoro::Task<bool> {
+        if (!using_outer_transaction) {
+            (void) co_await db.legacyQuery("ROLLBACK");
+        }
+        co_return false;
+    };
+
+    if (!co_await db.legacyQuery("DELETE FROM action_category")) {
+        LOG_WARN_N << "Failed to clear local action categories before refresh.";
+        co_return co_await rollback();
+    }
+
+    for (const auto& cat : categories.categories()) {
+        if (!co_await save(cat)) {
+            LOG_WARN_N << "Failed to persist refreshed action category " << cat.id_proto();
+            co_return co_await rollback();
+        }
+    }
+
+    if (!using_outer_transaction && !co_await db.legacyQuery("COMMIT")) {
+        LOG_WARN_N << "Failed to commit action-category refresh transaction.";
+        co_return co_await rollback();
+    }
+
+    co_return true;
 }
 
 QCoro::Task<bool> ActionCategoriesModel::save(const nextapp::pb::ActionCategory &category)

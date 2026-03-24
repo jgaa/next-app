@@ -210,6 +210,8 @@ if(ANDROID)
         ${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidHandlers.h
         ${CMAKE_CURRENT_SOURCE_DIR}/android/AndroidHandlers.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/android/JniGuard.h
+    )
+    set (APP_EXTRA_SOURCE_FILES ${APP_EXTRA_SOURCE_FILES}
         ${CMAKE_CURRENT_SOURCE_DIR}/android/JniRegistration.cpp
     )
 
@@ -331,20 +333,39 @@ target_link_libraries(na_grpc_lib
         Qt6::Grpc
 )
 
+add_library(NextAppUiCoreLib STATIC)
+qt_add_library(NextAppUiLib STATIC)
+
 qt_add_executable(${PROJECT_NAME}
     main.cpp
     logging.h
+    ${APP_EXTRA_SOURCE_FILES}
 )
 
+target_include_directories(NextAppUiCoreLib
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+        $<INSTALL_INTERFACE:include>
+)
 
-target_link_libraries(appNextAppUi PRIVATE Qt6::Core)
-target_include_directories(${PROJECT_NAME} PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    $<INSTALL_INTERFACE:include>
-    PRIVATE src
+target_include_directories(NextAppUiLib
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+        $<INSTALL_INTERFACE:include>
+)
+
+target_include_directories(${PROJECT_NAME}
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
 
 if (ANDROID)
+    target_include_directories(NextAppUiCoreLib PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/android
+    )
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/android
     )
@@ -387,9 +408,6 @@ if(NOT HAS_STD_FORMAT OR ANDROID OR APPLE)
     set(FMT_DEPS fmt::fmt)
 endif()
 
-
-# Make sure every target that includes <boost/...> links the interface target
-target_link_libraries(${PROJECT_NAME} PRIVATE ${_boost_headers_target})
 
 if (NOT ANDROID)
     find_package(Boost CONFIG REQUIRED COMPONENTS)
@@ -438,13 +456,13 @@ else()
     set(OPENSSL_INCLUDE "${android_openssl_SOURCE_DIR}/ssl_3/include")
     include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
     add_android_openssl_libraries(${PROJECT_NAME})
-    get_target_property(QT_ANDROID_EXTRA_LIBS_VALUE ${PROJECT_NAME} QT_ANDROID_EXTRA_LIBS)
     message("OPENSSL_INCLUDE: ${OPENSSL_INCLUDE}")
-    target_include_directories(${PROJECT_NAME}
+    target_include_directories(NextAppUiCoreLib
+        PUBLIC
+            ${NEXTAPP_BOOST_ROOT}
         PRIVATE
-        ${OPENSSL_INCLUDE}
-        ${CMAKE_BINARY_DIR}
-        ${NEXTAPP_BOOST_ROOT}
+            ${OPENSSL_INCLUDE}
+            ${CMAKE_BINARY_DIR}
     )
 endif()
 
@@ -454,10 +472,97 @@ set_source_files_properties(qml/Colors.qml
 )
 
 if (APPLE)
-    set (EXTRA_SOURCE_FILES AppDelegate.mm)
+    set (APP_EXTRA_SOURCE_FILES ${APP_EXTRA_SOURCE_FILES} AppDelegate.mm)
 endif()
 
-qt_add_qml_module(${PROJECT_NAME}
+set(NEXTAPP_UI_CORE_SOURCES
+    ${EXTRA_SOURCE_FILES}
+    ${FCM_SOURCES}
+    ActionCategoriesModel.cpp
+    ActionCategoriesModel.h
+    ActionInfoCache.cpp
+    ActionInfoCache.h
+    ActionStatsModel.cpp
+    ActionStatsModel.h
+    ActionsModel.cpp
+    ActionsModel.h
+    ActionsOnCurrentCalendar.cpp
+    ActionsOnCurrentCalendar.h
+    ActionsWorkedOnTodayCache.cpp
+    ActionsWorkedOnTodayCache.h
+    AppInstanceMgr.cpp
+    AppInstanceMgr.h
+    CalendarCache.cpp
+    CalendarCache.h
+    CalendarDayModel.cpp
+    CalendarDayModel.h
+    CalendarModel.cpp
+    CalendarModel.h
+    CategoryUseModel.cpp
+    CategoryUseModel.h
+    DayColorModel.cpp
+    DayColorModel.h
+    DbStore.cpp
+    DbStore.h
+    DevicesModel.cpp
+    DevicesModel.h
+    DualView.cpp
+    DualView.h
+    EventScheduler.cpp
+    EventScheduler.h
+    format_wrapper.h
+    GreenDayModel.cpp
+    GreenDayModel.h
+    GreenDaysModel.cpp
+    GreenDaysModel.h
+    GreenMonthModel.cpp
+    GreenMonthModel.h
+    GrpcIncomingStream.h
+    ImportExportModel.cpp
+    ImportExportModel.h
+    LogModel.cpp
+    LogModel.h
+    MainTreeModel.cpp
+    MainTreeModel.h
+    MaterialDesignStyling.cpp
+    MaterialDesignStyling.h
+    ModelInstances.cpp
+    ModelInstances.h
+    NextAppCore.cpp
+    NextAppCore.h
+    nextapp.h
+    NotificationsModel.cpp
+    NotificationsModel.h
+    OtpModel.cpp
+    OtpModel.h
+    ReviewModel.cpp
+    ReviewModel.h
+    ServerComm.cpp
+    ServerComm.h
+    ServerSynchedCahce.h
+    SoundPlayer.cpp
+    SoundPlayer.h
+    TimeBoxActionsModel.cpp
+    TimeBoxActionsModel.h
+    UseCaseTemplates.cpp
+    UseCaseTemplates.h
+    util.cpp
+    util.h
+    WeeklyWorkReportModel.cpp
+    WeeklyWorkReportModel.h
+    WorkCache.cpp
+    WorkCache.h
+    WorkModel.cpp
+    WorkModel.h
+    WorkModelBase.cpp
+    WorkModelBase.h
+    WorkSessionsModel.cpp
+    WorkSessionsModel.h
+)
+
+target_sources(NextAppUiCoreLib PRIVATE ${NEXTAPP_UI_CORE_SOURCES})
+
+qt_add_qml_module(NextAppUiLib
     URI NextAppUi
     VERSION ${VERSION}
     QML_FILES
@@ -611,90 +716,87 @@ qt_add_qml_module(${PROJECT_NAME}
         sounds/387351__cosmicembers__simple-ding.wav
         sounds/515643__mashedtatoes2__ding2_edit.wav
         sounds/611112__5ro4__bell-ding-2.wav
-    SOURCES
-        ${EXTRA_SOURCE_FILES}
-        ${FCM_SOURCES}
-        ActionCategoriesModel.cpp
-        ActionCategoriesModel.h
-        ActionInfoCache.cpp
-        ActionInfoCache.h
-        ActionStatsModel.cpp
-        ActionStatsModel.h
-        ActionsModel.cpp
-        ActionsModel.h
-        ActionsOnCurrentCalendar.cpp
-        ActionsOnCurrentCalendar.h
-        ActionsWorkedOnTodayCache.cpp
-        ActionsWorkedOnTodayCache.h
-        AppInstanceMgr.cpp
-        AppInstanceMgr.h
-        CalendarCache.cpp
-        CalendarCache.h
-        CalendarDayModel.cpp
-        CalendarDayModel.h
-        CalendarModel.cpp
-        CalendarModel.h
-        CategoryUseModel.cpp
-        CategoryUseModel.h
-        DayColorModel.cpp
-        DayColorModel.h
-        DbStore.cpp
-        DbStore.h
-        DevicesModel.cpp
-        DevicesModel.h
-        DualView.h DualView.cpp
-        GreenDayModel.cpp
-        GreenDayModel.h
-        GreenDaysModel.cpp
-        GreenDaysModel.h
-        GreenMonthModel.cpp
-        GreenMonthModel.h
-        GrpcIncomingStream.h
-        ImportExportModel.cpp
-        ImportExportModel.h
-        LogModel.cpp
-        LogModel.h
-        MainTreeModel.cpp
-        MainTreeModel.h
-        MaterialDesignStyling.cpp
-        MaterialDesignStyling.h
-        ModelInstances.cpp
-        ModelInstances.h
-        NextAppCore.cpp
-        NextAppCore.h
-        NotificationsModel.cpp
-        NotificationsModel.h
-        OtpModel.cpp
-        OtpModel.h
-        ReviewModel.cpp
-        ReviewModel.h
-        ServerComm.cpp
-        ServerComm.h
-        ServerSynchedCahce.h
-        SoundPlayer.cpp
-        SoundPlayer.h
-        TimeBoxActionsModel.cpp
-        TimeBoxActionsModel.h
-        UseCaseTemplates.cpp
-        UseCaseTemplates.h
-        WeeklyWorkReportModel.cpp
-        WeeklyWorkReportModel.h
-        WorkCache.cpp
-        WorkCache.h
-        WorkModel.cpp
-        WorkModel.h
-        WorkModelBase.cpp
-        WorkModelBase.h
-        WorkSessionsModel.cpp
-        WorkSessionsModel.h
-        format_wrapper.h
-        nextapp.h
-        util.cpp
-        util.h
-        EventScheduler.h
-        EventScheduler.cpp
 )
 
+qt_generate_foreign_qml_types(NextAppUiCoreLib NextAppUiLib)
+
+if (ANDROID)
+    set(OPEN_SSL_CORE_DEPS)
+else ()
+    set(OPEN_SSL_CORE_DEPS OpenSSL::SSL OpenSSL::Crypto)
+endif()
+
+if(NOT BOOST_HEADERS_TARGET AND Boost_INCLUDE_DIRS)
+    target_include_directories(NextAppUiCoreLib PUBLIC ${Boost_INCLUDE_DIRS})
+endif()
+
+target_link_libraries(NextAppUiCoreLib
+    PUBLIC
+        ${BOOST_HEADERS_TARGET}
+        ZLIB::ZLIB
+        na_proto_lib
+        na_grpc_lib
+        QCoro6::Core
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::Graphs
+        Qt6::Svg
+        Qt6::Protobuf
+        Qt6::Grpc
+        Qt6::ProtobufQtCoreTypes
+        Qt6::Concurrent
+        Qt6::Sql
+        $<$<BOOL:${WINDOWS_BUILD}>:gRPC::grpc++>
+        $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
+        $<$<AND:$<BOOL:${USE_STATIC_QT}>,$<BOOL:${LINUX_BUILD}>>:dl>
+        ${OPEN_SSL_CORE_DEPS}
+        ${FMT_DEPS}
+        miniaudio
+)
+
+target_link_libraries(NextAppUiLib
+    PUBLIC
+        NextAppUiCoreLib
+    PRIVATE
+        QCoro6::Qml
+        QCoro6::Quick
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::Graphs
+        Qt6::Svg
+        Qt6::Protobuf
+        Qt6::ProtobufQuick
+        Qt6::Grpc
+        Qt6::ProtobufQtCoreTypes
+        Qt6::Concurrent
+)
+
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        NextAppUiLib
+        NextAppUiLibplugin
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::Test
+)
+
+add_dependencies(NextAppUiCoreLib logfault na_grpc_lib ${OPENSSL_TARGET} ${FMT_TARGET})
+
+set_target_properties(NextAppUiCoreLib PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
+
+set_target_properties(NextAppUiLib PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
 
 if (APPLE)
     set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -713,12 +815,8 @@ elseif (WIN32)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
 elseif (ANDROID)
-    # set_property(TARGET ${PROJECT_NAME} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-    #              ${CMAKE_CURRENT_SOURCE_DIR}/android)
-
     set_property(TARGET ${PROJECT_NAME}
-          PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_OUT_DIR}")
-
+        PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${ANDROID_OUT_DIR}")
     target_compile_definitions(${PROJECT_NAME} PUBLIC __ANDROID__)
     include(GNUInstallDirs)
     install(TARGETS ${PROJECT_NAME}
@@ -727,70 +825,22 @@ elseif (ANDROID)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 else()
-    # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-    # If you are developing for iOS or macOS you should consider setting an
-    # explicit, fixed bundle identifier manually though.
     set_target_properties(${PROJECT_NAME} PROPERTIES
         RUNTIME_OUTPUT_NAME nextapp
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
+    )
 endif()
-
-if (ANDROID)
-    set(OPEN_SSL_DEPS ${QT_ANDROID_EXTRA_LIBS_VALUE})
-else ()
-    set(OPEN_SSL_DEPS OpenSSL::SSL OpenSSL::Crypto)
-endif()
-
-add_dependencies(${PROJECT_NAME} logfault na_grpc_lib ${OPENSSL_TARGET} ${FMT_TARGET})
 
 if(USE_STATIC_QT)
     qt_import_plugins(${PROJECT_NAME}
-    #qt6_import_qt_plugins(${PROJECT_NAME}
         PLUGINS
             qxcb
-            # Other plugins as required
         STATIC
     )
-    target_compile_definitions(${PROJECT_NAME} PRIVATE
-        QT_QPA_STATIC
-        )
+    target_compile_definitions(${PROJECT_NAME} PRIVATE QT_QPA_STATIC)
 endif()
-
-if(NOT BOOST_HEADERS_TARGET AND Boost_INCLUDE_DIRS)
-  target_include_directories(${PROJECT_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
-endif()
-
-target_link_libraries(${PROJECT_NAME}
-    PRIVATE
-        ${BOOST_HEADERS_TARGET}
-        ZLIB::ZLIB
-        na_proto_lib
-        na_grpc_lib
-        QCoro6::Core
-        QCoro6::Qml
-        QCoro6::Quick
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Quick
-        Qt6::QuickControls2
-        Qt6::Graphs
-        Qt6::Svg
-        Qt6::Protobuf
-        Qt6::Grpc
-        Qt6::ProtobufQtCoreTypes
-        Qt6::Concurrent
-        Qt6::Test
-        Qt6::Sql
-        $<$<BOOL:${WINDOWS_BUILD}>:gRPC::grpc++> # Removed LINUX_BUILD with vcpkg
-        $<$<BOOL:${LINUX_BUILD}>:Qt6::DBus>
-        $<$<AND:$<BOOL:${USE_STATIC_QT}>,$<BOOL:${LINUX_BUILD}>>:dl>
-        ${OPEN_SSL_DEPS}
-        ${FMT_DEPS}
-        miniaudio
-)
 
 if (MACOS_BUILD)
     set(PLIST_IN   "${NEXTAPP_ROOT}/building/macos/Info.plist.in")
@@ -798,37 +848,28 @@ if (MACOS_BUILD)
     configure_file("${PLIST_IN}" "${PLIST_OUT}" @ONLY)
 
     set_target_properties(${PROJECT_NAME} PROPERTIES
-    MACOSX_BUNDLE            ON
-    MACOSX_BUNDLE_INFO_PLIST "${PLIST_OUT}"
+        MACOSX_BUNDLE ON
+        MACOSX_BUNDLE_INFO_PLIST "${PLIST_OUT}"
     )
-        
+
     install(TARGETS ${PROJECT_NAME}
         BUNDLE DESTINATION .
         COMPONENT Application
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-    # install(
-    #   FILES "${NEXTAPP_ROOT}/building/macos/NextApp.icns"
-    #   DESTINATION "$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Resources"
-    #   COMPONENT Application
-    # )
     install(
         FILES "${NEXTAPP_ROOT}/src/NextAppUi/LICENSE"
         DESTINATION "."
         COMPONENT Application
     )
 
-        # 1) Put the icon *into the bundle during build*
     set(APP_ICON "${NEXTAPP_ROOT}/building/macos/NextApp.icns")
     set_source_files_properties(${APP_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
     target_sources(${PROJECT_NAME} PRIVATE ${APP_ICON})
 
-    # 2) Tell macOS which icon the bundle uses
     set_target_properties(${PROJECT_NAME} PROPERTIES
-    MACOSX_BUNDLE_ICON_FILE "NextApp.icns"
+        MACOSX_BUNDLE_ICON_FILE "NextApp.icns"
     )
-
-
 elseif(WIN32)
     install(TARGETS ${PROJECT_NAME}
         COMPONENT Application

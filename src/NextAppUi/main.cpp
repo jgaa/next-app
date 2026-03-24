@@ -7,6 +7,7 @@
 #include <QCommandLineParser>
 #include <QIcon>
 #include <QAbstractItemModelTester>
+#include <QtPlugin>
 #include <QQuickStyle>
 #include <QSslSocket>
 #include <QQuickWindow>
@@ -42,6 +43,8 @@
 extern void qml_register_types_nextapp_pb();
 
 using namespace std;
+
+Q_IMPORT_PLUGIN(NextAppUiPlugin)
 
 #ifdef __ANDROID__
 
@@ -441,6 +444,11 @@ int main(int argc, char *argv[])
 
     LOG_INFO << "Loading main QML file: " << main_qml;
     engine.addImportPath("qrc:/qt/qml/NextAppUi/qml");
+    QObject::connect(&engine, &QQmlApplicationEngine::warnings, [](const QList<QQmlError>& warnings) {
+        for (const auto& warning : warnings) {
+            LOG_ERROR_N << "QML warning: " << warning.toString().toStdString();
+        }
+    });
     engine.load(QUrl{QString::fromUtf8(main_qml)});
     if (engine.rootObjects().isEmpty()) {
         LOG_ERROR_N << "Failed to initialize QML engine!";

@@ -43,7 +43,7 @@ public:
     // Useful for debugging weird behaviour and performance testing
     static auto constexpr use_worker_thread = true;
 
-    static constexpr uint latest_version = 2;
+    static constexpr uint latest_version = 3;
     enum Error {
         OK,
         GENERIC_ERROR,

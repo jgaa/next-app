@@ -74,6 +74,9 @@ private:
     QCoro::Task<void> onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     QCoro::Task<void> applyUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     QCoro::Task<void> applyPendingUpdates();
+    QCoro::Task<uint64_t> loadLocalVersionFromDb();
+    QCoro::Task<bool> storeLocalVersionInDb(uint64_t version);
+    QCoro::Task<bool> replaceAllFromServer(const nextapp::pb::ActionCategories& categories);
     void setOnline(bool value);
     void setValid(bool value);
     // void fetchIf();
