@@ -3,6 +3,7 @@
 #include <QQmlEngine>
 #include <QFile>
 #include "qcorotask.h"
+#include "RuntimeServices.h"
 
 class ImportExportModel : public QObject
 {
@@ -28,6 +29,7 @@ public:
 #pragma pack(pop)
 
     ImportExportModel();
+    explicit ImportExportModel(RuntimeServices& runtime);
 
     Q_INVOKABLE void exportData(const QUrl& url);
     Q_INVOKABLE void exportDataMobile(bool json);
@@ -54,4 +56,5 @@ private:
     QUrl data_path_;
     bool have_backup_{false};
     bool have_json_{false};
+    RuntimeServices& runtime_;
 };

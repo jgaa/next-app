@@ -10,6 +10,7 @@
 #include "CalendarDayModel.h"
 
 #include "nextapp.qpb.h"
+#include "RuntimeServices.h"
 
 /* A model for calendar data
  *
@@ -43,6 +44,7 @@ public:
     };
 
     CalendarModel();
+    explicit CalendarModel(RuntimeServices& runtime);
 
     bool valid() const noexcept {
         return valid_ && online_;
@@ -73,6 +75,7 @@ public:
     Q_INVOKABLE CategoryUseModel *getCategoryUseModel();
 
     nextapp::pb::CalendarEvent *lookup(const QString& eventId);
+    RuntimeServices& runtime() const noexcept { return runtime_; }
 
     void setValid(bool value);
 
@@ -114,4 +117,5 @@ private:
     std::unordered_map<const QObject *, std::unique_ptr<CalendarDayModel>> day_models_;
     std::unique_ptr<QTimer> minute_timer_;
     bool is_primary_ = false;
+    RuntimeServices& runtime_;
 };

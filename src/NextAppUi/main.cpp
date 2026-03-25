@@ -383,6 +383,13 @@ int main(int argc, char *argv[])
         }
 #endif
 
+#ifndef __ANDROID__
+        QQuickStyle::setFallbackStyle("Basic");
+        if (style.empty()) {
+            style = "Basic";
+        }
+#endif
+
         if (!style.empty()) {
             LOG_INFO << "Setting UI style to: " << style;
             QQuickStyle::setStyle(style.data());
@@ -402,7 +409,7 @@ int main(int argc, char *argv[])
 
     LOG_TRACE_N << "Constructing static models...";
     NextAppCore core(engine);
-    ServerComm comms;
+    auto& comms = static_cast<ServerComm&>(core.serverComm());
     MainTreeModel main_tree;
     ActionCategoriesModel ac_model;
     ActionInfoCache ai_cache;

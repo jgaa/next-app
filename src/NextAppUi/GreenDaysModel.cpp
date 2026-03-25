@@ -2,7 +2,7 @@
 #include "GreenDayModel.h"
 #include "MaterialDesignStyling.h"
 
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "NextAppCore.h"
 #include "logging.h"
 #include "DbStore.h"
@@ -40,22 +40,28 @@ namespace {
 GreenDaysModel *GreenDaysModel::instance_;
 
 GreenDaysModel::GreenDaysModel()
+    : GreenDaysModel(*NextAppCore::instance())
+{
+}
+
+GreenDaysModel::GreenDaysModel(RuntimeServices& runtime)
+    : runtime_{runtime}
 {
     instance_ = this;
     years_to_cache_.emplace(QDate::currentDate().year());
 
-    connect(std::addressof(ServerComm::instance()),
-            &ServerComm::onUpdate,
+    connect(std::addressof(runtime_.serverComm()),
+            &ServerCommAccess::onUpdate,
             this,
             &GreenDaysModel::onUpdate);
 
-    connect(std::addressof(ServerComm::instance()), &ServerComm::connectedChanged, this, [this] {
-        if (ServerComm::instance().connected()) {
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::connectedChanged, this, [this] {
+        if (runtime_.serverComm().connected()) {
             onOnline();
         }
     });
 
-    if (ServerComm::instance().connected()) {
+    if (runtime_.serverComm().connected()) {
         onOnline();
     }
 }
@@ -118,13 +124,13 @@ void GreenDaysModel::fetchMonth(int year, int month)
 void GreenDaysModel::fetchDay(int year, int month, int day)
 {
     assert(day > 0);
-    ServerComm::instance().fetchDay(year, month, day);
+    runtime_.serverComm().fetchDay(year, month, day);
 }
 
 void GreenDaysModel::fetchColors()
 {
-    if (ServerComm::instance().connected()) {
-        ServerComm::instance().getDayColorDefinitions();
+    if (runtime_.serverComm().connected()) {
+        runtime_.serverComm().getDayColorDefinitions();
     }
 }
 
@@ -203,7 +209,7 @@ QCoro::Task<void> GreenDaysModel::onUpdatedDay(nextapp::pb::CompleteDay complete
 
     if (!co_await storeDay(completeDay)) {
         LOG_ERROR_N << "Failed to persist updated day locally. Requesting resync.";
-        ServerComm::instance().resync();
+        runtime_.serverComm().resync();
         co_return;
     }
     if (!load_after_sync_) {
@@ -279,7 +285,7 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
     auto& db = dbStore();
 
     LOG_TRACE_N << "Getting last updated";
-    if (ServerComm::instance().shouldUseUpdatedIdSync()) {
+    if (runtime_.serverComm().shouldUseUpdatedIdSync()) {
         req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
         if (const auto last_updated_id = co_await db.queryOne<qulonglong>("SELECT MAX(updated_id) FROM day_colors"); last_updated_id) {
             req.setSince(static_cast<qlonglong>(last_updated_id.value()));
@@ -290,7 +296,7 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
     }
 
     LOG_TRACE_N << "Caling getNewDayColorDefinitions";
-    auto res = co_await ServerComm::instance().getNewDayColorDefinitions(req);
+    auto res = co_await runtime_.serverComm().getNewDayColorDefinitions(req);
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasDayColorDefinitions()) {
             for(const auto cdd : res.dayColorDefinitions().dayColors()) {
@@ -339,7 +345,7 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
     auto& db = dbStore();
 
     LOG_TRACE_N << "Getting last updated";
-    if (ServerComm::instance().shouldUseUpdatedIdSync()) {
+    if (runtime_.serverComm().shouldUseUpdatedIdSync()) {
         req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
         if (const auto last_updated_id = co_await db.queryOne<qulonglong>("SELECT MAX(updated_id) FROM day"); last_updated_id) {
             req.setSince(static_cast<qlonglong>(last_updated_id.value()));
@@ -350,7 +356,7 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
     }
 
     LOG_TRACE_N << "Calling synchGreenDays";
-    auto stream = ServerComm::instance().synchGreenDays(req);
+    auto stream = runtime_.serverComm().synchGreenDays(req);
 
     bool looks_ok = false;
     LOG_TRACE_N << "Entering message-loop";
@@ -551,7 +557,7 @@ QCoro::Task<bool> GreenDaysModel::storeDays(const QList<nextapp::pb::CompleteDay
 
 DbStore& GreenDaysModel::dbStore() const noexcept
 {
-    return sync_db_override_ ? *sync_db_override_ : NextAppCore::instance()->db();
+    return sync_db_override_ ? *sync_db_override_ : runtime_.db();
 }
 
 uint32_t GreenDaysModel::getKey(int year, int month) noexcept

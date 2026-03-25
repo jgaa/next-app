@@ -4,7 +4,13 @@
 
 
 ActionStatsModel::ActionStatsModel(QUuid actionId)
-: action_id_{actionId}
+: ActionStatsModel(*NextAppCore::instance(), actionId)
+{
+    LOG_TRACE << "ActionStatsModel created";
+}
+
+ActionStatsModel::ActionStatsModel(RuntimeServices& runtime, QUuid actionId)
+: action_id_{actionId}, runtime_{runtime}
 {
     LOG_TRACE << "ActionStatsModel created";
 }
@@ -27,7 +33,7 @@ QCoro::Task<void> ActionStatsModel::fetch()
     }
 
     // Get all sessions for the action, sorted on date, grouped by date (using local timezone)
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
 
     static const QString sql{R"(SELECT
     DATE(start_time, 'localtime') AS session_date,

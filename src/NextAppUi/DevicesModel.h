@@ -5,6 +5,7 @@
 #include "qcorotask.h"
 
 #include "nextapp.qpb.h"
+#include "RuntimeServices.h"
 
 class DevicesModel : public QAbstractListModel
 {
@@ -32,6 +33,7 @@ public:
     };
 
     DevicesModel();
+    explicit DevicesModel(RuntimeServices& runtime);
 
     Q_INVOKABLE void enableDevice(QString deviceId, bool active);
     Q_INVOKABLE void deleteDevice(QString deviceId);
@@ -55,4 +57,5 @@ private:
 
     bool valid_{false};
     std::vector<nextapp::pb::Device> devices_;
+    RuntimeServices& runtime_;
 };

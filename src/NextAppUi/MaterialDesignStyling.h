@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QQmlEngine>
+#include "RuntimeServices.h"
 
 class MaterialDesignStyling : public QObject
 {
@@ -120,6 +121,7 @@ class MaterialDesignStyling : public QObject
 
 public:
     MaterialDesignStyling();
+    explicit MaterialDesignStyling(RuntimeServices& runtime);
 
     Q_INVOKABLE void setTheme(const QString& name);
 
@@ -192,4 +194,5 @@ private:
     ColorTheme theme_;
     QString currentTheme_;
     static MaterialDesignStyling *instance_;
+    RuntimeServices& runtime_;
 };

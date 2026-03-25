@@ -7,6 +7,7 @@
 #include <QHash>
 #include <QUuid>
 #include <QAbstractItemModel>
+#include "RuntimeServices.h"
 #include "qcorotask.h"
 
 #include "nextapp.qpb.h"
@@ -31,6 +32,7 @@ class GreenDayModel : public QObject {
 
 public:
     GreenDayModel(int year, int month, int day, GreenDaysModel* parent);
+    GreenDayModel(int year, int month, int day, GreenDaysModel* parent, RuntimeServices& runtime);
 
     bool valid() const noexcept;
 
@@ -94,8 +96,8 @@ private:
     const int year_;
     const int month_;
     const int mday_;
+    RuntimeServices& runtime_;
 };
-
 
 
 

@@ -9,7 +9,7 @@
 #include "NextAppCore.h"
 #include "CalendarDayModel.h"
 #include "CalendarModel.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "TimeBoxActionsModel.h"
 #include "ActionCategoriesModel.h"
 
@@ -145,13 +145,20 @@ items_t calculatePlacement(CalendarDayModel::events_t events) {
 } //anon ns
 
 CalendarDayModel::CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, int index, QObject *parent)
+    : CalendarDayModel(date, component, calendar, calendar.runtime(), index, parent)
+{
+}
+
+CalendarDayModel::CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, RuntimeServices& runtime, int index, QObject *parent)
     : QObject(parent)    
     , date_(date)
     , index_{index}
     , component_{component}
     , calendar_{calendar}
+    , runtime_{runtime}
 {
-    connect(&ServerComm::instance(), &ServerComm::globalSettingsChanged, this, &CalendarDayModel::setWorkHours);
+    timx_boxes_pool_.setRuntime(runtime_);
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::globalSettingsChanged, this, &CalendarDayModel::setWorkHours);
     setWorkHours();
 }
 
@@ -176,7 +183,7 @@ void CalendarDayModel::createTimeBox(QString name, QString category, int start, 
     ts.setEnd(date_.startOfDay().addSecs(end * 60).toSecsSinceEpoch());
     tb.setTimeSpan(ts);
 
-    ServerComm::instance().addTimeBlock(tb);
+    runtime_.serverComm().addTimeBlock(tb);
 }
 
 nextapp::pb::CalendarEvent CalendarDayModel::event(int index) const noexcept {
@@ -272,7 +279,7 @@ void CalendarDayModel::moveEvent(const QString &eventId, time_t start, time_t en
     auto tb = event->timeBlock();
     tb.setTimeSpan(ts);
 
-    ServerComm::instance().updateTimeBlock(tb);
+    runtime_.serverComm().updateTimeBlock(tb);
 }
 
 void CalendarDayModel::deleteEvent(const QString &eventId)
@@ -310,7 +317,7 @@ nextapp::pb::TimeBlock CalendarDayModel::tbById(const QString &eventId) const
 
 void CalendarDayModel::updateTimeBlock(const nextapp::pb::TimeBlock &tb)
 {
-    ServerComm::instance().updateTimeBlock(tb);
+    runtime_.serverComm().updateTimeBlock(tb);
 }
 
 bool CalendarDayModel::addAction(const QString &eventId, const QString &action)
@@ -397,7 +404,7 @@ int CalendarDayModel::roundToMinutes() const noexcept {
 
 void CalendarDayModel::setWorkHours()
 {
-    const auto& gs = ServerComm::instance().globalSettings();
+    const auto& gs = runtime_.serverComm().globalSettings();
 
     const auto old_start = work_start_;
     const auto old_end = work_end_;
@@ -425,7 +432,8 @@ QObject *CalendarDayModel::Pool::get(CalendarDayModel *parent, QObject *ctl)
 {
     if (end_ >= pool_.size()) {
         if (!component_factory_) {
-            component_factory_.emplace(&NextAppCore::instance()->engine(), QUrl(path_));
+            assert(runtime_ != nullptr);
+            component_factory_.emplace(&runtime_->qmlEngine(), QUrl(path_));
         }
 
         QVariantMap properties;

@@ -3,12 +3,20 @@
 #include <ranges>
 
 #include "UseCaseTemplates.h"
+#include "NextAppCore.h"
 #include "nextapp_client.grpc.qpb.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 
 using namespace std;
 
-UseCaseTemplates::UseCaseTemplates() {
+UseCaseTemplates::UseCaseTemplates()
+    : UseCaseTemplates(*NextAppCore::instance())
+{
+}
+
+UseCaseTemplates::UseCaseTemplates(RuntimeServices& runtime)
+    : runtime_{runtime}
+{
 
     templates_ = {
         UseCaseTemplate {
@@ -1092,7 +1100,7 @@ void UseCaseTemplates::createFromTemplate(int index)
         add(root, list);
     };
 
-    ServerComm::instance().createNodesFromTemplate(root);
+    runtime_.serverComm().createNodesFromTemplate(root);
 }
 
 QString UseCaseTemplates::getDescription(int index)

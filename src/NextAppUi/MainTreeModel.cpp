@@ -5,7 +5,7 @@
 #include <QProtobufSerializer>
 
 #include "MainTreeModel.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "NextAppCore.h"
 #include "DbStore.h"
 #include "logging.h"
@@ -83,7 +83,10 @@ optional<unsigned> getRow(MainTreeModel::TreeNode::node_list_t& list, const QUui
 MainTreeModel::TreeNode * getTreeNode(const QModelIndex& node) noexcept {
     if (node.isValid()) {
         auto ptr = static_cast<MainTreeModel::TreeNode *>(node.internalPointer());
-        assert(ptr);
+        if (!ptr) {
+            LOG_ERROR_N << "Model index had null internal pointer.";
+            return {};
+        }
         return ptr;
     }
     return {};
@@ -117,16 +120,23 @@ bool MainTreeModel::shouldStageParentRepair() const noexcept
 
 
 MainTreeModel::MainTreeModel(QObject *parent)
+    : MainTreeModel(*NextAppCore::instance(), parent)
+{
+}
+
+MainTreeModel::MainTreeModel(RuntimeServices& runtime, QObject *parent)
     : QAbstractItemModel{parent}
+    , ServerSynchedCahce<nextapp::pb::Node, MainTreeModel>{runtime}
+    , runtime_{runtime}
 {
     instance_ = this;
 
-    connect(std::addressof(ServerComm::instance()), &ServerComm::onUpdate,
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate,
             this, [this] (const std::shared_ptr<nextapp::pb::Update>& update) {
                 onUpdate(update);
             });
 
-    connect(std::addressof(ServerComm::instance()), &ServerComm::connectedChanged,
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::connectedChanged,
             this, &MainTreeModel::onOnline);
 
     // if (ServerComm::instance().connected()) {
@@ -362,7 +372,10 @@ void MainTreeModel::moveNode(TreeNode *parent, TreeNode *current, const nextapp:
     // We still have the actual/old parent in `current->parent`
 
     auto old_parent = lookupTreeNode(current->parent()->uuid());
-    assert(old_parent);
+    if (!old_parent) {
+        LOG_ERROR_N << "Cannot move node " << node.uuid() << " because old parent is missing.";
+        return;
+    }
 
     const auto sourceParentIx = getIndex(old_parent);
     const auto destinationParentIx = getIndex(parent);
@@ -388,7 +401,10 @@ void MainTreeModel::insertNode(TreeNode::node_list_t &list, std::shared_ptr<Tree
 
 QModelIndex MainTreeModel::getIndex(TreeNode *node)
 {
-    assert(node);
+    if (!node) {
+        LOG_ERROR_N << "getIndex() called with null tree node.";
+        return {};
+    }
 
     if (node == &root_) {
         return createIndex(0, 0, &root_);
@@ -400,7 +416,8 @@ QModelIndex MainTreeModel::getIndex(TreeNode *node)
         return createIndex(*row, 0, node);
     }
 
-    assert(false);
+    LOG_ERROR_N << "Failed to locate node " << node->uuid().toString(QUuid::WithoutBraces)
+                << " in parent list.";
     return {};
 }
 
@@ -427,14 +444,26 @@ QCoro::Task<void> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb:
     using nextapp::pb::Node;
 
 
-    assert(update->hasNode());
+    if (!update->hasNode()) {
+        QTimer::singleShot(0, this, [this] {
+            LOG_ERROR_N << "Received tree update without node payload. Requesting resync.";
+            runtime_.serverComm().resync();
+        });
+        co_return;
+    }
     const Node& node = update->node();
 
     TreeNode* parent = &root_;
     if (!node.parent().isEmpty()) {
         parent = lookupTreeNode(QUuid{node.parent()});
     }
-    assert(!node.uuid().isEmpty());
+    if (node.uuid().isEmpty()) {
+        QTimer::singleShot(0, this, [this] {
+            LOG_ERROR_N << "Received tree update without node uuid. Requesting resync.";
+            runtime_.serverComm().resync();
+        });
+        co_return;
+    }
 
     TreeNode* current = lookupTreeNode(QUuid{node.uuid()});
 
@@ -450,14 +479,21 @@ QCoro::Task<void> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb:
     const auto resyncOnFailure = [this, id = node.uuid()] {
         QTimer::singleShot(0, this, [this, id] {
             LOG_ERROR_N << "Node apply failed for " << id << ". Requesting resync.";
-            ServerComm::instance().resync();
+            runtime_.serverComm().resync();
         });
     };
 
     switch(op) {
     case Update::Operation::ADDED:
 added:
-        assert(current == nullptr);
+        if (current != nullptr) {
+            LOG_WARN_N << "Received add for existing node " << node.uuid()
+                       << ". Rebuilding tree from cache.";
+            if (!co_await save(node) || !co_await doLoadLocally()) {
+                resyncOnFailure();
+            }
+            co_return;
+        }
         if (!co_await save(node)) {
             resyncOnFailure();
             co_return;
@@ -504,7 +540,14 @@ added:
                 }
                 co_return;
             }
-            assert(parent != current->parent());
+            if (parent == current->parent()) {
+                LOG_WARN_N << "Received move for node " << node.uuid()
+                           << " without a parent change. Treating it as an update.";
+                auto cix = getIndex(current);
+                current->node() = node;
+                emit dataChanged(cix, cix);
+                co_return;
+            }
             moveNode(parent, current, node);
         } else {
             LOG_WARN_N << "Moved node " << node.uuid() << " is not loaded. Will treat it as an add.";
@@ -569,7 +612,7 @@ bool MainTreeModel::isDescent(const QUuid &nodeUuid, const QUuid &descentOf)
 
 QCoro::Task<void> MainTreeModel::onOnline()
 {
-    if (ServerComm::instance().status() != ServerComm::Status::ONLINE) {
+    if (runtime_.serverComm().status() != ServerCommAccess::Status::ONLINE) {
         setState(State::LOCAL);
     }
     co_return;
@@ -599,7 +642,11 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
             nextapp::pb::Node node;
             const auto& data = row.at(DATA).toByteArray();
             node.deserialize(&serializer, data);
-            assert(node.uuid() == row.at(UUID).toString());
+            if (node.uuid() != row.at(UUID).toString()) {
+                LOG_ERROR_N << "Ignoring cached node row with mismatched uuid. row="
+                            << row.at(UUID).toString() << " payload=" << node.uuid();
+                continue;
+            }
             pending.push_back(std::move(node));
         }
     } else {
@@ -748,7 +795,7 @@ QCoro::Task<bool> MainTreeModel::validateStoredNodes()
 }
 
 std::shared_ptr<GrpcIncomingStream> MainTreeModel::openServerStream(nextapp::pb::GetNewReq req) {
-    return ServerComm::instance().synchNodes(req);
+    return runtime_.serverComm().synchNodes(req);
 }
 
 QCoro::Task<bool> MainTreeModel::doSynch(bool fullSync)
@@ -917,7 +964,6 @@ MainTreeModel::TreeNode::TreeNode(nextapp::pb::Node node, TreeNode *parent)
     auto name = node_.name();
     if (!name.isEmpty() && !parent) {
         LOG_WARN << "Impossible!";
-        assert(false);
     }
 }
 
@@ -1036,19 +1082,28 @@ bool MainTreeModel::isChildOfSelected(const QUuid &uuid)
 void MainTreeModel::addNode(QVariantMap args)
 {
     nextapp::pb::Node node = toNode(args);
-    assert(!node.name().isEmpty());
+    if (node.name().isEmpty()) {
+        LOG_ERROR_N << "Refusing to add node with empty name.";
+        return;
+    }
 
     // We will update the UI when we get the update notification
-    ServerComm::instance().addNode(node);
+    runtime_.serverComm().addNode(node);
 }
 
 void MainTreeModel::updateNode(const QVariantMap args)
 {
     nextapp::pb::Node node = toNode(args);
-    assert(!node.name().isEmpty());
-    assert(!node.uuid().isEmpty());
+    if (node.name().isEmpty()) {
+        LOG_ERROR_N << "Refusing to update node with empty name.";
+        return;
+    }
+    if (node.uuid().isEmpty()) {
+        LOG_ERROR_N << "Refusing to update node without uuid.";
+        return;
+    }
 
-    ServerComm::instance().updateNode(node);
+    runtime_.serverComm().updateNode(node);
 }
 
 QString MainTreeModel::uuidFromModelIndex(const QModelIndex ix)
@@ -1063,23 +1118,29 @@ QString MainTreeModel::uuidFromModelIndex(const QModelIndex ix)
 void MainTreeModel::deleteNode(const QString &uuid)
 {
     QUuid id{uuid};
-    assert(!id.isNull());
+    if (id.isNull()) {
+        LOG_ERROR_N << "Refusing to delete node with invalid uuid: " << uuid;
+        return;
+    }
 
-    ServerComm::instance().deleteNode(id);
+    runtime_.serverComm().deleteNode(id);
 }
 
 void MainTreeModel::moveNode(const QString &uuid, const QString &toParentUuid)
 {
     QUuid id{uuid};
     QUuid parentId{toParentUuid};
-    assert(!id.isNull());
+    if (id.isNull()) {
+        LOG_ERROR_N << "Refusing to move node with invalid uuid: " << uuid;
+        return;
+    }
 
     if (isDescent(parentId, id)) {
         LOG_WARN << "Node cannot be moved to one of its descents";
         return;
     }
 
-    ServerComm::instance().moveNode(id, parentId);
+    runtime_.serverComm().moveNode(id, parentId);
 }
 
 bool MainTreeModel::canMove(const QString &uuid, const QString &toParentUuid)

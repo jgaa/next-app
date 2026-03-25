@@ -7,13 +7,13 @@
 #include <QAbstractListModel>
 #include <QStringListModel>
 #include <QUuid>
-#include <QSettings>
 #include <QDate>
 #include <QTimeZone>
 
 #include "qcorotask.h"
 
 #include "nextapp.qpb.h"
+#include "RuntimeServices.h"
 
 #ifdef SORT_DEFAULT
 // Thank you Microsoft. I feel so productive today!
@@ -128,9 +128,13 @@ class ActionsModel : public QAbstractListModel
             return page_size_;
         }
 
+        void setPageSize(uint page_size) noexcept {
+            page_size_ = page_size;
+        }
+
     private:
         static constexpr int first_page_val_  = 1;
-        uint page_size_ = QSettings{}.value("pagination/page_size", 500).toInt();
+        uint page_size_ = 500;
     };
 
     enum Roles {
@@ -233,6 +237,7 @@ public:
     Q_PROPERTY(QString selected READ selected WRITE setSelected NOTIFY selectionChanged)
 
     ActionsModel(QObject *parent = {});
+    ActionsModel(RuntimeServices& runtime, QObject *parent = nullptr);
 
     Q_INVOKABLE void addAction(const nextapp::pb::Action& action);
     Q_INVOKABLE void updateAction(const nextapp::pb::Action& action);
@@ -347,6 +352,7 @@ signals:
     void selectionChanged();
 
 private:
+    RuntimeServices& runtime_;
     QCoro::Task<void> fetchIf(bool restart = true);
     void selectedTreeNodeChanged();
     void actionChanged(const QUuid &uuid);

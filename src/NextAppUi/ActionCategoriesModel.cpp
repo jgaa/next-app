@@ -4,7 +4,7 @@
 
 #include "ActionCategoriesModel.h"
 #include <ReviewModel.h>
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "util.h"
 
 using namespace std;
@@ -20,7 +20,13 @@ bool compare(const nextapp::pb::ActionCategory& a, const nextapp::pb::ActionCate
 ActionCategoriesModel* ActionCategoriesModel::instance_;
 
 ActionCategoriesModel::ActionCategoriesModel(QObject *parent)
+    : ActionCategoriesModel(*NextAppCore::instance(), parent)
+{
+}
+
+ActionCategoriesModel::ActionCategoriesModel(RuntimeServices& runtime, QObject *parent)
     : QAbstractListModel(parent)
+    , runtime_{runtime}
 {
     assert(!instance_);
     instance_ = this;
@@ -28,14 +34,16 @@ ActionCategoriesModel::ActionCategoriesModel(QObject *parent)
 
     none_ = tr("-- None --");
 
-    connect(&ServerComm::instance(), &ServerComm::onUpdate, this,
+    connect(&runtime_.serverComm(), &ServerCommAccess::onUpdate, this,
             [this](const std::shared_ptr<nextapp::pb::Update>& update) {
                 onUpdate(update);
             });
 
-    connect(NextAppCore::instance(), &NextAppCore::onlineChanged, this, [this] (bool online) {
-        onOnlineChanged(online);
-    });
+    if (auto *core = dynamic_cast<NextAppCore*>(&runtime_)) {
+        connect(core, &NextAppCore::onlineChanged, this, [this] (bool online) {
+            onOnlineChanged(online);
+        });
+    }
 
     // if (ServerComm::instance().connected()) {
     //     setOnline(true);
@@ -45,9 +53,9 @@ ActionCategoriesModel::ActionCategoriesModel(QObject *parent)
 void ActionCategoriesModel::deleteCategory(const QString &id)
 {
     if (online_) {
-        ServerComm::instance().deleteActionCategory(id, [this] (auto val) {
-            if (std::holds_alternative<ServerComm::CbError>(val)) {
-                LOG_WARN_N << "Failed to delete category: " << std::get<ServerComm::CbError>(val).message;
+        runtime_.serverComm().deleteActionCategory(id, [this] (auto val) {
+            if (std::holds_alternative<ServerCommAccess::CbError>(val)) {
+                LOG_WARN_N << "Failed to delete category: " << std::get<ServerCommAccess::CbError>(val).message;
             }
         });
     }
@@ -64,9 +72,9 @@ void ActionCategoriesModel::deleteSelection(const QModelIndexList &list)
 void ActionCategoriesModel::createCategory(const nextapp::pb::ActionCategory &category)
 {
     if (online_) {
-        ServerComm::instance().createActionCategory(category, [this] (auto val) {
-            if (std::holds_alternative<ServerComm::CbError>(val)) {
-                LOG_WARN_N << "Failed to create category: " << std::get<ServerComm::CbError>(val).message;
+        runtime_.serverComm().createActionCategory(category, [this] (auto val) {
+            if (std::holds_alternative<ServerCommAccess::CbError>(val)) {
+                LOG_WARN_N << "Failed to create category: " << std::get<ServerCommAccess::CbError>(val).message;
             }
         });
     }
@@ -75,9 +83,9 @@ void ActionCategoriesModel::createCategory(const nextapp::pb::ActionCategory &ca
 void ActionCategoriesModel::updateCategory(const nextapp::pb::ActionCategory &category)
 {
     if (online_) {
-        ServerComm::instance().updateActionCategory(category, [this] (auto val) {
-            if (std::holds_alternative<ServerComm::CbError>(val)) {
-                LOG_WARN_N << "Failed to update category: " << std::get<ServerComm::CbError>(val).message;
+        runtime_.serverComm().updateActionCategory(category, [this] (auto val) {
+            if (std::holds_alternative<ServerCommAccess::CbError>(val)) {
+                LOG_WARN_N << "Failed to update category: " << std::get<ServerCommAccess::CbError>(val).message;
             }
         });
     }
@@ -238,9 +246,9 @@ QCoro::Task<bool> ActionCategoriesModel::synch(bool fullSync)
     setValid(false);
 
     // See if we need to fetch from server
-    const auto server_ver = ServerComm::instance().getServerDataVersions().actionCategoryVersion();
+    const auto server_ver = runtime_.serverComm().getServerDataVersions().actionCategoryVersion();
     const auto local_ver = co_await loadLocalVersionFromDb();
-    ServerComm::instance().setLocalActionCategoryVersion(local_ver);
+    runtime_.serverComm().setLocalActionCategoryVersion(local_ver);
 
     const bool need_sync = fullSync || server_ver == 0 || server_ver > local_ver;
     if (need_sync) {
@@ -259,7 +267,7 @@ QCoro::Task<bool> ActionCategoriesModel::synch(bool fullSync)
         if (!co_await storeLocalVersionInDb(server_ver)) {
             co_return false;
         }
-        ServerComm::instance().setLocalActionCategoryVersion(server_ver);
+        runtime_.serverComm().setLocalActionCategoryVersion(server_ver);
     }
 
     co_return true;
@@ -300,7 +308,7 @@ void ActionCategoriesModel::setValid(bool value) {
 
 QCoro::Task<bool> ActionCategoriesModel::synchFromServer()
 {
-    auto res = co_await ServerComm::instance().getActionCategories({});
+    auto res = co_await runtime_.serverComm().getActionCategories({});
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasActionCategories()) {
             co_return co_await replaceAllFromServer(res.actionCategories());

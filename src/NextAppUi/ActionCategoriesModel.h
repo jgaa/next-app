@@ -9,6 +9,7 @@
 #include "qcorotask.h"
 
 #include "NextAppCore.h"
+#include "RuntimeServices.h"
 
 class ActionCategoriesModel : public QAbstractListModel
 {
@@ -27,7 +28,8 @@ class ActionCategoriesModel : public QAbstractListModel
     Q_PROPERTY(bool valid READ valid NOTIFY validChanged FINAL)
 
 public:
-    ActionCategoriesModel(QObject *parent = {});
+    explicit ActionCategoriesModel(QObject *parent = {});
+    ActionCategoriesModel(RuntimeServices& runtime, QObject *parent = nullptr);
 
     Q_INVOKABLE void deleteCategory(const QString& id);
     Q_INVOKABLE void deleteSelection(const QModelIndexList& list);
@@ -85,7 +87,7 @@ private:
     QCoro::Task<bool> save(const nextapp::pb::ActionCategory& category);
     QCoro::Task<bool> remove(const QString& id);
     DbStore& dbStore() const noexcept {
-        return sync_db_override_ ? *sync_db_override_ : NextAppCore::instance()->db();
+        return sync_db_override_ ? *sync_db_override_ : runtime_.db();
     }
 
     nextapp::pb::ActionCategory *lookup(const QString& id);
@@ -97,6 +99,7 @@ private:
     std::set<QString> deleted_entries_;
     DbStore* sync_db_override_{};
     bool load_after_sync_{true};
+    RuntimeServices& runtime_;
     static ActionCategoriesModel *instance_;
     QString none_;
 };

@@ -40,7 +40,13 @@ ostream& operator << (ostream& os, DualView::ViewType type)
 }
 
 DualView::DualView(QQuickItem *parent)
+    : DualView(*NextAppCore::instance(), parent)
+{
+}
+
+DualView::DualView(RuntimeServices& runtime, QQuickItem *parent)
     : QQuickItem{parent}
+    , runtime_{runtime}
 {
 
     setObjectName("dualView");
@@ -123,7 +129,7 @@ void DualView::setViews(DualView::ViewType first, DualView::ViewType second)
 
 QQuickItem *DualView::createView(ViewType type) {
     const auto index = static_cast<size_t>(type);
-    QQmlComponent component{&NextAppCore::instance()->engine(), view_paths_.at(index)};
+    QQmlComponent component{&runtime_.qmlEngine(), view_paths_.at(index)};
 
     if (component.isError()) {
         LOG_ERROR << "Failed to create component for" << view_paths_.at(index);
@@ -157,7 +163,7 @@ QQuickItem *DualView::getView(ViewType type) {
 
 void DualView::init()
 {
-    QQmlComponent component{&NextAppCore::instance()->engine(), "qrc:/qt/qml/NextAppUi/qml/SplitViewComponent.qml"};
+    QQmlComponent component{&runtime_.qmlEngine(), "qrc:/qt/qml/NextAppUi/qml/SplitViewComponent.qml"};
     if (auto *sw = component.create()) {
         split_view_ = qobject_cast<QQuickItem*>(sw);
         split_view_->setObjectName("splitView");

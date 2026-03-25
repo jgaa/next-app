@@ -109,6 +109,7 @@ public:
     };
 
     explicit MainTreeModel(QObject *parent = nullptr);
+    MainTreeModel(RuntimeServices& runtime, QObject *parent = nullptr);
 
     static MainTreeModel* instance() noexcept {
         assert(instance_);
@@ -227,6 +228,7 @@ public:
     QCoro::Task<bool> doLoadLocally();
 
 private:
+    RuntimeServices& runtime_;
     void addNode(TreeNode *parent, const nextapp::pb::Node& node);
     void moveNode(TreeNode *parent, TreeNode *current, const nextapp::pb::Node& node);
     void insertNode(TreeNode::node_list_t& list, std::shared_ptr<TreeNode>& tn, int row);

@@ -97,16 +97,16 @@ auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind k
     return req;
 }
 
-filesystem::path getDataDir() {
-    return NextAppCore::instance()->db().dataDir();
+filesystem::path getDataDir(RuntimeServices& runtime) {
+    return runtime.db().dataDir();
 }
 
-filesystem::path getServerReqIdPath() {
-    return getDataDir() / "svrreqid.dat";
+filesystem::path getServerReqIdPath(RuntimeServices& runtime) {
+    return getDataDir(runtime) / "svrreqid.dat";
 }
 
-void saveValuesToFile(uint32_t lastSeenUpdateId, uint64_t lastSeenServerInstance, string_view why) {
-    const auto path = getServerReqIdPath();
+void saveValuesToFile(RuntimeServices& runtime, uint32_t lastSeenUpdateId, uint64_t lastSeenServerInstance, string_view why) {
+    const auto path = getServerReqIdPath(runtime);
     LOG_TRACE_N << "Saving lastSeenUpdateId=" << lastSeenUpdateId
                 << ", lastSeenServerInstance=" << lastSeenServerInstance
                 << " because " << why << " to " << path;
@@ -129,8 +129,8 @@ void saveValuesToFile(uint32_t lastSeenUpdateId, uint64_t lastSeenServerInstance
     }
 }
 
-bool loadValuesFromFile(uint32_t& lastSeenUpdateId, uint64_t& lastSeenServerInstance) {
-    const auto path = getServerReqIdPath();
+bool loadValuesFromFile(RuntimeServices& runtime, uint32_t& lastSeenUpdateId, uint64_t& lastSeenServerInstance) {
+    const auto path = getServerReqIdPath(runtime);
     std::ifstream file(path, std::ios::binary);
     if (file.is_open()) {
         file.read(reinterpret_cast<char*>(&lastSeenUpdateId), sizeof(lastSeenUpdateId));
@@ -153,17 +153,23 @@ bool loadValuesFromFile(uint32_t& lastSeenUpdateId, uint64_t& lastSeenServerInst
 ServerComm *ServerComm::instance_;
 
 ServerComm::ServerComm()
-    : client_{new nextapp::pb::Nextapp::Client}, signup_client_{new signup::pb::SignUp::Client}
+    : ServerComm(*NextAppCore::instance())
+{
+}
+
+ServerComm::ServerComm(RuntimeServices& runtime)
+    : runtime_{runtime}
+    , client_{new nextapp::pb::Nextapp::Client}
+    , signup_client_{new signup::pb::SignUp::Client}
 {
 
     nextapp::pb::Nextapp::Client xx;
     instance_ = this;
 
-    QSettings settings;
-    device_uuid_ = QUuid{settings.value("device/uuid", QString()).toString()};
+    device_uuid_ = QUuid{settings().value("device/uuid", QString()).toString()};
     if (device_uuid_.isNull()) {
         device_uuid_ = QUuid::createUuid();
-        settings.setValue("device/uuid", device_uuid_.toString());
+        settings().setValue("device/uuid", device_uuid_.toString());
         LOG_INFO << "Created new device-uuid for this device: " << device_uuid_.toString();
     }
 
@@ -176,16 +182,17 @@ ServerComm::ServerComm()
     setDefaulValuesInUserSettings();
     loadLocalDataVersions();
 
-    if (!settings.contains("deviceName")) {
-        const auto name = QSysInfo::machineHostName();
-        if (name != "localhost") {
-            settings.setValue("deviceName", QSysInfo::machineHostName());
+    if (const auto name = settings().value("deviceName", QString{}).toString();
+        name.isEmpty()) {
+        const auto host_name = QSysInfo::machineHostName();
+        if (host_name != "localhost") {
+            settings().setValue("deviceName", host_name);
         }
     }
 
-    if (settings.value("onboarding", false).toBool()
-        && !settings.value("server/url", QString{}).toString().isEmpty()) {
-        if (settings.value("server/auto_login", true).toBool()) {
+    if (settings().value("onboarding", false).toBool()
+        && !settings().value("server/url", QString{}).toString().isEmpty()) {
+        if (settings().value("server/auto_login", true).toBool()) {
             LOG_DEBUG << "Auto-login is enabled. Starting the server comm...";
             signup_status_ = SignupStatus::SIGNUP_OK;
             emit signupStatusChanged();
@@ -215,42 +222,12 @@ ServerComm::ServerComm()
         }
     });
 
-    connect(NextAppCore::instance(), &NextAppCore::wokeFromSleep, [this] {
-        if (status_ != Status::MANUAL_OFFLINE) {
-            LOG_DEBUG << "ServerComm: Woke up from sleep.";
-            if (status_ == Status::ONLINE) {
-                LOG_DEBUG << "ServerComm: Already online. Need to stop before going online again.";
-                QTimer::singleShot(0, this, &ServerComm::stop);
-            }
-
-            const bool reconnect = shouldReconnect();
-            auto delay = reconnect ? 100ms : 3s;
-            QTimer::singleShot(delay, this, [this] () {
-                if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
-                    LOG_DEBUG << "ServerComm: Not online. Considering to start...";
-                    if (!shouldReconnect()) {
-                        LOG_DEBUG << "ServerComm: Network not in a desired state.";
-                        return;
-                    }
-                }
-                LOG_DEBUG << "ServerComm: Starting after sleep.";
-                start();
-            });
-        }
-    });
+    connect(&runtime_.appEventSource(), SIGNAL(wokeFromSleep()),
+            this, SLOT(onAppWokeFromSleep()));
 
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
-    connect (NextAppCore::instance(), &NextAppCore::settingsChanged,
-            this, [this]() {
-
-        QSettings settings{};
-        const auto fcm_enabled = settings.value("push/updates", false).toBool();
-        if (fcm_enabled != fcm_requested_) {
-            if (status() == Status::ONLINE) {
-                changePushConfigOnServer();
-            }
-        }
-    });
+    connect(&runtime_.appEventSource(), SIGNAL(settingsChanged()),
+            this, SLOT(onAppSettingsChanged()));
 
     connect(&AndroidFcmBridge::instance(), &AndroidFcmBridge::messageReceived, [this]
             (const QString &messageId, const QString &notification, const QString &data) {
@@ -333,10 +310,8 @@ ServerComm::ServerComm()
     });
 #endif
 
-    connect(NextAppCore::instance(), &NextAppCore::suspending, [this] {
-        LOG_INFO_N << "ServerComm: Suspending...";
-        stop();
-    });
+    connect(&runtime_.appEventSource(), SIGNAL(suspending()),
+            this, SLOT(onAppSuspending()));
 
     if (QNetworkInformation::loadDefaultBackend()) {
         LOG_DEBUG_N << "Network information backend loaded.";
@@ -364,12 +339,22 @@ ServerComm::~ServerComm()
     instance_ = {};
 }
 
+SettingsAccess& ServerComm::settings() const noexcept
+{
+    return runtime_.settings();
+}
+
+DbStore& ServerComm::db() const noexcept
+{
+    return runtime_.db();
+}
+
 void ServerComm::start()
 {
     LOG_DEBUG_N << "starting server-comm.";
 
     if (!last_seen_update_id_) {
-        loadValuesFromFile(last_seen_update_id_, last_seen_server_instance_);
+        loadValuesFromFile(runtime_, last_seen_update_id_, last_seen_server_instance_);
     }
 
     if (!canConnect()) {
@@ -381,13 +366,12 @@ void ServerComm::start()
         LOG_DEBUG << "exiting ServerComm::start()";
     }};
 
-    QSettings settings;
     // TODO: Clear the uuid and let the server decide the session-id.
     //       We can't change the channel medatada with QT gRPC, so we have to wait until
     //       `callRpc` is totally removed before we can do this
     //       Remember to remove the `setMetadata` call below.
     session_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString();
-    current_server_address_ = settings.value("server/url", QString{}).toString();
+    current_server_address_ = settings().value("server/url", QString{}).toString();
 
     const QUrl url(current_server_address_, QUrl::StrictMode);
 
@@ -402,11 +386,11 @@ void ServerComm::start()
         //sslConfig->setPeerVerifyMode(QSslSocket::VerifyNone);
         sslConfig->setProtocol(QSsl::TlsV1_3);
 
-        if (auto cert = settings.value("server/clientCert").toString(); !cert.isEmpty()) {
+        if (auto cert = settings().value("server/clientCert").toString(); !cert.isEmpty()) {
             LOG_DEBUG_N << "Loading our private client cert/key.";
             sslConfig->setLocalCertificate(QSslCertificate{cert.toUtf8()});
-            sslConfig->setPrivateKey(QSslKey{settings.value("server/clientKey").toByteArray(), QSsl::Rsa});
-            auto caCert = QSslCertificate{settings.value("server/caCert").toByteArray()};
+            sslConfig->setPrivateKey(QSslKey{settings().value("server/clientKey").toByteArray(), QSsl::Rsa});
+            auto caCert = QSslCertificate{settings().value("server/caCert").toByteArray()};
             sslConfig->setCaCertificates({caCert});
             sslConfig->setPeerVerifyMode(QSslSocket::VerifyPeer);
         }
@@ -441,6 +425,49 @@ void ServerComm::start()
     startNextappSession();
 }
 
+void ServerComm::onAppWokeFromSleep()
+{
+    if (status_ == Status::MANUAL_OFFLINE) {
+        return;
+    }
+
+    LOG_DEBUG << "ServerComm: Woke up from sleep.";
+    if (status_ == Status::ONLINE) {
+        LOG_DEBUG << "ServerComm: Already online. Need to stop before going online again.";
+        QTimer::singleShot(0, this, &ServerComm::stop);
+    }
+
+    const bool reconnect = shouldReconnect();
+    auto delay = reconnect ? 100ms : 3s;
+    QTimer::singleShot(delay, this, [this] {
+        if (status_ == Status::OFFLINE || status_ == Status::ERROR) {
+            LOG_DEBUG << "ServerComm: Not online. Considering to start...";
+            if (!shouldReconnect()) {
+                LOG_DEBUG << "ServerComm: Network not in a desired state.";
+                return;
+            }
+        }
+        LOG_DEBUG << "ServerComm: Starting after sleep.";
+        start();
+    });
+}
+
+void ServerComm::onAppSettingsChanged()
+{
+#if defined(ANDROID_BUILD) && defined(WITH_FCM)
+    const auto fcm_enabled = settings().value("push/updates", false).toBool();
+    if (fcm_enabled != fcm_requested_ && status() == Status::ONLINE) {
+        changePushConfigOnServer();
+    }
+#endif
+}
+
+void ServerComm::onAppSuspending()
+{
+    LOG_INFO_N << "ServerComm: Suspending...";
+    stop();
+}
+
 void ServerComm::stop()
 {
     if (status_ != Status::ERROR) {
@@ -464,7 +491,7 @@ void ServerComm::close()
         client_.reset();
         signup_client_.reset();
         LOG_DEBUG_N << "Done closing down ServerComm.";
-        saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "closing up shop");
+        saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "closing up shop");
     }
 }
 
@@ -515,9 +542,11 @@ void ServerComm::getColorsInMonth(unsigned int year, unsigned int month)
     } , [this, y=year, m=month](const nextapp::pb::Month& month) {
         // LOG_TRACE << "Received colors for " << month.days().size()
         //           << " days for month: " << y << "-" << (m + 1);
-
-        assert(month.year() == y);
-        assert(month.month() == m);
+        if (month.year() != y || month.month() != m) {
+            LOG_WARN_N << "Ignoring mismatched month payload. requested="
+                       << y << '-' << m << " received=" << month.year() << '-' << month.month();
+            return;
+        }
 
         emit receivedMonth(month);
     }, req);
@@ -574,7 +603,6 @@ void ServerComm::moveNode(const QUuid &uuid, const QUuid &toParentUuid)
 
     if (uuid == toParentUuid) {
         LOG_ERROR << "A node cannnot be its own parent!";
-        assert(false);
         return;
     }
 
@@ -616,9 +644,12 @@ void ServerComm::fetchDay(int year, int month, int day)
         return client_->GetDay(req);
     } , [this, year, month, day](const nextapp::pb::CompleteDay& cday) {
         const auto& date = cday.day().date();
-        assert(date.year() == year);
-        assert(date.month() == month);
-        assert(date.mday() == day);
+        if (date.year() != year || date.month() != month || date.mday() != day) {
+            LOG_WARN_N << "Ignoring mismatched day payload. requested="
+                       << year << '-' << month << '-' << day
+                       << " received=" << date.year() << '-' << date.month() << '-' << date.mday();
+            return;
+        }
         emit receivedDay(cday);
     }, req);
 }
@@ -1199,7 +1230,9 @@ void ServerComm::setStatus(Status status) {
         updateVisualStatus();
         emit statusChanged();
 
-        if (status == Status::ONLINE || Status::OFFLINE || Status::ERROR) {
+        if (status == Status::ONLINE
+            || status == Status::OFFLINE
+            || status == Status::ERROR) {
             emit connectedChanged();
         }
     }
@@ -1207,7 +1240,9 @@ void ServerComm::setStatus(Status status) {
 
 const QUuid &ServerComm::deviceUuid() const
 {
-    assert(!device_uuid_.isNull());
+    if (device_uuid_.isNull()) {
+        LOG_ERROR_N << "deviceUuid() requested before initialization";
+    }
     return device_uuid_;
 }
 
@@ -1252,8 +1287,7 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
     {
         device_uuid_ = QUuid::createUuid();
         LOG_INFO_N << "Generated new device UUID: " << device_uuid_.toString(QUuid::WithoutBraces);
-        QSettings settings;
-        settings.setValue("deviceUuid", device_uuid_.toString(QUuid::WithoutBraces));
+        settings().setValue("deviceUuid", device_uuid_.toString(QUuid::WithoutBraces));
     }
 
     // Create CSR
@@ -1293,18 +1327,21 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
     auto finish = [this, key](const signup::pb::Reply& su) {
         LOG_DEBUG << "Received signup response from server ";
 
-        QSettings settings;
-
         switch(su.error()) {
         case signup::pb::ErrorGadget::Error::OK:
             signup_status_ = SignupStatus::SIGNUP_OK;
-            assert(su.hasSignUpResponse());
-            settings.setValue("onboarding", true);
-            settings.setValue("server/url", su.signUpResponse().serverUrl());
-            settings.setValue("server/auto_login", true);
-            settings.setValue("server/clientCert", su.signUpResponse().cert());
-            settings.setValue("server/clientKey", key);
-            settings.setValue("server/caCert", su.signUpResponse().caCert());
+            if (!su.hasSignUpResponse()) {
+                signup_status_ = SignupStatus::SIGNUP_ERROR;
+                addMessage(tr("Signup succeeded without a response payload from the server."));
+                LOG_ERROR_N << "Signup service returned OK without SignUpResponse payload.";
+                break;
+            }
+            settings().setValue("onboarding", true);
+            settings().setValue("server/url", su.signUpResponse().serverUrl());
+            settings().setValue("server/auto_login", true);
+            settings().setValue("server/clientCert", su.signUpResponse().cert());
+            settings().setValue("server/clientKey", key);
+            settings().setValue("server/caCert", su.signUpResponse().caCert());
             addMessage(tr("Your account was successfully created!"));
             signup_status_ = SignupStatus::SIGNUP_SUCCESS;
             QMetaObject::invokeMethod(qApp, [this]() {
@@ -1436,7 +1473,7 @@ void ServerComm::onGrpcReady()
     reconnect_after_seconds_ = 0;
     setStatus(Status::ONLINE);
     emit versionChanged();
-    NextAppCore::instance()->setOnline(true);
+    runtime_.setOnline(true);
 }
 
 void ServerComm::onUpdateMessage()
@@ -1474,7 +1511,7 @@ void ServerComm::onUpdateMessage()
                 return;
             };
             last_seen_update_id_ = msgid;
-            saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "normal update");
+            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "normal update");
 
             if (msg->hasUserGlobalSettings()) {
                 const auto& new_settings = msg->userGlobalSettings();
@@ -1508,7 +1545,7 @@ void ServerComm::onUpdateMessage()
                     if (msg->op() == nextapp::pb::Update::Operation::DELETED) {
                         LOG_WARN << "This device has been deleted! Logging out.";
                         stop();
-                        QSettings{}.setValue("server/deleted", true);
+                        settings().setValue("server/deleted", true);
                         return;
                     }
                 };
@@ -1525,8 +1562,8 @@ void ServerComm::onUpdateMessage()
 
             if (msg->hasAccountDeleted() && msg->accountDeleted()) {
                 LOG_WARN << "Account deleted! Logging out.";
-                QTimer::singleShot(0, []() {
-                    NextAppCore::instance()->onAccountDeleted();
+                QTimer::singleShot(0, [this]() {
+                    runtime_.onAccountDeleted();
                 });
             }
 
@@ -1539,7 +1576,7 @@ void ServerComm::onUpdateMessage()
 
             emit onUpdate(std::move(msg));
             last_seen_update_id_ = msgid;
-            saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "applied update");
+            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "applied update");
         }
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();
@@ -1549,8 +1586,8 @@ void ServerComm::onUpdateMessage()
 void ServerComm::setDefaulValuesInUserSettings()
 {
     nextapp::pb::WorkHours wh;
-    wh.setStart(NextAppCore::parseHourMin("08:00"));
-    wh.setEnd(NextAppCore::parseHourMin("16:00"));
+    wh.setStart(parseDuration("08:00"));
+    wh.setEnd(parseDuration("16:00"));
 
     userGlobalSettings_.setDefaultWorkHours(wh);
     userGlobalSettings_.setTimeZone(getSystemTimeZone());
@@ -1676,7 +1713,7 @@ QCoro::Task<void> ServerComm::updateDataEpoc()
 {
     LOG_DEBUG_N << "Updating data-epoc";
     nextapp::pb::Empty req;
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
     (void) co_await db.query("UPDATE nextapp SET data_epoc = ?", nextapp::app_data_epoc);
 }
 
@@ -1712,15 +1749,13 @@ QString ServerComm::localActionCategoryVersionKey() const
 
 void ServerComm::loadLocalDataVersions()
 {
-    QSettings settings;
     local_data_versions_.setActionCategoryVersion(
-        settings.value(localActionCategoryVersionKey(), 0).toULongLong());
+        settings().value(localActionCategoryVersionKey(), 0).toULongLong());
 }
 
 void ServerComm::persistLocalDataVersions() const
 {
-    QSettings settings;
-    settings.setValue(localActionCategoryVersionKey(),
+    settings().setValue(localActionCategoryVersionKey(),
                       QVariant::fromValue(local_data_versions_.actionCategoryVersion()));
 }
 
@@ -1757,34 +1792,28 @@ QCoro::Task<void> ServerComm::doSendFeedback(nextapp::pb::Feedback feedback)
 QCoro::Task<void> ServerComm::startNextappSession()
 {
     LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
-    NextAppCore::instance()->showSyncPopup(true);
-    bool close_popup = true;
     const auto start_time = chrono::steady_clock::now();
-    ScopedExit hide_popup_on_exit{[this, &close_popup, &start_time] {
-        if (close_popup) {
-            NextAppCore::instance()->showSyncPopup(false);
-            clearMessages();
-            if (status() == Status::ONLINE) {
-                LOG_INFO << "Initialized nextapp session in "
-                         << std::fixed << std::setprecision(2)
-                         << std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count()
-                         << " seconds.";
-            }
+    ScopedExit finish_session_init{[this, &start_time] {
+        clearMessages();
+        if (status() == Status::ONLINE) {
+            LOG_INFO << "Initialized nextapp session in "
+                     << std::fixed << std::setprecision(2)
+                     << std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count()
+                     << " seconds.";
         }
     }};
 
 
-    QSettings settings;
     session_id_.clear();
-    updated_id_sync_initialized_ = settings.value("sync/updatedIdInitialized", false).toBool();
+    updated_id_sync_initialized_ = settings().value("sync/updatedIdInitialized", false).toBool();
     server_supports_updated_id_ = false;
 
     {
-        auto prev_version = settings.value("client/version", "").toString();
+        auto prev_version = settings().value("client/version", "").toString();
         if (prev_version != NEXTAPP_UI_VERSION) {
             LOG_INFO << "Client version changed from " << prev_version << " to " << NEXTAPP_UI_VERSION;
-            settings.setValue("client/version", NEXTAPP_UI_VERSION);
-            settings.sync();
+            settings().setValue("client/version", NEXTAPP_UI_VERSION);
+            settings().sync();
         }
     }
 
@@ -1839,7 +1868,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
                            << last_seen_update_id_;
             }
 
-            saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "server hello");
+            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "server hello");
 
             if (hello_last_notification > NotificationsModel::instance()->lastUpdateSeen()) {
                 notification_sync_target = hello_last_notification;
@@ -1847,7 +1876,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
                             << " from local " << NotificationsModel::instance()->lastUpdateSeen();
             }
 
-            NextAppCore::instance()->setPlansEnabled(res.hello().plansEnabled());
+            runtime_.setPlansEnabled(res.hello().plansEnabled());
 
             if (server_supports_updated_id_ && !updated_id_sync_initialized_) {
                 LOG_INFO_N << "Server supports updated_id sync, but local baseline is not initialized. Forcing one full sync.";
@@ -1872,7 +1901,7 @@ failed:
         LOG_ERROR_N << "Failed to start new session: " << res.message();
         if (res.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
             addMessage(tr("*** The server does not recognize this device. You should re-run the signup process, select 'Add Device' and use a One Time Password (OTP) fom another devive to autorize it."));
-            NextAppCore::instance()->openQmlComponent(QUrl(QStringLiteral("qrc:/qt/qml/NextAppUi/qml/components/UnrecognizedDeviceErrorDlg.qml")));
+            runtime_.showUnrecognizedDeviceError();
             retry = false;
         } else if (res.error() == nextapp::pb::ErrorGadget::Error::DEVICE_DISABLED) {
             addMessage(tr("*** This device has been disabled ***\nYou must enable it again from another device before it can be used."));
@@ -1880,8 +1909,6 @@ failed:
         }
 
         stop();
-        close_popup = false;
-
         if (retry) {
             scheduleReconnect();
         }
@@ -1896,7 +1923,6 @@ failed:
         goto failed;
     }
 
-    assert(res.hasServerInfo());
     if (res.hasServerInfo()) {
         const auto& se = res.serverInfo();
         server_version_ = se.properties().kv()["version"];
@@ -1911,7 +1937,7 @@ failed:
         ureq.setFromMessageId(last_seen_update_id_);
     }
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
-    auto fcn_config = getPushConfig(settings);
+    auto fcn_config = getPushConfig();
     fcm_requested_ = fcn_config.kind() != nextapp::pb::PushNotificationConfig::Kind::DISABLE;
     ureq.setWithPush(std::move(fcn_config));
 
@@ -2079,7 +2105,7 @@ failed:
             }
 
             staged_db->close();
-            if (!co_await NextAppCore::instance()->db().replaceWithDatabaseFile(staged_db->dbPath())) {
+            if (!co_await runtime_.db().replaceWithDatabaseFile(staged_db->dbPath())) {
                 LOG_WARN_N << "Failed to replace live database with staged full sync database.";
                 QFile::remove(staged_db->dbPath());
                 staged_db.reset();
@@ -2180,7 +2206,7 @@ failed:
 
     if ((needs_sync || full_sync) && last_seen_update_id_ < session_start_publish_id_) {
         last_seen_update_id_ = session_start_publish_id_;
-        saveValuesToFile(last_seen_update_id_, last_seen_server_instance_, "completed sync baseline");
+        saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "completed sync baseline");
     }
 
     if (userGlobalSettings_.version() == 0) {
@@ -2194,11 +2220,11 @@ failed:
     co_await retryRequests();
 
     // If we re-run this later, we don't need to do a full sync again.
-    NextAppCore::instance()->db().clearDbInitializedFlag();
+    runtime_.db().clearDbInitializedFlag();
     if (full_sync) {
-        settings.setValue("sync/resync", "false");
+        settings().setValue("sync/resync", "false");
         if (server_supports_updated_id_) {
-            settings.setValue("sync/updatedIdInitialized", true);
+            settings().setValue("sync/updatedIdInitialized", true);
             updated_id_sync_initialized_ = true;
         }
         co_await updateDataEpoc();
@@ -2421,7 +2447,7 @@ bool ServerComm::shouldReconnect() const noexcept
         return false;
     }
 
-    const auto level = QSettings{}.value("server/reconnect_level", 0).toInt();
+    const auto level = settings().value("server/reconnect_level", 0).toInt();
     const auto reqire = static_cast<ReconnectLevel>(level);
 
     if (reqire == ReconnectLevel::NEVER) {
@@ -2454,7 +2480,7 @@ bool ServerComm::shouldReconnect() const noexcept
 
 QCoro::Task<bool> ServerComm::save(QueuedRequest &qr)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
     QList<QVariant> params;
 
 
@@ -2482,7 +2508,7 @@ QCoro::Task<bool> ServerComm::save(QueuedRequest &qr)
         qr.id = *id;
     } else {
         LOG_WARN_N << "Query apparently suceeded, but the insert id was lost!";
-        assert(false);
+        co_return false;
     }
 
     ++queued_requests_count_;
@@ -2505,7 +2531,10 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
 
     ScopedExit decr{[this] {
         --executing_request_count_;
-        assert(executing_request_count_ >= 0);
+        if (executing_request_count_ < 0) {
+            LOG_ERROR_N << "Queued request execution counter underflowed.";
+            executing_request_count_ = 0;
+        }
     }};
 
     GrpcCallOptions options;
@@ -2515,7 +2544,11 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
 
     // Don't enable replay protection for direct requests that are not stored in the database.
     if (deleteRequest) {
-        assert(qr.id > 0);
+        if (qr.id <= 0) {
+            LOG_ERROR_N << "Cannot execute queued request without a persisted request id. uuid="
+                        << qr.uuid.toString();
+            co_return false;
+        }
         const string id_str = to_string(qr.id); // qr.uuid.toString(QUuid::StringFormat::WithoutBraces).toStdString();
         metadata.insert("req_id", id_str.c_str());
 
@@ -2531,9 +2564,8 @@ QCoro::Task<bool> ServerComm::execute(const QueuedRequest &qr, bool deleteReques
     nextapp::pb::Status res;
     switch(qr.type) {
         case QueuedRequest::Type::INVALID:
-            assert(false);
             LOG_ERROR_N << "Invalid request type.";
-            throw runtime_error{"Invalid request type."};
+            co_return false;
         case QueuedRequest::Type::ADD_ACTION: {
             QProtobufSerializer serializer;
             const auto req = deserialize<nextapp::pb::Action>(qr.data);
@@ -2665,7 +2697,7 @@ QCoro::Task<void> ServerComm::retryRequests()
         DATA
     };
 
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
     uint current = 0;
 
     while (connected()) {
@@ -2701,7 +2733,7 @@ QCoro::Task<void> ServerComm::retryRequests()
 
         const QUuid uuid{row.at(UUID).toString()};
         const auto now = QDateTime::currentDateTime();
-        const auto max_ttl_hours = QSettings{}.value("server/reqests_ttl", 24*7).toInt();
+        const auto max_ttl_hours = settings().value("server/reqests_ttl", 24*7).toInt();
         if (qr.time.secsTo(now) > max_ttl_hours * 3600) {
             LOG_WARN_N << "Request " << uuid.toString()
                        << " of type " << static_cast<int>(qr.type)
@@ -2713,7 +2745,7 @@ QCoro::Task<void> ServerComm::retryRequests()
         }
 
         const auto tries = row.at(TRIES).toUInt();
-        if (tries >  QSettings{}.value("server/reqests_retries", 9).toInt()) {
+        if (tries > settings().value("server/reqests_retries", 9).toInt()) {
             LOG_WARN_N << "Request " << uuid.toString()
             << " of type " << static_cast<int>(qr.type)
             << " from " << qr.time.toString()
@@ -2743,7 +2775,7 @@ QCoro::Task<void> ServerComm::retryRequests()
 
 QCoro::Task<bool> ServerComm::deleteRequestFromDb(const uint id)
 {
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
     {
         const auto rval = co_await db.query("DELETE FROM requests WHERE id = ?", id);
         if (!rval) {
@@ -2798,17 +2830,17 @@ void ServerComm::resetSignupStatus() {
 
 QCoro::Task<bool> ServerComm::needFullResync()
 {
-    if (QSettings{}.value("sync/resync", false).toBool()) {
+    if (settings().value("sync/resync", false).toBool()) {
         LOG_INFO_N << "Full resync is required as the user requested it.";
         co_return true;
     }
 
-    if (NextAppCore::instance()->db().dbWasInitialized()) {
+    if (runtime_.db().dbWasInitialized()) {
         LOG_INFO_N << "Full resync is required because the db was initialized.";
         co_return true;
     }
 
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
     if (auto val = co_await db.queryOne<quint32>("SELECT data_epoc FROM nextapp WHERE id=1")) {
         LOG_INFO_N << "Data epoc in the database is: " << val.value() <<
             ", app epoc is: " << nextapp::app_data_epoc;
@@ -2831,8 +2863,7 @@ void ServerComm::resync()
     emit resynching();
     stop();
 
-    QSettings settings;
-    settings.setValue("sync/resync", "true");
+    settings().setValue("sync/resync", "true");
 
     QTimer::singleShot(1000, this, [this]() {
         LOG_DEBUG_N << "Starting resynch with the server.";
@@ -2892,11 +2923,11 @@ void ServerComm::updateVisualStatus()
     status_color_ = colors.at(static_cast<int>(status_));
 }
 
-nextapp::pb::PushNotificationConfig ServerComm::getPushConfig(const QSettings& settings)
+nextapp::pb::PushNotificationConfig ServerComm::getPushConfig()
 {
     nextapp::pb::PushNotificationConfig config;
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
-    if (settings.value("push/updates", true).toBool()) {
+    if (settings().value("push/updates", true).toBool()) {
         if (auto token = AndroidFcmBridge::instance().getToken(); !token.isEmpty()) {
             config.setToken(token);
             config.setKind(nextapp::pb::PushNotificationConfig::Kind::GOOGLE);
@@ -2914,8 +2945,7 @@ nextapp::pb::PushNotificationConfig ServerComm::getPushConfig(const QSettings& s
 QCoro::Task<void> ServerComm::changePushConfigOnServer()
 {
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
-    QSettings settings{};
-    auto config = getPushConfig(settings);
+    auto config = getPushConfig();
     LOG_DEBUG_N << "Setting push notification config on the server to kind  : "
                 << static_cast<int>(config.kind());
     co_await rpc(config, &nextapp::pb::Nextapp::Client::SetPushNotificationConfig);

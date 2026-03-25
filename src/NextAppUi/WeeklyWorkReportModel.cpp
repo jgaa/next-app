@@ -29,13 +29,21 @@ void WeeklyWorkReportModel::setStartTime(time_t when)
 }
 
 WeeklyWorkReportModel::WeeklyWorkReportModel(QObject *parent)
+    : WeeklyWorkReportModel(*NextAppCore::instance(), parent)
+{
+}
+
+WeeklyWorkReportModel::WeeklyWorkReportModel(RuntimeServices& runtime, QObject *parent)
     : QAbstractTableModel(parent)
+    , runtime_{runtime}
 {
     LOG_TRACE_N << "Creating WeeklyWorkReportModel " << uuid_.toString();
-    connect(NextAppCore::instance(), &NextAppCore::onlineChanged, this, &WeeklyWorkReportModel::setOnline);
-    connect(NextAppCore::instance(), &NextAppCore::allBaseModelsCreated, this, [this]() {
-        emit isAvailableChanged();
-    });
+    if (auto *core = dynamic_cast<NextAppCore*>(&runtime_)) {
+        connect(core, &NextAppCore::onlineChanged, this, &WeeklyWorkReportModel::setOnline);
+        connect(core, &NextAppCore::allBaseModelsCreated, this, [this]() {
+            emit isAvailableChanged();
+        });
+    }
 }
 
 void WeeklyWorkReportModel::setIsVisible(bool visible) {
@@ -68,9 +76,9 @@ void WeeklyWorkReportModel::start()
     LOG_TRACE_N << "Starting...";
     initialized_ = true;
 
-    connect(&ServerComm::instance(), &ServerComm::receivedDetailedWorkSummary,
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::receivedDetailedWorkSummary,
             this, &WeeklyWorkReportModel::receivedDetailedWorkSummary);
-    connect(&ServerComm::instance(), &ServerComm::onUpdate,
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate,
             this, &WeeklyWorkReportModel::onUpdate);
     connect(&WorkSessionsModel::instance(), &WorkSessionsModel::updatedDuration,
             this, &WeeklyWorkReportModel::onUpdatedDuration);
@@ -91,10 +99,10 @@ void WeeklyWorkReportModel::fetch()
     request.setStart(startTime_);
     request.setKind(nextapp::pb::WorkSummaryKindGadget::WorkSummaryKind::WSK_WEEK);
 
-    ServerComm::instance().getDetailedWorkSummary(request, uuid_);
+    runtime_.serverComm().getDetailedWorkSummary(request, uuid_);
 }
 
-void WeeklyWorkReportModel::receivedDetailedWorkSummary(const nextapp::pb::DetailedWorkSummary &summary, const ServerComm::MetaData &meta)
+void WeeklyWorkReportModel::receivedDetailedWorkSummary(const nextapp::pb::DetailedWorkSummary &summary, const ServerCommAccess::MetaData &meta)
 {
     // Days are 1 - 7 where Monday is 1
     // We map them so we get the index into our array of day values
@@ -103,7 +111,7 @@ void WeeklyWorkReportModel::receivedDetailedWorkSummary(const nextapp::pb::Detai
     static constexpr auto monday_first = std::to_array<char>({0, 0, 1, 2, 3, 4, 5, 6});
     static constexpr auto sunday_first = std::to_array<char>({0, 1, 2, 3, 4, 5, 6, 0});
 
-    const auto days_of_week = ServerComm::instance().getGlobalSettings().firstDayOfWeekIsMonday() ? monday_first : sunday_first;
+    const auto days_of_week = runtime_.serverComm().getGlobalSettings().firstDayOfWeekIsMonday() ? monday_first : sunday_first;
 
     if (meta.requester != uuid_) {
         return;
@@ -254,7 +262,7 @@ QVariant WeeklyWorkReportModel::headerData(int section, Qt::Orientation orientat
 {
     if (role == Qt::DisplayRole) {
         if (orientation == Qt::Horizontal) {
-            if (ServerComm::instance().getGlobalSettings().firstDayOfWeekIsMonday()) {
+            if (runtime_.serverComm().getGlobalSettings().firstDayOfWeekIsMonday()) {
                 switch (section) {
                 case 0: return tr("List");
                 case 1: return tr("Mon");
@@ -313,4 +321,3 @@ void WeeklyWorkReportModel::setWeekSelection(WeekSelection when)
     }
     emit weekSelectionChanged();
 }
-

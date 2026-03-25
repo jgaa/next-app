@@ -224,6 +224,7 @@ void DbStore::start() {
         return;
     }
     connect(this, &DbStore::doQuery, this, &DbStore::queryImpl, Qt::QueuedConnection);
+    ready_ = true;
     emit initialized();
 }
 
@@ -462,21 +463,55 @@ QCoro::Task<bool> DbStore::rollbackExclusiveTransaction(const transaction_token_
 }
 
 QCoro::Task<bool> DbStore::init() {
+    if (ready_) {
+        co_return true;
+    }
+
     // Once called, the database will be initialized in the worker thread.
     if constexpr (use_worker_thread) {
+        auto promise = QSharedPointer<QPromise<bool>>::create();
+        auto future = promise->future();
+        auto completed = QSharedPointer<std::atomic_bool>::create(false);
+        auto initialized_conn = QSharedPointer<QMetaObject::Connection>::create();
+        auto error_conn = QSharedPointer<QMetaObject::Connection>::create();
+
+        auto finish = [this, promise, completed, initialized_conn, error_conn](bool ok) {
+            if (completed->exchange(true)) {
+                return;
+            }
+
+            QObject::disconnect(*initialized_conn);
+            QObject::disconnect(*error_conn);
+
+            promise->start();
+            promise->addResult(ok);
+            promise->finish();
+        };
+
+        *initialized_conn = connect(this, &DbStore::initialized, this, [finish]() {
+            finish(true);
+        }, Qt::QueuedConnection);
+
+        *error_conn = connect(this, &DbStore::error, this, [finish](DbStore::Error) {
+            finish(false);
+        }, Qt::QueuedConnection);
+
         mutex_.unlock();
-        //co_await
+        QFutureWatcher<bool> watcher;
+        watcher.setFuture(future);
+        co_await watcher.future();
+        co_return future.result();
     } else {
         start();
     }
 
-    // TODO: Handle errors
-    co_return true;
+    co_return ready_;
 }
 
 void DbStore::close()
 {
     LOG_DEBUG_N << "Closing the database";
+    ready_ = false;
     QMetaObject::invokeMethod(this, [&]() {
         destroyDbObject();
     });
@@ -507,6 +542,7 @@ bool DbStore::clear_()
     }
 
     LOG_DEBUG_N << "Closing the database before clearing it";
+    ready_ = false;
     destroyDbObject();
 
     // delete the file pointed to by db_path
@@ -520,12 +556,14 @@ bool DbStore::clear_()
 
     LOG_DEBUG_N << "Re-creating the database object";
     createDbObject();
+    ready_ = true;
     return true;
 }
 
 QCoro::Task<void> DbStore::closeAndDeleteDb()
 {
     LOG_DEBUG_N << "Closing and deleting the database";
+    ready_ = false;
     QMetaObject::invokeMethod(this, [&]() {
         destroyDbObject();
         if constexpr (use_worker_thread) {
@@ -574,6 +612,7 @@ QCoro::Task<bool> DbStore::replaceWithDatabaseFile(const QString& source_db_path
         const QString backup_path = db_path_ + ".swap-backup";
         QFile::remove(backup_path);
 
+        ready_ = false;
         destroyDbObject();
 
         QFile live{db_path_};
@@ -595,6 +634,7 @@ QCoro::Task<bool> DbStore::replaceWithDatabaseFile(const QString& source_db_path
 
         QFile::remove(backup_path);
         createDbObject();
+        ready_ = true;
         return true;
     });
 }

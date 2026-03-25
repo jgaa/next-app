@@ -33,7 +33,8 @@ public:
         updatedRole
     };
 
-    NotificationsModel();
+    explicit NotificationsModel();
+    explicit NotificationsModel(RuntimeServices& runtime);
 
     // ServerSynchedCahce overrides
     bool haveBatch() const noexcept override { return true; }

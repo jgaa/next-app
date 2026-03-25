@@ -37,6 +37,7 @@ class WorkSessionsModel : public WorkModelBase
 public:
 
     explicit WorkSessionsModel(QObject *parent = nullptr);
+    WorkSessionsModel(RuntimeServices& runtime, QObject *parent = nullptr);
 
     Q_INVOKABLE void startWork(const QString& actionId);
     Q_INVOKABLE void startWorkSetActive(const QString& actionId);

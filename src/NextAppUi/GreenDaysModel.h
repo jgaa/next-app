@@ -13,6 +13,7 @@
 #include "GreenMonthModel.h"
 
 #include "nextapp.qpb.h"
+#include "RuntimeServices.h"
 
 class GreenDayModel;
 class DbStore;
@@ -95,6 +96,7 @@ public:
     };
 
     GreenDaysModel();
+    explicit GreenDaysModel(RuntimeServices& runtime);
 
     static GreenDaysModel* instance() noexcept {
         assert(instance_);
@@ -110,6 +112,7 @@ public:
 
     // Year as an int, month as 1 - 12
     Q_INVOKABLE GreenMonthModel *getMonth(int year, int month);
+    RuntimeServices& runtime() const noexcept { return runtime_; }
 
     std::optional<ColorDef> getDayColor(const QUuid& uuid) const;
 
@@ -179,9 +182,8 @@ private:
     std::vector<ColorDef> color_data_;
     DbStore* sync_db_override_{};
     bool load_after_sync_{true};
+    RuntimeServices& runtime_;
     static GreenDaysModel *instance_;
 };
-
-
 
 

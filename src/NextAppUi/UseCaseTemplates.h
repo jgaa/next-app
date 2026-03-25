@@ -5,6 +5,8 @@
 #include <QList>
 #include <QQmlEngine>
 
+#include "RuntimeServices.h"
+
 class UseCaseTemplates : public QObject
 {
     Q_OBJECT
@@ -34,6 +36,7 @@ public:
     };
 
     UseCaseTemplates();
+    explicit UseCaseTemplates(RuntimeServices& runtime);
 
     Q_INVOKABLE QStringList getTemplateNames() const noexcept;
     Q_INVOKABLE void createFromTemplate(int index);
@@ -41,4 +44,5 @@ public:
 
 private:
     QList<UseCaseTemplate> templates_;
+    RuntimeServices& runtime_;
 };

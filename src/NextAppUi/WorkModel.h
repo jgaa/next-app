@@ -21,8 +21,8 @@ class WorkModel: public WorkModelBase
         size_t page = first_page_val_;
         bool more = false;
 
-        void reset() {
-            page_size = QSettings{}.value("pagination/page_size", 500).toInt();
+        void reset(int new_page_size) {
+            page_size = new_page_size;
             prev = 0;
             page = first_page_val_;
             more = false;
@@ -90,6 +90,7 @@ public:
     // Q_INVOKABLE bool update(const nextapp::pb::WorkSession& session);
 
     explicit WorkModel(QObject *parent = nullptr);
+    WorkModel(RuntimeServices& runtime, QObject *parent = nullptr);
 
     void fetchMore(const QModelIndex &parent) override;
     bool canFetchMore(const QModelIndex &parent) const override;

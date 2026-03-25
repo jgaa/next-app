@@ -69,7 +69,7 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
     ScopedExit scoped{[this] { endResetModel(); }};
 
     if (firstPage) {
-        pagination_.reset();
+        pagination_.reset(runtime_.settings().value("pagination/page_size", 500).toInt());
         sessions_.clear();
     }
 
@@ -91,7 +91,7 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
         req.setTimeSpan(ts);
     } break;
     case CURRENT_WEEK: {
-        auto date = getFirstDayOfWeek();
+        auto date = getFirstDayOfWeek(runtime_.serverComm().globalSettings());
         nextapp::pb::TimeSpan ts;
         ts.setStart(date.startOfDay().toSecsSinceEpoch());
         date = date.addDays(7);
@@ -99,7 +99,7 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
         req.setTimeSpan(ts);
     } break;
     case LAST_WEEK: {
-        auto date = getFirstDayOfWeek().addDays(-7);
+        auto date = getFirstDayOfWeek(runtime_.serverComm().globalSettings()).addDays(-7);
         nextapp::pb::TimeSpan ts;
         ts.setStart(date.startOfDay().toSecsSinceEpoch());
         date = date.addDays(7);
@@ -139,7 +139,7 @@ QCoro::Task<void> WorkModel::doFetchSome(FetchWhat what, bool firstPage)
     // ServerComm::instance().getWorkSessions(req, uuid());
 
     if (firstPage) {
-        pagination_.reset();
+        pagination_.reset(runtime_.settings().value("pagination/page_size", 500).toInt());
     };
 
 
@@ -185,7 +185,12 @@ void WorkModel::setSorting(Sorting sorting)
 }
 
 WorkModel::WorkModel(QObject *parent)
-    : WorkModelBase{parent}
+    : WorkModel(*NextAppCore::instance(), parent)
+{
+}
+
+WorkModel::WorkModel(RuntimeServices& runtime, QObject *parent)
+    : WorkModelBase{runtime, parent}
 {
     // connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
     //     start();

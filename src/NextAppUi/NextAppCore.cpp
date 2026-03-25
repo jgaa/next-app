@@ -25,6 +25,7 @@
 #include "WeeklyWorkReportModel.h"
 #include "ActionCategoriesModel.h"
 #include "MainTreeModel.h"
+#include "ServerComm.h"
 #include "util.h"
 
 #include "qcorotimer.h"
@@ -110,6 +111,8 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
     });
 
     db_ = make_unique<DbStore>();
+    settings_ = std::make_unique<QSettingsAccess>();
+    server_comm_ = std::make_unique<ServerComm>(*this);
 
     connect(db_.get(), &DbStore::error, [this](DbStore::Error error) {
         LOG_ERROR_N << "DB error: " << static_cast<int>(error);
@@ -469,10 +472,11 @@ void NextAppCore::bootstrapDevice(bool newUser)
         family.setColor("wheat");
         family.setName("Family");
 
-        ServerComm::instance().createActionCategory(work);
-        ServerComm::instance().createActionCategory(priv);
-        ServerComm::instance().createActionCategory(hobby);
-        ServerComm::instance().createActionCategory(family);
+        auto& comm = static_cast<ServerComm&>(serverComm());
+        comm.createActionCategory(work);
+        comm.createActionCategory(priv);
+        comm.createActionCategory(hobby);
+        comm.createActionCategory(family);
     }
 }
 
@@ -533,9 +537,10 @@ QCoro::Task<void> NextAppCore::modelsAreCreated()
     bool emitted = false;
 
     QTimer::singleShot(100ms, this, [this] {
-        if (ServerComm::instance().status() == ServerComm::Status::READY_TO_CONNECT) {
+        auto& comm = static_cast<ServerComm&>(serverComm());
+        if (comm.status() == ServerCommAccess::Status::READY_TO_CONNECT) {
             LOG_DEBUG << "Starting server-comm...";
-            ServerComm::instance().start();
+            comm.start();
         }
     });
 
@@ -546,6 +551,43 @@ QQmlApplicationEngine &NextAppCore::engine()
 {
     assert(engine_);
     return *engine_;
+}
+
+ServerCommAccess& NextAppCore::serverComm() const noexcept
+{
+    assert(server_comm_);
+    return *server_comm_;
+}
+
+SettingsAccess& NextAppCore::settings() const noexcept
+{
+    assert(settings_);
+    return *settings_;
+}
+
+QVariant NextAppCore::appProperty(const QString& name) const noexcept
+{
+    return getProperty(name);
+}
+
+void NextAppCore::setAppProperty(const QString& name, const QVariant& value)
+{
+    setProperty(name, value);
+}
+
+QQmlEngine& NextAppCore::qmlEngine() const noexcept
+{
+    return const_cast<NextAppCore *>(this)->engine();
+}
+
+bool NextAppCore::isMobileUi() const noexcept
+{
+    return isMobile();
+}
+
+QObject& NextAppCore::appEventSource() noexcept
+{
+    return *this;
 }
 
 int NextAppCore::width() const noexcept
@@ -591,6 +633,11 @@ void NextAppCore::showSyncPopup(bool visible)
             sync_popup_->setProperty("visible", visible);
         }
     }
+}
+
+void NextAppCore::showUnrecognizedDeviceError()
+{
+    openQmlComponent(QUrl(QStringLiteral("qrc:/qt/qml/NextAppUi/qml/components/UnrecognizedDeviceErrorDlg.qml")));
 }
 
 QObject *NextAppCore::openQmlComponent(const QUrl &resourcePath)
@@ -821,7 +868,7 @@ QCoro::Task<void> NextAppCore::fetchCurrentPlan(bool forceRefresh)
     current_plan_fetching_ = true;
     emit currentPlanLoadingChanged();
 
-    auto fetched_plan = co_await ServerComm::instance().fetchSubscription(forceRefresh);
+    auto fetched_plan = co_await static_cast<ServerComm&>(serverComm()).fetchSubscription(forceRefresh);
     if (fetched_plan) {
         if (!fetched_plan->hasPlan()) {
             LOG_ERROR_N << "Received subscription without a plan from server!";
@@ -848,7 +895,7 @@ QCoro::Task<void> NextAppCore::doGetPaymentsUrl()
     emit paymentsPageLoadingChanged();
 
     try {
-        auto status = co_await ServerComm::instance().fetchPaymentsPage();
+        auto status = co_await static_cast<ServerComm&>(serverComm()).fetchPaymentsPage();
         if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
             LOG_WARN_N << "Failed to get payments page: " << status.message();
         } else if (status.hasPaymentsPage() && !status.paymentsPage().url().isEmpty()) {
@@ -955,7 +1002,7 @@ QCoro::Task<void> NextAppCore::doDeleteAccount()
     try {
         LOG_DEBUG_N << "Deleting account...";
 
-        auto result = co_await ServerComm::instance().deleteAccount();
+        auto result = co_await static_cast<ServerComm&>(serverComm()).deleteAccount();
         if (result.error() != nextapp::pb::ErrorGadget::Error::OK) {
             LOG_ERROR_N << "Failed to delete account: " << result.message();
             emit accountDeletionFailed(tr("Failed to delete the account: %1").arg(result.message()));
@@ -979,6 +1026,6 @@ QCoro::Task<void> NextAppCore::doFactoryReset()
     QSettings settings;
     settings.clear(); // Clear all settings
     settings.sync();
-    ServerComm::instance().resetSignupStatus();
+    static_cast<ServerComm&>(serverComm()).resetSignupStatus();
     emit factoryResetDone();
 }

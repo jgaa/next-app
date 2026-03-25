@@ -6,7 +6,7 @@
 #include "WorkCache.h"
 #include "DbStore.h"
 #include "NextAppCore.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "format_wrapper.h"
 
 using namespace std;
@@ -84,13 +84,20 @@ static const QString insert_query = R"(INSERT INTO work_session (
 }
 
 WorkCache::WorkCache(QObject *parent)
+    : WorkCache(*NextAppCore::instance(), parent)
+{
+}
+
+WorkCache::WorkCache(RuntimeServices& runtime, QObject *parent)
     : QObject{parent}
+    , ServerSynchedCahce<nextapp::pb::WorkSession, WorkCache>{runtime}
+    , runtime_{runtime}
 {
     timer_ = new QTimer(this);
     connect(timer_, &QTimer::timeout, this, &WorkCache::onTimer);
     timer_->start(5000);
 
-    connect(&ServerComm::instance(), &ServerComm::onUpdate,
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate,
     [this](const std::shared_ptr<nextapp::pb::Update>& update) {
         onUpdate(update);
     });
@@ -137,9 +144,9 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
                 items_.emplace(id, wsp);
             }
             if (!co_await save(*wsp)) {
-                QTimer::singleShot(0, &ServerComm::instance(), [id] {
+                QTimer::singleShot(0, &runtime_.serverComm(), [this, id] {
                     LOG_ERROR_N << "Failed to persist work session " << id.toString() << ". Requesting resync.";
-                    ServerComm::instance().resync();
+                    runtime_.serverComm().resync();
                 });
                 co_return;
             }
@@ -313,7 +320,7 @@ QCoro::Task<bool> WorkCache::loadFromCache()
 
 std::shared_ptr<GrpcIncomingStream> WorkCache::openServerStream(nextapp::pb::GetNewReq req)
 {
-    return ServerComm::instance().synchWorkSessions(req);
+    return runtime_.serverComm().synchWorkSessions(req);
 }
 
 void WorkCache::clear()
@@ -329,8 +336,14 @@ WorkCache::getWorkSessions(nextapp::pb::GetWorkSessionsReq req)
     QList<QVariant> params;
     std::vector<std::shared_ptr<nextapp::pb::WorkSession>> sessions;
 
-    assert(req.hasPage());
-    assert(req.page().pageSize() > 0);
+    if (!req.hasPage()) {
+        LOG_ERROR_N << "GetWorkSessions request is missing page";
+        co_return sessions;
+    }
+    if (req.page().pageSize() <= 0) {
+        LOG_ERROR_N << "GetWorkSessions request has invalid pageSize: " << req.page().pageSize();
+        co_return sessions;
+    }
     auto limit = min<uint>(req.page().pageSize(), 100);
     auto offset = req.page().hasOffset() ? req.page().offset() : 0;
 
@@ -396,7 +409,10 @@ LIMIT {} OFFSET {})", where, order, limit, offset);
     }
 
     for (const auto& row : *res) {
-        assert(row.size() >= 2);
+        if (row.size() < 2) {
+            LOG_ERROR_N << "Invalid work_session row while loading cached sessions";
+            continue;
+        }
 
         const auto uuid = QUuid(row.at(0).toString());
 
@@ -421,7 +437,7 @@ LIMIT {} OFFSET {})", where, order, limit, offset);
 
 WorkCache *WorkCache::instance() noexcept
 {
-    static WorkCache instance;
+    static WorkCache instance{*NextAppCore::instance()};
     return &instance;
 }
 

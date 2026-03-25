@@ -26,6 +26,10 @@
 #include "logging.h"
 #include "util.h"
 #include "GrpcIncomingStream.h"
+#include "ServerCommAccess.h"
+#include "RuntimeServices.h"
+
+class NextAppCore;
 
 template <typename T, typename... Y>
 concept IsValidFunctor = std::invocable<T&, Y...>;
@@ -62,19 +66,9 @@ auto remove(const nextapp::pb::StringList& sl, T index) {
 
 } // ns
 
-class ServerComm : public QObject
+class ServerComm : public ServerCommAccess
 {
 public:
-    enum Status {
-        MANUAL_OFFLINE,
-        OFFLINE,
-        READY_TO_CONNECT,
-        CONNECTING,
-        INITIAL_SYNC,
-        ONLINE,
-        ERROR
-    };
-
     enum SignupStatus {
         SIGNUP_NOT_STARTED,
         SIGNUP_HAVE_INFO,
@@ -99,7 +93,7 @@ private:
 
     Q_PROPERTY(QString defaultServerAddress READ getDefaultServerAddress CONSTANT)
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
-    Q_PROPERTY(bool status READ status NOTIFY statusChanged)
+    Q_PROPERTY(ServerCommAccess::Status status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString statusText MEMBER status_text_ NOTIFY statusChanged)
     Q_PROPERTY(QString statusColor MEMBER status_color_ NOTIFY statusChanged)
     Q_PROPERTY(QString version MEMBER server_version_ NOTIFY versionChanged)
@@ -139,24 +133,7 @@ private:
     };
 
 public:
-    struct CbError {
-        nextapp::pb::ErrorGadget::Error error;
-        QString message;
-    };
-
-    template <typename T>
-    using callback_arg_t = std::variant<CbError,T>;
-
-    template <typename T>
-    using callback_t = std::function<void(callback_arg_t<T>)>;
-
-    using colors_in_months_t = std::shared_ptr<QList<QUuid>>;
-
-    struct MetaData {
-        std::optional<bool> more;
-        QUuid requester;
-    };
-
+    explicit ServerComm(RuntimeServices& runtime);
     explicit ServerComm();
     ~ServerComm();
 
@@ -165,14 +142,14 @@ public:
     void close();
 
     [[nodiscard]] QString version();
-    [[nodiscard]] bool connected() const noexcept;
+    [[nodiscard]] bool connected() const noexcept override;
 
     Q_INVOKABLE void toggleConnect();
 
     // Called when the servers app settings may have changed
     Q_INVOKABLE void reloadSettings();
     Q_INVOKABLE void saveGlobalSettings(const nextapp::pb::UserGlobalSettings &settings);
-    Q_INVOKABLE nextapp::pb::UserGlobalSettings getGlobalSettings() const;
+    Q_INVOKABLE nextapp::pb::UserGlobalSettings getGlobalSettings() const override;
     signup::pb::GetInfoResponse getSignupInfo() const;
     Q_INVOKABLE void setSignupServerAddress(const QString &address);
     Q_INVOKABLE void signup(const QString &name, const QString &email,
@@ -199,91 +176,89 @@ public:
         return instance().server_info_;
     }
 
-    const nextapp::pb::UserGlobalSettings& globalSettings() const noexcept {
+    const nextapp::pb::UserGlobalSettings& globalSettings() const noexcept override {
         return userGlobalSettings_;
     }
 
     void getColorsInMonth(unsigned year, unsigned month);
 
     void setDayColor(int year, int month, int day, QUuid colorUuid);
-    void setDay(const nextapp::pb::CompleteDay& day);
-    void addNode(const nextapp::pb::Node& node);
+    void setDay(const nextapp::pb::CompleteDay& day) override;
+    void addNode(const nextapp::pb::Node& node) override;
 
     // node.parent cannot be changed. Only data-values can be updated.
-    void updateNode(const nextapp::pb::Node& node);
+    void updateNode(const nextapp::pb::Node& node) override;
 
     // Move node to another parent
-    void moveNode(const QUuid &uuid, const QUuid &toParentUuid);
+    void moveNode(const QUuid &uuid, const QUuid &toParentUuid) override;
 
-    void deleteNode(const QUuid& uuid);
+    void deleteNode(const QUuid& uuid) override;
 
-    void getDayColorDefinitions();
+    void getDayColorDefinitions() override;
 
-    void fetchDay(int year, int month, int day);
+    void fetchDay(int year, int month, int day) override;
 
     //void getActions(nextapp::pb::GetActionsReq &filter);
     //void getAction(nextapp::pb::GetActionReq &req);
-    void addAction(const nextapp::pb::Action& action);
-    void updateAction(const nextapp::pb::Action& action);
-    void updateActions(const nextapp::pb::UpdateActionsReq& action);
-    void deleteAction(const QString& actionUuid);
-    void markActionAsDone(const QString& actionUuid, bool done);
-    void markActionAsFavorite(const QString& actionUuid, bool favorite);
+    void addAction(const nextapp::pb::Action& action) override;
+    void updateAction(const nextapp::pb::Action& action) override;
+    void updateActions(const nextapp::pb::UpdateActionsReq& action) override;
+    void deleteAction(const QString& actionUuid) override;
+    void markActionAsDone(const QString& actionUuid, bool done) override;
+    void markActionAsFavorite(const QString& actionUuid, bool favorite) override;
     void getActiveWorkSessions();
-    void startWork(const QString& actionId, bool activate = false);
-    void addWorkFromTimeBlock(const QString& timeBlockUuid);
-    void pauseWork(const QString& sessionId);
-    void resumeWork(const QString& sessionId);
-    void doneWork(const QString& sessionId);
-    void touchWork(const QString& sessionId);
-    void sendWorkEvent(const QString& sessionId, const nextapp::pb::WorkEvent& event);
-    void sendWorkEvents(const nextapp::pb::AddWorkEventReq& reqt);
-    void deleteWork(const QString& sessionId);
+    void startWork(const QString& actionId, bool activate = false) override;
+    void addWorkFromTimeBlock(const QString& timeBlockUuid) override;
+    void pauseWork(const QString& sessionId) override;
+    void resumeWork(const QString& sessionId) override;
+    void doneWork(const QString& sessionId) override;
+    void touchWork(const QString& sessionId) override;
+    void sendWorkEvent(const QString& sessionId, const nextapp::pb::WorkEvent& event) override;
+    void sendWorkEvents(const nextapp::pb::AddWorkEventReq& reqt) override;
+    void deleteWork(const QString& sessionId) override;
     void getWorkSessions(const nextapp::pb::GetWorkSessionsReq& req, const QUuid& requester);
-    void getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRequest& req, const QUuid& requester);
-    void addWork(const nextapp::pb::WorkSession& ws);
-    void moveAction(const QString& actionUuid, const QString& nodeUuid);
-    void addTimeBlock(const nextapp::pb::TimeBlock& tb);
-    void updateTimeBlock(const nextapp::pb::TimeBlock& tb);
-    void deleteTimeBlock(const QString& timeBlockUuid);
+    void getDetailedWorkSummary(const nextapp::pb::DetailedWorkSummaryRequest& req, const QUuid& requester) override;
+    void addWork(const nextapp::pb::WorkSession& ws) override;
+    void moveAction(const QString& actionUuid, const QString& nodeUuid) override;
+    void addTimeBlock(const nextapp::pb::TimeBlock& tb) override;
+    void updateTimeBlock(const nextapp::pb::TimeBlock& tb) override;
+    void deleteTimeBlock(const QString& timeBlockUuid) override;
     void fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents>&& done);
     void fetchActionCategories(callback_t<nextapp::pb::ActionCategories>&& done);
     void createActionCategory(const nextapp::pb::ActionCategory& category);
-    void createActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
-    void updateActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done);
-    void deleteActionCategory(const QString& id, callback_t<nextapp::pb::Status>&& done);
-    void requestOtp(callback_t<nextapp::pb::Status>&& done);
+    void createActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done) override;
+    void updateActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done) override;
+    void deleteActionCategory(const QString& id, callback_t<nextapp::pb::Status>&& done) override;
+    void requestOtp(callback_t<nextapp::pb::Status>&& done) override;
 
-    std::shared_ptr<GrpcIncomingStream> synchGreenDays(const nextapp::pb::GetNewReq& req);
-    QCoro::Task<nextapp::pb::Status> getNewDayColorDefinitions(const nextapp::pb::GetNewReq& req);
-    std::shared_ptr<GrpcIncomingStream> synchNodes(const nextapp::pb::GetNewReq& req);
-    std::shared_ptr<GrpcIncomingStream> synchActions(const nextapp::pb::GetNewReq& req);
-    QCoro::Task<nextapp::pb::Status> getActionCategories(const nextapp::pb::Empty& req);
-    std::shared_ptr<GrpcIncomingStream> synchWorkSessions(const nextapp::pb::GetNewReq& req);
-    std::shared_ptr<GrpcIncomingStream> synchTimeBlocks(const nextapp::pb::GetNewReq& req);
-    std::shared_ptr<GrpcIncomingStream> synchNotifications(const nextapp::pb::GetNewReq& req);
+    std::shared_ptr<GrpcIncomingStream> synchGreenDays(const nextapp::pb::GetNewReq& req) override;
+    QCoro::Task<nextapp::pb::Status> getNewDayColorDefinitions(const nextapp::pb::GetNewReq& req) override;
+    std::shared_ptr<GrpcIncomingStream> synchNodes(const nextapp::pb::GetNewReq& req) override;
+    std::shared_ptr<GrpcIncomingStream> synchActions(const nextapp::pb::GetNewReq& req) override;
+    QCoro::Task<nextapp::pb::Status> getActionCategories(const nextapp::pb::Empty& req) override;
+    std::shared_ptr<GrpcIncomingStream> synchWorkSessions(const nextapp::pb::GetNewReq& req) override;
+    std::shared_ptr<GrpcIncomingStream> synchTimeBlocks(const nextapp::pb::GetNewReq& req) override;
+    std::shared_ptr<GrpcIncomingStream> synchNotifications(const nextapp::pb::GetNewReq& req) override;
 
-    QCoro::Task<nextapp::pb::Status> fetchDevices();
+    QCoro::Task<nextapp::pb::Status> fetchDevices() override;
     QCoro::Task<std::optional<nextapp::pb::Subscription>> fetchSubscription(bool forceRefresh = false);
     QCoro::Task<nextapp::pb::Status> fetchPaymentsPage();
-    QCoro::Task<nextapp::pb::Status> enableDevice(const QString &deviceId, bool enabled);
-    QCoro::Task<nextapp::pb::Status> deleteDevice(const QString &deviceId);
-    QCoro::Task<void> setLastReadNotification(uint32_t id);
+    QCoro::Task<nextapp::pb::Status> enableDevice(const QString &deviceId, bool enabled) override;
+    QCoro::Task<nextapp::pb::Status> deleteDevice(const QString &deviceId) override;
+    QCoro::Task<void> setLastReadNotification(uint32_t id) override;
     QCoro::Task<void> updateLastReadNotification();
-    QCoro::Task<void> createNodesFromTemplate(nextapp::pb::NodeTemplate root);
+    QCoro::Task<void> createNodesFromTemplate(nextapp::pb::NodeTemplate root) override;
     QCoro::Task<nextapp::pb::Status> deleteAccount();
 
     // Special stream functions. These will do everything in the main thread to speed up the transfer.
-    using write_export_fn_t = std::function<void(const nextapp::pb::Status& msg, QFile& file)>;
-    using read_export_fn_t = std::function<bool(nextapp::pb::Status& msg)>;
-    QCoro::Task<void> exportData(std::shared_ptr<QFile> file, const write_export_fn_t& write);
-    QCoro::Task<void> importData(const read_export_fn_t& read);
+    QCoro::Task<void> exportData(std::shared_ptr<QFile> file, const write_export_fn_t& write) override;
+    QCoro::Task<void> importData(const read_export_fn_t& read) override;
 
     static QString getDefaultServerAddress() {
         return SERVER_ADDRESS;
     }
 
-    Status status() const noexcept {
+    Status status() const noexcept override {
         return status_;
     }
 
@@ -291,7 +266,7 @@ public:
 
     const QUuid& deviceUuid() const;
 
-    const auto& getServerDataVersions() const noexcept {
+    const nextapp::pb::DataVersionsInfo& getServerDataVersions() const noexcept override {
         return server_data_versions_;
     }
 
@@ -299,9 +274,9 @@ public:
         return local_data_versions_;
     }
 
-    void setLocalActionCategoryVersion(uint64_t version);
+    void setLocalActionCategoryVersion(uint64_t version) override;
 
-    bool shouldUseUpdatedIdSync() const noexcept {
+    bool shouldUseUpdatedIdSync() const noexcept override {
         return server_supports_updated_id_ && updated_id_sync_initialized_;
     }
 
@@ -312,33 +287,26 @@ public:
 
 signals:
     void versionChanged();
-    void connectedChanged();
     void errorRecieved(const QString &value);
-    void globalSettingsChanged();
-    void firstDayOfWeekChanged();
-    void statusChanged();
     void signupInfoChanged();
 
     // When we get the full node-list
     void receivedNodeTree(const nextapp::pb::NodeTree& tree);
 
     void receivedMonth(const nextapp::pb::Month& month);
-    void receivedDay(const nextapp::pb::CompleteDay& day);
-    void receivedDayColorDefinitions(const nextapp::pb::DayColorDefinitions& defs);
     void receivedActions(const std::shared_ptr<nextapp::pb::Actions>& actions, bool more, bool first);
     void receivedAction(const nextapp::pb::Status& status);
-    void receivedCurrentWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions);
     void receivedWorkSessions(const std::shared_ptr<nextapp::pb::WorkSessions>& sessions, const MetaData meta);
-    void receivedDetailedWorkSummary(const nextapp::pb::DetailedWorkSummary& summary, const MetaData& meta);
 
     // Triggered on all updates from the server
-    void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void signupStatusChanged();
     void messagesChanged();
     void resynching();
-    void dataUpdated(); // All models should refresh their views with the current state.
 
 private:
+    void onAppWokeFromSleep();
+    void onAppSettingsChanged();
+    void onAppSuspending();
     void onReachabilityChanged(QNetworkInformation::Reachability reachability);
     void errorOccurred(const QGrpcStatus &status);
     void onServerInfo(nextapp::pb::ServerInfo info);
@@ -609,7 +577,7 @@ private:
 
         bool delete_req = false;
 
-        if (QSettings{}.value("server/resend_requests", true).toBool()) {
+        if (settings().value("server/resend_requests", true).toBool()) {
             LOG_DEBUG << "Queuing request: " << qr.uuid.toString()
                      << " type: " << static_cast<int>(rq)
                      << " name: " << boost::typeindex::type_id<reqT>().pretty_name();
@@ -649,8 +617,11 @@ private:
     QCoro::Task<std::optional<std::pair<QString, QString>>> createCsrAsync();
     QString toString(const QGrpcStatus& ex);
     void updateVisualStatus();
-    nextapp::pb::PushNotificationConfig getPushConfig(const QSettings& settings);
+    nextapp::pb::PushNotificationConfig getPushConfig();
+    SettingsAccess& settings() const noexcept;
+    DbStore& db() const noexcept;
 
+    RuntimeServices& runtime_;
     std::unique_ptr<nextapp::pb::Nextapp::Client> client_;
     std::unique_ptr<signup::pb::SignUp::Client> signup_client_;
     nextapp::pb::ServerInfo server_info_;

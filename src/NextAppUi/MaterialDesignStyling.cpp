@@ -1,16 +1,19 @@
-#include <QSettings>
-
 #include "MaterialDesignStyling.h"
 #include "NextAppCore.h"
 
 MaterialDesignStyling *MaterialDesignStyling::instance_ = nullptr;
 
-MaterialDesignStyling::MaterialDesignStyling() {
+MaterialDesignStyling::MaterialDesignStyling()
+    : MaterialDesignStyling(*NextAppCore::instance())
+{
+}
 
+MaterialDesignStyling::MaterialDesignStyling(RuntimeServices& runtime)
+    : runtime_{runtime}
+{
     assert(!instance_);
     instance_ = this;
-    QSettings settings;
-    auto theme = QSettings{}.value("UI/theme", "light").toString();
+    auto theme = runtime_.settings().value("UI/theme", "light").toString();
 
     if (theme == "dark") {
         setDarkTheme();
@@ -34,7 +37,7 @@ void MaterialDesignStyling::setTheme(const QString &name)
 }
 
 int MaterialDesignStyling::scrollBarWidth() const {
-    return NextAppCore::instance()->isMobile() ? 16 : 12;
+    return runtime_.isMobileUi() ? 16 : 12;
 }
 
 QString MaterialDesignStyling::primary() const { return theme_.primary; }

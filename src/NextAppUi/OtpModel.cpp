@@ -1,16 +1,22 @@
 #include "OtpModel.h"
-#include "ServerComm.h"
+#include "NextAppCore.h"
+#include "ServerCommAccess.h"
 
 OtpModel::OtpModel(QObject *parent)
-: QObject(parent)
+: OtpModel(*NextAppCore::instance(), parent)
+{
+}
+
+OtpModel::OtpModel(RuntimeServices& runtime, QObject *parent)
+: QObject(parent), runtime_{runtime}
 {
 }
 
 void OtpModel::requestOtpForNewDevice()
 {
-    ServerComm::instance().requestOtp([this](auto val) {
-        if (std::holds_alternative<ServerComm::CbError>(val)) {
-            const auto why = std::get<ServerComm::CbError>(val).message;
+    runtime_.serverComm().requestOtp([this](auto val) {
+        if (std::holds_alternative<ServerCommAccess::CbError>(val)) {
+            const auto why = std::get<ServerCommAccess::CbError>(val).message;
             LOG_WARN_N << "Failed to get categories: " << why;
             error_ = tr("Failed to get OTP: %1").arg(why);
             emit errorChanged();

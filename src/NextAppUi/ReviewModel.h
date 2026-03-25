@@ -7,6 +7,7 @@
 #include <QUuid>
 
 #include "nextapp.qpb.h"
+#include "RuntimeServices.h"
 #include "qcorotask.h"
 
 /*! This cache provices a lazy model for the review of actions.
@@ -204,6 +205,7 @@ public:
     };
 
     explicit ReviewModel(QObject *parent = nullptr);
+    ReviewModel(RuntimeServices& runtime, QObject *parent = nullptr);
     static ReviewModel& instance();
 
     void setActive(bool active);
@@ -267,4 +269,5 @@ private:
     Cache cache_;
     double progress_; // 0.0 --> 100.0
     uint remaining_{}; // Number of actions left to review
+    RuntimeServices& runtime_;
 };

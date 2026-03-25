@@ -49,7 +49,10 @@ namespace {
         }
 
         for (const auto& row : *res) {
-            assert(!row.empty());
+            if (row.empty()) {
+                LOG_ERROR_N << "Encountered empty action-id row while repairing calendar time blocks";
+                co_return std::nullopt;
+            }
             existing.insert(row.at(0).toString());
         }
 
@@ -90,31 +93,41 @@ namespace {
 
 } // anon ns
 
-CalendarCache::CalendarCache() {
-    connect(&ServerComm::instance(), &ServerComm::onUpdate,
+CalendarCache::CalendarCache()
+    : CalendarCache(*NextAppCore::instance())
+{
+}
+
+CalendarCache::CalendarCache(RuntimeServices& runtime)
+    : ServerSynchedCahce<nextapp::pb::TimeBlock, CalendarCache>{runtime}
+    , runtime_{runtime}
+{
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate,
         [this](const std::shared_ptr<nextapp::pb::Update>& update) {
             onUpdate(update);
         });
 
-    connect(NextAppCore::instance(), &NextAppCore::settingsChanged, this, [this]{
-        setAudioTimers();
-    });
+    if (auto *core = dynamic_cast<NextAppCore*>(&runtime_)) {
+        connect(core, &NextAppCore::settingsChanged, this, [this]{
+            setAudioTimers();
+        });
 
-    connect(NextAppCore::instance(), &NextAppCore::currentDateChanged, this, [this]{
-        setAudioTimers();
-    });
+        connect(core, &NextAppCore::currentDateChanged, this, [this]{
+            setAudioTimers();
+        });
 
-    connect(NextAppCore::instance(), &NextAppCore::propertyChanged, this, [this](const QString& name){
-        if (name == "primaryForActionList") {
-            auto new_date = NextAppCore::instance()->getProperty(name).toDate();
-            if (new_date != current_calendar_date_) {
-                LOG_TRACE_N << "CalendarCache: primaryForActionList changed from "
-                    << current_calendar_date_.toString() << " to " << new_date.toString();
-                current_calendar_date_ = new_date;
-                updateActionsOnCalendarCache();
+        connect(core, &NextAppCore::propertyChanged, this, [this](const QString& name){
+            if (name == "primaryForActionList") {
+                auto new_date = runtime_.appProperty(name).toDate();
+                if (new_date != current_calendar_date_) {
+                    LOG_TRACE_N << "CalendarCache: primaryForActionList changed from "
+                        << current_calendar_date_.toString() << " to " << new_date.toString();
+                    current_calendar_date_ = new_date;
+                    updateActionsOnCalendarCache();
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 CalendarCache *CalendarCache::instance() noexcept
@@ -134,12 +147,17 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
     if (update->hasCalendarEvents()) {
         const auto existing_actions = co_await loadExistingActionIds(syncDb());
         if (!existing_actions) {
-            ServerComm::instance().resync();
+            runtime_.serverComm().resync();
             co_return;
         }
         const auto& ce_list = update->calendarEvents().events();
 
         for (const auto& ce : ce_list) {
+            if (!ce.hasTimeBlock()) {
+                LOG_WARN_N << "Received calendar event " << ce.id_proto()
+                           << " without time block. Ignoring.";
+                continue;
+            }
             auto sanitized_event = ce;
             nextapp::pb::TimeBlock tb;
             if (ce.hasTimeBlock()) {
@@ -162,10 +180,15 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
 
             if (ce.hasTimeBlock()) {
                 if (op == ::nextapp::pb::Update::Operation::DELETED) {
-                    assert(tb.kind() == nextapp::pb::TimeBlock::Kind::DELETED);
+                    if (tb.kind() != nextapp::pb::TimeBlock::Kind::DELETED) {
+                        LOG_ERROR_N << "Received deleted calendar event " << ce.id_proto()
+                                    << " with non-deleted time block. Requesting resync.";
+                        runtime_.serverComm().resync();
+                        co_return;
+                    }
                     events_.erase(id);
                     if (!co_await save_(tb)) {
-                        ServerComm::instance().resync();
+                        runtime_.serverComm().resync();
                         co_return;
                     }
                     emit eventRemoved(id);
@@ -177,9 +200,14 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
                     }
                     continue;
                 }
-                assert(tb.kind() != nextapp::pb::TimeBlock::Kind::DELETED);
+                if (tb.kind() == nextapp::pb::TimeBlock::Kind::DELETED) {
+                    LOG_ERROR_N << "Received non-deleted calendar event " << ce.id_proto()
+                                << " with deleted time block. Requesting resync.";
+                    runtime_.serverComm().resync();
+                    co_return;
+                }
                 if (!co_await save_(tb)) {
-                    ServerComm::instance().resync();
+                    runtime_.serverComm().resync();
                     co_return;
                 }
 
@@ -206,7 +234,7 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
         }
     } else if (update->hasAction() && op == ::nextapp::pb::Update::Operation::DELETED) {
         if (!co_await repairStoredTimeBlocks()) {
-            ServerComm::instance().resync();
+            runtime_.serverComm().resync();
             co_return;
         }
         need_to_update_actions_on_calendar = true;
@@ -417,7 +445,10 @@ QCoro::Task<bool> CalendarCache::repairStoredTimeBlocks()
     QList<QUuid> changed_events;
 
     for (const auto& row : *res) {
-        assert(!row.empty());
+        if (row.empty()) {
+            LOG_ERROR_N << "Encountered empty cached time_block row during repair";
+            co_return false;
+        }
         QProtobufSerializer serializer;
         nextapp::pb::TimeBlock tb;
         if (!tb.deserialize(&serializer, row.at(0).toByteArray())) {
@@ -475,9 +506,7 @@ QCoro::Task<void> CalendarCache::setAudioTimers()
 
     LOG_TRACE_N << "Setting audio timers...";
 
-    QSettings settings{};
-
-    if (!settings.value("alarms/calendarEvent.enabled", true).toBool()) {
+    if (!runtime_.settings().value("alarms/calendarEvent.enabled", true).toBool()) {
         LOG_TRACE_N << "Audio events are disabled.";
         co_return;
     }
@@ -489,8 +518,8 @@ QCoro::Task<void> CalendarCache::setAudioTimers()
     next_event_.reset();
     time_t next_time{};
 
-    const auto pre_ending_mins = settings.value("alarms/calendarEvent.SoonToEndMinutes", 5).toInt();
-    const auto pre_start_mins = settings.value("alarms/calendarEvent.SoonToStartMinutes", 1).toInt();
+    const auto pre_ending_mins = runtime_.settings().value("alarms/calendarEvent.SoonToEndMinutes", 5).toInt();
+    const auto pre_start_mins = runtime_.settings().value("alarms/calendarEvent.SoonToStartMinutes", 1).toInt();
 
     // Get the next enevts that either start or ends after now.
     auto& db = syncDb();
@@ -560,7 +589,6 @@ QCoro::Task<void> CalendarCache::setAudioTimers()
 
 void CalendarCache::onAudioEvent()
 {
-    QSettings settings{};
     if (next_event_) {
         LOG_TRACE_N << "Audio event: " << next_event_->event->id_proto()
         << " at " << QDateTime::fromSecsSinceEpoch(next_event_->event->timeSpan().start()).toString();
@@ -579,11 +607,11 @@ void CalendarCache::onAudioEvent()
             break;
         }
 
-        const auto volume = settings.value("alarms/calendarEvent.volume", 0.4).toDouble();
+        const auto volume = runtime_.settings().value("alarms/calendarEvent.volume", 0.4).toDouble();
         LOG_DEBUG_N << "Playing audio: " << audio_file << " of type " << next_event_->kind << " at volume "
                     << volume;
 
-        NextAppCore::instance()->playSound(volume, audio_file);
+        runtime_.playSound(volume, audio_file);
     } else {
         LOG_DEBUG_N << "Called, but there is no event to play audio for.";
     }
@@ -630,7 +658,10 @@ AND DATE(tb.end_time) <= DATE(?))", current_calendar_date_, current_calendar_dat
     actions.reserve(rows.size());
 
     for (const auto& row : rows) {
-        assert(row.size() >= 1);
+        if (row.size() < 1) {
+            LOG_ERROR_N << "Invalid action row while loading actions on current calendar";
+            continue;
+        }
         const auto& aid = row[0].toString();
         actions.push_back(QUuid{aid});
     }
@@ -640,7 +671,7 @@ AND DATE(tb.end_time) <= DATE(?))", current_calendar_date_, current_calendar_dat
 
 std::shared_ptr<GrpcIncomingStream> CalendarCache::openServerStream(nextapp::pb::GetNewReq req)
 {
-    return ServerComm::instance().synchTimeBlocks(req);
+    return runtime_.serverComm().synchTimeBlocks(req);
 }
 
 void CalendarCache::clear()
@@ -681,7 +712,10 @@ QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent> > > CalendarCache:
     }
 
     for (const auto& row : *res) {
-        assert(row.size() >= 2);
+        if (row.size() < 2) {
+            LOG_ERROR_N << "Invalid time_block row while loading calendar events";
+            continue;
+        }
         const auto& id = row[0].toUuid();
         const auto& data = row[1].toByteArray();
 

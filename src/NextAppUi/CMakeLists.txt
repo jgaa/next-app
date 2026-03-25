@@ -538,6 +538,7 @@ set(NEXTAPP_UI_CORE_SOURCES
     ReviewModel.cpp
     ReviewModel.h
     ServerComm.cpp
+    ServerCommAccess.h
     ServerComm.h
     ServerSynchedCahce.h
     SoundPlayer.cpp

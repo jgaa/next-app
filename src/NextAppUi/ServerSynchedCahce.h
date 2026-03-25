@@ -2,9 +2,9 @@
 
 #include "qcorotask.h"
 #include "nextapp.qpb.h"
-#include <QSettings>
 
 #include "NextAppCore.h"
+#include "RuntimeServices.h"
 #include "ServerComm.h"
 #include "logging.h"
 #include "format_wrapper.h"
@@ -26,6 +26,8 @@ public:
     };
 
     ServerSynchedCahce() = default;
+    explicit ServerSynchedCahce(RuntimeServices& runtime)
+        : runtime_{&runtime} {}
     virtual ~ServerSynchedCahce() = default;
 
     // Interface
@@ -158,7 +160,7 @@ public:
     QCoro::Task<bool> synchFromServer()
     {
         nextapp::pb::GetNewReq req;
-        if (ServerComm::instance().shouldUseUpdatedIdSync()) {
+        if (runtime().serverComm().shouldUseUpdatedIdSync()) {
             req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
             req.setSince(static_cast<qlonglong>(co_await getLastUpdatedId()));
         } else if (auto last_updated = co_await getLastUpdate(); last_updated > 0) {
@@ -237,8 +239,13 @@ public:
     }
 
 protected:
+    RuntimeServices& runtime() const noexcept {
+        assert(runtime_);
+        return *runtime_;
+    }
+
     DbStore& syncDb() const noexcept {
-        return sync_db_override_ ? *sync_db_override_ : NextAppCore::instance()->db();
+        return sync_db_override_ ? *sync_db_override_ : runtime().db();
     }
 
     bool shouldLoadAfterSync() const noexcept {
@@ -254,6 +261,10 @@ public:
         sync_db_override_ = db;
     }
 
+    void setRuntimeServices(RuntimeServices& runtime) noexcept {
+        runtime_ = &runtime;
+    }
+
     void setLoadAfterSync(bool load_after_sync) noexcept {
         load_after_sync_ = load_after_sync;
     }
@@ -263,6 +274,7 @@ private:
     std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
     bool full_sync_{};
     bool load_after_sync_{true};
+    RuntimeServices* runtime_{};
     DbStore* sync_db_override_{};
     std::optional<DbStore::transaction_token_t> sync_transaction_token_;
 

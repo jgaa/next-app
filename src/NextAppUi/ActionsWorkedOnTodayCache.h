@@ -5,6 +5,7 @@
 #include <QUuid>
 
 #include "qcorotask.h"
+#include "RuntimeServices.h"
 
 class ActionsWorkedOnTodayCache : public QObject
 {
@@ -16,6 +17,7 @@ public:
     };
 
     ActionsWorkedOnTodayCache();
+    explicit ActionsWorkedOnTodayCache(RuntimeServices& runtime);
 
     static ActionsWorkedOnTodayCache *instance();
 
@@ -39,4 +41,5 @@ private:
     std::map<QUuid, Info> actions_;
     bool is_initializing_{false};
     bool pending_initialize_{false};
+    RuntimeServices& runtime_;
 };

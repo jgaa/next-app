@@ -35,6 +35,7 @@ public:
     using active_t = std::vector<std::shared_ptr<nextapp::pb::WorkSession>>;
 
     explicit WorkCache(QObject *parent = nullptr);
+    WorkCache(RuntimeServices& runtime, QObject *parent = nullptr);
 
     bool haveBatch() const noexcept override { return true; }
     QCoro::Task<bool> saveBatch(const QList<nextapp::pb::WorkSession>& items) override;
@@ -80,6 +81,7 @@ signals:
     void activeChanged();
 
 private:
+    RuntimeServices& runtime_;
     void purge();
     void onTimer();
     void updateSessionsDurations();

@@ -2,7 +2,7 @@
 
 #include "WorkSessionsModel.h"
 #include "ActionsModel.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "NextAppCore.h"
 #include "WorkCache.h"
 #include "logging.h"
@@ -18,7 +18,12 @@ using namespace std;
 WorkSessionsModel* WorkSessionsModel::instance_;
 
 WorkSessionsModel::WorkSessionsModel(QObject *parent)
-    : WorkModelBase{parent}
+    : WorkSessionsModel(*NextAppCore::instance(), parent)
+{
+}
+
+WorkSessionsModel::WorkSessionsModel(RuntimeServices& runtime, QObject *parent)
+    : WorkModelBase{runtime, parent}
 {
     assert(instance_ == nullptr);
     instance_ = this;
@@ -34,17 +39,17 @@ WorkSessionsModel::WorkSessionsModel(QObject *parent)
 
 void WorkSessionsModel::startWork(const QString &actionId)
 {
-    ServerComm::instance().startWork(actionId);
+    runtime_.serverComm().startWork(actionId);
 }
 
 void WorkSessionsModel::startWorkSetActive(const QString &actionId)
 {
-    ServerComm::instance().startWork(actionId, true);
+    runtime_.serverComm().startWork(actionId, true);
 }
 
 void WorkSessionsModel::deleteWork(const QString &actionId)
 {
-    ServerComm::instance().deleteWork(actionId);
+    runtime_.serverComm().deleteWork(actionId);
 }
 
 bool WorkSessionsModel::isActive(const QString &actionId) const
@@ -65,36 +70,36 @@ bool WorkSessionsModel::isStarted(const QString &sessionId) const
 
 void WorkSessionsModel::pause(const QString &sessionId)
 {
-    ServerComm::instance().pauseWork(sessionId);
+    runtime_.serverComm().pauseWork(sessionId);
 }
 
 void WorkSessionsModel::resume(const QString &sessionId)
 {
-    ServerComm::instance().resumeWork(sessionId);
+    runtime_.serverComm().resumeWork(sessionId);
 }
 
 void WorkSessionsModel::done(const QString &sessionId)
 {
-    ServerComm::instance().doneWork(sessionId);
+    runtime_.serverComm().doneWork(sessionId);
 }
 
 void WorkSessionsModel::touch(const QString &sessionId)
 {
-    ServerComm::instance().touchWork(sessionId);
+    runtime_.serverComm().touchWork(sessionId);
 }
 
 void WorkSessionsModel::finishAction(const QString &sessionId)
 {
     if (!sessionId.isEmpty()) {
         if (auto session = lookup(toQuid(sessionId))) {
-            ServerComm::instance().markActionAsDone(session->action(), true);
+            runtime_.serverComm().markActionAsDone(session->action(), true);
         }
     }
 }
 
 void WorkSessionsModel::addCalendarEvent(const QString &eventId)
 {
-    ServerComm::instance().addWorkFromTimeBlock(eventId);
+    runtime_.serverComm().addWorkFromTimeBlock(eventId);
 }
 
 void WorkSessionsModel::fetch()
@@ -163,4 +168,3 @@ void WorkSessionsModel::onDurationChanged(const WorkCache::active_duration_chang
         ++row;
     }
 }
-

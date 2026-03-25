@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "DbStore.h"
+#include "RuntimeServices.h"
 #include "WorkModel.h"
 #include "WeeklyWorkReportModel.h"
 #include "ReviewModel.h"
@@ -20,8 +21,10 @@
 #include "qcorotask.h"
 
 class CalendarModel;
+class ServerComm;
 
 class NextAppCore : public QObject
+    , public RuntimeServices
 {
     Q_OBJECT
     QML_ELEMENT
@@ -98,7 +101,7 @@ public:
     static Q_INVOKABLE time_t parseTime(const QString& str);
     static Q_INVOKABLE QString toDateAndTime(time_t when, time_t defaultDate = 0);
     static Q_INVOKABLE QString toTime(time_t when);
-    Q_INVOKABLE void playSound(double volume, const QString& soundFile);
+    Q_INVOKABLE void playSound(double volume, const QString& soundFile) override;
     Q_INVOKABLE void playSoundDelayed(int delayMs, double volume, const QString& soundFile);
     // Called when signup is complete
     Q_INVOKABLE void bootstrapDevice(bool newUser);
@@ -151,7 +154,7 @@ public:
 #endif
     }
 
-    void setOnline(bool online) {
+    void setOnline(bool online) override {
         emit onlineChanged(online);
     }
 
@@ -175,12 +178,19 @@ public:
 
     void setDragEnabled(bool drag_enabled);
 
-    auto& db() const noexcept {
+    DbStore& db() const noexcept override {
         assert(db_);
         return *db_;
     }
 
-    void showSyncPopup(bool visible);
+    ServerCommAccess& serverComm() const noexcept override;
+    SettingsAccess& settings() const noexcept override;
+    QVariant appProperty(const QString& name) const noexcept override;
+    void setAppProperty(const QString& name, const QVariant& value) override;
+    QQmlEngine& qmlEngine() const noexcept override;
+    bool isMobileUi() const noexcept override;
+
+    void showSyncPopup(bool visible) override;
 
     State state() const noexcept {
         return state_;
@@ -193,7 +203,9 @@ public:
     QObject * openQmlComponent(const QUrl& resourcePath);
 
     void onWokeFromSleep();
-    QCoro::Task<void> onAccountDeleted();
+    QCoro::Task<void> onAccountDeleted() override;
+    void showUnrecognizedDeviceError() override;
+    QObject& appEventSource() noexcept override;
 
     static void handleSharedFile(const QString& path);
     static void tryImportWhenReady(const QString& path);
@@ -212,7 +224,7 @@ public:
         return plans_enabled_;
     }
 
-    void setPlansEnabled(bool enable);
+    void setPlansEnabled(bool enable) override;
 
     nextapp::pb::Subscription currentPlan();
     QVariantMap currentPlanView() const;
@@ -280,6 +292,8 @@ private:
     static NextAppCore *instance_;
     State state_{State::STARTING_UP};
     std::unique_ptr<DbStore> db_;
+    std::unique_ptr<SettingsAccess> settings_;
+    std::unique_ptr<ServerComm> server_comm_;
     QObject* sync_popup_{} ;
 
     int height_{0};

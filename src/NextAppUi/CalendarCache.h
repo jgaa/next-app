@@ -37,6 +37,7 @@ public:
 
 
     CalendarCache();
+    explicit CalendarCache(RuntimeServices& runtime);
 
     static CalendarCache *instance() noexcept;
     [[nodiscard]] QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent>>> getCalendarEvents(QDate start, QDate end);
@@ -89,4 +90,5 @@ private:
     QDate current_calendar_date_{QDate::currentDate()};
     bool is_updating_actions_cache_{false};
     bool update_actions_cache_pending_{false};
+    RuntimeServices& runtime_;
 };

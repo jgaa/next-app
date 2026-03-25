@@ -150,7 +150,11 @@ time_t parseDateOrTime(const QString& str, const QDate& defaultDate)
 
 QDate getFirstDayOfWeek(const QDate &when)
 {
-    const auto gs = ServerComm::instance().getGlobalSettings();
+    return getFirstDayOfWeek(ServerComm::instance().getGlobalSettings(), when);
+}
+
+QDate getFirstDayOfWeek(const nextapp::pb::UserGlobalSettings& gs, const QDate &when)
+{
     int dayOfWeek = when.dayOfWeek();
 
     int firstDayOfWeek = gs.firstDayOfWeekIsMonday() ? 1 : 7;

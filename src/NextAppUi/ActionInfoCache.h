@@ -39,6 +39,7 @@ class ActionInfoCache : public QObject
 
 public:
     ActionInfoCache(QObject *parent = nullptr);
+    ActionInfoCache(RuntimeServices& runtime, QObject *parent = nullptr);
 
     static ActionInfoCache *instance() {
         assert(instance_);
@@ -118,6 +119,7 @@ public:
     }
 
 private:
+    RuntimeServices& runtime_;
     std::shared_ptr<nextapp::pb::ActionInfo> get_(const QString &action_uuid);
     std::shared_ptr<nextapp::pb::ActionInfo> get_(const QUuid &action_uuid);
 

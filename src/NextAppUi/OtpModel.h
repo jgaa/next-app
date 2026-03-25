@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QQmlEngine>
 
+#include "RuntimeServices.h"
+
 class OtpModel : public QObject
 {
     Q_OBJECT
@@ -14,6 +16,7 @@ class OtpModel : public QObject
 
 public:
     OtpModel(QObject * parent = nullptr);
+    OtpModel(RuntimeServices& runtime, QObject * parent = nullptr);
 
     Q_INVOKABLE void requestOtpForNewDevice();
 
@@ -23,6 +26,7 @@ signals:
     void emailChanged();
 
 private:
+    RuntimeServices& runtime_;
     QString otp_;
     QString email_;
     QString error_;

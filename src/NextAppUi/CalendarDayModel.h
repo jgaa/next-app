@@ -10,6 +10,7 @@
 
 #include "TimeBoxActionsModel.h"
 #include "CategoryUseModel.h"
+#include "RuntimeServices.h"
 #include "nextapp.qpb.h"
 
 class CalendarModel;
@@ -39,6 +40,7 @@ public:
         }
 
         QObject* get(CalendarDayModel *parent, QObject *ctl);
+        void setRuntime(RuntimeServices& runtime) noexcept { runtime_ = &runtime; }
 
         void makeReady();
 
@@ -46,11 +48,13 @@ public:
         size_t end_ = 0;
         std::optional<QQmlComponent> component_factory_;
         const QString path_;
+        RuntimeServices* runtime_{};
     };
 
 
     using events_t = std::span<const std::shared_ptr<nextapp::pb::CalendarEvent>>;
     CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, int index,  QObject* parent = nullptr);
+    CalendarDayModel(QDate date, QObject& component, CalendarModel& calendar, RuntimeServices& runtime, int index, QObject* parent = nullptr);
     ~CalendarDayModel();
 
     // start and end are minuts into the day
@@ -150,4 +154,5 @@ private:
     QObject& component_;
     Pool timx_boxes_pool_{QStringLiteral("qrc:/qt/qml/NextAppUi/qml/calendar/TimeBlockArea.qml")};
     CalendarModel& calendar_;
+    RuntimeServices& runtime_;
 };

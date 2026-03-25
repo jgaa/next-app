@@ -3,6 +3,7 @@
 
 #include <QDir>
 #include <QProtobufJsonSerializer>
+#include <QProtobufSerializer>
 #include <QQmlFile>
 #include <QStandardPaths>
 #include <QFile>
@@ -17,7 +18,8 @@
 #endif
 
 #include "ImportExportModel.h"
-#include "ServerComm.h"
+#include "NextAppCore.h"
+#include "ServerCommAccess.h"
 
 #include "logging.h"
 #include "util.h"
@@ -280,7 +282,14 @@ void WriteJson(const nextapp::pb::Status& msg, QFile& file) {
 
 } // anon ns
 
-ImportExportModel::ImportExportModel() {
+ImportExportModel::ImportExportModel()
+    : ImportExportModel(*NextAppCore::instance())
+{
+}
+
+ImportExportModel::ImportExportModel(RuntimeServices& runtime)
+    : runtime_{runtime}
+{
     QDir baseDir(QDir::homePath());
     const auto path = baseDir.filePath("NextApp/Backups");
     data_path_ = QUrl::fromLocalFile(path);
@@ -434,9 +443,9 @@ QCoro::Task<void> ImportExportModel::doExport(file_t file)
     try {
         if (file->fileName().endsWith(".json", Qt::CaseInsensitive)) {
             json_current_section = JsonSections::BEGIN;
-            co_await ServerComm::instance().exportData(file, WriteJson);
+            co_await runtime_.serverComm().exportData(file, WriteJson);
         } else {
-            co_await ServerComm::instance().exportData(file, WriteNextapp);
+            co_await runtime_.serverComm().exportData(file, WriteNextapp);
         }
     } catch (const std::exception &e) {
         LOG_ERROR_N << "Export failed: " << e.what();
@@ -568,7 +577,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
     };
 
     try {
-        co_await ServerComm::instance().importData(read);
+        co_await runtime_.serverComm().importData(read);
     } catch (const std::exception &e) {
         LOG_ERROR_N << "Import failed: " << e.what();
         state = ERROR;
@@ -582,7 +591,7 @@ QString ImportExportModel::getMobileExportName(bool json)
 {
     const QString base_name = json ? "nextapp_export.json" : "export.nextapp";
 #ifdef ANDROID_BUILD
-    const bool save_to_local_dir = QSettings{}.value("export/saveToPublicDir", false).toBool();
+    const bool save_to_local_dir = runtime_.settings().value("export/saveToPublicDir", false).toBool();
     if (save_to_local_dir) {
         const auto pub_dir = nextapp::android::getNamedDir("Exports");
         if (!pub_dir.isEmpty() && save_to_local_dir) {

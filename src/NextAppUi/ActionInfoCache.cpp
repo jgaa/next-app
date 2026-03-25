@@ -12,7 +12,7 @@
 
 #include "ActionInfoCache.h"
 #include "MainTreeModel.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "util.h"
 #include "logging.h"
 
@@ -189,7 +189,7 @@ pb::ActionInfo toActionInfo(const pb::Action& action) {
     ai.setId_proto(action.id_proto());
     ai.setNode(action.node());
     if (action.hasOrigin()) {
-        ai.setOrigin(action.origin());
+    ai.setOrigin(action.hasOrigin() ? action.origin() : QString{});
     }
     ai.setDynamicPriority(action.dynamicPriority());
     ai.setStatus(action.status());
@@ -316,12 +316,19 @@ bool ActionInfoCache::shouldStageOriginRepair() const noexcept
 }
 
 ActionInfoCache::ActionInfoCache(QObject *parent)
+: ActionInfoCache(*NextAppCore::instance(), parent)
+{
+}
+
+ActionInfoCache::ActionInfoCache(RuntimeServices& runtime, QObject *parent)
 : QObject(parent)
+, ServerSynchedCahce<nextapp::pb::Action, ActionInfoCache>{runtime}
+, runtime_{runtime}
 {
     assert(!instance_);
     instance_ = this;
 
-    connect(&ServerComm::instance(), &ServerComm::onUpdate, this,
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate, this,
             [this](const std::shared_ptr<nextapp::pb::Update>& update) {
         onUpdate(update);
     });
@@ -702,18 +709,24 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
         const auto &action = update->action();
         const auto uuid = toQuid(action.id_proto());
         const auto resyncOnFailure = [id = action.id_proto()] {
-            QTimer::singleShot(0, &ServerComm::instance(), [id] {
+            auto& server_comm = ActionInfoCache::instance()->runtime_.serverComm();
+            QTimer::singleShot(0, &server_comm, [id] {
                 LOG_ERROR_N << "Action apply failed for " << id << ". Requesting resync.";
-                ServerComm::instance().resync();
+                ActionInfoCache::instance()->runtime_.serverComm().resync();
             });
         };
-        const auto origin_uuid = toQuid(action.origin());
+        const auto origin = action.hasOrigin() ? action.origin() : QString{};
+        const auto origin_uuid = toQuid(origin);
         const bool needs_reference_reload = deleted
-            || (action.hasOrigin()
-                && !action.origin().isEmpty()
+            || (!origin.isEmpty()
                 && hot_cache_.find(origin_uuid) == hot_cache_.end());
         if (deleted) [[unlikely ]] {
-            assert(action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED);
+            if (action.status() != nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
+                LOG_ERROR_N << "Received deleted action update with non-deleted status for "
+                            << action.id_proto() << ". Requesting resync.";
+                resyncOnFailure();
+                co_return;
+            }
             if (!co_await save(action)) {
                 resyncOnFailure();
                 co_return;
@@ -724,7 +737,12 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
                 resyncOnFailure();
             }
         } else {
-            assert(action.status() != nextapp::pb::ActionStatusGadget::ActionStatus::DELETED);
+            if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
+                LOG_ERROR_N << "Received non-deleted action update with deleted status for "
+                            << action.id_proto() << ". Requesting resync.";
+                resyncOnFailure();
+                co_return;
+            }
             if (!co_await save(action)) {
                 resyncOnFailure();
                 co_return;
@@ -741,7 +759,9 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
                 if (auto ai = get_(uuid)) {
                     emit actionAdded(ai);
                 } else {
-                    assert(false);
+                    LOG_ERROR_N << "Added action " << action.id_proto()
+                                << " was not available in hot cache after apply. Requesting resync.";
+                    resyncOnFailure();
                 }
             } else if (changed) {
                 LOG_TRACE_N << "Action " << action.id_proto() << ' ' << action.name() << " changed.";
@@ -770,6 +790,7 @@ QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &i
     std::set<QString> cleared_repairs;
     for (const auto& action : items) {
         if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED
+            || !action.hasOrigin()
             || action.origin().isEmpty()
             || !shouldStageOriginRepair()) {
             cleared_repairs.insert(action.id_proto());
@@ -855,7 +876,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     }
 
     auto stored_action = action;
-    const auto staged_origin = action.origin();
+    const auto staged_origin = action.hasOrigin() ? action.origin() : QString{};
     if (shouldStageOriginRepair() && !staged_origin.isEmpty()) {
         stored_action.setOrigin(QString{});
     }
@@ -1043,19 +1064,24 @@ QCoro::Task<bool> ActionInfoCache::loadSomeFromCache(std::optional<QString> id)
             item.setOrigin(row[ORIGIN].toString());
             {
                 nextapp::pb::Priority p;
-                if (!row[PRIORITY].isNull()) {
-                    p.setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
-                    assert(p.hasPriority());
-                    assert(!p.hasUrgencyImportance());
+                const bool has_static_priority = !row[PRIORITY].isNull();
+                const bool has_dynamic_priority = !row[DYN_IMPORTANCE].isNull()
+                    && !row[DYN_URGENCY].isNull();
+
+                if (has_static_priority && has_dynamic_priority) {
+                    LOG_WARN_N << "Action " << id
+                               << " has both static and dynamic priority columns set. "
+                               << "Preferring urgency/importance.";
                 }
-                if (!row[DYN_IMPORTANCE].isNull()
-                    && !row[DYN_URGENCY].isNull()) {
+
+                if (has_static_priority && !has_dynamic_priority) {
+                    p.setPriority(static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(row[PRIORITY].toInt()));
+                }
+                if (has_dynamic_priority) {
                     nextapp::pb::UrgencyImportance ui;
                     ui.setImportance(row[DYN_IMPORTANCE].toInt());
                     ui.setUrgency(row[DYN_URGENCY].toInt());
                     p.setUrgencyImportance(ui);
-                    assert(p.hasUrgencyImportance());
-                    assert(!p.hasPriority());
                 }
                 if (!row[DYN_SCORE].isNull()) {
                     p.setScore(row[DYN_SCORE].toInt());
@@ -1207,7 +1233,7 @@ QCoro::Task<bool> ActionInfoCache::validateStoredOrigins()
 
 std::shared_ptr<GrpcIncomingStream> ActionInfoCache::openServerStream(nextapp::pb::GetNewReq req)
 {
-    return ServerComm::instance().synchActions(req);
+    return runtime_.serverComm().synchActions(req);
 }
 
 void ActionInfoCache::clear()

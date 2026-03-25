@@ -8,6 +8,7 @@
 #include <QUuid>
 
 #include "ActionInfoCache.h"
+#include "RuntimeServices.h"
 #include "qcorotask.h"
 
 class ActionStatsModel : public QObject
@@ -34,6 +35,7 @@ class ActionStatsModel : public QObject
 
 public:
     explicit ActionStatsModel(QUuid actionId);
+    ActionStatsModel(RuntimeServices& runtime, QUuid actionId);
     ~ActionStatsModel() override;
 
     // Starts the fetch process
@@ -71,6 +73,7 @@ private:
     int totalSessions_{};
     bool valid_{false};
     bool with_origin_{false};
+    RuntimeServices& runtime_;
 };
 
 /*!

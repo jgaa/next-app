@@ -1,6 +1,16 @@
 #include "WorkModelBase.h"
+#include "NextAppCore.h"
 
-WorkModelBase::WorkModelBase(QObject *parent) : QAbstractTableModel(parent) {}
+WorkModelBase::WorkModelBase(QObject *parent)
+    : WorkModelBase(*NextAppCore::instance(), parent)
+{
+}
+
+WorkModelBase::WorkModelBase(RuntimeServices& runtime, QObject *parent)
+    : QAbstractTableModel(parent)
+    , runtime_{runtime}
+{
+}
 
 bool WorkModelBase::sessionExists(const QString &sessionId)
 {
@@ -209,7 +219,7 @@ bool WorkModelBase::setData(const QModelIndex &index, const QVariant &value, int
                     nextapp::pb::WorkEvent event;
                     event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
                     event.setStart(seconds);
-                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
+                    runtime_.serverComm().sendWorkEvent(work->id_proto(), event);
                 } catch (const std::runtime_error&) {
                     ;
                 }
@@ -229,7 +239,7 @@ bool WorkModelBase::setData(const QModelIndex &index, const QVariant &value, int
                         event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
                     }
                     event.setEnd(seconds);
-                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
+                    runtime_.serverComm().sendWorkEvent(work->id_proto(), event);
                 } catch (const std::runtime_error&) {
                     ;
                 }
@@ -240,7 +250,7 @@ bool WorkModelBase::setData(const QModelIndex &index, const QVariant &value, int
                     nextapp::pb::WorkEvent event;
                     event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
                     event.setPaused(seconds);
-                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
+                    runtime_.serverComm().sendWorkEvent(work->id_proto(), event);
                 } catch (const std::runtime_error&) {
                     ; // TODO: Tell the user
                 }
@@ -251,7 +261,7 @@ bool WorkModelBase::setData(const QModelIndex &index, const QVariant &value, int
                     nextapp::pb::WorkEvent event;
                     event.setKind(nextapp::pb::WorkEvent_QtProtobufNested::Kind::CORRECTION);
                     event.setName(value.toString());
-                    ServerComm::instance().sendWorkEvent(work->id_proto(), event);
+                    runtime_.serverComm().sendWorkEvent(work->id_proto(), event);
                 } catch (const std::runtime_error&) {
                     ; // TODO: Tell the user
                 }
@@ -297,7 +307,7 @@ bool WorkModelBase::update(const nextapp::pb::WorkSession &session)
 
     if (session.id_proto().isEmpty()) {
         // This is a new session
-        ServerComm::instance().addWork(session);
+        runtime_.serverComm().addWork(session);
         return true;
     }
 
@@ -350,12 +360,12 @@ bool WorkModelBase::update(const nextapp::pb::WorkSession &session)
         case nextapp::pb::WorkSession::State::ACTIVE:
             assert(!curr->hasEnd());
             assert(!session.hasEnd());
-            ServerComm::instance().resumeWork(session.id_proto());
+            runtime_.serverComm().resumeWork(session.id_proto());
             break;
         case nextapp::pb::WorkSession::State::PAUSED:
             assert(!curr->hasEnd());
             assert(!session.hasEnd());
-            ServerComm::instance().pauseWork(session.id_proto());
+            runtime_.serverComm().pauseWork(session.id_proto());
             break;
         case nextapp::pb::WorkSession::State::DONE:
             // Stop the session if the user changes the state to DONE but did not set an end time.
@@ -385,6 +395,6 @@ bool WorkModelBase::update(const nextapp::pb::WorkSession &session)
         }
     }
 
-    ServerComm::instance().sendWorkEvents(req);
+    runtime_.serverComm().sendWorkEvents(req);
     return true;
 }

@@ -21,7 +21,13 @@ using namespace std;
 
 
 ReviewModel::ReviewModel(QObject *parent)
+    : ReviewModel(*NextAppCore::instance(), parent)
+{
+}
+
+ReviewModel::ReviewModel(RuntimeServices& runtime, QObject *parent)
     : QAbstractListModel{parent}
+    , runtime_{runtime}
 {
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ReviewModel::actionWasChanged);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ReviewModel::actionWasDeleted);
@@ -492,7 +498,7 @@ ORDER BY
 )");
 
     setState(State::FETCHING);
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
     auto rval = co_await db.legacyQuery(QString::fromLatin1(sql));
     if (!rval) {
         LOG_ERROR_N << "Error fetching: " << rval.error();

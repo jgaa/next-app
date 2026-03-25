@@ -313,7 +313,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
         ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
                    WHERE user=? AND updated_id > ?
                    ORDER BY updated_id, date)"
-        : R"(SELECT deleted, updated, 0, date, color, notes, report FROM day
+        : R"(SELECT deleted, updated, CAST(0 AS UNSIGNED), date, color, notes, report FROM day
                    WHERE user=? AND updated > ?
                    ORDER BY updated, date)";
     if (cursor.use_updated_id) {
@@ -414,7 +414,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
               "FROM day_colors "
               "WHERE tenant IS NULL AND updated_id > ? "
               "ORDER BY updated_id, id"
-            : "SELECT id, name, color, score, updated, 0 "
+            : "SELECT id, name, color, score, updated, CAST(0 AS UNSIGNED) "
               "FROM day_colors "
               "WHERE tenant IS NULL AND updated > ? "
               "ORDER BY updated, id";

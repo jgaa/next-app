@@ -162,7 +162,7 @@ QCoro::Task<bool> NotificationsModel::loadFromCache()
 
 std::shared_ptr<GrpcIncomingStream> NotificationsModel::openServerStream(nextapp::pb::GetNewReq req)
 {
-    return ServerComm::instance().synchNotifications(req);
+    return runtime().serverComm().synchNotifications(req);
 }
 
 void NotificationsModel::clear()
@@ -254,14 +254,14 @@ QHash<int, QByteArray> NotificationsModel::roleNames() const
 
 NotificationsModel *NotificationsModel::instance() noexcept
 {
-    static NotificationsModel nm;
+    static NotificationsModel nm{*NextAppCore::instance()};
     return &nm;
 }
 
 void NotificationsModel::setLastRead(uint32_t last_read) {
     if (last_read_ < last_read) {
         SetLastReadValue(last_read);
-        ServerComm::instance().setLastReadNotification(last_read_);
+        runtime().serverComm().setLastReadNotification(last_read_);
     }
 }
 
@@ -269,7 +269,7 @@ bool NotificationsModel::SetLastReadValue(uint32_t last_read)
 {
     if (last_read_ != last_read) {
         last_read_ = last_read;
-        QSettings{}.setValue("notificatins/last_read", last_read_);
+        runtime().settings().setValue("notificatins/last_read", last_read_);
         emit lastReadChanged();
         emit unreadChanged();
         LOG_TRACE_N << "Last read set to " << last_read_;
@@ -281,7 +281,7 @@ bool NotificationsModel::SetLastReadValue(uint32_t last_read)
 
 void NotificationsModel::setLastUpdateSeen(uint64_t last_update_seen) {
     last_update_seen_ = last_update_seen;
-    QSettings{}.setValue("notificatins/last_seen", static_cast<qlonglong>(last_update_seen_));
+    runtime().settings().setValue("notificatins/last_seen", static_cast<qlonglong>(last_update_seen_));
     LOG_TRACE_N << "Last update seen set to " << last_update_seen_;
 }
 
@@ -295,13 +295,19 @@ bool NotificationsModel::unread() const noexcept
     return last_notification.id_proto() > last_read_;
 }
 
-NotificationsModel::NotificationsModel() {
-    connect(&ServerComm::instance(), &ServerComm::onUpdate, this,
+NotificationsModel::NotificationsModel()
+    : NotificationsModel(*NextAppCore::instance())
+{
+}
+
+NotificationsModel::NotificationsModel(RuntimeServices& runtime)
+    : ServerSynchedCahce(runtime)
+{
+    connect(&runtime.serverComm(), &ServerCommAccess::onUpdate, this,
             [this](const std::shared_ptr<nextapp::pb::Update>& update) {
                 onUpdate(update);
             });
 
-    QSettings s;
-    last_read_ = s.value("notificatins/last_read", 0).toUInt();
-    last_update_seen_ = s.value("notificatins/last_seen", 0).toULongLong();
+    last_read_ = runtime.settings().value("notificatins/last_read", 0).toUInt();
+    last_update_seen_ = runtime.settings().value("notificatins/last_seen", 0).toULongLong();
 }

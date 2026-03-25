@@ -1,8 +1,15 @@
 #include "DevicesModel.h"
-#include "ServerComm.h"
+#include "NextAppCore.h"
+#include "ServerCommAccess.h"
 
 
 DevicesModel::DevicesModel()
+    : DevicesModel(*NextAppCore::instance())
+{
+}
+
+DevicesModel::DevicesModel(RuntimeServices& runtime)
+    : runtime_{runtime}
 {
     fetchIf();
 }
@@ -106,12 +113,12 @@ QCoro::Task<void> DevicesModel::fetchIf()
     devices_.clear();
     endResetModel();
 
-    if (!ServerComm::instance().connected()) {
+    if (!runtime_.serverComm().connected()) {
         setValid(false);
         co_return;
     };
 
-    auto res = co_await ServerComm::instance().fetchDevices();
+    auto res = co_await runtime_.serverComm().fetchDevices();
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK && res.hasDevices()) {
         beginResetModel();
         devices_.clear();
@@ -141,7 +148,7 @@ void DevicesModel::refresh()
 }
 
 QCoro::Task<void> DevicesModel::doEnableDevice(QString deviceId, bool active) {
-    const auto status = co_await ServerComm::instance().enableDevice(deviceId, active);
+    const auto status = co_await runtime_.serverComm().enableDevice(deviceId, active);
     if (status.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (status.hasDevice()) {
             const auto& device = status.device();
@@ -161,7 +168,7 @@ QCoro::Task<void> DevicesModel::doEnableDevice(QString deviceId, bool active) {
 
 QCoro::Task<void> DevicesModel::doDeleteDevice(QString deviceId)
 {
-    const auto status = co_await ServerComm::instance().deleteDevice(deviceId);
+    const auto status = co_await runtime_.serverComm().deleteDevice(deviceId);
     if (status.error() == nextapp::pb::ErrorGadget::Error::OK) {
         fetchIf();
     }

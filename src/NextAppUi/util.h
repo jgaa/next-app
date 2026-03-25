@@ -6,6 +6,7 @@
 
 namespace nextapp::pb {
 class Date;
+class UserGlobalSettings;
 }
 
 namespace nextapp::pb::ErrorGadget {
@@ -32,6 +33,8 @@ std::string toString(const nextapp::pb::WorkEvent_QtProtobufNested::Kind& kind);
 
 
 QDate getFirstDayOfWeek(const QDate& when = QDate::currentDate());
+QDate getFirstDayOfWeek(const nextapp::pb::UserGlobalSettings& settings,
+                        const QDate& when = QDate::currentDate());
 
 // BOOST_SCOPE_EXIT confuses Clang-Tidy :/
 template <typename T>

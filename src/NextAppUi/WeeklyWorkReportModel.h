@@ -2,7 +2,7 @@
 
 #include <QQmlEngine>
 #include <QAbstractTableModel>
-#include "ServerComm.h"
+#include "RuntimeServices.h"
 #include "util.h"
 #include "nextapp.qpb.h"
 
@@ -39,6 +39,7 @@ public:
     }
 
     WeeklyWorkReportModel(QObject *parent = nullptr);
+    WeeklyWorkReportModel(RuntimeServices& runtime, QObject *parent = nullptr);
 
     bool isVisible() const noexcept {
         return visible_;
@@ -55,7 +56,7 @@ public:
     void start();
     void fetch();
 
-    void receivedDetailedWorkSummary(const nextapp::pb::DetailedWorkSummary& summary, const ServerComm::MetaData& meta);
+    void receivedDetailedWorkSummary(const nextapp::pb::DetailedWorkSummary& summary, const ServerCommAccess::MetaData& meta);
 
     // QAbstractItemModel interface
     int rowCount(const QModelIndex &parent) const override;
@@ -75,6 +76,7 @@ signals:
     void weekSelectionChanged();
 
 private:
+    RuntimeServices& runtime_;
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void onUpdatedDuration();
     void needRefresh();

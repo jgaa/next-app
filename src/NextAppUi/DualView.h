@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include "RuntimeServices.h"
 
 class DualView : public QQuickItem
 {
@@ -14,6 +15,7 @@ class DualView : public QQuickItem
 
 public:
     explicit DualView(QQuickItem *parent = nullptr);
+    DualView(RuntimeServices& runtime, QQuickItem *parent = nullptr);
 
     enum ViewType : char {
         Actions,
@@ -55,4 +57,5 @@ private:
     QQuickItem *second_{};
     std::array<QQuickItem *, static_cast<size_t>(ViewType::None)> views_{};
     std::array<QString, static_cast<size_t>(ViewType::None)> view_paths_;
+    RuntimeServices& runtime_;
 };

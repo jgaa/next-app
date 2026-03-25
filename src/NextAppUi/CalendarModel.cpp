@@ -4,11 +4,8 @@
 #include <algorithm>
 
 #include <QTimer>
-#include <QSettings>
-
-
 #include "CalendarModel.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "NextAppCore.h"
 #include "util.h"
 #include "ActionsModel.h"
@@ -47,16 +44,22 @@ QDate get_date(const nextapp::pb::CalendarEvent& event) {
 } // anon ns
 
 CalendarModel::CalendarModel()
+    : CalendarModel(*NextAppCore::instance())
+{
+}
+
+CalendarModel::CalendarModel(RuntimeServices& runtime)
+    : runtime_{runtime}
 {
 
-    connect(&ServerComm::instance(), &ServerComm::connectedChanged, [this] {
-        setOnline(ServerComm::instance().connected());
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::connectedChanged, [this] {
+        setOnline(runtime_.serverComm().connected());
     });
 
-    connect(&ServerComm::instance(), &ServerComm::firstDayOfWeekChanged, [this] {
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::firstDayOfWeekChanged, [this] {
         LOG_DEBUG_N << "First day of week changed";
         if (mode_ == CM_WEEK) {
-            first_ = getFirstDayOfWeek(target_);
+            first_ = getFirstDayOfWeek(runtime_.serverComm().globalSettings(), target_);
             last_ = first_.addDays(6);
             setValid(false);
             updateDayModelsDates();
@@ -72,7 +75,7 @@ CalendarModel::CalendarModel()
         fetchIf();
     });
 
-    setOnline(ServerComm::instance().connected());
+    setOnline(runtime_.serverComm().connected());
 
     minute_timer_ = std::make_unique<QTimer>(this);
     connect(minute_timer_.get(), &QTimer::timeout, this, &CalendarModel::onMinuteTimer);
@@ -119,7 +122,7 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day, bool pr
         setValid(false);
         need_fetch = false;
         if (primaryForActionList) {
-            NextAppCore::instance()->setProperty("primaryForActionList", QDate{});
+            runtime_.setAppProperty("primaryForActionList", QDate{});
         }
         return;
     case CM_DAY:
@@ -127,7 +130,7 @@ void CalendarModel::set(CalendarMode mode, int year, int month, int day, bool pr
         last = when;
         break;
     case CM_WEEK:
-        first = getFirstDayOfWeek(when);
+        first = getFirstDayOfWeek(runtime_.serverComm().globalSettings(), when);
         last = first.addDays(6);
         break;
     case CM_MONTH:
@@ -173,12 +176,12 @@ void CalendarModel::moveEventToDay(const QString &eventId, time_t start)
     auto tb = event->timeBlock();
     tb.setTimeSpan(ts);
 
-    ServerComm::instance().updateTimeBlock(tb);
+    runtime_.serverComm().updateTimeBlock(tb);
 }
 
 void CalendarModel::deleteTimeBlock(const QString &eventId)
 {
-    ServerComm::instance().deleteTimeBlock(eventId);
+    runtime_.serverComm().deleteTimeBlock(eventId);
 }
 
 time_t CalendarModel::getDate(int index)
@@ -246,7 +249,7 @@ bool CalendarModel::addAction(const QString &eventId, const QString &action)
             if (std::ranges::find(list, action) == list.end()) {
                 // Add it
                 tb.setActions(nextapp::append(tb.actions(), action));
-                ServerComm::instance().updateTimeBlock(tb);
+                runtime_.serverComm().updateTimeBlock(tb);
                 return true;
             }
         }
@@ -574,7 +577,7 @@ void CalendarModel::updateIfPrimary()
     if (is_primary_) {
 #endif
         assert(first_ == last_);
-        NextAppCore::instance()->setProperty("primaryForActionList", first_);
+        runtime_.setAppProperty("primaryForActionList", first_);
     }
 }
 
@@ -616,4 +619,3 @@ CategoryUseModel::list_t CalendarModel::getCategoryUsage()
 
     return values;
 }
-

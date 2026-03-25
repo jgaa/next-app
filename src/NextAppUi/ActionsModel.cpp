@@ -4,12 +4,11 @@
 #include <QUuid>
 #include <QTimeZone>
 #include <QDateTime>
-#include <QSettings>
 #include <QMimeData>
 #include <QIODevice>
 
 #include "ActionsModel.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "MainTreeModel.h"
 //#include "WorkSessionsModel.h"
 #include "ActionInfoCache.h"
@@ -241,20 +240,28 @@ int findInsertRow(const T& action, const QList<U>& list) {
 } // anon ns
 
 ActionsModel::ActionsModel(QObject *parent)
+    : ActionsModel(*NextAppCore::instance(), parent)
 {
+}
+
+ActionsModel::ActionsModel(RuntimeServices& runtime, QObject *parent)
+    : QAbstractListModel(parent)
+    , runtime_{runtime}
+{
+    pagination_.setPageSize(runtime_.settings().value("pagination/page_size", 500).toUInt());
     flags_.setActive(true);
     flags_.setDone(false);
     flags_.setUnscheduled(true);
     flags_.setUpcoming(true);
 
-    connect(std::addressof(ServerComm::instance()), &ServerComm::onUpdate, this, &ActionsModel::onUpdate);
-    connect(std::addressof(ServerComm::instance()), &ServerComm::receivedCurrentWorkSessions, this, &ActionsModel::receivedWorkSessions);
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate, this, &ActionsModel::onUpdate);
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::receivedCurrentWorkSessions, this, &ActionsModel::receivedWorkSessions);
     connect(MainTreeModel::instance(), &MainTreeModel::selectedChanged, this, &ActionsModel::selectedTreeNodeChanged);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionChanged, this, &ActionsModel::actionChanged);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionDeleted, this, &ActionsModel::actionDeleted);
     connect(ActionInfoCache::instance(), &ActionInfoCache::actionAdded, this, &ActionsModel::actionAdded);
     connect(ActionInfoCache::instance(), &ActionInfoCache::cacheReloaded, this, &ActionsModel::cacheReloaded);
-    connect(std::addressof(ServerComm::instance()), &ServerComm::dataUpdated, [this]() {
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::dataUpdated, [this]() {
         fetchIf();
     });
 
@@ -266,7 +273,7 @@ ActionsModel::ActionsModel(QObject *parent)
 
     connect(ActionsOnCurrentCalendar::instance(), &ActionsOnCurrentCalendar::actionAdded, this, [this](const QUuid& action) {
         if (valid_) {
-            if (const auto row = findCurrentRow(actions_, action) ; row < 0) {
+            if (const auto row = findCurrentRow(actions_, action) ; row >= 0) {
                 const auto cix = index(row);
                 emit dataChanged(cix, cix);
             }
@@ -282,13 +289,15 @@ ActionsModel::ActionsModel(QObject *parent)
         }
     });
 
-    connect(NextAppCore::instance(), &NextAppCore::propertyChanged, this, [this](const QString& name) {
-        if (mode_ == FetchWhat::FW_ON_CALENDAR && name == "primaryForActionList") {
-            QMetaObject::invokeMethod(this, [this] {
-                fetchIf();
-            }, Qt::QueuedConnection);
-        }
-    });
+    if (auto *core = dynamic_cast<NextAppCore*>(&runtime_)) {
+        connect(core, &NextAppCore::propertyChanged, this, [this](const QString& name) {
+            if (mode_ == FetchWhat::FW_ON_CALENDAR && name == "primaryForActionList") {
+                QMetaObject::invokeMethod(this, [this] {
+                    fetchIf();
+                }, Qt::QueuedConnection);
+            }
+        });
+    }
 
     connect(ActionsWorkedOnTodayCache::instance(), &ActionsWorkedOnTodayCache::modelReset, this, [this] {
         if (valid_) {
@@ -296,14 +305,16 @@ ActionsModel::ActionsModel(QObject *parent)
         }
     });
 
-    connect(NextAppCore::instance(), &NextAppCore::currentDateChanged, this, [this]() {
-        fetchIf();
-    });
+    if (auto *core = dynamic_cast<NextAppCore*>(&runtime_)) {
+        connect(core, &NextAppCore::currentDateChanged, this, [this]() {
+            fetchIf();
+        });
+    }
 }
 
 void ActionsModel::addAction(const nextapp::pb::Action &action)
 {
-    ServerComm::instance().addAction(action);
+    runtime_.serverComm().addAction(action);
 }
 
 void ActionsModel::updateAction(const nextapp::pb::Action &action)
@@ -317,12 +328,12 @@ void ActionsModel::updateAction(const nextapp::pb::Action &action)
         auto urgency = ui.urgency();
         auto importance = ui.importance();
     }
-    ServerComm::instance().updateAction(action);
+    runtime_.serverComm().updateAction(action);
 }
 
 void ActionsModel::deleteAction(const QString &uuid)
 {
-    ServerComm::instance().deleteAction(uuid);
+    runtime_.serverComm().deleteAction(uuid);
 }
 
 nextapp::pb::Action ActionsModel::newAction()
@@ -360,12 +371,12 @@ ActionPrx *ActionsModel::getAction(QString uuid)
 
 void ActionsModel::markActionAsDone(const QString &actionUuid, bool done)
 {
-    ServerComm::instance().markActionAsDone(actionUuid, done);
+    runtime_.serverComm().markActionAsDone(actionUuid, done);
 }
 
 void ActionsModel::markActionAsFavorite(const QString &actionUuid, bool favorite)
 {
-    ServerComm::instance().markActionAsFavorite(actionUuid, favorite);
+    runtime_.serverComm().markActionAsFavorite(actionUuid, favorite);
 }
 
 void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
@@ -744,7 +755,7 @@ pb::Due ActionsModel::setDue(time_t start, time_t until, nextapp::pb::ActionDueK
     }
     pb::Due due;
     due.setKind(kind);
-    const auto gs = ServerComm::instance().getGlobalSettings();
+    const auto gs = runtime_.serverComm().getGlobalSettings();
 
     switch(kind) {
     case pb::ActionDueKindGadget::ActionDueKind::SPAN_HOURS:
@@ -786,7 +797,7 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
 {
     pb::Due due;
     due.setKind(kind);
-    const auto gs = ServerComm::instance().getGlobalSettings();
+    const auto gs = runtime_.serverComm().getGlobalSettings();
 
     time_t start = 0;
     time_t end = 0;
@@ -1038,7 +1049,7 @@ bool ActionsModel::moveToNode(const QString &actionUuid, const QString &nodeUuid
             return false;
         }
 
-        ServerComm::instance().moveAction(actionUuid, nodeUuid);
+        runtime_.serverComm().moveAction(actionUuid, nodeUuid);
 
         return true;
     }
@@ -1433,7 +1444,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 
     if (!isVisible() ) {
         LOG_TRACE_N << "Not visible. Skipping fetch. connected="
-                    << ServerComm::instance().connected() << ", visible=" << isVisible();
+                    << runtime_.serverComm().connected() << ", visible=" << isVisible();
         co_return;
     }
 
@@ -1585,7 +1596,7 @@ LIMIT {} OFFSET {})",
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
         pushMatch();
-        auto start_of_week = getFirstDayOfWeek(date);
+        auto start_of_week = getFirstDayOfWeek(runtime_.serverComm().globalSettings(), date);
         params.push_back(start_of_week.startOfDay());
         params.push_back(start_of_week.addDays(7).startOfDay());
     } break;
@@ -1601,7 +1612,7 @@ LIMIT {} OFFSET {})",
                      sorting.at(sort_),
                      pagination_.pageSize(), pagination_.nextOffset());
         pushMatch();
-        auto start_of_week = getFirstDayOfWeek(date.addDays(7));
+        auto start_of_week = getFirstDayOfWeek(runtime_.serverComm().globalSettings(), date.addDays(7));
         params.push_back(start_of_week.startOfDay());
         params.push_back(start_of_week.addDays(7).startOfDay());
     } break;
@@ -1702,7 +1713,7 @@ FROM action a {}{} WHERE a.favorite = 1 AND a.status={} {} ORDER BY {} LIMIT {} 
 
     case FetchWhat::FW_ON_CALENDAR:
         // Get the date of the rightside calendar
-        if (auto prop = NextAppCore::instance()->getProperty("primaryForActionList"); prop.isValid()) {
+        if (auto prop = runtime_.appProperty("primaryForActionList"); prop.isValid()) {
             auto cal_date = prop.toDate();
             if (cal_date.isValid()) {
                 sql = nextapp::format(R"(SELECT DISTINCT a.id,
@@ -1768,7 +1779,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
 
     co_await ActionInfoCache::instance()->updateAllScores();
     {
-        auto& db = NextAppCore::instance()->db();
+        auto& db = runtime_.db();
         auto result = co_await db.query(QString::fromLatin1(sql), params);
         if (result.has_value()) {
             // Make a new list of actions with the sorted ID's
@@ -1873,7 +1884,7 @@ void ActionsModel::actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &a
             break;
         case FetchWhat::FW_CURRENT_WEEK: {
             if (ai->hasDue() && ai->due().hasDue()) {
-                auto start_of_week = getFirstDayOfWeek(QDate::currentDate());
+                auto start_of_week = getFirstDayOfWeek(runtime_.serverComm().globalSettings(), QDate::currentDate());
                 if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
                     && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
                     && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
@@ -1883,7 +1894,7 @@ void ActionsModel::actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &a
         } break;
         case FetchWhat::FW_NEXT_WEEK: {
             if (ai->hasDue() && ai->due().hasDue()) {
-                auto start_of_week = getFirstDayOfWeek(QDate::currentDate().addDays(7));
+                auto start_of_week = getFirstDayOfWeek(runtime_.serverComm().globalSettings(), QDate::currentDate().addDays(7));
                 if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
                     && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
                     && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
@@ -1980,7 +1991,7 @@ void ActionsModel::batchUpdateActions(nextapp::pb::UpdateActionsReq &req, const 
     }
     req.setActions(uuids);
 
-    ServerComm::instance().updateActions(req);
+    runtime_.serverComm().updateActions(req);
 }
 
 void ActionsModel::cacheReloaded()

@@ -1,14 +1,21 @@
 #include "ActionsWorkedOnTodayCache.h"
 #include "NextAppCore.h"
 #include "WorkSessionsModel.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "WorkModelBase.h"
 #include "WorkCache.h"
 #include "util.h"
 
-ActionsWorkedOnTodayCache::ActionsWorkedOnTodayCache() {
-    connect(&ServerComm::instance(), &ServerComm::statusChanged, [this]() {
-        if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
+ActionsWorkedOnTodayCache::ActionsWorkedOnTodayCache()
+    : ActionsWorkedOnTodayCache(*NextAppCore::instance())
+{
+}
+
+ActionsWorkedOnTodayCache::ActionsWorkedOnTodayCache(RuntimeServices& runtime)
+    : runtime_{runtime}
+{
+    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::statusChanged, [this]() {
+        if (runtime_.serverComm().status() == ServerCommAccess::Status::ONLINE) {
             init();
         };
     });
@@ -29,11 +36,13 @@ ActionsWorkedOnTodayCache::ActionsWorkedOnTodayCache() {
         init();
     });
 
-    connect(NextAppCore::instance(), &NextAppCore::currentDateChanged, this, [this]() {
-        init();
-    });
+    if (auto *core = dynamic_cast<NextAppCore*>(&runtime_)) {
+        connect(core, &NextAppCore::currentDateChanged, this, [this]() {
+            init();
+        });
+    }
 
-    if (ServerComm::instance().status() == ServerComm::Status::ONLINE) {
+    if (runtime_.serverComm().status() == ServerCommAccess::Status::ONLINE) {
         init();
     };
 }
@@ -60,7 +69,7 @@ again:
     });
 
     // Query the db for all sessions worked on today
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
 
     QString query = R"(SELECT DISTINCT action
         FROM work_session

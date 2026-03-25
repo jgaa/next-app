@@ -1,20 +1,25 @@
 #include "GreenDayModel.h"
 #include "GreenDaysModel.h"
 #include "NextAppCore.h"
-#include "ServerComm.h"
+#include "ServerCommAccess.h"
 #include "util.h"
 
 GreenDayModel::GreenDayModel(int year, int month, int day, GreenDaysModel *parent)
-    : QObject{parent}, year_{year}, month_{month}, mday_{day}
+    : GreenDayModel(year, month, day, parent, parent->runtime())
+{
+}
+
+GreenDayModel::GreenDayModel(int year, int month, int day, GreenDaysModel *parent, RuntimeServices& runtime)
+    : QObject{parent}, year_{year}, month_{month}, mday_{day}, runtime_{runtime}
 {
     assert(year_);
-    connect(&ServerComm::instance(),
-            &ServerComm::receivedDay,
+    connect(std::addressof(runtime_.serverComm()),
+            &ServerCommAccess::receivedDay,
             this,
             &GreenDayModel::receivedDay);
 
-    connect(&ServerComm::instance(),
-            &ServerComm::onUpdate,
+    connect(std::addressof(runtime_.serverComm()),
+            &ServerCommAccess::onUpdate,
             this,
             &GreenDayModel::onUpdate);
 
@@ -106,7 +111,7 @@ void GreenDayModel::commit() {
     assert(day_.day().date().month() + 1 == month_);
     assert(day_.day().date().mday() == mday_);
 
-    ServerComm::instance().setDay(day_);
+    runtime_.serverComm().setDay(day_);
 }
 
 void GreenDayModel::revert() {
@@ -184,7 +189,7 @@ void GreenDayModel::updateSelf(const nextapp::pb::CompleteDay &day) {
 QCoro::Task<void> GreenDayModel::fetch()
 {
     // TODO: Handle offline/not synched states
-    auto& db = NextAppCore::instance()->db();
+    auto& db = runtime_.db();
 
     QList<QVariant> params;
     params.append(QDate{year_, month_, mday_});
