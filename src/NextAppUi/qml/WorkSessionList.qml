@@ -259,7 +259,7 @@ Rectangle {
     }
 
     function openWorkSessionDlg(uuid) {
-        Connon.openDialog("EditWorkSession.qml", ApplicationWindow.window, {
+        Common.openDialog("EditWorkSession.qml", ApplicationWindow.window, {
             title: qsTr("Edit Work Session"),
             ws: tableView.model.getSession(uuid),
             model: tableView.model
