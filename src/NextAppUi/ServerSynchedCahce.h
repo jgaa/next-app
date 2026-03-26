@@ -48,7 +48,12 @@ public:
         assert(update);
         if (isRelevant(*update)) {
             if (valid()) {
-                pocessUpdate(update);
+                pocessUpdate(update).then(
+                    [] {},
+                    [this, update](const std::exception &e) {
+                        LOG_ERROR_N << "Failed to apply live update for " << itemName()
+                                    << ": " << e.what();
+                    });
                 return;
             }
 

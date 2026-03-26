@@ -800,6 +800,26 @@ set_target_properties(NextAppUiLib PROPERTIES
 )
 
 if (WITH_TESTS AND BUILD_TESTING)
+    qt_add_executable(nextappui_acceptance_device
+        tests/nextappui_acceptance_device.cpp
+    )
+
+    target_include_directories(nextappui_acceptance_device PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_link_libraries(nextappui_acceptance_device PRIVATE
+        NextAppUiCoreLib
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Qml
+        Qt6::Quick
+    )
+
+    set_target_properties(nextappui_acceptance_device PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+
     qt_add_executable(tst_nextappui_runtime
         tests/tst_nextappui_runtime.cpp
         tests/TestRuntimeSupport.h
@@ -820,6 +840,33 @@ if (WITH_TESTS AND BUILD_TESTING)
     )
 
     add_test(NAME tst_nextappui_runtime COMMAND tst_nextappui_runtime)
+
+    qt_add_executable(tst_nextappui_acceptance
+        tests/tst_nextappui_acceptance.cpp
+        tests/AcceptanceHarness.cpp
+        tests/AcceptanceHarness.h
+    )
+
+    target_include_directories(tst_nextappui_acceptance PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_compile_definitions(tst_nextappui_acceptance PRIVATE
+        NEXTAPP_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+
+    target_link_libraries(tst_nextappui_acceptance PRIVATE
+        NextAppUiCoreLib
+        Qt6::Core
+        Qt6::Network
+        Qt6::Test
+    )
+
+    set_target_properties(tst_nextappui_acceptance PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+
+    add_test(NAME tst_nextappui_acceptance COMMAND tst_nextappui_acceptance)
 endif()
 
 if (APPLE)

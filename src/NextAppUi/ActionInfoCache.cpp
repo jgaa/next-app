@@ -333,12 +333,18 @@ ActionInfoCache::ActionInfoCache(RuntimeServices& runtime, QObject *parent)
         onUpdate(update);
     });
 
-    connect(MainTreeModel::instance(), &MainTreeModel::nodeDeleted, [this]() -> QCoro::Task<void> {
-        LOG_TRACE << "Node was deleted. Will re-load actions cache.";
-        clear();
-        emit cacheReloaded();
-        co_await loadFromCache();
-        emit cacheReloaded();
+    connect(MainTreeModel::instance(), &MainTreeModel::nodeDeleted, [this]() {
+        ([this]() -> QCoro::Task<void> {
+            LOG_TRACE << "Node was deleted. Will re-load actions cache.";
+            clear();
+            emit cacheReloaded();
+            co_await loadFromCache();
+            emit cacheReloaded();
+        })().then(
+            [] {},
+            [](const std::exception &e) {
+                LOG_ERROR_N << "Failed to reload action cache after node deletion: " << e.what();
+            });
     });
 }
 
@@ -716,7 +722,7 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
             });
         };
         const auto origin = action.hasOrigin() ? action.origin() : QString{};
-        const auto origin_uuid = toQuid(origin);
+        const auto origin_uuid = origin.isEmpty() ? QUuid{} : toQuid(origin);
         const bool needs_reference_reload = deleted
             || (!origin.isEmpty()
                 && hot_cache_.find(origin_uuid) == hot_cache_.end());

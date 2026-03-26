@@ -24,6 +24,7 @@ run_tests=ON
 cmake_build_type=RelWithDebInfo
 image_tag=$project
 build_image="${project}bld:latest"
+build_container_name="${project}-build-$$-${RANDOM}"
 scriptname=`basename "$0"`
 version=v`grep " set(NEXTAPP_VERSION" CMakeLists.txt | xargs | cut -f 2 -d ' ' | cut -f1 -d')'`
 git_hash=`git rev-parse --short HEAD`
@@ -59,13 +60,27 @@ usage() {
   echo
 }
 
+have_buildx() {
+    docker buildx version >/dev/null 2>&1
+}
+
+docker_build_image() {
+    local context="$1"
+    shift
+
+    if have_buildx; then
+        docker buildx build "$@" --load "${context}" || die
+    else
+        docker build "$@" "${context}" || die
+    fi
+}
+
 # Make a build-container that contains the compiler and dev-libraries
 # for the build. We don't want all that in the destination container.
 build_bldimage() {
     pushd docker
     echo Buiding build-image
-    #docker build -f Dockerfile.build -t ${build_image} . || die
-    docker buildx build --file Dockerfile.build --tag ${build_image} --load . || die
+    docker_build_image . --file Dockerfile.build --tag ${build_image}
     popd
 }
 
@@ -201,10 +216,11 @@ echo "==================================================="
 docker run                                                           \
     --rm ${docker_run_args}                                          \
     -u $UID                                                          \
-    --name "${project}-build"                                        \
+    --name "${build_container_name}"                                 \
     -e BUILD_DEB=${build_deb}                                        \
     -e BUILD_DIR=/build                                              \
     -e BUILD_TYPE="${cmake_build_type}"                              \
+    -e DO_STRIP=${strip}                                             \
     -v ${SOURCE_DIR}:/src                                            \
     -v ${BUILD_DIR}/build:/build                                     \
     -v ${artifacts_dir}:/artifacts                                   \
@@ -244,7 +260,7 @@ fi
 
 pushd ${artifacts_dir}
 
-docker buildx build --tag ${target_image} --load . || die "Failed to make target: ${target_image}"
+docker_build_image . --tag ${target_image} || die "Failed to make target: ${target_image}"
 
 if [ "$push" = true ] ; then
     docker push ${target_image} || die "Failed to push target: ${target_image}"

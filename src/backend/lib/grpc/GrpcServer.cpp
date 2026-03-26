@@ -204,6 +204,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 device_uuid_ = session->deviceId();
                 setHasPush(session->hasPush());
                 user_ = session->userPtr();
+                session_ = session;
                 session->addCleanup([w=weak_from_this(), sid=session->sessionId(), when=session->createdTime()] {
                     if (auto self = w.lock()) {
                         LOG_TRACE << "Session " << sid
@@ -226,7 +227,6 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                                 << owner_.toJsonForLog(*req);
                     session->handlePushState(req->withpush());
                 }
-                session_ = session;
                 LOG_DEBUG << "Remote client " << context_->peer() << " is subscribing to updates as subscriber " << uuid()
                           << " from session " << session->sessionId()
                           << " for user " << session->user().userUuid();

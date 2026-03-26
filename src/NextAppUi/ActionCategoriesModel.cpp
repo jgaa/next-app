@@ -36,7 +36,11 @@ ActionCategoriesModel::ActionCategoriesModel(RuntimeServices& runtime, QObject *
 
     connect(&runtime_.serverComm(), &ServerCommAccess::onUpdate, this,
             [this](const std::shared_ptr<nextapp::pb::Update>& update) {
-                onUpdate(update);
+                onUpdate(update).then(
+                    [] {},
+                    [](const std::exception &e) {
+                        LOG_ERROR_N << "Failed to apply action category update: " << e.what();
+                    });
             });
 
     if (auto *core = dynamic_cast<NextAppCore*>(&runtime_)) {

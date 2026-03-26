@@ -1481,6 +1481,18 @@ TEST(TimePeriod, someWeekSundayFromSunday) {
     EXPECT_EQ(tp.end, toTimet(2024_y/April/14)); // 7 days
 }
 
+TEST(EmailValidation, acceptsCommonAddresses) {
+    EXPECT_TRUE(isValidEmail("acceptance_user@example.test"));
+    EXPECT_TRUE(isValidEmail("acceptance-user@example.test"));
+    EXPECT_TRUE(isValidEmail("user.name+tag@example.co.uk"));
+}
+
+TEST(EmailValidation, rejectsClearlyInvalidAddresses) {
+    EXPECT_FALSE(isValidEmail("plainaddress"));
+    EXPECT_FALSE(isValidEmail("user@@example.test"));
+    EXPECT_FALSE(isValidEmail("user@example"));
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
