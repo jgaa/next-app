@@ -317,7 +317,8 @@ string Base64Encode(const span_t in)
 }
 
 bool isValidEmail(const std::string& email) {
-    static const boost::regex pattern("(\\w+)(\\.|_)?(\\w*)@(\\w+)(\\.(\\w+))+");
+    static const boost::regex pattern(
+        R"(^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$)");
     return boost::regex_match(email, pattern);
 }
 
