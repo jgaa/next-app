@@ -21,6 +21,8 @@ class CalendarCache : public QObject
     , public ServerSynchedCahce<nextapp::pb::TimeBlock, CalendarCache>
 {
     Q_OBJECT
+    friend class tst_NextAppUiRuntime;
+
 public:
     struct AudioEvent {
         enum Kind {

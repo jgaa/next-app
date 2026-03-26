@@ -799,6 +799,29 @@ set_target_properties(NextAppUiLib PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
+if (WITH_TESTS AND BUILD_TESTING)
+    qt_add_executable(tst_nextappui_runtime
+        tests/tst_nextappui_runtime.cpp
+        tests/TestRuntimeSupport.h
+    )
+
+    target_include_directories(tst_nextappui_runtime PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_link_libraries(tst_nextappui_runtime PRIVATE
+        NextAppUiCoreLib
+        Qt6::Core
+        Qt6::Test
+    )
+
+    set_target_properties(tst_nextappui_runtime PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+
+    add_test(NAME tst_nextappui_runtime COMMAND tst_nextappui_runtime)
+endif()
+
 if (APPLE)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER eu.lastviking.nextapp

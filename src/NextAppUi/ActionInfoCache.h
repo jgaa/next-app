@@ -119,6 +119,8 @@ public:
     }
 
 private:
+    friend class tst_NextAppUiRuntime;
+
     RuntimeServices& runtime_;
     std::shared_ptr<nextapp::pb::ActionInfo> get_(const QString &action_uuid);
     std::shared_ptr<nextapp::pb::ActionInfo> get_(const QUuid &action_uuid);

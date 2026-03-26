@@ -68,6 +68,8 @@ auto remove(const nextapp::pb::StringList& sl, T index) {
 
 class ServerComm : public ServerCommAccess
 {
+    friend class tst_NextAppUiRuntime;
+
 public:
     enum SignupStatus {
         SIGNUP_NOT_STARTED,
@@ -303,10 +305,12 @@ signals:
     void messagesChanged();
     void resynching();
 
-private:
+private slots:
     void onAppWokeFromSleep();
     void onAppSettingsChanged();
     void onAppSuspending();
+
+private:
     void onReachabilityChanged(QNetworkInformation::Reachability reachability);
     void errorOccurred(const QGrpcStatus &status);
     void onServerInfo(nextapp::pb::ServerInfo info);

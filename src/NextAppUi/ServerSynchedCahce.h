@@ -157,7 +157,7 @@ public:
         co_return 0;
     }
 
-    QCoro::Task<bool> synchFromServer()
+    virtual QCoro::Task<bool> synchFromServer()
     {
         nextapp::pb::GetNewReq req;
         if (runtime().serverComm().shouldUseUpdatedIdSync()) {
