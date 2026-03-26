@@ -1764,44 +1764,54 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
     const auto batch_size = server().config().options.stream_batch_size;
     static const auto prefixed_cols = prefixNames(ToAction::allSelectCols(), "a.");
     const auto cursor = getIncrementalSyncCursor(req);
-    const auto where_clause = cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
-    const auto order_clause = cursor.use_updated_id ? "updated_id, sort_path, created_date, id" : "updated, sort_path, created_date, id";
+    const auto full_sync = cursor.use_updated_id && cursor.since == 0;
+    const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
-    const auto sql = format(R"(
-        WITH RECURSIVE action_tree AS (
-            SELECT
-                {0},
-                CAST(id AS CHAR(1024)) AS sort_path
-            FROM action
-            WHERE user=? AND origin IS NULL
-            UNION ALL
-            SELECT
-                {1},
-                CONCAT(action_tree.sort_path, '/', a.id) AS sort_path
-            FROM action AS a
-            INNER JOIN action_tree ON a.origin = action_tree.id
-            WHERE a.user=?
-        )
-        SELECT {0}
-        FROM action_tree
-        WHERE {2} {3}
-        ORDER BY {4})",
-        ToAction::allSelectCols(),
-        prefixed_cols,
-        where_clause,
-        removeDeleted ? "AND status != 'deleted'" : "",
-        order_clause);
-    if (cursor.use_updated_id) {
+    //const auto sql = format(R"(
+        // WITH RECURSIVE action_tree AS (
+        //     SELECT
+        //         {0},
+        //         CAST(id AS CHAR(1024)) AS sort_path
+        //     FROM action
+        //     WHERE user=? AND origin IS NULL
+        //     UNION ALL
+        //     SELECT
+        //         {1},
+        //         CONCAT(action_tree.sort_path, '/', a.id) AS sort_path
+        //     FROM action AS a
+        //     INNER JOIN action_tree ON a.origin = action_tree.id
+        //     WHERE a.user=?
+        // )
+        // SELECT {0}
+        // FROM action_tree
+        // WHERE {2} {3}
+        // ORDER BY {4})",
+        // ToAction::allSelectCols(),
+        // prefixed_cols,
+        // where_clause,
+        // removeDeleted ? "AND status != 'deleted'" : "",
+        // order_clause);
+
+    const auto sql = format("SELECT {} from action WHERE user=? AND {} {} ",
+                            ToAction::allSelectCols(),
+                            where_clause,
+                            removeDeleted ? "AND status != 'deleted'" : "");
+
+    if (full_sync) {
         co_await dbh.start_exec(
             sql,
-            uctx->dbOptions(), cuser, cuser, cursor.since);
+            uctx->dbOptions(), cuser);
+    } else if (cursor.use_updated_id) {
+        co_await dbh.start_exec(
+            sql,
+            uctx->dbOptions(), cuser, cursor.since);
     } else {
         co_await dbh.start_exec(
             sql,
-            uctx->dbOptions(), cuser, cuser, toMsDateTime(cursor.since, uctx->tz()));
+            uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
     }
 
     nextapp::pb::Status reply;

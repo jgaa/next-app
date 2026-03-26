@@ -748,14 +748,19 @@ failed:
         // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
         assert(rctx.dbh);
         const auto cursor = getIncrementalSyncCursor(*req);
+        const auto full_sync = cursor.use_updated_id && cursor.since == 0;
+        const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
         const auto sql = format(R"(SELECT {}
-            FROM notification WHERE {} ?
+            FROM notification WHERE {}
             AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
             AND (valid_to IS NULL OR valid_to > NOW())
             ORDER BY {}, id)", ToNotification::fields,
-            cursor.use_updated_id ? "updated_id >" : "updated >",
+            where_clause,
             cursor.use_updated_id ? "updated_id" : "updated");
-        if (cursor.use_updated_id) {
+        if (full_sync) {
+            co_await  rctx.dbh->start_exec(sql,
+              uctx->dbOptions(), cuser, rctx.uctx->tenantUuid());
+        } else if (cursor.use_updated_id) {
             co_await  rctx.dbh->start_exec(sql,
               uctx->dbOptions(), cursor.since, cuser, rctx.uctx->tenantUuid());
         } else {

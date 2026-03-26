@@ -309,14 +309,21 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    const auto sql = cursor.use_updated_id
+    const auto full_sync = cursor.use_updated_id && cursor.since == 0;
+    const auto sql = full_sync
         ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
-                   WHERE user=? AND updated_id > ?
+                   WHERE user=?
                    ORDER BY updated_id, date)"
-        : R"(SELECT deleted, updated, CAST(0 AS UNSIGNED), date, color, notes, report FROM day
-                   WHERE user=? AND updated > ?
-                   ORDER BY updated, date)";
-    if (cursor.use_updated_id) {
+        : cursor.use_updated_id
+            ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
+                       WHERE user=? AND updated_id > ?
+                       ORDER BY updated_id, date)"
+            : R"(SELECT deleted, updated, CAST(0 AS UNSIGNED), date, color, notes, report FROM day
+                       WHERE user=? AND updated > ?
+                       ORDER BY updated, date)";
+    if (full_sync) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
+    } else if (cursor.use_updated_id) {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
     } else {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz(), true));
@@ -409,18 +416,26 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     [this, req] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
         const auto cursor = getIncrementalSyncCursor(*req);
-        const auto sql = cursor.use_updated_id
+        const auto full_sync = cursor.use_updated_id && cursor.since == 0;
+        const auto sql = full_sync
             ? "SELECT id, name, color, score, updated, updated_id "
               "FROM day_colors "
-              "WHERE tenant IS NULL AND updated_id > ? "
+              "WHERE tenant IS NULL "
               "ORDER BY updated_id, id"
-            : "SELECT id, name, color, score, updated, CAST(0 AS UNSIGNED) "
-              "FROM day_colors "
-              "WHERE tenant IS NULL AND updated > ? "
-              "ORDER BY updated, id";
-        auto res = cursor.use_updated_id
-            ? co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions(), cursor.since)
-            : co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions(), toMsDateTime(req->since(), rctx.uctx->tz()));
+            : cursor.use_updated_id
+                ? "SELECT id, name, color, score, updated, updated_id "
+                  "FROM day_colors "
+                  "WHERE tenant IS NULL AND updated_id > ? "
+                  "ORDER BY updated_id, id"
+                : "SELECT id, name, color, score, updated, CAST(0 AS UNSIGNED) "
+                  "FROM day_colors "
+                  "WHERE tenant IS NULL AND updated > ? "
+                  "ORDER BY updated, id";
+        auto res = full_sync
+            ? co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions())
+            : cursor.use_updated_id
+                ? co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions(), cursor.since)
+                : co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions(), toMsDateTime(req->since(), rctx.uctx->tz()));
 
         enum Cols {
             ID, NAME, COLOR, SCORE, UPDATED, UPDATED_ID

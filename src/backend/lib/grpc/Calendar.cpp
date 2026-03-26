@@ -326,12 +326,16 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    const auto sql = format("SELECT {} from time_block WHERE user=? AND {} ? {} ORDER BY {}",
+    const auto full_sync = cursor.use_updated_id && cursor.since == 0;
+    const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto sql = format("SELECT {} from time_block WHERE user=? AND {} {} ORDER BY {}",
                             ToTimeBlock::columns,
-                            cursor.use_updated_id ? "updated_id >" : "updated >",
+                            where_clause,
                             removeDeleted ? "AND kind != 'deleted'" : "",
                             cursor.use_updated_id ? "updated_id, start_time, end_time, id" : "updated, start_time, end_time, id");
-    if (cursor.use_updated_id) {
+    if (full_sync) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
+    } else if (cursor.use_updated_id) {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
     } else {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
