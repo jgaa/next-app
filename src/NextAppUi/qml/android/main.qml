@@ -14,7 +14,6 @@ ApplicationWindow {
     visible: NaComm.signupStatus == NaComm.SIGNUP_OK
     width: NaCore.width
     height: NaCore.height
-
     Settings {
         id: settings
         property bool onboarding: false
@@ -154,6 +153,16 @@ ApplicationWindow {
 
     CommonElements {
         id: ce
+    }
+
+    SynchPopup {
+        parent: Overlay.overlay
+        anchors.fill: parent
+        visible: NaComm.signupStatus === NaComm.SIGNUP_OK
+                 && NaComm.messages.length > 0
+                 && NaComm.status !== NaComm.ONLINE
+                 && NaComm.status !== NaComm.MANUAL_OFFLINE
+        z: 10000
     }
 
     function openWindow(name, args) {

@@ -1,5 +1,15 @@
 ####### time_date_tests
 
+if (NOT GTEST_LIBRARIES)
+    if (TARGET GTest::gtest)
+        set(GTEST_LIBRARIES GTest::gtest)
+    elseif(TARGET gtest::gtest)
+        set(GTEST_LIBRARIES gtest::gtest)
+    else()
+        message(FATAL_ERROR "Neither GTest::gtest nor gtest::gtest targets were found")
+    endif()
+endif()
+
 add_executable(time_date_tests time_date_tests.cpp)
 
 set_property(TARGET time_date_tests PROPERTY CXX_STANDARD 20)

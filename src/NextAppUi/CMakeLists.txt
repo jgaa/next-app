@@ -34,7 +34,9 @@ endif()
 
 option(USE_STATIC_QT "Build with static Qt libraries" OFF)
 option(UI_USE_STATIC_BOOST "Build with static Boost libraries" ON)
-option(WITH_TESTS "Enable Tests" ON)
+if (NEXTAPP_WITH_TESTS)
+    option(NEXTAPP_WITH_TESTS_UI "Enable Nextapp UI Tests" ON)
+endif()
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
 option(NEXTAPP_EXPAT_FIX "Injects a dependency for expat in fontconfig to deal with a breakage in vcpkg/fontconfig/qtbase" OFF)
 
@@ -799,7 +801,7 @@ set_target_properties(NextAppUiLib PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
-if (WITH_TESTS AND BUILD_TESTING)
+if (NEXTAPP_WITH_TESTS_UI)
     qt_add_executable(nextappui_acceptance_device
         tests/nextappui_acceptance_device.cpp
     )

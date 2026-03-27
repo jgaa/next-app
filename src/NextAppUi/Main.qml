@@ -21,11 +21,6 @@ ApplicationWindow {
         property bool onboarding: false
     }
 
-    readonly property bool syncOverlayVisible:
-        NaComm.status === NaComm.READY_TO_CONNECT
-        || NaComm.status === NaComm.CONNECTING
-        || NaComm.status === NaComm.INITIAL_SYNC
-
     Component.onCompleted: {
         if (!settings.onboarding) {
             console.log("Opening onboarding")
@@ -437,44 +432,14 @@ ApplicationWindow {
         resizeWindow: appWindow
     }
 
-    Rectangle {
+    SynchPopup {
+        parent: Overlay.overlay
         anchors.fill: parent
-        color: MaterialDesignStyling.secondaryContainer
-        opacity: 0.8
-        visible: appWindow.syncOverlayVisible
-        z: 1000
-
-        MouseArea {
-            anchors.fill: parent
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-
-            Item {
-                Layout.fillHeight: true
-            }
-
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Synchronizing with the server, please wait...")
-                font.pointSize: 18
-                color: MaterialDesignStyling.onSecondaryContainer
-            }
-
-            Text {
-                Layout.preferredHeight: parent.height * 0.6
-                Layout.alignment: Qt.AlignHCenter
-                font.pointSize: 11
-                color: MaterialDesignStyling.onSecondaryContainer
-                text: NaComm.messages
-                wrapMode: Text.WordWrap
-            }
-
-            Item {
-                Layout.fillHeight: true
-            }
-        }
+        visible: NaComm.signupStatus === NaComm.SIGNUP_OK
+                 && NaComm.messages.length > 0
+                 && NaComm.status !== NaComm.ONLINE
+                 && NaComm.status !== NaComm.MANUAL_OFFLINE
+        z: 10000
     }
 
     function openDialog(name, args) {

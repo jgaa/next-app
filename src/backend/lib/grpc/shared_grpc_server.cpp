@@ -188,15 +188,16 @@ TimePeriod toTimePeriodWeek(time_t when, const UserContext& uctx)
 {
     using namespace std::chrono;
     const auto& tz = uctx.tz();
-    const auto start_of_week_offset = uctx.sundayIsFirstWeekday() ? days(0) : days(1);
 
-    const auto start = floor<days>(system_clock::from_time_t(when));
-    auto zoned_ref = zoned_time{&tz, start};
+    const auto sys_when = system_clock::from_time_t(when);
+    const auto zoned_ref = zoned_time{&tz, sys_when};
     const auto l_day = floor<days>(zoned_ref.get_local_time());
-    const auto ymd = year_month_day{l_day};
     const auto ymw = year_month_weekday{l_day};
 
-    const auto start_day = l_day + (days{ymw.weekday().c_encoding()} * -1) + start_of_week_offset;
+    const auto days_since_week_start = uctx.sundayIsFirstWeekday()
+        ? days{ymw.weekday().c_encoding()}
+        : days{ymw.weekday().iso_encoding() - 1};
+    const auto start_day = l_day - days_since_week_start;
     const auto end_day = start_day + days{7};
 
     const auto local_start = zoned_time{&tz, start_day};

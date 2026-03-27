@@ -63,7 +63,7 @@ endif()
   set(NEXTPP_DISABLE_TRACE_LOGGING_DEFAULT OFF)
 #endif()
 
-option(NEXTAPP_WITH_TESTS "Enable Tests" OFF)
+option(NEXTAPP_WITH_TESTS "Enable Nestapp Tests" OFF)
 option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" ON)
 option(NEXTAPP_WITH_UI "Include the UI project in the build" ON)
 option(NEXTAPP_WITH_PLANS "Include the plans in the build" ON)

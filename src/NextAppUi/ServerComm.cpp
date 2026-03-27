@@ -476,6 +476,7 @@ void ServerComm::stop()
 
     emit connectedChanged();
     if (updates_) {
+        disconnect(updates_.get(), nullptr, this, nullptr);
         updates_->cancel();
         updates_.reset();
     }
@@ -1719,6 +1720,7 @@ QCoro::Task<void> ServerComm::updateDataEpoc()
 
 void ServerComm::clearMessages()
 {
+    LOG_DEBUG_N << "Cleared messages";
     messages_ = "";
     emit messagesChanged();
 }
@@ -1729,12 +1731,14 @@ void ServerComm::addMessage(const QString &msg)
         messages_ += "\n";
     }
     messages_ += msg;
+    LOG_DEBUG_N << "Messages: " << messages_;
     emit messagesChanged();
 }
 
 void ServerComm::setMessage(const QString &msg)
 {
     messages_ = msg;
+    LOG_DEBUG_N << "Messages: " << messages_;
     emit messagesChanged();
 }
 
@@ -1831,6 +1835,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
     };
 
     bool needs_sync = false;
+    bool server_reset_detected = false;
     uint64_t notification_sync_target{0};
     uint64_t hello_last_notification{0};
     auto res = co_await rpc(nextapp::pb::Empty{},
@@ -1854,14 +1859,21 @@ QCoro::Task<void> ServerComm::startNextappSession()
             server_supports_updated_id_ = res.hello().supportsUpdatedId();
             if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
                 needs_sync = true;
+                server_reset_detected = true;
                 last_seen_server_instance_ = res.hello().serverInstanceTag();
                 LOG_INFO_N << "Needs sync. Server instance tag changed to " << last_seen_server_instance_;
-            } else if (res.hello().lastPublishId() < last_seen_update_id_) {
+            } else if (!res.hello().supportsUpdatedId()
+                       && res.hello().lastPublishId() < last_seen_update_id_) {
                 needs_sync = true;
                 LOG_INFO_N << "Needs sync. Server last publish id "
                             << res.hello().lastPublishId()
                             << " is behind our last applied update id "
                             << last_seen_update_id_;
+            } else if (res.hello().supportsUpdatedId()
+                       && res.hello().lastPublishId() < last_seen_update_id_) {
+                LOG_INFO_N << "Ignoring lower server last publish id "
+                           << res.hello().lastPublishId()
+                           << " because updated_id sync is supported and the durable baseline is tracked locally.";
             } else if (res.hello().lastPublishId() > last_seen_update_id_) {
                 LOG_INFO_N << "Server has " << (res.hello().lastPublishId() - last_seen_update_id_)
                            << " unapplied updates. Will request replay from message id "
@@ -1952,8 +1964,19 @@ failed:
     updates_ = client_->SubscribeToUpdates(ureq);
 #endif
 
-    connect(updates_.get(), &QGrpcServerStream::messageReceived, this, &ServerComm::onUpdateMessage);
-    connect(updates_.get(), &QGrpcServerStream::finished, this, [this] (const QGrpcStatus &status) {
+    auto *active_updates = updates_.get();
+    connect(active_updates, &QGrpcServerStream::messageReceived, this, [this, active_updates] {
+        if (updates_.get() != active_updates) {
+            LOG_DEBUG_N << "Ignoring messageReceived signal from stale update stream.";
+            return;
+        }
+        onUpdateMessage();
+    });
+    connect(active_updates, &QGrpcServerStream::finished, this, [this, active_updates] (const QGrpcStatus &status) {
+        if (updates_.get() != active_updates) {
+            LOG_DEBUG_N << "Ignoring finished signal from stale update stream: " << status.message();
+            return;
+        }
         if (status_ == Status::ONLINE) {
             LOG_WARN << "Server stream finished: " << status.message();
             setStatus(Status::ERROR);
@@ -2204,7 +2227,8 @@ failed:
         }
     }
 
-    if ((needs_sync || full_sync) && last_seen_update_id_ < session_start_publish_id_) {
+    if ((needs_sync || full_sync)
+        && (server_reset_detected || last_seen_update_id_ < session_start_publish_id_)) {
         last_seen_update_id_ = session_start_publish_id_;
         saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "completed sync baseline");
     }

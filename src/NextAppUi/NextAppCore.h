@@ -294,7 +294,6 @@ private:
     std::unique_ptr<DbStore> db_;
     std::unique_ptr<SettingsAccess> settings_;
     std::unique_ptr<ServerComm> server_comm_;
-    QObject* sync_popup_{} ;
 
     int height_{0};
     int width_{0};

@@ -92,6 +92,33 @@ Important locations:
 - docker command stdout/stderr:
   `/tmp/nextapp-acceptance/run-<id>/artifacts/`
 
+## Running with ctest
+
+You can also run the acceptance test from the build directory using ctest. The following command will use the same envvars as the description above.
+
+Note that this require the docker images to be built as described above. 
+
+```sh
+ NEXTAPP_ACCEPTANCE_RUN_BACKEND=1   NEXTAPP_ACCEPTANCE_REPOSITORY=jgaafromnorth   NEXTAPP_ACCEPTANCE_TAG=acceptance-local   NEXTAPP_ACCEPTANCE_TENANTS=3   NEXTAPP_ACCEPTANCE_DEVICES_PER_TENANT=5 ctest
+
+```
+
+The output could be something like:
+
+```
+Test project /var/local/build/next-app-Desktop-Debug
+    Start 1: time_date_tests
+1/3 Test #1: time_date_tests ..................   Passed    0.06 sec
+    Start 2: tst_nextappui_runtime
+2/3 Test #2: tst_nextappui_runtime ............   Passed    0.35 sec
+    Start 3: tst_nextappui_acceptance
+3/3 Test #3: tst_nextappui_acceptance .........   Passed  341.48 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Total Test time (real) = 341.89 sec
+```
+  
 ## Notes
 
 - The acceptance executable sets a larger Qt Test function timeout automatically.

@@ -90,7 +90,7 @@ Now, open another shell and change to your build directory. We must also start t
   --db-host 127.0.0.1 \
   --db-port 33006 \
   -l trace \
-  -L /tmp/nextappd.log \
+  -L /tmp/signupd.log \
   -T \
   --grpc-client-ca-cert tls/signup-ca.pem \
   --grpc-client-cert tls/signup-cert.pem \

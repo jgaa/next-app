@@ -617,22 +617,8 @@ void NextAppCore::setDragEnabled(bool drag_enabled) {
 
 void NextAppCore::showSyncPopup(bool visible)
 {
-    if (visible && !sync_popup_) {
-        sync_popup_ = openQmlComponent(QUrl(QStringLiteral("qrc:/qt/qml/NextAppUi/qml/SynchPopup.qml")));
-        if (!sync_popup_) {
-            return;
-        }
-    }
-
-    assert(sync_popup_ != nullptr);
-    auto * rootObject = engine().rootObjects().first();
-
-    if (QQuickWindow *window = qobject_cast<QQuickWindow*>(rootObject)) {
-        if (QQuickItem* item = qobject_cast<QQuickItem*>(sync_popup_)) {
-            item->setParentItem(window->contentItem());
-            sync_popup_->setProperty("visible", visible);
-        }
-    }
+    Q_UNUSED(visible);
+    // The sync overlay is owned by the root QML files now.
 }
 
 void NextAppCore::showUnrecognizedDeviceError()
