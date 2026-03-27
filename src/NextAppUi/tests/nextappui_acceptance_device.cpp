@@ -577,7 +577,7 @@ int main(int argc, char** argv)
                     "Add-device failed: signupStatus=%d email=%s otp_len=%d\n",
                     signupStatus(comm),
                     user_email.toUtf8().constData(),
-                    otp_value.size());
+                    static_cast<int>(otp_value.size()));
             return 12;
         }
 

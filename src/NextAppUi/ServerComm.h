@@ -166,7 +166,7 @@ public:
     Q_INVOKABLE void sendFeedback(const nextapp::pb::Feedback& feedback);
 
     /*! Resynch with the server */
-    Q_INVOKABLE void resync();
+    Q_INVOKABLE void resync() override;
 
 
     static ServerComm& instance() noexcept {
