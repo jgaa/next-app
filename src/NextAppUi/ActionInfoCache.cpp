@@ -515,34 +515,58 @@ QCoro::Task<void> ActionInfoCache::updateAllScores()
     deque<pair<QString, float>> values;
 
     if (updating_scores_.exchange(true)) {
-        for (auto& [uuid, action] : cache_copy) {
-            if (action->status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
-                continue;
-            }
-            const auto new_score = getScore(*action);
-            constexpr float epsilon = 1e-6;
-            if (std::fabs(action->score() - new_score) < epsilon) {
-                continue;
-            }
-            action->setScore(getScore(*action));
+        co_return;
+    }
 
-            // save to db
-            //auto& db = NextAppCore::instance()->db();
-            //co_await db.query("UPDATE action SET score=? WHERE id=?", new_score, action->id_proto());
-            values.emplace_back(action->id_proto(), new_score);
+    const auto reset_guard = qScopeGuard([this]() {
+        updating_scores_.store(false);
+    });
+
+    for (auto& [uuid, action] : cache_copy) {
+        if (action->status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
+            continue;
+        }
+        const auto new_score = getScore(*action);
+        constexpr float epsilon = 1e-6;
+        if (std::fabs(action->score() - new_score) < epsilon) {
+            continue;
+        }
+        action->setScore(new_score);
+        values.emplace_back(action->id_proto(), new_score);
+    }
+
+    if (!values.empty()) {
+        auto& db = syncDb();
+        const auto started = co_await db.beginExclusiveTransaction();
+        if (!started) {
+            LOG_ERROR_N << "Failed to begin transaction while updating action scores";
+            co_return;
         }
 
-        auto& db = syncDb();
-        co_await db.queryBatch("UPDATE action SET score=? WHERE id=?", "", values, [&](const auto& v) -> QList<QVariant> {
+        const auto token = started.value();
+        const auto updated = co_await db.queryBatchInTransaction(
+            token,
+            "UPDATE action SET score=? WHERE id=?",
+            "",
+            values,
+            [&](const auto& v) -> QList<QVariant> {
                 QList<QVariant> p;
                 p << v.second << v.first;
                 return p;
             },
-            [](const auto&) { return false;},
-            [](const auto&) {assert(false); return ""; }
-            );
+            [](const auto&) { return false; },
+            [](const auto&) { assert(false); return ""; });
 
-        updating_scores_.store(false);
+        if (!updated) {
+            (void) co_await db.rollbackExclusiveTransaction(token);
+            LOG_ERROR_N << "Failed to persist recalculated action scores";
+            co_return;
+        }
+
+        if (!co_await db.commitExclusiveTransaction(token)) {
+            LOG_ERROR_N << "Failed to commit recalculated action scores";
+            co_return;
+        }
     }
 
     LOG_DEBUG_N << "Updated " << values.size() << " scores in "

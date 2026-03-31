@@ -219,11 +219,6 @@ int main(int argc, char *argv[])
     app_name = "nextapp-devel";
 #endif
 
-    if (const auto* org = getenv("NEXTAPP_NAME")) {
-        app_name = org;
-    }
-
-    QGuiApplication::setApplicationName(app_name);
     QGuiApplication::setApplicationVersion(NEXTAPP_UI_VERSION);
     QGuiApplication::setWindowIcon(QIcon(":/qt/qml/NextAppUi/icons/nextapp.svg"));
 
@@ -236,11 +231,25 @@ int main(int argc, char *argv[])
     parser.addOption({{"C", "log-level-console"}, "Set the log level to the console to one of: off, debug, trace, info",
         "log-level-console", "info"});
     parser.addOption({"log-file", "Path to the log file", "log-file"});
+    parser.addOption({"app-name", "Override the application name (same as NEXTAPP_NAME)", "app-name"});
     parser.addOption({{"s", "signup"}, "Run the signup work-flow"});
 
     //parser.addPositionalArgument("", QGuiApplication::translate("main", "Initial directory"),"[path]");
     parser.process(app);
     //const auto args = parser.positionalArguments();
+
+    if (const auto* org = getenv("NEXTAPP_NAME")) {
+        app_name = org;
+    }
+
+    if (parser.isSet("app-name")) {
+        if (const auto cli_app_name = parser.value("app-name"); !cli_app_name.isEmpty()) {
+            app_name = cli_app_name;
+        }
+    }
+
+    QGuiApplication::setApplicationName(app_name);
+
     if (parser.isSet("log-level-console")) {
         log_level_qt = parser.value("log-level-console").toStdString();
     }

@@ -133,6 +133,39 @@ ApplicationWindow {
                 onTriggered: openActionDlg()
             }
         }
+
+        MyMenu {
+            title: qsTr("View")
+
+            MyMenu {
+                title: qsTr("Size")
+
+                Action {
+                    text: qsTr("p480 (854x480)")
+                    onTriggered: appWindow.applyPresetWindowSize(854, 480)
+                }
+
+                Action {
+                    text: qsTr("p540 (960x540)")
+                    onTriggered: appWindow.applyPresetWindowSize(960, 540)
+                }
+
+                Action {
+                    text: qsTr("p720 (1280x720)")
+                    onTriggered: appWindow.applyPresetWindowSize(1280, 720)
+                }
+
+                Action {
+                    text: qsTr("p900 (1600x900)")
+                    onTriggered: appWindow.applyPresetWindowSize(1600, 900)
+                }
+
+                Action {
+                    text: qsTr("p1080 (1920x1080)")
+                    onTriggered: appWindow.applyPresetWindowSize(1920, 1080)
+                }
+            }
+        }
     }
 
 
@@ -462,6 +495,15 @@ ApplicationWindow {
         }
         var win = component.createObject(appWindow, args);
         win.show()
+    }
+
+    function applyPresetWindowSize(targetWidth, targetHeight) {
+        if (visibility === Window.Maximized || visibility === Window.FullScreen) {
+            showNormal()
+        }
+
+        width = targetWidth
+        height = targetHeight
     }
 
     function openNodeDlg(kind) {
