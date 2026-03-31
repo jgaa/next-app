@@ -1845,125 +1845,104 @@ void ActionsModel::actionDeleted(const QUuid &uuid)
     }
 }
 
+bool ActionsModel::matchesActionForMode(
+    FetchWhat mode,
+    const nextapp::pb::ActionInfo &action,
+    const nextapp::pb::UserGlobalSettings *global_settings)
+{
+    const auto today = QDate::currentDate();
+    const auto start_of_today = today.startOfDay().toSecsSinceEpoch();
+    const auto start_of_tomorrow = today.addDays(1).startOfDay().toSecsSinceEpoch();
+    const auto active = action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE;
+
+    switch(mode) {
+    case FetchWhat::FW_ACTIVE:
+        return active;
+    case FetchWhat::FW_TODAY:
+        return active
+            && action.hasDue() && action.due().hasDue()
+            && action.due().due() >= start_of_today
+            && action.due().due() < start_of_tomorrow;
+    case FetchWhat::FW_TODAY_AND_OVERDUE:
+        return active
+            && action.hasDue() && action.due().hasDue()
+            && action.due().due() < start_of_tomorrow;
+    case FetchWhat::FW_TOMORROW:
+        return active
+            && action.hasDue() && action.due().hasDue()
+            && action.due().due() >= start_of_tomorrow
+            && action.due().due() < today.addDays(2).startOfDay().toSecsSinceEpoch();
+    case FetchWhat::FW_CURRENT_WEEK: {
+        if (!active || !action.hasDue() || !action.due().hasDue() || !global_settings) {
+            return false;
+        }
+        const auto start_of_week = getFirstDayOfWeek(*global_settings, today);
+        return action.due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
+            && action.due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch();
+    }
+    case FetchWhat::FW_NEXT_WEEK: {
+        if (!active || !action.hasDue() || !action.due().hasDue() || !global_settings) {
+            return false;
+        }
+        const auto start_of_week = getFirstDayOfWeek(*global_settings, today.addDays(7));
+        return action.due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
+            && action.due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch();
+    }
+    case FetchWhat::FW_CURRENT_MONTH: {
+        if (!active || !action.hasDue() || !action.due().hasDue()) {
+            return false;
+        }
+        const auto start_of_month = QDate{today.year(), today.month(), 1};
+        return action.due().due() >= start_of_month.startOfDay().toSecsSinceEpoch()
+            && action.due().due() < start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch();
+    }
+    case FetchWhat::FW_NEXT_MONTH: {
+        if (!active || !action.hasDue() || !action.due().hasDue()) {
+            return false;
+        }
+        const auto start_of_month = QDate{today.year(), today.month(), 1};
+        return action.due().due() >= start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
+            && action.due().due() < start_of_month.addMonths(2).startOfDay().toSecsSinceEpoch();
+    }
+    case FetchWhat::FW_SELECTED_NODE:
+    case FetchWhat::FW_SELECTED_NODE_AND_CHILDREN:
+    case FetchWhat::FW_FAVORITES:
+        return active && action.favorite();
+    case FetchWhat::FW_ON_CALENDAR:
+        return false;
+    case FetchWhat::FW_UNASSIGNED:
+        return active
+            && (!action.hasDue() || !action.due().hasDue()
+                || action.due().kind() == pb::ActionDueKindGadget::ActionDueKind::UNSET);
+    case FetchWhat::FW_ON_HOLD:
+        return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::ONHOLD;
+    case FetchWhat::FW_COMPLETED:
+        return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DONE;
+    }
+
+    return false;
+}
+
+bool ActionsModel::shouldIncludeAction(const nextapp::pb::ActionInfo &action) const
+{
+    switch(mode_) {
+    case FetchWhat::FW_SELECTED_NODE:
+        return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
+            && action.node() == MainTreeModel::instance()->selected();
+    case FetchWhat::FW_SELECTED_NODE_AND_CHILDREN:
+        return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
+            && MainTreeModel::instance()->isChildOfSelected(toQuid(action.node()));
+    default:
+        return matchesActionForMode(mode_, action, &runtime_.serverComm().globalSettings());
+    }
+}
+
 void ActionsModel::actionAdded(const std::shared_ptr<nextapp::pb::ActionInfo> &ai)
 {
-    if (ai) {
-        // Determine if we should add it to the list.
-        bool add = false;
-        switch(mode_) {
-        case FetchWhat::FW_ACTIVE:
-            if (ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
-            }
-            break;
-        case FetchWhat::FW_TODAY:
-            if (ai->hasDue() && ai->due().hasDue()) {
-                if (ai->due().due() >= QDateTime::currentDateTime().toSecsSinceEpoch()
-                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
-                    && ai->due().due() < QDateTime::currentDateTime().addDays(1).toSecsSinceEpoch()) {
-                    add = true;
-                }
-            }
-            break;
-        case FetchWhat::FW_TODAY_AND_OVERDUE:
-            if (ai->hasDue() && ai->due().hasDue()) {
-                if (ai->due().due() <= QDateTime::currentDateTime().toSecsSinceEpoch()
-                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                    add = true;
-                }
-            }
-            break;
-        case FetchWhat::FW_TOMORROW:
-            if (ai->hasDue() && ai->due().hasDue()) {
-                if (ai->due().due() >= QDateTime::currentDateTime().addDays(1).toSecsSinceEpoch()
-                    && ai->due().due() < QDateTime::currentDateTime().addDays(2).toSecsSinceEpoch()
-                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                    add = true;
-                }
-            }
-            break;
-        case FetchWhat::FW_CURRENT_WEEK: {
-            if (ai->hasDue() && ai->due().hasDue()) {
-                auto start_of_week = getFirstDayOfWeek(runtime_.serverComm().globalSettings(), QDate::currentDate());
-                if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
-                    && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
-                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                    add = true;
-                }
-            }
-        } break;
-        case FetchWhat::FW_NEXT_WEEK: {
-            if (ai->hasDue() && ai->due().hasDue()) {
-                auto start_of_week = getFirstDayOfWeek(runtime_.serverComm().globalSettings(), QDate::currentDate().addDays(7));
-                if (ai->due().due() >= start_of_week.startOfDay().toSecsSinceEpoch()
-                    && ai->due().due() < start_of_week.addDays(7).startOfDay().toSecsSinceEpoch()
-                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                    add = true;
-                }
-            }
-        } break;
-        case FetchWhat::FW_CURRENT_MONTH: {
-            if (ai->hasDue() && ai->due().hasDue()) {
-                auto start_of_month = QDate{QDate::currentDate().year(), QDate::currentDate().month(), 1};
-                if (ai->due().due() >= start_of_month.startOfDay().toSecsSinceEpoch()
-                    && ai->due().due() < start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
-                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                    add = true;
-                }
-            }
-        } break;
-        case FetchWhat::FW_NEXT_MONTH: {
-            if (ai->hasDue() && ai->due().hasDue()) {
-                auto start_of_month = QDate{QDate::currentDate().year(), QDate::currentDate().month(), 1};
-                if (ai->due().due() >= start_of_month.addMonths(1).startOfDay().toSecsSinceEpoch()
-                    && ai->due().due() < start_of_month.addMonths(2).startOfDay().toSecsSinceEpoch()
-                    && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                    add = true;
-                }
-            }
-        } break;
-        case FetchWhat::FW_SELECTED_NODE:
-            if (ai->node() == MainTreeModel::instance()->selected()) {
-                add = true;
-            }
-            break;
-        case FetchWhat::FW_SELECTED_NODE_AND_CHILDREN:
-            if (MainTreeModel::instance()->isChildOfSelected(toQuid(ai->node()))
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
-            }
-            break;
-        case FetchWhat::FW_FAVORITES:
-            if (ai->favorite()
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
-            }
-            break;
-        case FetchWhat::FW_UNASSIGNED:
-            if ((!ai->hasDue() || !ai->due().hasDue() || ai->due().kind() ==  pb::ActionDueKindGadget::ActionDueKind::UNSET)
-                && ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE) {
-                add = true;
-            }
-            break;
-        case FetchWhat::FW_ON_HOLD:
-            if (ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ONHOLD) {
-                add = true;
-            }
-            break;
-        case FetchWhat::FW_COMPLETED:
-            if (ai->status() == nextapp::pb::ActionStatusGadget::ActionStatus::DONE) {
-                add = true;
-            }
-            break;
-        case FetchWhat::FW_ON_CALENDAR:
-            break;
-        }
-
-        if (add) {
-            beginInsertRows({}, 0, 0);
-            actions_.emplace_front(ai->id_proto(), ai);
-            endInsertRows();
-        }
+    if (ai && shouldIncludeAction(*ai)) {
+        beginInsertRows({}, 0, 0);
+        actions_.emplace_front(ai->id_proto(), ai);
+        endInsertRows();
     }
 }
 

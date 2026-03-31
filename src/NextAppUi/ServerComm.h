@@ -317,6 +317,7 @@ private:
     void initGlobalSettings();
     void onGrpcReady();
     void onUpdateMessage();
+    void requestResyncAfterStreamGap(uint64_t received_message_id);
     void setDefaulValuesInUserSettings();
     void scheduleReconnect();
     void connectToSignupServer();

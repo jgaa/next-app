@@ -1500,15 +1500,7 @@ void ServerComm::onUpdateMessage()
             if (msgid != last_seen_update_id_ + 1) {
                 LOG_WARN_N << "Received out of order update #" << msgid
                            << ". I expected messageid #" << (last_seen_update_id_ + 1);
-
-                // We need to sync.
-                // Execute later
-                QTimer::singleShot(0, [this] {
-                    LOG_INFO_N << "Requesting full sync...";
-                    stop();
-                    start();
-                });
-                setStatus(Status::ERROR);
+                requestResyncAfterStreamGap(msgid);
                 return;
             };
             last_seen_update_id_ = msgid;
@@ -1582,6 +1574,21 @@ void ServerComm::onUpdateMessage()
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();
     }
+}
+
+void ServerComm::requestResyncAfterStreamGap(uint64_t received_message_id)
+{
+    LOG_INFO_N << "Requesting full sync after stream gap at update #" << received_message_id << '.';
+    setStatus(Status::ERROR);
+
+    // Persist the intent before reconnecting so startup cannot skip the
+    // mandatory full sync if the stream broke during onboarding or replay.
+    settings().setValue("sync/resync", true);
+    settings().sync();
+
+    QTimer::singleShot(0, this, [this] {
+        resync();
+    });
 }
 
 void ServerComm::setDefaulValuesInUserSettings()

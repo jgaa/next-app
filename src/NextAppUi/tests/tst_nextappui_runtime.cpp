@@ -11,6 +11,7 @@
 #include "AppInstanceMgr.h"
 #include "ActionCategoriesModel.h"
 #include "ActionInfoCache.h"
+#include "ActionsModel.h"
 #include "CalendarCache.h"
 #include "DbStore.h"
 #include "DevicesModel.h"
@@ -752,6 +753,7 @@ private slots:
     void serverCommNeedFullResyncHonorsSettingsAndDataEpoc();
     void serverCommPersistsAndReloadsSyncCursorFile();
     void serverCommResyncSetsFlagAndStops();
+    void serverCommOutOfOrderUpdateRequestsFullResync();
     void serverSynchedCacheQueuesUpdatesUntilLocalLoadCompletes();
     void serverSynchedCacheCommitsTransactionAndLoadsPersistedState();
     void serverSynchedCacheRollsBackTransactionOnSyncFailure();
@@ -772,6 +774,7 @@ private slots:
     void actionInfoCacheComputesStableScores();
     void actionInfoCacheRepairsOriginsPersistsTagsAndReloads();
     void actionInfoCacheUpdateReloadsMissingOriginsAndInvalidDeletesRequestResync();
+    void actionsModelAddsTodayActionFromLiveUpdate();
     void mainTreeModelReloadsFromCacheWhenUpdateTargetsMissingNode();
     void mainTreeModelDeleteUpdateClearsSelectionAndEmitsNodeDeleted();
     void mainTreeModelFailsLocalLoadWithDanglingParent();
@@ -1118,6 +1121,32 @@ void tst_NextAppUiRuntime::serverCommResyncSetsFlagAndStops()
     db->close();
 }
 
+void tst_NextAppUiRuntime::serverCommOutOfOrderUpdateRequestsFullResync()
+{
+    auto db = makeInitializedDb(QStringLiteral("servercomm-out-of-order-resync.sqlite"));
+
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    runtime.settings_.setValue("sync/resync", false);
+
+    ServerComm comm(runtime);
+    comm.signup_status_ = ServerComm::SIGNUP_OK;
+    comm.setStatus(ServerComm::ONLINE);
+
+    comm.requestResyncAfterStreamGap(2);
+
+    QCOMPARE(runtime.settings_.value("sync/resync").toBool(), true);
+    QCOMPARE(runtime.settings_.sync_calls_, 1);
+    QCOMPARE(comm.status(), ServerComm::ERROR);
+
+    QCoreApplication::processEvents(QEventLoop::AllEvents);
+
+    QCOMPARE(comm.status(), ServerComm::OFFLINE);
+    QVERIFY(comm.messages_.contains("Initiating full resynch with the server"));
+
+    db->close();
+}
+
 void tst_NextAppUiRuntime::serverSynchedCacheQueuesUpdatesUntilLocalLoadCompletes()
 {
     TestRuntimeServices runtime;
@@ -1144,6 +1173,33 @@ void tst_NextAppUiRuntime::serverSynchedCacheQueuesUpdatesUntilLocalLoadComplete
     auto live = std::make_shared<nextapp::pb::Update>(makeNodeUpdate("fd43cb47-a212-4940-ae85-a74739c53a55"));
     cache.onUpdate(live);
     QCOMPARE(cache.processed_ids_.back(), QStringLiteral("fd43cb47-a212-4940-ae85-a74739c53a55"));
+}
+
+void tst_NextAppUiRuntime::actionsModelAddsTodayActionFromLiveUpdate()
+{
+    auto action = makeAction(
+        QStringLiteral("d5fba219-4217-4864-a313-60ecf5288292"),
+        QStringLiteral("f5666bfe-d280-4c57-8dc4-83dcbcc7a8a1"),
+        QStringLiteral("Later today"),
+        1,
+        100,
+        1);
+
+    nextapp::pb::Due due;
+    due.setKind(nextapp::pb::ActionDueKindGadget::ActionDueKind::DATETIME);
+    due.setDue(QDate::currentDate().startOfDay().addSecs(18 * 60 * 60).toSecsSinceEpoch());
+    due.setTimezone(QStringLiteral("UTC"));
+    action.setDue(due);
+
+    nextapp::pb::ActionInfo info;
+    info.setId_proto(action.id_proto());
+    info.setNode(action.node());
+    info.setStatus(action.status());
+    info.setFavorite(action.favorite());
+    info.setDue(action.due());
+
+    QVERIFY(ActionsModel::matchesActionForMode(ActionsModel::FW_TODAY_AND_OVERDUE, info));
+    QVERIFY(!ActionsModel::matchesActionForMode(ActionsModel::FW_TOMORROW, info));
 }
 
 void tst_NextAppUiRuntime::serverSynchedCacheCommitsTransactionAndLoadsPersistedState()

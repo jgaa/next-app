@@ -352,8 +352,15 @@ signals:
     void selectionChanged();
 
 private:
+    friend class tst_NextAppUiRuntime;
+
     RuntimeServices& runtime_;
     QCoro::Task<void> fetchIf(bool restart = true);
+    static bool matchesActionForMode(
+        FetchWhat mode,
+        const nextapp::pb::ActionInfo& action,
+        const nextapp::pb::UserGlobalSettings* global_settings = nullptr);
+    bool shouldIncludeAction(const nextapp::pb::ActionInfo& action) const;
     void selectedTreeNodeChanged();
     void actionChanged(const QUuid &uuid);
     void actionDeleted(const QUuid &uuid);
