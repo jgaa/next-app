@@ -5,6 +5,7 @@
 #include <chrono>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 
 #include <boost/asio.hpp>
@@ -21,6 +22,11 @@ namespace nextapp {
 
 class Server;
 class Publisher;
+
+struct UserPublishState {
+    uint32_t publish_id{0};
+    uint64_t publish_epoch{0};
+};
 
 
 /*! \brief A container that can hold either a single value or a vector of values.
@@ -277,11 +283,13 @@ public:
     UserContext() = default;
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid, const std::string_view timeZone,
-                bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions);
+                bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions,
+                uint32_t publishId = 0, uint64_t publishEpoch = 0);
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid,
                 pb::User::Kind kind,
-                const pb::UserGlobalSettings& settings, std::shared_ptr<TenantPlan> tenantPlan);
+                const pb::UserGlobalSettings& settings, std::shared_ptr<TenantPlan> tenantPlan,
+                uint32_t publishId = 0, uint64_t publishEpoch = 0);
 
     ~UserContext() = default;
 
@@ -327,6 +335,16 @@ public:
     auto currentPublishId() const {
         std::shared_lock lock(mutex_);
         return publish_message_id_;
+    }
+
+    auto currentPublishEpoch() const {
+        std::shared_lock lock(mutex_);
+        return publish_epoch_;
+    }
+
+    UserPublishState currentPublishState() const {
+        std::shared_lock lock(mutex_);
+        return UserPublishState{publish_message_id_, publish_epoch_};
     }
 
     void addSession(std::shared_ptr<Session> session) {
@@ -429,6 +447,7 @@ private:
     std::string user_uuid_;
     std::string tenant_uuid_;
     uint32_t publish_message_id_{0};
+    uint64_t publish_epoch_{0};
     const std::chrono::time_zone* tz_{};
     jgaa::mysqlpool::Options db_options_;
     pb::UserGlobalSettings settings_;
@@ -500,6 +519,9 @@ public:
     std::shared_ptr<Plan> getPlan(const std::string_view planName) const;
 
 private:
+    [[nodiscard]] std::shared_ptr<std::mutex> getUserCreationMutex_(const boost::uuids::uuid& userUuid);
+    [[nodiscard]] boost::asio::awaitable<UserPublishState> loadPublishState_(const boost::uuids::uuid& userUuid, std::string_view userUuidStr);
+    [[nodiscard]] boost::asio::awaitable<void> savePublishState_(const boost::uuids::uuid& userUuid, std::string_view userUuidStr, UserPublishState state);
     void removeSession_(const boost::uuids::uuid& sessionId);
     void startNextTimer();
     void onTimer();
@@ -508,12 +530,16 @@ private:
 
     std::unordered_map<boost::uuids::uuid, UserContext::Session *, UuidHash> sessions_;
     std::unordered_map<boost::uuids::uuid, std::shared_ptr<UserContext>, UuidHash> users_;
+    std::unordered_map<boost::uuids::uuid, std::shared_ptr<std::mutex>, UuidHash> user_creation_mutexes_;
+    std::unordered_map<boost::uuids::uuid, UserPublishState, UuidHash> publish_states_;
 
     std::unordered_map<std::string_view, std::shared_ptr<Plan>> plans_;
     Server& server_;
     boost::asio::steady_timer timer_{ioContext()};
     const bool skip_tls_auth_;
     mutable PaddedMutex<std::shared_mutex> mutex_;
+    mutable PaddedMutex<std::mutex> user_creation_mutexes_mutex_;
+    mutable PaddedMutex<std::mutex> publish_states_mutex_;
     mutable PaddedMutex<std::shared_mutex> plan_mutex_;
 };
 

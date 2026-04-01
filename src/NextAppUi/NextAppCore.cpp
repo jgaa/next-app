@@ -452,34 +452,6 @@ void NextAppCore::playSoundDelayed(int delayMs, double volume, const QString &so
     audio_play_delay_.start(delayMs);
 }
 
-void NextAppCore::bootstrapDevice(bool newUser)
-{
-    LOG_INFO_N << "Signup is completed";
-
-    if (newUser) {
-        LOG_DEBUG_N << "Creating default categories";
-        // Creating default categories
-        nextapp::pb::ActionCategory work, priv, hobby, family;
-        work.setColor("dodgerblue");
-        work.setName("Work");
-
-        priv.setColor("yellow");
-        priv.setName("Private");
-
-        hobby.setColor("green");
-        hobby.setName("Hobby");
-
-        family.setColor("wheat");
-        family.setName("Family");
-
-        auto& comm = static_cast<ServerComm&>(serverComm());
-        comm.createActionCategory(work);
-        comm.createActionCategory(priv);
-        comm.createActionCategory(hobby);
-        comm.createActionCategory(family);
-    }
-}
-
 void NextAppCore::deleteAccount()
 {
     doDeleteAccount();

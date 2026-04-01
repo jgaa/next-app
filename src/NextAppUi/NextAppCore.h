@@ -104,7 +104,6 @@ public:
     Q_INVOKABLE void playSound(double volume, const QString& soundFile) override;
     Q_INVOKABLE void playSoundDelayed(int delayMs, double volume, const QString& soundFile);
     // Called when signup is complete
-    Q_INVOKABLE void bootstrapDevice(bool newUser);
     Q_INVOKABLE void deleteAccount();
     Q_INVOKABLE void deleteLocalData();
     Q_INVOKABLE void factoryReset();

@@ -582,6 +582,9 @@ public:
     boost::asio::awaitable<pb::DayColorDefinitions> getDayColorDefinitions(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
                                                             const std::string& tenantUuid /* unused */);
     boost::asio::awaitable<pb::ActionCategories> getActionCategories(jgaa::mysqlpool::Mysqlpool::Handle& dbh, std::string_view userId);
+    boost::asio::awaitable<pb::ActionCategory> addActionCategory(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+                                                                 std::string_view userId,
+                                                                 const pb::ActionCategory& category);
 
     // returns true of the settings was added, false if they were updated
     boost::asio::awaitable<bool> saveUserGlobalSettings(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::UserGlobalSettings& settings, RequestCtx& rctx);

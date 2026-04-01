@@ -23,6 +23,7 @@
 #include "NotificationsModel.h"
 #include "OtpModel.h"
 #include "ServerComm.h"
+#include "UseCaseTemplates.h"
 #include "WorkCache.h"
 #include "logging.h"
 
@@ -209,6 +210,28 @@ bool waitForAndMergeDbInfo(QJsonObject& target, NextAppCore& core, int timeout_m
     return true;
 }
 
+bool waitForAndMergeDbInfoMatching(QJsonObject& target,
+                                   NextAppCore& core,
+                                   int timeout_ms,
+                                   const std::function<bool(const QJsonObject&)>& predicate)
+{
+    QJsonObject merged;
+    const auto have_info = waitForCondition([&] {
+        merged = target;
+        if (!tryMergeDbInfo(merged, core)) {
+            return false;
+        }
+        return predicate(merged);
+    }, timeout_ms);
+
+    if (!have_info) {
+        return false;
+    }
+
+    target = merged;
+    return true;
+}
+
 std::optional<int> loadPendingRequestCount(NextAppCore& core)
 {
     tl::expected<int, DbStore::Error> request_count;
@@ -319,6 +342,7 @@ int main(int argc, char** argv)
     QString requested_device_name;
     QString otp_value;
     QString batch_name;
+    QString template_name;
     int region = 0;
 
     for (int i = 1; i < argc; ++i) {
@@ -363,8 +387,12 @@ int main(int argc, char** argv)
             batch_name = QString::fromLocal8Bit(argv[++i]);
             continue;
         }
+        if (arg == QStringLiteral("--template-name") && i + 1 < argc) {
+            template_name = QString::fromLocal8Bit(argv[++i]);
+            continue;
+        }
         if (arg == QStringLiteral("--help")) {
-            fprintf(stdout, "Usage: nextappui_acceptance_device --workspace-root PATH --device-name NAME [--otp OTP] [--batch NAME] <prepare|wait-ready|signup-first-device|request-otp|add-device-with-otp|disconnect|reconnect|force-full-sync|apply-scripted-batch>\n");
+            fprintf(stdout, "Usage: nextappui_acceptance_device --workspace-root PATH --device-name NAME [--otp OTP] [--batch NAME] [--template-name NAME] <prepare|wait-ready|signup-first-device|request-otp|add-device-with-otp|disconnect|reconnect|force-full-sync|apply-scripted-batch>\n");
             return 0;
         }
         if (command.isEmpty()) {
@@ -473,10 +501,28 @@ int main(int argc, char** argv)
             return 7;
         }
 
-        core.bootstrapDevice(true);
+        auto result = baseResult(command, device_name, core, comm);
+        result.insert(QStringLiteral("templateName"), template_name);
+
+        if (!template_name.isEmpty()) {
+            UseCaseTemplates templates{core};
+            const auto names = templates.getTemplateNames();
+            const auto template_index = names.indexOf(template_name);
+            if (template_index <= 0) {
+                fprintf(stderr,
+                        "Unknown template name: %s\n",
+                        template_name.toUtf8().constData());
+                return 21;
+            }
+            templates.createFromTemplate(template_index);
+            result.insert(QStringLiteral("templateApplied"), true);
+            result.insert(QStringLiteral("templateIndex"), template_index);
+        } else {
+            result.insert(QStringLiteral("templateApplied"), false);
+        }
+
         comm.signupDone();
 
-        auto result = baseResult(command, device_name, core, comm);
         const auto online = waitForCondition([&] {
             return comm.status() == ServerCommAccess::Status::ONLINE;
         }, 240000);
@@ -487,7 +533,11 @@ int main(int argc, char** argv)
         result.insert(QStringLiteral("signupStatus"), signupStatus(comm));
         result.insert(QStringLiteral("signupUrl"), signup_url);
 
-        const auto have_db_info = synced && waitForAndMergeDbInfo(result, core, 120000);
+        const auto have_db_info = synced && (template_name.isEmpty()
+            ? waitForAndMergeDbInfo(result, core, 120000)
+            : waitForAndMergeDbInfoMatching(result, core, 120000, [](const QJsonObject& info) {
+                return info.value(QStringLiteral("numNodes")).toInt() > 0;
+            }));
         result.insert(QStringLiteral("haveDbInfo"), have_db_info);
 
         printJson(result);
@@ -581,7 +631,6 @@ int main(int argc, char** argv)
             return 12;
         }
 
-        core.bootstrapDevice(false);
         comm.signupDone();
 
         auto result = baseResult(command, device_name, core, comm);

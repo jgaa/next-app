@@ -227,7 +227,7 @@ public:
     void deleteTimeBlock(const QString& timeBlockUuid) override;
     void fetchCalendarEvents(QDate start, QDate end, callback_t<nextapp::pb::CalendarEvents>&& done);
     void fetchActionCategories(callback_t<nextapp::pb::ActionCategories>&& done);
-    void createActionCategory(const nextapp::pb::ActionCategory& category);
+    QCoro::Task<bool> createActionCategory(const nextapp::pb::ActionCategory& category);
     void createActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done) override;
     void updateActionCategory(const nextapp::pb::ActionCategory& category, callback_t<nextapp::pb::Status>&& done) override;
     void deleteActionCategory(const QString& id, callback_t<nextapp::pb::Status>&& done) override;
@@ -317,6 +317,10 @@ private:
     void initGlobalSettings();
     void onGrpcReady();
     void onUpdateMessage();
+    void applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& msg);
+    bool shouldDeferUpdateUntilInitialSyncComplete() const noexcept;
+    uint effectiveLastSeenUpdateId() const noexcept;
+    QCoro::Task<void> replayDeferredUpdates();
     void requestResyncAfterStreamGap(uint64_t received_message_id);
     void setDefaulValuesInUserSettings();
     void scheduleReconnect();
@@ -573,7 +577,7 @@ private:
     }
 
     template <QueuedRequest::Type rq, ProtoMessage reqT>
-    QCoro::Task<bool> rpcQueueAndExecute(const reqT& request) {
+    QCoro::Task<bool> rpcQueueAndExecute(const reqT& request, std::string logContext = {}) {
         QProtobufSerializer serializer;
         QueuedRequest qr;
         qr.type = rq;
@@ -581,6 +585,8 @@ private:
         qr.data = request.serialize(&serializer);
 
         bool delete_req = false;
+
+        LOG_TRACE_N << "rpcQueueAndExecute enter: " << logContext << ", queue size: " << queued_requests_count_ << ", executing_request_count_: " << executing_request_count_;
 
         if (settings().value("server/resend_requests", true).toBool()) {
             LOG_DEBUG << "Queuing request: " << qr.uuid.toString()
@@ -592,17 +598,39 @@ private:
                 co_return false;
             }
 
-            // If there are other queued requests, we must return
-            // Requests must be exceuted sequentially, in order
-            if (queued_requests_count_ > 1 || !connected()) {
+            // Requests must be executed sequentially and in order. If there is
+            // already work ahead of this request, make sure the queue runner is
+            // awake instead of waiting for the next housekeeping tick.
+            if (!connected()) {
+                LOG_TRACE_N << "Not connected. Will execute queued request later. queue size: "
+                            << queued_requests_count_;
                 co_return true;
             }
 
+            if (queued_requests_count_ > 1 || retrying_requests_ || executing_request_count_ > 0) {
+                if (!retrying_requests_ && executing_request_count_ == 0) {
+                    LOG_TRACE_N << "Queued requests are pending and the runner is idle. Scheduling retry. queue size: "
+                                << queued_requests_count_;
+                    QTimer::singleShot(0, this, &ServerComm::retryRequests);
+                }
+
+                LOG_TRACE_N << "There are other queued requests or the queue is already active. Will not execute inline now. queue size: "
+                            << queued_requests_count_
+                            << ", retrying: " << retrying_requests_
+                            << ", executing_request_count_: " << executing_request_count_;
+                co_return true;
+            }
+
+            LOG_TRACE_N << "Executing request immediately: " << qr.uuid.toString() << ", queue size: " << queued_requests_count_;
             co_await retryRequests();
+            LOG_TRACE_N << "Finished executing request: " << qr.uuid.toString() << ", queue size: " << queued_requests_count_;
             co_return true;
         } else {
+            LOG_TRACE_N << "Not queuing request because server/resend_requests is false. Executing immediately: " << logContext;
             co_return co_await execute(qr, false);
         }
+
+        LOG_TRACE_N << "rpcQueueAndExecute exit: " << logContext << ", queue size: " << queued_requests_count_ << ", executing_request_count_: " << executing_request_count_;
     }
 
     QCoro::Task<bool> save(QueuedRequest& qr);
@@ -654,15 +682,19 @@ private:
     int queued_requests_count_{0};
     bool retrying_requests_{false};
     uint last_seen_update_id_{0};
+    uint deferred_update_id_{0};
     uint session_start_publish_id_{0};
     uint64_t last_seen_server_instance_{};
+    uint64_t last_seen_user_publish_epoch_{};
+    uint64_t session_user_publish_epoch_{};
     bool server_supports_updated_id_{false};
     bool updated_id_sync_initialized_{false};
     bool closed_{false};
+    std::deque<std::shared_ptr<nextapp::pb::Update>> deferred_updates_;
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
     bool fcm_requested_{false};
 #endif
-};
+    };
 
 
 std::ostream& operator << (std::ostream& os, const ServerComm::Status& v);

@@ -961,6 +961,7 @@ message Hello {
     uint64 lastNotification = 5; // Last notification update timestamp visible to the user
     bool plansEnabled = 6; // If true, the server has plans enabled, and the subscription info is relevant
     bool supportsUpdatedId = 7; // If true, the server supports stronger updated_id-based incremental sync
+    uint64 userPublishEpoch = 8; // Identifies the lifetime of the per-user publish counter
 }
 
 // Debug info about the user-sessions on the server

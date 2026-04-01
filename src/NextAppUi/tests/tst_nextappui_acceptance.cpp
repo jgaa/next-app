@@ -114,15 +114,22 @@ QVector<AcceptanceDevice> createDevices(const AcceptancePaths& paths,
 
 QJsonObject signUpFirstDevice(const AcceptanceDevice& device,
                               const BackendFixture& fixture,
-                              int tenant_index)
+                              int tenant_index,
+                              const QString& template_name = {})
 {
-    const auto signup = runHelperJson(device, {
+    QStringList arguments{
         QStringLiteral("signup-first-device"),
         QStringLiteral("--signup-url"), fixture.signupPublicUrl(),
         QStringLiteral("--user-name"), QStringLiteral("Acceptance User %1").arg(tenant_index + 1),
         QStringLiteral("--user-email"), tenantEmail(tenant_index),
         QStringLiteral("--company"), tenantCompany(tenant_index),
-    });
+    };
+    if (!template_name.isEmpty()) {
+        arguments.append(QStringLiteral("--template-name"));
+        arguments.append(template_name);
+    }
+
+    const auto signup = runHelperJson(device, arguments);
     if (signup.value(QStringLiteral("command")).toString() != QStringLiteral("signup-first-device")) {
         QTest::qFail("signup-first-device returned unexpected command", __FILE__, __LINE__);
         return {};
@@ -138,6 +145,20 @@ QJsonObject signUpFirstDevice(const AcceptanceDevice& device,
     if (signup.value(QStringLiteral("numDayColors")).toInt() <= 0) {
         QTest::qFail("signup-first-device did not receive day_colors", __FILE__, __LINE__);
         return {};
+    }
+    if (!template_name.isEmpty()) {
+        if (!signup.value(QStringLiteral("templateApplied")).toBool()) {
+            QTest::qFail("signup-first-device did not apply requested template", __FILE__, __LINE__);
+            return {};
+        }
+        if (signup.value(QStringLiteral("templateName")).toString() != template_name) {
+            QTest::qFail("signup-first-device reported unexpected template name", __FILE__, __LINE__);
+            return {};
+        }
+        if (signup.value(QStringLiteral("numNodes")).toInt() <= 0) {
+            QTest::qFail("signup-first-device did not populate nodes from template", __FILE__, __LINE__);
+            return {};
+        }
     }
     return signup;
 }
@@ -194,7 +215,13 @@ void runTenantScenario(const AcceptancePaths& paths,
     const auto tenant_name = tenantName(tenant_index);
     auto devices = createDevices(paths, tenant_name, device_count);
 
-    signUpFirstDevice(devices.at(0), fixture, tenant_index);
+    const auto signup = signUpFirstDevice(devices.at(0),
+                                          fixture,
+                                          tenant_index,
+                                          tenant_index == 1 ? QStringLiteral("Freelancer") : QString{});
+    if (tenant_index == 1) {
+        QVERIFY(signup.value(QStringLiteral("numNodes")).toInt() > 0);
+    }
     for (int index = 1; index < devices.size(); ++index) {
         addSecondaryDevice(devices.at(0), devices.at(index), fixture);
     }

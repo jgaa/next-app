@@ -9,6 +9,7 @@
 #include "grpc/grpc_security_constants.h"
 
 #include "nextapp/logging.h"
+#include <limits>
 
 using namespace std;
 
@@ -32,6 +33,11 @@ namespace nextapp {
 namespace {
 constexpr size_t kReplayBacklogLimit = 1024;
 
+uint64_t newPublishEpoch()
+{
+    return getRandomNumber64() & static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+}
+
 auto to_string_view(::grpc::string_ref ref) {
     return string_view{ref.data(), ref.size()};
 }
@@ -48,6 +54,90 @@ SessionManager::SessionManager(Server &server)
     , skip_tls_auth_{server.config().grpc.tls_mode == "none"}
 {
     startNextTimer();
+}
+
+std::shared_ptr<std::mutex> SessionManager::getUserCreationMutex_(const boost::uuids::uuid& userUuid)
+{
+    std::unique_lock lock{user_creation_mutexes_mutex_};
+    auto& entry = user_creation_mutexes_[userUuid];
+    if (!entry) {
+        entry = std::make_shared<std::mutex>();
+    }
+    return entry;
+}
+
+boost::asio::awaitable<UserPublishState> SessionManager::loadPublishState_(const boost::uuids::uuid& userUuid,
+                                                                           std::string_view userUuidStr)
+{
+    {
+        std::lock_guard lock{publish_states_mutex_};
+        if (auto it = publish_states_.find(userUuid); it != publish_states_.end()) {
+            co_return it->second;
+        }
+    }
+
+    auto db = co_await server_.db().getConnection();
+    auto res = co_await db.exec(
+        "SELECT publish_id, publish_epoch FROM user_runtime_publish_state WHERE user_id=?",
+        userUuidStr);
+
+    if (res.rows().empty()) {
+        UserPublishState state{};
+        state.publish_epoch = newPublishEpoch();
+        {
+            std::lock_guard lock{publish_states_mutex_};
+            publish_states_[userUuid] = state;
+        }
+        co_await db.exec(
+            "INSERT INTO user_runtime_publish_state (user_id, publish_id, publish_epoch) VALUES (?, ?, ?)",
+            userUuidStr,
+            state.publish_id,
+            state.publish_epoch);
+        co_return state;
+    }
+
+    const auto& row = res.rows().front();
+    enum Cols {
+        PUBLISH_ID,
+        PUBLISH_EPOCH
+    };
+
+    UserPublishState state;
+    state.publish_id = static_cast<uint32_t>(row.at(PUBLISH_ID).as_int64());
+    state.publish_epoch = static_cast<uint64_t>(row.at(PUBLISH_EPOCH).as_int64());
+    if (!state.publish_epoch) {
+        state.publish_epoch = newPublishEpoch();
+        co_await db.exec(
+            "UPDATE user_runtime_publish_state SET publish_epoch=? WHERE user_id=?",
+            state.publish_epoch,
+            userUuidStr);
+    }
+    {
+        std::lock_guard lock{publish_states_mutex_};
+        publish_states_[userUuid] = state;
+    }
+    co_return state;
+}
+
+boost::asio::awaitable<void> SessionManager::savePublishState_(const boost::uuids::uuid& userUuid,
+                                                               std::string_view userUuidStr,
+                                                               UserPublishState state)
+{
+    if (!state.publish_epoch) {
+        state.publish_epoch = newPublishEpoch();
+    }
+
+    {
+        std::lock_guard lock{publish_states_mutex_};
+        publish_states_[userUuid] = state;
+    }
+
+    co_await server_.db().exec(
+        "INSERT INTO user_runtime_publish_state (user_id, publish_id, publish_epoch) VALUES (?, ?, ?) "
+        "ON DUPLICATE KEY UPDATE publish_id=VALUES(publish_id), publish_epoch=VALUES(publish_epoch)",
+        userUuidStr,
+        state.publish_id,
+        state.publish_epoch);
 }
 
 boost::asio::awaitable<void> SessionManager::loadPlans()
@@ -230,9 +320,13 @@ std::shared_ptr<Plan> SessionManager::getPlan(const std::string_view planName) c
     return {};
 }
 
-UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone, bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions)
+UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone,
+                         bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions,
+                         uint32_t publishId, uint64_t publishEpoch)
     : user_uuid_{userUuid},
     tenant_uuid_{tenantUuid},
+    publish_message_id_{publishId},
+    publish_epoch_{publishEpoch ? publishEpoch : newPublishEpoch()},
     db_options_{dbOptions} {
 
     if (timeZone.empty()) {
@@ -250,8 +344,10 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid,
                          pb::User::Kind kind,
-                         const pb::UserGlobalSettings &settings, std::shared_ptr<TenantPlan> tenantPlan)
-    : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, settings_(settings)
+                         const pb::UserGlobalSettings &settings, std::shared_ptr<TenantPlan> tenantPlan,
+                         uint32_t publishId, uint64_t publishEpoch)
+    : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, publish_message_id_{publishId}, settings_(settings)
+    , publish_epoch_{publishEpoch ? publishEpoch : newPublishEpoch()}
     , kind_{kind}, tenant_plan_{std::move(tenantPlan)} {
 
     try {
@@ -967,11 +1063,20 @@ void SessionManager::removeSession_(const boost::uuids::uuid &sessionId)
             const auto userUuid = toUuid(session->user().userUuid());
             sessions_.erase(it);
             session->user().removeSession(sessionId);
-            
+
             // Check if UserContext has no more sessions and remove it from memory
             if (session->user().hasNoSessions()) {
+                const auto publishState = session->user().currentPublishState();
+                const auto userUuidStr = session->user().userUuid();
+                {
+                    std::lock_guard lock{publish_states_mutex_};
+                    publish_states_[userUuid] = publishState;
+                }
                 LOG_DEBUG_N << "Removing UserContext for user " << userUuid << " as it has no more sessions";
                 users_.erase(userUuid);
+                boost::asio::co_spawn(ioContext(), [this, userUuid, userUuidStr, publishState]() -> boost::asio::awaitable<void> {
+                    co_await savePublishState_(userUuid, userUuidStr, publishState);
+                }, boost::asio::detached);
             }
         }
     } else {
@@ -1096,12 +1201,10 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
     const boost::uuids::uuid &deviceId,
     const ::grpc::ServerContextBase *context)
 {
-
     auto db = co_await server_.db().getConnection();
-
     const auto devid = to_string(deviceId);
-
     string uid;
+    boost::uuids::uuid userUuid;
 
     {
         auto res = co_await db.exec(
@@ -1114,6 +1217,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
 
         const auto& row = res.rows().front();
         uid = row.at(USER).as_string();
+        userUuid = toUuid(uid);
 
         if (row.at(ENABLED).as_int64() == 0) {
             throw server_err{pb::Error::DEVICE_DISABLED, "Device is disabled"};
@@ -1122,7 +1226,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         {
             // Happy path
             shared_lock lock{mutex_};
-            if (auto id = users_.find(toUuid(uid)) ; id != users_.end()) {
+            if (auto id = users_.find(userUuid) ; id != users_.end()) {
                 LOG_TRACE << "UserContext: Found user " << uid << " in cache";
                 co_return id->second;
             }
@@ -1131,6 +1235,17 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         // TODO MAYBE: Validate the cert hash in the database aginst the presented certificate.
         //             gRPC just validates the that the cert is signed. We could check the hash
         //             to make 100% sure that the device match the presented cert.
+    }
+
+    auto userCreationMutex = getUserCreationMutex_(userUuid);
+    std::unique_lock userCreationLock{*userCreationMutex};
+
+    {
+        shared_lock lock{mutex_};
+        if (auto id = users_.find(userUuid) ; id != users_.end()) {
+            LOG_TRACE << "UserContext: Found user " << uid << " in cache after waiting for creation lock";
+            co_return id->second;
+        }
     }
 
     auto res = co_await db.exec(
@@ -1208,10 +1323,12 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
             // TODO: Enforce account expiration and grace period here.
         }
 
-        auto ucx = make_shared<UserContext>(tenant, uid, ukind, tmp_settings, tenant_plan);
+        const auto publishState = co_await loadPublishState_(userUuid, uid);
+        auto ucx = make_shared<UserContext>(tenant, uid, ukind, tmp_settings, tenant_plan,
+                                            publishState.publish_id, publishState.publish_epoch);
         {
             unique_lock lock{mutex_};
-            users_[toUuid(uid)] = ucx;
+            users_[userUuid] = ucx;
         }
 
         co_await ucx->reloadPushers();

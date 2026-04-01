@@ -81,7 +81,6 @@ ColumnLayout  {
             text: useCaseCombo.currentIndex > 0 ? qsTr("Create lists from template and start using Nextapp!") : qsTr("Start using Nextapp!")
             onClicked: {
                 UseCaseTemplates.createFromTemplate(useCaseCombo.currentIndex)
-                NaCore.bootstrapDevice(root.newUser)
                 nextClicked()
             }
         }

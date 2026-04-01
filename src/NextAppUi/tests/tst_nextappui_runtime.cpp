@@ -1078,6 +1078,7 @@ void tst_NextAppUiRuntime::serverCommPersistsAndReloadsSyncCursorFile()
         ServerComm comm(runtime);
         comm.last_seen_update_id_ = 77;
         comm.last_seen_server_instance_ = 9988;
+        comm.last_seen_user_publish_epoch_ = 123456;
         comm.close();
     }
 
@@ -1088,11 +1089,13 @@ void tst_NextAppUiRuntime::serverCommPersistsAndReloadsSyncCursorFile()
         ServerComm comm(runtime);
         QCOMPARE(comm.last_seen_update_id_, 0u);
         QCOMPARE(comm.last_seen_server_instance_, quint64{0});
+        QCOMPARE(comm.last_seen_user_publish_epoch_, quint64{0});
 
         comm.start();
 
         QCOMPARE(comm.last_seen_update_id_, 77u);
         QCOMPARE(comm.last_seen_server_instance_, quint64{9988});
+        QCOMPARE(comm.last_seen_user_publish_epoch_, quint64{123456});
     }
 
     db->close();

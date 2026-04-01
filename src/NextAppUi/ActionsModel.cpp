@@ -314,11 +314,13 @@ ActionsModel::ActionsModel(RuntimeServices& runtime, QObject *parent)
 
 void ActionsModel::addAction(const nextapp::pb::Action &action)
 {
+    LOG_TRACE_N << "Adding action with name: " << action.name();
     runtime_.serverComm().addAction(action);
 }
 
 void ActionsModel::updateAction(const nextapp::pb::Action &action)
 {
+    LOG_TRACE_N << "Updating action with uuid: " << action.id_proto() << " and name: " << action.name();
     const auto& p = action.dynamicPriority();
     if (p.hasPriority()) {
         auto pri = p.priority();
@@ -333,6 +335,7 @@ void ActionsModel::updateAction(const nextapp::pb::Action &action)
 
 void ActionsModel::deleteAction(const QString &uuid)
 {
+    LOG_TRACE_N << "Deleting action with uuid: " << uuid;
     runtime_.serverComm().deleteAction(uuid);
 }
 

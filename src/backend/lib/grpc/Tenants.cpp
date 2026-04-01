@@ -1,5 +1,6 @@
 
 #include <deque>
+#include <array>
 
 #include "shared_grpc_server.h"
 #include "nextapp/logging.h"
@@ -11,6 +12,25 @@ namespace {
 string getOtpHash(string_view user, string_view uuid, string_view otp)
 {
     return sha256(format("{}/{}/{}",user, uuid, otp), true);
+}
+
+std::array<pb::ActionCategory, 4> getDefaultActionCategories()
+{
+    std::array<pb::ActionCategory, 4> categories;
+
+    categories[0].set_color("dodgerblue");
+    categories[0].set_name("Work");
+
+    categories[1].set_color("yellow");
+    categories[1].set_name("Private");
+
+    categories[2].set_color("green");
+    categories[2].set_name("Hobby");
+
+    categories[3].set_color("wheat");
+    categories[3].set_name("Family");
+
+    return categories;
 }
 
 } // anon ns
@@ -166,6 +186,12 @@ string getOtpHash(string_view user, string_view uuid, string_view otp)
                          << " has created user name=" << user.name() << ", id=" << user.uuid()
                          << ", kind=" << pb::User::Kind_Name(user.kind())
                          << ", tenant=" << user.tenant();
+
+                LOG_DEBUG << "Creating default action categories for user " << user.uuid();
+                for (const auto& category : getDefaultActionCategories()) {
+                    [[maybe_unused]] auto created =
+                        co_await owner_.addActionCategory(*rctx.dbh, user.uuid(), category);
+                }
 
                 tenant.add_users()->CopyFrom(user);            }
 

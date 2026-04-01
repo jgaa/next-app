@@ -33,6 +33,8 @@ This produces:
 
 ## Run
 
+In build directory.
+
 ### Full Matrix
 
 Run the current Phase 4 target matrix:
@@ -43,7 +45,7 @@ env NEXTAPP_ACCEPTANCE_RUN_BACKEND=1 \
   NEXTAPP_ACCEPTANCE_TAG=acceptance-local \
   NEXTAPP_ACCEPTANCE_TENANTS=3 \
   NEXTAPP_ACCEPTANCE_DEVICES_PER_TENANT=5 \
-  /tmp/nextapp-ui-runtime-tests/bin/tst_nextappui_acceptance \
+  ./bin/tst_nextappui_acceptance \
   backendFixtureReplicatesAcrossTenantMatrixWhenEnabled
 ```
 
@@ -57,7 +59,7 @@ env NEXTAPP_ACCEPTANCE_RUN_BACKEND=1 \
   NEXTAPP_ACCEPTANCE_TAG=acceptance-local \
   NEXTAPP_ACCEPTANCE_TENANTS=2 \
   NEXTAPP_ACCEPTANCE_DEVICES_PER_TENANT=3 \
-  /tmp/nextapp-ui-runtime-tests/bin/tst_nextappui_acceptance \
+  ./bin/tst_nextappui_acceptance \
   backendFixtureReplicatesAcrossTenantMatrixWhenEnabled
 ```
 

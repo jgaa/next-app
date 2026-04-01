@@ -105,10 +105,12 @@ filesystem::path getServerReqIdPath(RuntimeServices& runtime) {
     return getDataDir(runtime) / "svrreqid.dat";
 }
 
-void saveValuesToFile(RuntimeServices& runtime, uint32_t lastSeenUpdateId, uint64_t lastSeenServerInstance, string_view why) {
+void saveValuesToFile(RuntimeServices& runtime, uint32_t lastSeenUpdateId, uint64_t lastSeenServerInstance,
+                      uint64_t lastSeenUserPublishEpoch, string_view why) {
     const auto path = getServerReqIdPath(runtime);
     LOG_TRACE_N << "Saving lastSeenUpdateId=" << lastSeenUpdateId
                 << ", lastSeenServerInstance=" << lastSeenServerInstance
+                << ", lastSeenUserPublishEpoch=" << lastSeenUserPublishEpoch
                 << " because " << why << " to " << path;
 
     const auto tmp = path.string() + ".tmp";
@@ -116,6 +118,7 @@ void saveValuesToFile(RuntimeServices& runtime, uint32_t lastSeenUpdateId, uint6
     if (file.is_open()) {
         file.write(reinterpret_cast<const char*>(&lastSeenUpdateId), sizeof(lastSeenUpdateId));
         file.write(reinterpret_cast<const char*>(&lastSeenServerInstance), sizeof(lastSeenServerInstance));
+        file.write(reinterpret_cast<const char*>(&lastSeenUserPublishEpoch), sizeof(lastSeenUserPublishEpoch));
         file.close();
 
         // Rename the temporary file to the final file
@@ -129,15 +132,20 @@ void saveValuesToFile(RuntimeServices& runtime, uint32_t lastSeenUpdateId, uint6
     }
 }
 
-bool loadValuesFromFile(RuntimeServices& runtime, uint32_t& lastSeenUpdateId, uint64_t& lastSeenServerInstance) {
+bool loadValuesFromFile(RuntimeServices& runtime, uint32_t& lastSeenUpdateId, uint64_t& lastSeenServerInstance,
+                        uint64_t& lastSeenUserPublishEpoch) {
     const auto path = getServerReqIdPath(runtime);
     std::ifstream file(path, std::ios::binary);
     if (file.is_open()) {
         file.read(reinterpret_cast<char*>(&lastSeenUpdateId), sizeof(lastSeenUpdateId));
         file.read(reinterpret_cast<char*>(&lastSeenServerInstance), sizeof(lastSeenServerInstance));
+        if (!file.read(reinterpret_cast<char*>(&lastSeenUserPublishEpoch), sizeof(lastSeenUserPublishEpoch))) {
+            lastSeenUserPublishEpoch = 0;
+        }
         file.close();
         LOG_TRACE_N << "Loaded lastSeenUpdateId=" << lastSeenUpdateId
                     << ", lastSeenServerInstance=" << lastSeenServerInstance
+                    << ", lastSeenUserPublishEpoch=" << lastSeenUserPublishEpoch
                     << " from " << path;
         return true;
     } else {
@@ -354,7 +362,7 @@ void ServerComm::start()
     LOG_DEBUG_N << "starting server-comm.";
 
     if (!last_seen_update_id_) {
-        loadValuesFromFile(runtime_, last_seen_update_id_, last_seen_server_instance_);
+        loadValuesFromFile(runtime_, last_seen_update_id_, last_seen_server_instance_, last_seen_user_publish_epoch_);
     }
 
     if (!canConnect()) {
@@ -492,7 +500,8 @@ void ServerComm::close()
         client_.reset();
         signup_client_.reset();
         LOG_DEBUG_N << "Done closing down ServerComm.";
-        saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "closing up shop");
+        saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
+                         last_seen_user_publish_epoch_, "closing up shop");
     }
 }
 
@@ -657,12 +666,14 @@ void ServerComm::fetchDay(int year, int month, int day)
 
 void ServerComm::addAction(const nextapp::pb::Action& action)
 {
-    rpcQueueAndExecute<QueuedRequest::Type::ADD_ACTION>(action);
+    rpcQueueAndExecute<QueuedRequest::Type::ADD_ACTION>(action,
+                                                        action.name().toStdString());
 }
 
 void ServerComm::updateAction(const nextapp::pb::Action &action)
 {
-    rpcQueueAndExecute<QueuedRequest::Type::UPDATE_ACTION>(action);
+    rpcQueueAndExecute<QueuedRequest::Type::UPDATE_ACTION>(action,
+                                                           action.name().toStdString());
 }
 
 void ServerComm::updateActions(const nextapp::pb::UpdateActionsReq &action)
@@ -911,9 +922,9 @@ void ServerComm::fetchActionCategories(callback_t<nextapp::pb::ActionCategories>
     });
 }
 
-void ServerComm::createActionCategory(const nextapp::pb::ActionCategory &category)
+QCoro::Task<bool> ServerComm::createActionCategory(const nextapp::pb::ActionCategory &category)
 {
-    rpcQueueAndExecute<QueuedRequest::Type::CREATE_ACTION_CATEGORY>(category);
+    co_return co_await rpcQueueAndExecute<QueuedRequest::Type::CREATE_ACTION_CATEGORY>(category);
 }
 
 void ServerComm::createActionCategory(const nextapp::pb::ActionCategory &category, callback_t<nextapp::pb::Status> &&done)
@@ -1284,6 +1295,7 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
                              QString otp,
                              int region)
 {
+    const bool is_new_user = otp.isEmpty();
     // Create a new device ID
     {
         device_uuid_ = QUuid::createUuid();
@@ -1325,7 +1337,7 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
 
     setMessage(tr("Sending request to the signup service..."));
 
-    auto finish = [this, key](const signup::pb::Reply& su) {
+    auto finish = [this, key, is_new_user](const signup::pb::Reply& su) {
         LOG_DEBUG << "Received signup response from server ";
 
         switch(su.error()) {
@@ -1343,6 +1355,7 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
             settings().setValue("server/clientCert", su.signUpResponse().cert());
             settings().setValue("server/clientKey", key);
             settings().setValue("server/caCert", su.signUpResponse().caCert());
+
             addMessage(tr("Your account was successfully created!"));
             signup_status_ = SignupStatus::SIGNUP_SUCCESS;
             QMetaObject::invokeMethod(qApp, [this]() {
@@ -1363,6 +1376,7 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
     };
 
     if (!otp.isEmpty()) {
+        LOG_TRACE_N << "Adding new device with OTP for email: " << email;
         signup::pb::CreateNewDeviceRequest add_device_req;
         common::OtpAuth otp_auth;
         otp_auth.setOtp(otp);
@@ -1373,7 +1387,8 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
         auto res = co_await rpcSignup(add_device_req, &signup::pb::SignUp::Client::CreateNewDevice);
         finish(res);
     } else {
-         signup::pb::SignUpRequest signup_req;
+        LOG_TRACE_N << "Signing up new account with email: " << email;
+        signup::pb::SignUpRequest signup_req;
         signup_req.setUserName(name);
         signup_req.setEmail(email);
         common::Uuid region_uuid;
@@ -1392,6 +1407,13 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
         signup_req.setDevice(dev);
 
         auto res = co_await rpcSignup(signup_req, &signup::pb::SignUp::Client::SignUp);
+
+        if (res.error() == signup::pb::ErrorGadget::Error::OK) {
+            LOG_INFO_N << "Signup successful for email: " << email;
+        } else {
+            LOG_ERROR_N << "Signup failed for email: " << email << ". Error: " << res.message();
+        }
+
         finish(res);
     }
 }
@@ -1403,6 +1425,7 @@ void ServerComm::addDeviceWithOtp(const QString &otp, const QString &email, cons
 
 void ServerComm::signupDone()
 {
+    LOG_TRACE_N << "Signup process is done. Current signup status: " << signup_status_;
     if (signup_status_ == SignupStatus::SIGNUP_SUCCESS) {
         signup_status_ = SignupStatus::SIGNUP_OK;
         emit signupStatusChanged();
@@ -1477,6 +1500,110 @@ void ServerComm::onGrpcReady()
     runtime_.setOnline(true);
 }
 
+bool ServerComm::shouldDeferUpdateUntilInitialSyncComplete() const noexcept
+{
+    return status_ == Status::INITIAL_SYNC;
+}
+
+uint ServerComm::effectiveLastSeenUpdateId() const noexcept
+{
+    return deferred_update_id_ > last_seen_update_id_ ? deferred_update_id_ : last_seen_update_id_;
+}
+
+void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& msg)
+{
+    assert(msg);
+
+    if (msg->hasUserGlobalSettings()) {
+        const auto& new_settings = msg->userGlobalSettings();
+        if (new_settings.version() > userGlobalSettings_.version()) {
+            LOG_DEBUG << "Received updated global user-settings";
+
+            const bool first_day_of_week_changed
+                = userGlobalSettings_.firstDayOfWeekIsMonday() != new_settings.firstDayOfWeekIsMonday();
+            userGlobalSettings_ = new_settings;
+            emit globalSettingsChanged();
+
+            if (first_day_of_week_changed) {
+                LOG_DEBUG << "First day of week changed";
+                emit firstDayOfWeekChanged();
+            }
+        }
+    }
+
+    if (msg->hasDevice()) {
+        const auto& dev = msg->device();
+        const auto& uuid = QUuid{dev.id_proto()};
+        if (uuid == deviceUuid()) {
+            if (msg->op() == nextapp::pb::Update::Operation::UPDATED) {
+                LOG_DEBUG << "Received updated device info";
+                if (!dev.enabled()) {
+                    LOG_WARN << "This device has been disabled! Logging out.";
+                    stop();
+                    return;
+                }
+            }
+            if (msg->op() == nextapp::pb::Update::Operation::DELETED) {
+                LOG_WARN << "This device has been deleted! Logging out.";
+                stop();
+                settings().setValue("server/deleted", true);
+                return;
+            }
+        };
+    }
+
+    if (msg->hasReload()) {
+        const auto what = msg->reload();
+        switch(what) {
+        case nextapp::pb::Update::Reload::NODES:
+            LOG_DEBUG << "Received reload-nodes update";
+            MainTreeModel::instance()->doSynch(true);
+        }
+    }
+
+    if (msg->hasAccountDeleted() && msg->accountDeleted()) {
+        LOG_WARN << "Account deleted! Logging out.";
+        QTimer::singleShot(0, [this]() {
+            runtime_.onAccountDeleted();
+        });
+    }
+
+    if (msg->hasResync() && msg->resync()) {
+        LOG_INFO_N << "Received resync request from server";
+        QTimer::singleShot(500ms, [this]() {
+            resync();
+        });
+    }
+
+    emit onUpdate(msg);
+}
+
+QCoro::Task<void> ServerComm::replayDeferredUpdates()
+{
+    if (deferred_updates_.empty()) {
+        LOG_TRACE_N << "No deferred updates to replay after initial sync.";
+        co_return;
+    }
+
+    LOG_INFO_N << "Replaying " << deferred_updates_.size()
+               << " deferred updates after initial sync. last_seen_update_id_="
+               << last_seen_update_id_ << ", deferred_update_id_=" << deferred_update_id_;
+
+    while (!deferred_updates_.empty()) {
+        auto msg = deferred_updates_.front();
+        deferred_updates_.pop_front();
+        applyUpdateMessage(msg);
+
+        last_seen_update_id_ = msg->messageId();
+        saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
+                         last_seen_user_publish_epoch_, "replayed deferred update");
+    }
+
+    deferred_update_id_ = 0;
+    LOG_TRACE_N << "Deferred update replay completed. last_seen_update_id_=" << last_seen_update_id_;
+    co_return;
+}
+
 void ServerComm::onUpdateMessage()
 {
     LOG_TRACE_N << "Received an update...";
@@ -1491,85 +1618,39 @@ void ServerComm::onUpdateMessage()
 #endif
             LOG_TRACE << "Got update: #" << msg->messageId() << " " << msg->when().seconds();
             const auto msgid = msg->messageId();
-            if (msgid <= last_seen_update_id_) {
+            const auto effective_last_seen = effectiveLastSeenUpdateId();
+            if (msgid <= effective_last_seen) {
                 LOG_WARN_N << "Ignoring duplicate or stale update #" << msgid
-                           << " because last_seen_update_id_ is " << last_seen_update_id_;
+                           << " because effective last seen update id is " << effective_last_seen
+                           << " (durable=" << last_seen_update_id_
+                           << ", deferred=" << deferred_update_id_ << ')';
                 return;
             }
 
-            if (msgid != last_seen_update_id_ + 1) {
+            if (msgid != effective_last_seen + 1) {
                 LOG_WARN_N << "Received out of order update #" << msgid
-                           << ". I expected messageid #" << (last_seen_update_id_ + 1);
+                           << ". I expected messageid #" << (effective_last_seen + 1)
+                           << " (durable=" << last_seen_update_id_
+                           << ", deferred=" << deferred_update_id_ << ')';
                 requestResyncAfterStreamGap(msgid);
                 return;
             };
+
+            if (shouldDeferUpdateUntilInitialSyncComplete()) {
+                deferred_update_id_ = msgid;
+                deferred_updates_.push_back(msg);
+                LOG_INFO_N << "Deferring update #" << msgid
+                           << " while initial sync is running. deferred_updates="
+                           << deferred_updates_.size();
+                return;
+            }
+
             last_seen_update_id_ = msgid;
-            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "normal update");
-
-            if (msg->hasUserGlobalSettings()) {
-                const auto& new_settings = msg->userGlobalSettings();
-                if (new_settings.version() > userGlobalSettings_.version()) {
-                    LOG_DEBUG << "Received updated global user-settings";
-
-                    const bool first_day_of_week_changed
-                        = userGlobalSettings_.firstDayOfWeekIsMonday() != new_settings.firstDayOfWeekIsMonday();
-                    userGlobalSettings_ = new_settings;
-                    emit globalSettingsChanged();
-
-                    if (first_day_of_week_changed) {
-                        LOG_DEBUG << "First day of week changed";
-                        emit firstDayOfWeekChanged();
-                    }
-                }
-            }
-
-            if (msg->hasDevice()) {
-                const auto& dev = msg->device();
-                const auto& uuid = QUuid{dev.id_proto()};
-                if (uuid == deviceUuid()) {
-                    if (msg->op() == nextapp::pb::Update::Operation::UPDATED) {
-                        LOG_DEBUG << "Received updated device info";
-                        if (!dev.enabled()) {
-                            LOG_WARN << "This device has been disabled! Logging out.";
-                            stop();
-                            return;
-                        }
-                    }
-                    if (msg->op() == nextapp::pb::Update::Operation::DELETED) {
-                        LOG_WARN << "This device has been deleted! Logging out.";
-                        stop();
-                        settings().setValue("server/deleted", true);
-                        return;
-                    }
-                };
-            }
-
-            if (msg->hasReload()) {
-                const auto what = msg->reload();
-                switch(what) {
-                case nextapp::pb::Update::Reload::NODES:
-                    LOG_DEBUG << "Received reload-nodes update";
-                    MainTreeModel::instance()->doSynch(true);
-                }
-            }
-
-            if (msg->hasAccountDeleted() && msg->accountDeleted()) {
-                LOG_WARN << "Account deleted! Logging out.";
-                QTimer::singleShot(0, [this]() {
-                    runtime_.onAccountDeleted();
-                });
-            }
-
-            if (msg->hasResync() && msg->resync()) {
-                LOG_INFO_N << "Received resync request from server";
-                QTimer::singleShot(500ms, [this]() {
-                    resync();
-                });
-            }
-
-            emit onUpdate(std::move(msg));
-            last_seen_update_id_ = msgid;
-            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "applied update");
+            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
+                             last_seen_user_publish_epoch_, "normal update");
+            applyUpdateMessage(msg);
+            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
+                             last_seen_user_publish_epoch_, "applied update");
         }
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();
@@ -1816,6 +1897,8 @@ QCoro::Task<void> ServerComm::startNextappSession()
 
 
     session_id_.clear();
+    deferred_updates_.clear();
+    deferred_update_id_ = 0;
     updated_id_sync_initialized_ = settings().value("sync/updatedIdInitialized", false).toBool();
     server_supports_updated_id_ = false;
 
@@ -1855,20 +1938,30 @@ QCoro::Task<void> ServerComm::startNextappSession()
             LOG_DEBUG_N << "Last seen update id: " << last_seen_update_id_
                         << ", server last publish id: " << res.hello().lastPublishId()
                         << ", last seen server instance: " << last_seen_server_instance_
+                        << ", last seen user publish epoch: " << last_seen_user_publish_epoch_
                         << ", server instance tag: " << res.hello().serverInstanceTag()
+                        << ", server user publish epoch: " << res.hello().userPublishEpoch()
                         << ", server-id: " << res.hello().serverId()
                         << ", session-id: " << session_id_
                         << ", plans enabled: " << res.hello().plansEnabled()
                         << ", supports updated_id: " << res.hello().supportsUpdatedId();
 
             session_start_publish_id_ = res.hello().lastPublishId();
+            session_user_publish_epoch_ = res.hello().userPublishEpoch();
             hello_last_notification = res.hello().lastNotification();
             server_supports_updated_id_ = res.hello().supportsUpdatedId();
             if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
                 needs_sync = true;
                 server_reset_detected = true;
                 last_seen_server_instance_ = res.hello().serverInstanceTag();
+                last_seen_user_publish_epoch_ = session_user_publish_epoch_;
+                last_seen_update_id_ = 0;
                 LOG_INFO_N << "Needs sync. Server instance tag changed to " << last_seen_server_instance_;
+            } else if (res.hello().userPublishEpoch() != last_seen_user_publish_epoch_) {
+                needs_sync = true;
+                last_seen_user_publish_epoch_ = res.hello().userPublishEpoch();
+                last_seen_update_id_ = 0;
+                LOG_INFO_N << "Needs sync. User publish epoch changed to " << last_seen_user_publish_epoch_;
             } else if (!res.hello().supportsUpdatedId()
                        && res.hello().lastPublishId() < last_seen_update_id_) {
                 needs_sync = true;
@@ -1887,7 +1980,8 @@ QCoro::Task<void> ServerComm::startNextappSession()
                            << last_seen_update_id_;
             }
 
-            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "server hello");
+            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
+                             last_seen_user_publish_epoch_, "server hello");
 
             if (hello_last_notification > NotificationsModel::instance()->lastUpdateSeen()) {
                 notification_sync_target = hello_last_notification;
@@ -2237,8 +2331,12 @@ failed:
     if ((needs_sync || full_sync)
         && (server_reset_detected || last_seen_update_id_ < session_start_publish_id_)) {
         last_seen_update_id_ = session_start_publish_id_;
-        saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_, "completed sync baseline");
+        last_seen_user_publish_epoch_ = session_user_publish_epoch_;
+        saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
+                         last_seen_user_publish_epoch_, "completed sync baseline");
     }
+
+    co_await replayDeferredUpdates();
 
     if (userGlobalSettings_.version() == 0) {
         initGlobalSettings();
@@ -2893,6 +2991,7 @@ void ServerComm::resync()
     addMessage(tr("Initiating full resynch with the server"));
     emit resynching();
     stop();
+    setStatus(Status::OFFLINE);
 
     settings().setValue("sync/resync", "true");
 

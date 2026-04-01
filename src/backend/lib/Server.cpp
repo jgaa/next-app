@@ -72,6 +72,7 @@ void Server::run()
             }
 
             co_await loadServerId();
+            co_await db().exec("DELETE FROM user_runtime_publish_state");
             co_await loadCertAuthority();
             if (pushIsEnabled()) {
                 LOG_INFO << "Push notifications are enabled.";
@@ -1544,6 +1545,22 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v26_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(CREATE TABLE IF NOT EXISTS user_runtime_publish_state (
+            user_id UUID NOT NULL,
+            publish_id INT UNSIGNED NOT NULL DEFAULT 0,
+            publish_epoch BIGINT NOT NULL,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id),
+            CONSTRAINT fk_user_runtime_publish_state_user
+                FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE ON UPDATE RESTRICT
+        ))",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -1570,6 +1587,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v23_upgrade,
         v24_upgrade,
         v25_upgrade,
+        v26_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

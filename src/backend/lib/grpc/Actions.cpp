@@ -1601,27 +1601,35 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             const auto& cuser = rctx.uctx->userUuid();
-            const auto& dbopts = rctx.uctx->dbOptions();
+            auto created = co_await owner_.addActionCategory(*rctx.dbh, cuser, *req);
+            auto *reply_ac = reply->mutable_actioncategory();
+            *reply_ac = std::move(created);
 
-            auto res = co_await rctx.dbh->exec(
-                format("INSERT INTO action_category (USER, NAME, DESCR, COLOR, ICON) VALUES (?,?,?,?,?) RETURNING {}",
-                       ToActionCategory::columns),
-                dbopts,
-                cuser, req->name(), toStringOrNull(req->descr()), req->color(), toStringOrNull(req->icon()));
-
-            assert(!res.empty());
-            if (res.rows().empty()) [[unlikely]] {
-                reply->set_error(pb::Error::GENERIC_ERROR);
-                reply->set_message(format("ActionCategory with id={} was not created.", req->id()));
-            } else {
-                auto *reply_ac = reply->mutable_actioncategory();
-                ToActionCategory::assign(res.rows().front(), *reply_ac);
-
-                auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
-                *update.mutable_actioncategory() = *reply_ac;
-            }
+            auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
+            *update.mutable_actioncategory() = *reply_ac;
 
         }, __func__);
+}
+
+boost::asio::awaitable<pb::ActionCategory> GrpcServer::addActionCategory(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+                                                                         std::string_view userId,
+                                                                         const pb::ActionCategory& category)
+{
+    auto res = co_await dbh.exec(
+        format("INSERT INTO action_category (USER, NAME, DESCR, COLOR, ICON) VALUES (?,?,?,?,?) RETURNING {}",
+               ToActionCategory::columns),
+        userId, category.name(), toStringOrNull(category.descr()), category.color(), toStringOrNull(category.icon()));
+
+    assert(!res.empty());
+    if (res.rows().empty()) [[unlikely]] {
+        throw server_err{pb::Error::GENERIC_ERROR,
+                         format("ActionCategory with name='{}' was not created for user={}.",
+                                category.name(), userId)};
+    }
+
+    pb::ActionCategory created;
+    ToActionCategory::assign(res.rows().front(), created);
+    co_return created;
 }
 
 boost::asio::awaitable<void> GrpcServer::saveActionCategories(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
