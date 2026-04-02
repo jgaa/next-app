@@ -63,7 +63,7 @@ ColumnLayout  {
             text: settings.companyName
             //color: MaterialDesignStyling.onSurface
             onTextChanged: {
-                settings.companyName = name.text
+                settings.companyName = fillWidth.text
                 validate()
             }
         }

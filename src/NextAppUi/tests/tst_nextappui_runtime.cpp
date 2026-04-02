@@ -753,6 +753,7 @@ private slots:
     void serverCommNeedFullResyncHonorsSettingsAndDataEpoc();
     void serverCommPersistsAndReloadsSyncCursorFile();
     void serverCommResyncSetsFlagAndStops();
+    void serverCommDuplicateResyncIsCoalesced();
     void serverCommOutOfOrderUpdateRequestsFullResync();
     void serverSynchedCacheQueuesUpdatesUntilLocalLoadCompletes();
     void serverSynchedCacheCommitsTransactionAndLoadsPersistedState();
@@ -1120,6 +1121,30 @@ void tst_NextAppUiRuntime::serverCommResyncSetsFlagAndStops()
     QCOMPARE(runtime.settings_.value("sync/resync").toString(), QStringLiteral("true"));
     QCOMPARE(comm.status(), ServerComm::OFFLINE);
     QVERIFY(comm.messages_.contains("Initiating full resynch with the server"));
+
+    db->close();
+}
+
+void tst_NextAppUiRuntime::serverCommDuplicateResyncIsCoalesced()
+{
+    auto db = makeInitializedDb(QStringLiteral("servercomm-duplicate-resync.sqlite"));
+
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    runtime.settings_.setValue("sync/resync", false);
+
+    ServerComm comm(runtime);
+    comm.signup_status_ = ServerComm::SIGNUP_OK;
+    comm.setStatus(ServerComm::ONLINE);
+
+    QSignalSpy spy(&comm, &ServerComm::resynching);
+    comm.resync();
+    comm.resync();
+
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(runtime.settings_.value("sync/resync").toString(), QStringLiteral("true"));
+    QCOMPARE(comm.status(), ServerComm::OFFLINE);
+    QCOMPARE(comm.resync_scheduled_, true);
 
     db->close();
 }

@@ -689,6 +689,7 @@ private:
     uint64_t session_user_publish_epoch_{};
     bool server_supports_updated_id_{false};
     bool updated_id_sync_initialized_{false};
+    bool resync_scheduled_{false};
     bool closed_{false};
     std::deque<std::shared_ptr<nextapp::pb::Update>> deferred_updates_;
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)

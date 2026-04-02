@@ -2987,15 +2987,31 @@ QCoro::Task<bool> ServerComm::needFullResync()
 void ServerComm::resync()
 {
     LOG_INFO_N << tr("Resynching with the server.");
+    settings().setValue("sync/resync", "true");
+
+    if (resync_scheduled_) {
+        LOG_DEBUG_N << "Full resync is already scheduled. Ignoring duplicate request.";
+        return;
+    }
+
+    resync_scheduled_ = true;
     clearMessages();
     addMessage(tr("Initiating full resynch with the server"));
     emit resynching();
     stop();
     setStatus(Status::OFFLINE);
 
-    settings().setValue("sync/resync", "true");
-
     QTimer::singleShot(1000, this, [this]() {
+        resync_scheduled_ = false;
+        if (closed_) {
+            return;
+        }
+
+        if (status_ != Status::OFFLINE && status_ != Status::ERROR) {
+            LOG_DEBUG_N << "Skipping scheduled resync start because status is " << status_;
+            return;
+        }
+
         LOG_DEBUG_N << "Starting resynch with the server.";
         start();
     });
