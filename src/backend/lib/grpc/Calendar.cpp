@@ -30,7 +30,8 @@ struct ToTimeBlock {
 
     static constexpr auto columns = "id, user, name, start_time, end_time, kind, category, actions, version, updated, updated_id";
 
-    static void assign(const boost::mysql::row_view& row, pb::TimeBlock& tb, const UserContext& uctx) {
+    static void assign(const boost::mysql::row_view& row, pb::TimeBlock& tb, const UserContext& uctx,
+                       bool include_updated_id = true) {
         tb.set_id(pb_adapt(row.at(ID).as_string()));
         tb.set_user(pb_adapt(row.at(USER).as_string()));
         if (row.at(NAME).is_string()) {
@@ -63,7 +64,9 @@ struct ToTimeBlock {
 
         tb.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
         tb.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), uctx.tz()));
-        tb.set_updatedid(row.at(UPDATED_ID).as_uint64());
+        if (include_updated_id) {
+            tb.set_updatedid(row.at(UPDATED_ID).as_uint64());
+        }
     }
 };
 
@@ -319,8 +322,11 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
 
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
-    const auto batch_size = server().config().options.stream_batch_size;
     const auto cursor = getIncrementalSyncCursor(req);
+    const auto batch_size = cursor.use_updated_id
+        ? server().config().options.stream_batch_size
+        // Remove after the legacy client migration is complete.
+        : std::min<size_t>(server().config().options.stream_batch_size, 100);
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
@@ -332,7 +338,10 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
                             ToTimeBlock::columns,
                             where_clause,
                             removeDeleted ? "AND kind != 'deleted'" : "",
-                            cursor.use_updated_id ? "updated_id, start_time, end_time, id" : "updated, start_time, end_time, id");
+                            cursor.use_updated_id
+                                ? "updated_id, start_time, end_time, id"
+                                // Remove after the legacy client migration is complete.
+                                : "updated, start_time, end_time, id");
     if (full_sync) {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
     } else if (cursor.use_updated_id) {
@@ -344,6 +353,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
     nextapp::pb::Status reply;
 
     auto *tb = reply.mutable_timeblocks();
+    const bool include_updated_id = cursor.use_updated_id;
     auto num_rows_in_batch = 0u;
     auto total_rows = 0u;
     auto batch_num = 0u;
@@ -373,7 +383,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
 
         for(const auto& row : rows) {
             auto * b = tb->add_blocks();
-            ToTimeBlock::assign(row, *b, *rctx.uctx);
+            ToTimeBlock::assign(row, *b, *rctx.uctx, include_updated_id);
             ++total_rows;
             // Do we need to flush?
             if (++num_rows_in_batch >= batch_size) {

@@ -12,7 +12,8 @@ struct ToNode {
 
     static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version, updated, updated_id, deleted, exclude_from_wr, category ";
 
-    static void assign(const boost::mysql::row_view& row, pb::Node& node, const RequestCtx& rctx) {
+    static void assign(const boost::mysql::row_view& row, pb::Node& node, const RequestCtx& rctx,
+                       bool include_updated_id = true) {
         node.set_uuid(pb_adapt(row.at(ID).as_string()));
         node.set_user(pb_adapt(row.at(USER).as_string()));
         if (row.at(NAME).is_string()) {
@@ -32,7 +33,9 @@ struct ToNode {
         }
         node.set_deleted(row.at(ToNode::DELETED).as_int64() == 1);
         node.set_updated(toMsTimestamp(row.at(ToNode::UPDATED).as_datetime(), rctx.uctx->tz()));
-        node.set_updatedid(row.at(ToNode::UPDATED_ID).as_uint64());
+        if (include_updated_id) {
+            node.set_updatedid(row.at(ToNode::UPDATED_ID).as_uint64());
+        }
         if (row.at(EXCLUDE_FROM_WR).is_int64() && row.at(EXCLUDE_FROM_WR).as_int64() != 0) {
             node.set_excludefromweeklyreview(true);
         }
@@ -487,6 +490,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
     nextapp::pb::Status reply;
 
     auto *nodes = reply.mutable_nodes();
+    const bool include_updated_id = cursor.use_updated_id;
     auto num_rows_in_batch = 0u;
     auto total_rows = 0u;
     auto batch_num = 0u;
@@ -516,7 +520,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
 
         for(const auto& row : rows) {
             auto * node = nodes->add_nodes();
-            ToNode::assign(row, *node, rctx);
+            ToNode::assign(row, *node, rctx, include_updated_id);
             ++total_rows;
             // Do we need to flush?
             if (++num_rows_in_batch >= batch_size) {

@@ -73,11 +73,14 @@ struct ToDevice {
     static constexpr string_view fields = "id, created_time, updated, updated_id, valid_to, subject, message, sender_type, sender_id, to_tenant, to_user, uuid, kind, data";
     enum Cols { ID, CREATED_TIME, UPDATED, UPDATED_ID, VALID_TO, SUBJECT, MESSAGE, SENDER_TYPE, SENDER_ID, TO_TENANT, TO_USER, UUID, KIND, DATA };
 
-    static void assign(const boost::mysql::row_view& row, pb::Notification &notification, const chrono::time_zone& tz) {
+    static void assign(const boost::mysql::row_view& row, pb::Notification &notification,
+                       const chrono::time_zone& tz, bool include_updated_id = true) {
         notification.set_id(row[ID].as_int64());
         notification.mutable_createdtime()->set_unixtime(toTimeT(row[CREATED_TIME].as_datetime(), tz));
         notification.set_updated(toMsTimestamp(row[UPDATED].as_datetime(), tz));
-        notification.set_updatedid(row[UPDATED_ID].as_uint64());
+        if (include_updated_id) {
+            notification.set_updatedid(row[UPDATED_ID].as_uint64());
+        }
         if (!row[VALID_TO].is_null()) {
             notification.mutable_validto()->set_unixtime(toTimeT(row[VALID_TO].as_datetime(), tz));
         }
@@ -772,6 +775,7 @@ failed:
         nextapp::pb::Status reply;
 
         auto *notifications = reply.mutable_notifications();
+        const bool include_updated_id = cursor.use_updated_id;
         auto num_rows_in_batch = 0u;
         auto total_rows = 0u;
         auto batch_num = 0u;
@@ -802,7 +806,7 @@ failed:
           for(const auto& row : rows) {
               auto * n = notifications->add_notifications();
               assert(n);
-              ToNotification::assign(row, *n, rctx.uctx->tz());
+              ToNotification::assign(row, *n, rctx.uctx->tz(), include_updated_id);
               ++total_rows;
               // Do we need to flush?
               if (++num_rows_in_batch >= batch_size) {

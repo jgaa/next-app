@@ -48,6 +48,7 @@ using grpc_metadata_t = QHash<QByteArray, QByteArray>;
 #include "GreenDaysModel.h"
 #include "ActionInfoCache.h"
 #include "ActionCategoriesModel.h"
+#include "ActionsOnCurrentCalendar.h"
 #include "MainTreeModel.h"
 #include "WorkCache.h"
 #include "CalendarCache.h"
@@ -1912,6 +1913,10 @@ QCoro::Task<void> ServerComm::startNextappSession()
     }
 
     bool full_sync = co_await needFullResync();
+    if (full_sync) {
+        // Clear stale in-memory calendar references before the cache is rebuilt.
+        ActionsOnCurrentCalendar::instance()->clear();
+    }
 
     setStatus(Status::CONNECTING);
 

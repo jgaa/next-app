@@ -148,13 +148,16 @@ struct ToAction {
 
     // TODO: If we assign to ActionInfo, set_hasdescr() is not set.
     template <ActionType T>
-    static void assign(const boost::mysql::row_view& row, T& obj, const UserContext& uctx) {
+    static void assign(const boost::mysql::row_view& row, T& obj, const UserContext& uctx,
+                       bool include_updated_id = true) {
         obj.set_id(pb_adapt(row.at(ID).as_string()));
         if (row.at(NODE).is_string()) {
             obj.set_node(pb_adapt(row.at(NODE).as_string()));
         }
         obj.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
-        obj.set_updatedid(row.at(UPDATED_ID).as_uint64());
+        if (include_updated_id) {
+            obj.set_updatedid(row.at(UPDATED_ID).as_uint64());
+        }
 
         if (row.at(ORIGIN).is_string()) {
             obj.set_origin(pb_adapt(row.at(ORIGIN).as_string()));
@@ -1765,15 +1768,22 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
                                                            jgaa::mysqlpool::Mysqlpool::Handle& dbh,
                                                            const export_flush_fn_t& flush_fn,
                                                            RequestCtx& rctx,
-                                                           bool removeDeleted) {
+    bool removeDeleted) {
 
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
-    const auto batch_size = server().config().options.stream_batch_size;
-    static const auto prefixed_cols = prefixNames(ToAction::allSelectCols(), "a.");
     const auto cursor = getIncrementalSyncCursor(req);
+    const auto batch_size = cursor.use_updated_id
+        ? server().config().options.stream_batch_size
+        // Remove after the legacy client migration is complete.
+        : std::min<size_t>(server().config().options.stream_batch_size, 100);
+    static const auto prefixed_cols = prefixNames(ToAction::allSelectCols(), "a.");
     const auto full_sync = cursor.use_updated_id && cursor.since == 0;
     const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto order_clause = cursor.use_updated_id
+        ? "updated_id, node, origin, start_time, due_by_time, id"
+        // Remove after the legacy client migration is complete.
+        : "updated, node, origin, start_time, due_by_time, id";
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
@@ -1803,10 +1813,11 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
         // removeDeleted ? "AND status != 'deleted'" : "",
         // order_clause);
 
-    const auto sql = format("SELECT {} from action WHERE user=? AND {} {} ",
+    const auto sql = format("SELECT {} from action WHERE user=? AND {} {} ORDER BY {}",
                             ToAction::allSelectCols(),
                             where_clause,
-                            removeDeleted ? "AND status != 'deleted'" : "");
+                            removeDeleted ? "AND status != 'deleted'" : "",
+                            order_clause);
 
     if (full_sync) {
         co_await dbh.start_exec(
@@ -1825,6 +1836,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
     nextapp::pb::Status reply;
 
     auto *actions = reply.mutable_completeactions();
+    const bool include_updated_id = cursor.use_updated_id;
     auto num_rows_in_batch = 0u;
     auto total_rows = 0u;
     auto batch_num = 0u;
@@ -1854,7 +1866,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
 
         for(const auto& row : rows) {
             auto * action = actions->add_actions();
-            ToAction::assign(row, *action, *rctx.uctx);
+            ToAction::assign(row, *action, *rctx.uctx, include_updated_id);
             ++total_rows;
             // Do we need to flush?
             if (++num_rows_in_batch >= batch_size) {

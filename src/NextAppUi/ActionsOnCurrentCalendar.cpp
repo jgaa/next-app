@@ -8,6 +8,16 @@ ActionsOnCurrentCalendar *ActionsOnCurrentCalendar::instance()
     return &instance;
 }
 
+void ActionsOnCurrentCalendar::clear()
+{
+    if (actions_.empty()) {
+        return;
+    }
+
+    actions_.clear();
+    emit modelReset();
+}
+
 void ActionsOnCurrentCalendar::addAction(const QUuid &action)
 {
     // insert action and emit signal if it was added

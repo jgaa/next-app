@@ -31,6 +31,7 @@ public:
         emit modelReset();
     }
 
+    void clear();
     void addAction(const QUuid& action);
     void removeAction(const QUuid& action);
 

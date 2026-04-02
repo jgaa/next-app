@@ -302,8 +302,8 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
 
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
-    const auto batch_size = server().config().options.stream_batch_size;
     const auto cursor = getIncrementalSyncCursor(req);
+    const auto batch_size = server().config().options.stream_batch_size;
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
@@ -318,9 +318,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
             ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
                        WHERE user=? AND updated_id > ?
                        ORDER BY updated_id, date)"
+            // Remove after the legacy client migration is complete.
             : R"(SELECT deleted, updated, CAST(0 AS UNSIGNED), date, color, notes, report FROM day
-                       WHERE user=? AND updated > ?
-                       ORDER BY updated, date)";
+                       WHERE user=? AND updated > ?)";
     if (full_sync) {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
     } else if (cursor.use_updated_id) {
@@ -371,7 +371,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
             assert(row.at(DELETED).is_int64());
             d->set_deleted(row.at(DELETED).as_int64() == 1);
             d->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
-            d->set_updatedid(row.at(UPDATED_ID).as_uint64());
+            if (cursor.use_updated_id) {
+                d->set_updatedid(row.at(UPDATED_ID).as_uint64());
+            }
             const auto date_val = row.at(DATE).as_date();
             if (!date_val.valid()) {
                 LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
@@ -417,25 +419,29 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
 
         const auto cursor = getIncrementalSyncCursor(*req);
         const auto full_sync = cursor.use_updated_id && cursor.since == 0;
-        const auto sql = full_sync
-            ? "SELECT id, name, color, score, updated, updated_id "
-              "FROM day_colors "
-              "WHERE tenant IS NULL "
-              "ORDER BY updated_id, id"
-            : cursor.use_updated_id
-                ? "SELECT id, name, color, score, updated, updated_id "
-                  "FROM day_colors "
-                  "WHERE tenant IS NULL AND updated_id > ? "
-                  "ORDER BY updated_id, id"
-                : "SELECT id, name, color, score, updated, CAST(0 AS UNSIGNED) "
-                  "FROM day_colors "
-                  "WHERE tenant IS NULL AND updated > ? "
-                  "ORDER BY updated, id";
-        auto res = full_sync
-            ? co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions())
-            : cursor.use_updated_id
-                ? co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions(), cursor.since)
-                : co_await rctx.dbh->exec(sql, rctx.uctx->dbOptions(), toMsDateTime(req->since(), rctx.uctx->tz()));
+        boost::mysql::results res;
+        if (full_sync) {
+            res = co_await rctx.dbh->exec(
+                "SELECT id, name, color, score, updated, updated_id "
+                "FROM day_colors "
+                "WHERE tenant IS NULL "
+                "ORDER BY updated_id, id",
+                rctx.uctx->dbOptions());
+        } else if (cursor.use_updated_id) {
+            res = co_await rctx.dbh->exec(
+                "SELECT id, name, color, score, updated, updated_id "
+                "FROM day_colors "
+                "WHERE tenant IS NULL AND updated_id > ? "
+                "ORDER BY updated_id, id",
+                rctx.uctx->dbOptions(), cursor.since);
+        } else {
+            // Remove after the legacy client migration is complete.
+            res = co_await rctx.dbh->exec(
+                "SELECT id, name, color, score, updated, CAST(0 AS UNSIGNED) "
+                "FROM day_colors "
+                "WHERE tenant IS NULL AND updated > ?",
+                rctx.uctx->dbOptions(), toMsDateTime(req->since(), rctx.uctx->tz()));
+        }
 
         enum Cols {
             ID, NAME, COLOR, SCORE, UPDATED, UPDATED_ID
@@ -449,7 +455,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
                 dc->set_name(pb_adapt(row.at(NAME).as_string()));
                 dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
                 dc->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
-                dc->set_updatedid(row.at(UPDATED_ID).as_uint64());
+                if (cursor.use_updated_id) {
+                    dc->set_updatedid(row.at(UPDATED_ID).as_uint64());
+                }
             }
         } else {
             assert(false);
