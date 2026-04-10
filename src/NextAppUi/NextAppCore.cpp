@@ -241,6 +241,10 @@ NextAppCore::~NextAppCore()
     LOG_DEBUG_N << "Done disconnecting from D-Bus";
 #endif
 
+    if (server_comm_) {
+        server_comm_.reset();
+    }
+
     if (db_) {
         db_->close();
         db_.reset();

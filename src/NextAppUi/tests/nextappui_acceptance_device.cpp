@@ -147,6 +147,26 @@ int signupStatus(const ServerComm& comm)
     return comm.property("signupStatus").toInt();
 }
 
+const char *signupStatusName(int status)
+{
+    switch (status) {
+    case ServerComm::SIGNUP_NOT_STARTED:
+        return "SIGNUP_NOT_STARTED";
+    case ServerComm::SIGNUP_HAVE_INFO:
+        return "SIGNUP_HAVE_INFO";
+    case ServerComm::SIGNUP_SIGNING_UP:
+        return "SIGNUP_SIGNING_UP";
+    case ServerComm::SIGNUP_SUCCESS:
+        return "SIGNUP_SUCCESS";
+    case ServerComm::SIGNUP_OK:
+        return "SIGNUP_OK";
+    case ServerComm::SIGNUP_ERROR:
+        return "SIGNUP_ERROR";
+    default:
+        return "SIGNUP_UNKNOWN";
+    }
+}
+
 void mergeObject(QJsonObject& target, const QJsonObject& source);
 
 std::optional<QJsonObject> loadDbInfo(NextAppCore& core)
@@ -197,9 +217,30 @@ bool tryMergeDbInfo(QJsonObject& target, NextAppCore& core)
 bool waitForAndMergeDbInfo(QJsonObject& target, NextAppCore& core, int timeout_ms)
 {
     QJsonObject merged;
+    QJsonObject stable_candidate;
+    QElapsedTimer stable_since;
+    constexpr auto stable_window_ms = 750;
+
     const auto have_info = waitForCondition([&] {
-        merged = target;
-        return tryMergeDbInfo(merged, core);
+        auto current = target;
+        if (!tryMergeDbInfo(current, core)) {
+            stable_candidate = {};
+            stable_since.invalidate();
+            return false;
+        }
+
+        if (stable_candidate != current) {
+            stable_candidate = current;
+            stable_since.restart();
+            return false;
+        }
+
+        if (!stable_since.isValid() || stable_since.elapsed() < stable_window_ms) {
+            return false;
+        }
+
+        merged = stable_candidate;
+        return true;
     }, timeout_ms);
 
     if (!have_info) {
@@ -216,12 +257,36 @@ bool waitForAndMergeDbInfoMatching(QJsonObject& target,
                                    const std::function<bool(const QJsonObject&)>& predicate)
 {
     QJsonObject merged;
+    QJsonObject stable_candidate;
+    QElapsedTimer stable_since;
+    constexpr auto stable_window_ms = 750;
+
     const auto have_info = waitForCondition([&] {
-        merged = target;
-        if (!tryMergeDbInfo(merged, core)) {
+        auto current = target;
+        if (!tryMergeDbInfo(current, core)) {
+            stable_candidate = {};
+            stable_since.invalidate();
             return false;
         }
-        return predicate(merged);
+
+        if (!predicate(current)) {
+            stable_candidate = {};
+            stable_since.invalidate();
+            return false;
+        }
+
+        if (stable_candidate != current) {
+            stable_candidate = current;
+            stable_since.restart();
+            return false;
+        }
+
+        if (!stable_since.isValid() || stable_since.elapsed() < stable_window_ms) {
+            return false;
+        }
+
+        merged = stable_candidate;
+        return true;
     }, timeout_ms);
 
     if (!have_info) {
@@ -480,10 +545,16 @@ int main(int argc, char** argv)
 
         comm.setSignupServerAddress(signup_url);
         const auto have_info = waitForCondition([&] {
-            return signupStatus(comm) == ServerComm::SIGNUP_HAVE_INFO;
+            const auto status = signupStatus(comm);
+            return status == ServerComm::SIGNUP_HAVE_INFO
+                || status == ServerComm::SIGNUP_ERROR;
         }, 120000);
-        if (!have_info) {
-            fprintf(stderr, "Timed out waiting for signup server info\n");
+        if (!have_info || signupStatus(comm) == ServerComm::SIGNUP_ERROR) {
+            fprintf(stderr,
+                    "Failed waiting for signup server info: status=%s messages=%s url=%s\n",
+                    signupStatusName(signupStatus(comm)),
+                    comm.property("messages").toString().toUtf8().constData(),
+                    signup_url.toUtf8().constData());
             return 6;
         }
 
@@ -606,10 +677,16 @@ int main(int argc, char** argv)
 
         comm.setSignupServerAddress(signup_url);
         const auto have_info = waitForCondition([&] {
-            return signupStatus(comm) == ServerComm::SIGNUP_HAVE_INFO;
+            const auto status = signupStatus(comm);
+            return status == ServerComm::SIGNUP_HAVE_INFO
+                || status == ServerComm::SIGNUP_ERROR;
         }, 120000);
-        if (!have_info) {
-            fprintf(stderr, "Timed out waiting for signup server info\n");
+        if (!have_info || signupStatus(comm) == ServerComm::SIGNUP_ERROR) {
+            fprintf(stderr,
+                    "Failed waiting for signup server info: status=%s messages=%s url=%s\n",
+                    signupStatusName(signupStatus(comm)),
+                    comm.property("messages").toString().toUtf8().constData(),
+                    signup_url.toUtf8().constData());
             return 6;
         }
 

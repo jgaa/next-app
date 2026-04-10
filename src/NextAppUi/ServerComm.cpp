@@ -479,6 +479,15 @@ void ServerComm::onAppSuspending()
 
 void ServerComm::stop()
 {
+    if (closed_) {
+        if (updates_) {
+            disconnect(updates_.get(), nullptr, this, nullptr);
+            updates_->cancel();
+            updates_.reset();
+        }
+        return;
+    }
+
     if (status_ != Status::ERROR) {
         setStatus(Status::OFFLINE);
     }
@@ -1769,34 +1778,47 @@ void ServerComm::connectToSignupServer()
     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(signup_server_address_, QUrl::StrictMode), channelOptions));
 #endif
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-    connect(signup_client_.get(), &signup::pb::SignUp::Client::errorOccurred, [this](const QGrpcStatus &status) {
-        LOG_ERROR_N << "Connection to signup server failed: " << status.message();
-        addMessage(tr("Connection to signup server failed: %1").arg(toString(status)));
-        signup_status_ = SignupStatus::SIGNUP_ERROR;
-        emit signupStatusChanged();
-    });
-#endif
-
     LOG_INFO << "Using signup server at " << signup_server_address_;
 
-    callRpc<signup::pb::Reply>([this]() {
+    struct SignupInfoReplyHandler final {
+        ServerComm *self;
+
+        void operator()(const signup::pb::Reply& reply) const
+        {
+            if (reply.hasGetInfoResponse() && reply.error() == signup::pb::ErrorGadget::Error::OK) {
+                LOG_DEBUG << "Received signup info from server ";
+                self->signup_info_ = reply.getInfoResponse();
+                self->signup_status_ = ServerComm::SignupStatus::SIGNUP_HAVE_INFO;
+                emit self->signupInfoChanged();
+                emit self->signupStatusChanged();
+                self->addMessage(QObject::tr("Connected to signup server!"));
+                return;
+            }
+
+            const auto details = reply.message().isEmpty()
+                ? QObject::tr("Failed to get server information")
+                : QObject::tr("Failed to get server information: %1").arg(reply.message());
+            LOG_ERROR_N << "Failed to get signup server info from " << self->signup_server_address_
+                        << ": error=" << static_cast<int>(reply.error())
+                        << " message=" << reply.message();
+            self->setMessage(details);
+            self->signup_status_ = ServerComm::SignupStatus::SIGNUP_ERROR;
+            emit self->signupStatusChanged();
+        }
+
+        void operator()(const CbError& error) const
+        {
+            LOG_ERROR_N << "Connection to signup server failed: " << error.message;
+            self->addMessage(QObject::tr("Connection to signup server failed: %1").arg(error.message));
+            self->signup_status_ = ServerComm::SignupStatus::SIGNUP_ERROR;
+            emit self->signupStatusChanged();
+        }
+    };
+
+    callRpc_<signup::pb::Reply>([this]() {
         setMessage(tr("Connecting to server ..."));
         return signup_client_->GetInfo({});
-    }, [this](const signup::pb::Reply& reply) {
-        if (reply.hasGetInfoResponse() && reply.error() == signup::pb::ErrorGadget::Error::OK) {
-            LOG_DEBUG << "Received signup info from server ";
-            signup_info_ = reply.getInfoResponse();
-            signup_status_ = SignupStatus::SIGNUP_HAVE_INFO;
-            emit signupInfoChanged();
-            emit signupStatusChanged();
-            addMessage(tr("Connected to signup server!"));
-        } else {
-            setMessage(tr("Failed to get server information"));
-            signup_status_ = SignupStatus::SIGNUP_ERROR;
-            emit signupStatusChanged();
-        }
-     }, GrpcCallOptions{false, false, true});
+    }, SignupInfoReplyHandler{this}, GrpcCallOptions{false, false, true});
 }
 
 QCoro::Task<void> ServerComm::updateDataEpoc()
