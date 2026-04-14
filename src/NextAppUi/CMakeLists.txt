@@ -665,6 +665,7 @@ qt_add_qml_module(NextAppUiLib
         qml/settings/ResetNodesConfirmation.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
+        qml/settings/ThemeSchemePreviewDialog.qml
         qml/styling/SplitterStyle.qml
     RESOURCES
         "fonts/Font Awesome 6 Brands-Regular-400.otf"
