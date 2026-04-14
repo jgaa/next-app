@@ -322,11 +322,12 @@ std::shared_ptr<Plan> SessionManager::getPlan(const std::string_view planName) c
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone,
                          bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions,
-                         uint32_t publishId, uint64_t publishEpoch)
+                         uint32_t publishId, uint64_t publishEpoch, uint64_t dataSyncEpoch)
     : user_uuid_{userUuid},
     tenant_uuid_{tenantUuid},
     publish_message_id_{publishId},
     publish_epoch_{publishEpoch ? publishEpoch : newPublishEpoch()},
+    data_sync_epoch_{dataSyncEpoch},
     db_options_{dbOptions} {
 
     if (timeZone.empty()) {
@@ -345,9 +346,10 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid,
                          pb::User::Kind kind,
                          const pb::UserGlobalSettings &settings, std::shared_ptr<TenantPlan> tenantPlan,
-                         uint32_t publishId, uint64_t publishEpoch)
+                         uint32_t publishId, uint64_t publishEpoch, uint64_t dataSyncEpoch)
     : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, publish_message_id_{publishId}, settings_(settings)
     , publish_epoch_{publishEpoch ? publishEpoch : newPublishEpoch()}
+    , data_sync_epoch_{dataSyncEpoch}
     , kind_{kind}, tenant_plan_{std::move(tenantPlan)} {
 
     try {
@@ -508,6 +510,16 @@ boost::asio::awaitable<void> UserContext::publish(std::shared_ptr<pb::Update> &u
                        << " to device " << handler->deviceId() << ": " << e.what();
         }
     }
+}
+
+boost::asio::awaitable<void> UserContext::publishFullResync(uint64_t dataSyncEpoch)
+{
+    setDataSyncEpoch(dataSyncEpoch);
+
+    auto update = std::make_shared<pb::Update>();
+    update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+    update->set_resync(true);
+    co_await publish(update);
 }
 
 void UserContext::purgeExpiredPublishers()
@@ -1250,14 +1262,16 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
 
     auto res = co_await db.exec(
         "SELECT u.tenant, t.kind, u.kind, t.state, u.active, s.settings, "
-        "t.plan, t.plan_updated, t.plan_expires, t.plan_seats, t.grace_period_expires, t.account_expires "
+        "t.plan, t.plan_updated, t.plan_expires, t.plan_seats, t.grace_period_expires, t.account_expires, "
+        "u.data_sync_epoch "
         "FROM user u "
         "JOIN tenant t on t.id=u.tenant "
         "LEFT JOIN user_settings s on s.user=u.id "
         "WHERE u.id=? ", uid);
 
     enum Cols { TENANT, TENANT_KIND, USER_KIND, TENANT_STATE, USER_ACTIVE, SETTINGS,
-                PLAN, PLAN_UPDATED, PLAN_EXPIRES, PLAN_SEATS, GRACE_PERIOD_EXPIRES, ACCOUNT_EXPIRES};
+                PLAN, PLAN_UPDATED, PLAN_EXPIRES, PLAN_SEATS, GRACE_PERIOD_EXPIRES, ACCOUNT_EXPIRES,
+                DATA_SYNC_EPOCH};
     if (res.rows().empty()) [[unlikely]] {
         LOG_ERROR << "Database inconsistency found. A device " << devid
                   << " is linked to a user " << uid << " that does not exist.";
@@ -1324,8 +1338,9 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         }
 
         const auto publishState = co_await loadPublishState_(userUuid, uid);
+        const auto dataSyncEpoch = row.at(DATA_SYNC_EPOCH).as_uint64();
         auto ucx = make_shared<UserContext>(tenant, uid, ukind, tmp_settings, tenant_plan,
-                                            publishState.publish_id, publishState.publish_epoch);
+                                            publishState.publish_id, publishState.publish_epoch, dataSyncEpoch);
         {
             unique_lock lock{mutex_};
             users_[userUuid] = ucx;

@@ -584,8 +584,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
     }
 
     if (state == DONE) {
-        LOG_INFO_N << "Import completed successfully. Requesting full resync.";
-        runtime_.serverComm().resync();
+        LOG_INFO_N << "Import completed successfully. Waiting for server-triggered full resync.";
     }
 
     co_return;

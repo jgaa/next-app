@@ -1899,7 +1899,7 @@ void tst_NextAppUiRuntime::importExportModelDispatchesExportAndImportThroughInje
     QCOMPARE(runtime.server_comm_.imported_messages_.at(1).user().email(), QStringLiteral("last@example.com"));
     QVERIFY(runtime.server_comm_.imported_messages_.at(1).hasHasMore());
     QVERIFY(!runtime.server_comm_.imported_messages_.at(1).hasMore());
-    QCOMPARE(runtime.server_comm_.resync_calls_, 1);
+    QCOMPARE(runtime.server_comm_.resync_calls_, 0);
     QVERIFY(!model.property("working").toBool());
 
     const auto json_path = temp_dir_.filePath(QStringLiteral("export.json"));

@@ -284,12 +284,12 @@ public:
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid, const std::string_view timeZone,
                 bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions,
-                uint32_t publishId = 0, uint64_t publishEpoch = 0);
+                uint32_t publishId = 0, uint64_t publishEpoch = 0, uint64_t dataSyncEpoch = 0);
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid,
                 pb::User::Kind kind,
                 const pb::UserGlobalSettings& settings, std::shared_ptr<TenantPlan> tenantPlan,
-                uint32_t publishId = 0, uint64_t publishEpoch = 0);
+                uint32_t publishId = 0, uint64_t publishEpoch = 0, uint64_t dataSyncEpoch = 0);
 
     ~UserContext() = default;
 
@@ -347,6 +347,16 @@ public:
         return UserPublishState{publish_message_id_, publish_epoch_};
     }
 
+    uint64_t dataSyncEpoch() const {
+        std::shared_lock lock(mutex_);
+        return data_sync_epoch_;
+    }
+
+    void setDataSyncEpoch(uint64_t epoch) {
+        std::unique_lock lock(mutex_);
+        data_sync_epoch_ = epoch;
+    }
+
     void addSession(std::shared_ptr<Session> session) {
         std::unique_lock lock(mutex_);
         sessions_.push_back(std::move(session));
@@ -371,6 +381,7 @@ public:
                                                      std::optional<uint32_t> fromMessageId = {});
     void removePublisher(const boost::uuids::uuid& uuid);
     [[nodiscard]] boost::asio::awaitable<void> publish(std::shared_ptr<pb::Update>& message);
+    [[nodiscard]] boost::asio::awaitable<void> publishFullResync(uint64_t dataSyncEpoch);
     void publishUpdates(std::shared_ptr<pb::Update> &update, std::set<boost::uuids::uuid>* devices = {});
     [[nodiscard]] boost::asio::awaitable<bool> checkForReplay(const boost::uuids::uuid& deviceId, uint instanceId, uint reqId);
     [[nodiscard]] boost::asio::awaitable<void> resetReplay(const boost::uuids::uuid& deviceId, uint instanceId);
@@ -448,6 +459,7 @@ private:
     std::string tenant_uuid_;
     uint32_t publish_message_id_{0};
     uint64_t publish_epoch_{0};
+    uint64_t data_sync_epoch_{0};
     const std::chrono::time_zone* tz_{};
     jgaa::mysqlpool::Options db_options_;
     pb::UserGlobalSettings settings_;

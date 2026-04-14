@@ -11,6 +11,8 @@
 #include <QQuickStyle>
 #include <QSslSocket>
 #include <QQuickWindow>
+#include <QSettings>
+#include <QScreen>
 #include <optional>
 
 #include "ServerComm.h"
@@ -136,8 +138,63 @@ constexpr auto scales = to_array<string_view>(
         "2.0",
     });
 
+bool isX11Platform()
+{
+    return QGuiApplication::platformName().compare("xcb", Qt::CaseInsensitive) == 0;
+}
 
-class WindowPositionManager { //: public QObject {
+bool isWaylandPlatform()
+{
+    return QGuiApplication::platformName().startsWith("wayland", Qt::CaseInsensitive);
+}
+
+bool isSessionRestored()
+{
+    const auto *app = qobject_cast<const QGuiApplication *>(QGuiApplication::instance());
+    return app && app->isSessionRestored();
+}
+
+bool shouldSuppressManualGeometryRestore()
+{
+    // Qt 6.11's Wayland plugin has experimental support for xx-session-management-v1.
+    // isSessionRestored() is a generic signal, not proof that this Wayland protocol is active,
+    // so we only use it to avoid fighting a possible compositor/session restore.
+    return isWaylandPlatform() && isSessionRestored();
+}
+
+enum class WindowRestorePolicy {
+    FullManual,
+    WaylandSession,
+    WaylandFallback,
+};
+
+WindowRestorePolicy windowRestorePolicy()
+{
+    if (!isWaylandPlatform()) {
+        return WindowRestorePolicy::FullManual;
+    }
+
+    return shouldSuppressManualGeometryRestore()
+        ? WindowRestorePolicy::WaylandSession
+        : WindowRestorePolicy::WaylandFallback;
+}
+
+const char *windowRestorePolicyName(WindowRestorePolicy policy)
+{
+    switch (policy) {
+    case WindowRestorePolicy::FullManual:
+        return "full manual geometry restore";
+    case WindowRestorePolicy::WaylandSession:
+        return "Wayland session restore; manual position suppressed";
+    case WindowRestorePolicy::WaylandFallback:
+        return "Wayland fallback; manual position attempted";
+    }
+
+    return "unknown";
+}
+
+
+class WindowStateManager { //: public QObject {
     //Q_OBJECT
 
     QRect getCombinedScreenGeometry() {
@@ -151,35 +208,151 @@ class WindowPositionManager { //: public QObject {
     }
 
 public:
-    explicit WindowPositionManager(QQuickWindow* window, QObject* parent = nullptr)
+    explicit WindowStateManager(QQuickWindow* window, QString stableWindowId, QObject* parent = nullptr)
         : //QObject(parent),
-        m_window(window) {
-        QSettings settings;
-        QRect geometry = settings.value("windowGeometry", QRect(0,0,0,0)).toRect();
-        if (geometry.isEmpty()) {
-            return;
-        };
-
-        QRect availableGeometry = getCombinedScreenGeometry();
-        if (!availableGeometry.contains(geometry)) {
-            LOG_DEBUG_N << "Window geometry is outside of the screen, ignoring.";
+        m_window(window),
+        m_stableWindowId(std::move(stableWindowId)) {
+        if (!m_window) {
             return;
         }
 
-        m_window->setX(geometry.x());
-        m_window->setY(geometry.y());
-        m_window->setWidth(geometry.width());
-        m_window->setHeight(geometry.height());
+        if (m_window->objectName().isEmpty()) {
+            m_window->setObjectName(m_stableWindowId);
+        }
+
+        const QRect legacyGeometry = QSettings{}.value("windowGeometry", QRect(0,0,0,0)).toRect();
+        QSettings settings;
+        settings.beginGroup("windows");
+        settings.beginGroup(m_stableWindowId);
+        const QRect geometry = settings.value("geometry", legacyGeometry).toRect();
+        const QSize size = settings.value("size", geometry.size()).toSize();
+        const bool maximized = settings.value("maximized", false).toBool();
+        const bool fullscreen = settings.value("fullscreen", false).toBool();
+        settings.setValue("id", m_stableWindowId);
+
+        const auto platform = QGuiApplication::platformName().toStdString();
+        const auto policy = windowRestorePolicy();
+        LOG_INFO_N << "Window restore for " << m_stableWindowId.toStdString()
+                   << ": platform=" << platform
+                   << ", x11=" << isX11Platform()
+                   << ", wayland=" << isWaylandPlatform()
+                   << ", sessionRestored=" << isSessionRestored()
+                   << ", policy=" << windowRestorePolicyName(policy);
+
+        if (geometry.isEmpty()) {
+            LOG_DEBUG_N << "No saved geometry for " << m_stableWindowId.toStdString();
+            restoreWindowMode(fullscreen, maximized);
+            return;
+        };
+
+        switch (policy) {
+        case WindowRestorePolicy::FullManual:
+            restoreGeometry(geometry);
+            restoreWindowMode(fullscreen, maximized);
+            break;
+        case WindowRestorePolicy::WaylandSession:
+            LOG_INFO_N << "Suppressing saved window position for " << m_stableWindowId.toStdString()
+                       << " because Qt reports a restored session on Wayland.";
+            restoreSizeIfNeeded(size);
+            restoreWindowMode(fullscreen, maximized);
+            break;
+        case WindowRestorePolicy::WaylandFallback:
+            restoreSize(size);
+            restorePositionBestEffort(geometry.topLeft());
+            restoreWindowMode(fullscreen, maximized);
+            break;
+        }
     }
 
-    ~WindowPositionManager() {
+    ~WindowStateManager() {
+        if (!m_window) {
+            return;
+        }
+
         QSettings settings;
-        QRect geometry(m_window->x(), m_window->y(), m_window->width(), m_window->height());
+        const QRect geometry(m_window->x(), m_window->y(), m_window->width(), m_window->height());
+
+        settings.beginGroup("windows");
+        settings.beginGroup(m_stableWindowId);
+        settings.setValue("id", m_stableWindowId);
+        settings.setValue("geometry", geometry);
+        settings.setValue("size", geometry.size());
+        settings.setValue("position", geometry.topLeft());
+        settings.setValue("maximized", m_window->windowStates().testFlag(Qt::WindowMaximized));
+        settings.setValue("fullscreen", m_window->windowStates().testFlag(Qt::WindowFullScreen));
+        settings.endGroup();
+        settings.endGroup();
+
+        // Keep the old key in sync so older builds keep their current behavior.
         settings.setValue("windowGeometry", geometry);
     }
 
 private:
+    void restoreGeometry(const QRect& geometry)
+    {
+        QRect availableGeometry = getCombinedScreenGeometry();
+        if (!availableGeometry.contains(geometry)) {
+            LOG_DEBUG_N << "Window geometry for " << m_stableWindowId.toStdString()
+                        << " is outside of the screen, ignoring.";
+            return;
+        }
+
+        LOG_INFO_N << "Restoring saved manual window position and size for " << m_stableWindowId.toStdString();
+        m_window->setX(geometry.x());
+        m_window->setY(geometry.y());
+        restoreSize(geometry.size());
+    }
+
+    void restoreSize(const QSize& size)
+    {
+        if (!size.isValid() || size.isEmpty()) {
+            return;
+        }
+
+        LOG_INFO_N << "Restoring saved window size for " << m_stableWindowId.toStdString()
+                   << ": " << size.width() << "x" << size.height();
+        m_window->setWidth(size.width());
+        m_window->setHeight(size.height());
+    }
+
+    void restoreSizeIfNeeded(const QSize& size)
+    {
+        if (m_window->width() > 0 && m_window->height() > 0) {
+            LOG_INFO_N << "Keeping current/session-restored window size for " << m_stableWindowId.toStdString();
+            return;
+        }
+
+        restoreSize(size);
+    }
+
+    void restorePositionBestEffort(const QPoint& position)
+    {
+        const QRect geometry(position, QSize(m_window->width(), m_window->height()));
+        if (!getCombinedScreenGeometry().contains(geometry)) {
+            LOG_DEBUG_N << "Wayland fallback position for " << m_stableWindowId.toStdString()
+                        << " is outside of the screen, ignoring.";
+            return;
+        }
+
+        LOG_INFO_N << "Trying saved window position for " << m_stableWindowId.toStdString()
+                   << " as Wayland fallback; the compositor may ignore it.";
+        m_window->setX(position.x());
+        m_window->setY(position.y());
+    }
+
+    void restoreWindowMode(bool fullscreen, bool maximized)
+    {
+        if (fullscreen) {
+            LOG_INFO_N << "Restoring fullscreen state for " << m_stableWindowId.toStdString();
+            m_window->showFullScreen();
+        } else if (maximized) {
+            LOG_INFO_N << "Restoring maximized state for " << m_stableWindowId.toStdString();
+            m_window->showMaximized();
+        }
+    }
+
     QQuickWindow* m_window;
+    QString m_stableWindowId;
 };
 
 } // anon ns
@@ -204,6 +377,7 @@ int main(int argc, char *argv[])
         "debug";
 #endif
     QGuiApplication app(argc, argv);
+    QGuiApplication::setDesktopFileName("eu.lastviking.nextapp");
 
     LogModel log_handler;
 
@@ -273,6 +447,7 @@ int main(int argc, char *argv[])
             settings.remove("device");
             settings.remove("server");
             settings.remove("windowGeometry");
+            settings.remove("windows");
             delete_db_if_exists = true;
             settings.sync();
         }
@@ -487,7 +662,7 @@ int main(int argc, char *argv[])
 
 #ifndef __ANDROID__
     QQuickWindow* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
-    WindowPositionManager manager(window);
+    WindowStateManager manager(window, "mainWindow");
 #endif
 
     LOG_DEBUG_N << "Handing the main thread over to QT";

@@ -1162,6 +1162,12 @@ QCoro::Task<void> ServerComm::exportData(std::shared_ptr<QFile> file, const writ
 
 QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
 {
+    import_data_in_progress_ = true;
+    import_data_resync_received_ = false;
+    ScopedExit importing{[this] {
+        import_data_in_progress_ = false;
+    }};
+
     nextapp::pb::ImportDataMsg req;
     req.setRequest({});
     auto stream = client_->ImportData(req);
@@ -1240,6 +1246,14 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
 
     auto result = co_await future;
     if (result) {
+        if (import_data_resync_received_) {
+            LOG_INFO_N << "Import completed after receiving server resync request.";
+            QTimer::singleShot(0, this, [this] {
+                resync();
+            });
+        } else {
+            LOG_WARN_N << "Import completed without receiving a server resync request.";
+        }
         co_return;
     }
     throw std::runtime_error("Import was not successful");
@@ -1580,6 +1594,10 @@ void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& 
 
     if (msg->hasResync() && msg->resync()) {
         LOG_INFO_N << "Received resync request from server";
+        if (import_data_in_progress_) {
+            import_data_resync_received_ = true;
+            return;
+        }
         QTimer::singleShot(500ms, [this]() {
             resync();
         });
@@ -1827,6 +1845,11 @@ QCoro::Task<void> ServerComm::updateDataEpoc()
     nextapp::pb::Empty req;
     auto& db = runtime_.db();
     (void) co_await db.query("UPDATE nextapp SET data_epoc = ?", nextapp::app_data_epoc);
+    (void) co_await db.query(
+        "INSERT INTO sync_state(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        QStringLiteral("user_data_epoch"),
+        QVariant::fromValue<qulonglong>(session_user_data_epoch_));
 }
 
 void ServerComm::clearMessages()
@@ -1968,6 +1991,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
                         << ", last seen user publish epoch: " << last_seen_user_publish_epoch_
                         << ", server instance tag: " << res.hello().serverInstanceTag()
                         << ", server user publish epoch: " << res.hello().userPublishEpoch()
+                        << ", server user data epoch: " << res.hello().userDataEpoch()
                         << ", server-id: " << res.hello().serverId()
                         << ", session-id: " << session_id_
                         << ", plans enabled: " << res.hello().plansEnabled()
@@ -1975,8 +1999,16 @@ QCoro::Task<void> ServerComm::startNextappSession()
 
             session_start_publish_id_ = res.hello().lastPublishId();
             session_user_publish_epoch_ = res.hello().userPublishEpoch();
+            session_user_data_epoch_ = res.hello().userDataEpoch();
             hello_last_notification = res.hello().lastNotification();
             server_supports_updated_id_ = res.hello().supportsUpdatedId();
+            if (auto local_epoch = co_await runtime_.db().queryOne<qulonglong>(
+                    "SELECT value FROM sync_state WHERE key = ?",
+                    QStringLiteral("user_data_epoch"))) {
+                last_seen_user_data_epoch_ = local_epoch.value();
+            } else {
+                last_seen_user_data_epoch_ = 0;
+            }
             if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
                 needs_sync = true;
                 server_reset_detected = true;
@@ -2005,6 +2037,13 @@ QCoro::Task<void> ServerComm::startNextappSession()
                 LOG_INFO_N << "Server has " << (res.hello().lastPublishId() - last_seen_update_id_)
                            << " unapplied updates. Will request replay from message id "
                            << last_seen_update_id_;
+            }
+
+            if (session_user_data_epoch_ != last_seen_user_data_epoch_) {
+                full_sync = true;
+                needs_sync = true;
+                LOG_INFO_N << "Full sync required. User data epoch changed from "
+                           << last_seen_user_data_epoch_ << " to " << session_user_data_epoch_;
             }
 
             saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,

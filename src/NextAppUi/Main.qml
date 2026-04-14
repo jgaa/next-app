@@ -9,6 +9,7 @@ import "qml/common.js" as Common
 
 ApplicationWindow {
     id: appWindow
+    objectName: "mainWindow"
     width: 1700
     height: 900
     visible: NaComm.signupStatus == NaComm.SIGNUP_OK
@@ -19,9 +20,14 @@ ApplicationWindow {
     Settings {
         id: settings
         property bool onboarding: false
+        // App-specific UI state is restored independently of platform geometry policy.
+        property int mainWindowCurrentMainItem: 1
+        property int mainWindowCurrentTabIndex: 0
     }
 
     Component.onCompleted: {
+        sidebar.restoreSelection(settings.mainWindowCurrentMainItem,
+                                 settings.mainWindowCurrentTabIndex)
         if (!settings.onboarding) {
             console.log("Opening onboarding")
             openWindow("onboard/OnBoardingWizard.qml");
@@ -283,6 +289,8 @@ ApplicationWindow {
                     dragWindow: appWindow
                     Layout.preferredWidth: 100
                     Layout.fillHeight: true
+                    onCurrentMainItemChanged: settings.mainWindowCurrentMainItem = currentMainItem
+                    onCurrentTabIndexChanged: settings.mainWindowCurrentTabIndex = currentTabIndex
                 }
 
                 StackLayout {
@@ -494,6 +502,8 @@ ApplicationWindow {
             return;
         }
         var win = component.createObject(appWindow, args);
+        if (win.objectName === "" && name === "onboard/OnBoardingWizard.qml")
+            win.objectName = "onboardingWindow"
         win.show()
     }
 

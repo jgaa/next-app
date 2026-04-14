@@ -123,6 +123,7 @@ struct ToDevice {
             hello->set_serverinstancetag(server.instanceTag());
             hello->set_lastpublishid(rctx.uctx->currentPublishId());
             hello->set_userpublishepoch(rctx.uctx->currentPublishEpoch());
+            hello->set_userdataepoch(rctx.uctx->dataSyncEpoch());
             hello->set_lastnotification(owner_.getLastNotificationUpdated());
             hello->set_plansenabled(server.config().payment.enable_plan);
             hello->set_supportsupdatedid(true);

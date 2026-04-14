@@ -500,6 +500,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               descr TEXT,
               active TINYINT(1) NOT NULL DEFAULT 1,
               system_user TINYINT(1),
+              data_sync_epoch BIGINT UNSIGNED NOT NULL DEFAULT 0,
         CONSTRAINT user_ibfk_1 FOREIGN KEY (tenant) REFERENCES tenant(id)))",
 
         R"(CREATE TABLE node (
@@ -1561,6 +1562,15 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v27_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(ALTER TABLE `user`
+            ADD COLUMN IF NOT EXISTS data_sync_epoch BIGINT UNSIGNED NOT NULL DEFAULT 0)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -1588,6 +1598,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v24_upgrade,
         v25_upgrade,
         v26_upgrade,
+        v27_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

@@ -5,6 +5,7 @@ import QtCore
 
 ApplicationWindow {
     id: root
+    objectName: "noInstanceWindow"
     width: 400
     height: 500
     title: qsTr("Next-app: Your Personal Organizer")

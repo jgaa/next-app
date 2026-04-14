@@ -962,6 +962,7 @@ message Hello {
     bool plansEnabled = 6; // If true, the server has plans enabled, and the subscription info is relevant
     bool supportsUpdatedId = 7; // If true, the server supports stronger updated_id-based incremental sync
     uint64 userPublishEpoch = 8; // Identifies the lifetime of the per-user publish counter
+    uint64 userDataEpoch = 9; // Identifies the current full-sync data generation for this user
 }
 
 // Debug info about the user-sessions on the server

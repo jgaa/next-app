@@ -1018,9 +1018,6 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
             co_await rctx.dbh->exec("DELETE FROM user_settings WHERE user = ?", cuser);
         };
 
-        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED, true);
-        update.set_resync(true);
-
         co_await clear_user_data();
 
         std::exception_ptr eptr;
@@ -1259,11 +1256,21 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
         }
 
         if (eptr) {
-            //co_await clear_user_data();
+            rctx.updates.clear();
             std::rethrow_exception(eptr);
         }
 
+        co_await rctx.dbh->exec("UPDATE `user` SET data_sync_epoch = data_sync_epoch + 1 WHERE id = ?", cuser);
+        auto epoch_res = co_await rctx.dbh->exec("SELECT data_sync_epoch FROM `user` WHERE id = ?", cuser);
+        if (epoch_res.rows().empty()) {
+            throw server_err{pb::Error::GENERIC_ERROR, "Failed to load updated data sync epoch"};
+        }
+        const auto data_sync_epoch = epoch_res.rows().front().at(0).as_uint64();
+
         co_await trx.commit();
+
+        rctx.updates.clear();
+        co_await rctx.uctx->publishFullResync(data_sync_epoch);
 
         success = true;
         co_return;

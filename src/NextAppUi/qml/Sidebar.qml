@@ -21,6 +21,22 @@ Rectangle {
 
     Component.onCompleted: lists.checked = true
 
+    function restoreSelection(mainItem, tabIndex) {
+        if (mainItem === 0) {
+            dayInYear.checked = true
+        } else if (mainItem === 2) {
+            planDay.checked = true
+        } else if (tabIndex === 1) {
+            workHours.checked = true
+        } else if (tabIndex === 2) {
+            reports.checked = true
+        } else if (tabIndex === 3) {
+            weeklyReview.checked = true
+        } else {
+            lists.checked = true
+        }
+    }
+
     component SidebarEntry: Button {
         id: sidebarButton
 

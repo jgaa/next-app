@@ -11,6 +11,7 @@ import "../common.js" as Common
 
 ApplicationWindow {
     id: appWindow
+    objectName: "mainWindow"
     visible: NaComm.signupStatus == NaComm.SIGNUP_OK
     width: NaCore.width
     height: NaCore.height
@@ -174,6 +175,8 @@ ApplicationWindow {
             return;
         }
         var win = component.createObject(appWindow, args);
+        if (win.objectName === "" && name === "onboard/OnBoardingWizard.qml")
+            win.objectName = "onboardingWindow"
         win.show()
     }
 
