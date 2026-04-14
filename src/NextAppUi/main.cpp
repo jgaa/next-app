@@ -552,7 +552,7 @@ int main(int argc, char *argv[])
             return app.exec();
         }
 
-        //qInstallMessageHandler(logQtMessages);
+        qInstallMessageHandler(logQtMessages);
         LOG_INFO << app_name << ' ' << NEXTAPP_UI_VERSION << " starting up.";
         LOG_INFO << "Configuration from '" << settings.fileName() << "'";
 
