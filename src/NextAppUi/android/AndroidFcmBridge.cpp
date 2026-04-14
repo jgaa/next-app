@@ -4,7 +4,7 @@
 #include <jni.h>
 
 namespace {
-constexpr const char* kMainActivityFcmClass = "eu/lastviking/nextapp/app/MainActivityFcm";
+constexpr const char* kMainActivityClass = "eu/lastviking/nextapp/app/MainActivity";
 constexpr const char* kFcmServiceClass = "eu/lastviking/nextapp/app/NextappFirebaseMessagingService";
 
 QString fetchFcmTokenFromJava() {
@@ -12,7 +12,7 @@ QString fetchFcmTokenFromJava() {
     QJniEnvironment env;
     // Call the static Java method you added:
     QJniObject tokenObj = QJniObject::callStaticObjectMethod(
-        kMainActivityFcmClass,  // Java class FQN
+        kMainActivityClass,
         "getFcmToken",                              // method name
         "()Ljava/lang/String;"                      // JNI signature
     );
@@ -33,7 +33,7 @@ QString fetchFcmPackageIdFromJava() {
     QJniEnvironment env;
     // Call the static Java method you added:
     QJniObject tokenObj = QJniObject::callStaticObjectMethod(
-        kMainActivityFcmClass,  // Java class FQN
+        kMainActivityClass,
         "getFcmProjectId",                              // method name
         "()Ljava/lang/String;"                      // JNI signature
     );

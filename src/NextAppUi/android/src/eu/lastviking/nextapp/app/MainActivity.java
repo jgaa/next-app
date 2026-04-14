@@ -24,6 +24,8 @@ import java.util.ArrayList;
 public class MainActivity extends QtActivity {
     private static final String TAG = "MainActivity";
     private static MainActivity self = null;
+    private static String sFcmToken = "";
+    private static String sFcmProjectId = "";
     private boolean consumedLaunchIntent = false;
 
     private native void nativeOnSharedNextapp(String absolutePath);
@@ -32,6 +34,7 @@ public class MainActivity extends QtActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         self = this;
+        FcmInitializer.initialize(this);
 
         // try {
         //     Intent intent = new Intent(this, QtAndroidService.class);
@@ -258,6 +261,22 @@ public class MainActivity extends QtActivity {
             return "";
         }
         return f.getAbsolutePath();
+    }
+
+    public static String getFcmToken() {
+        return sFcmToken;
+    }
+
+    public static String getFcmProjectId() {
+        return sFcmProjectId;
+    }
+
+    static void setFcmToken(String token) {
+        sFcmToken = token != null ? token : "";
+    }
+
+    static void setFcmProjectId(String projectId) {
+        sFcmProjectId = projectId != null ? projectId : "";
     }
 
 }

@@ -22,7 +22,7 @@
         android:allowBackup="true"
         android:fullBackupOnly="false"
         android:icon="@drawable/icon">
-        <activity android:name="eu.lastviking.nextapp.app.MainActivityFcm"
+        <activity android:name="eu.lastviking.nextapp.app.MainActivity"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:launchMode="singleTop"
             android:screenOrientation="unspecified"
