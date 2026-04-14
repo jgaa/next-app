@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QQmlEngine>
+#include <QStringList>
+#include <QVariantMap>
 #include "RuntimeServices.h"
 
 class MaterialDesignStyling : public QObject
@@ -64,6 +66,7 @@ class MaterialDesignStyling : public QObject
     Q_PROPERTY(QString scrim READ scrim NOTIFY colorsChanged FINAL)
     Q_PROPERTY(QString shadow READ shadow NOTIFY colorsChanged FINAL)
 
+public:
     struct ColorTheme {
         QString primary;
         QString onPrimary;
@@ -119,11 +122,12 @@ class MaterialDesignStyling : public QObject
         QString shadow;
     };
 
-public:
     MaterialDesignStyling();
     explicit MaterialDesignStyling(RuntimeServices& runtime);
 
     Q_INVOKABLE void setTheme(const QString& name);
+    Q_INVOKABLE QStringList availableThemes() const;
+    Q_INVOKABLE QVariantMap previewTheme(const QString& name) const;
 
     int scrollBarWidth() const;
 
@@ -188,6 +192,8 @@ signals:
     void colorsChanged();
 
 private:
+    ColorTheme themeForName(const QString& name) const;
+    QVariantMap toVariantMap(const ColorTheme& theme) const;
     void setLightTheme();
     void setDarkTheme();
 

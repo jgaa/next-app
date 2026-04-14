@@ -6,8 +6,10 @@ import QtCore
 import NextAppUi
 import Nextapp.Models 1.0
 import nextapp.pb as NextappPb
+import "../common.js" as Common
 
 ScrollView {
+    id: root
     anchors.fill: parent
     Settings {
         id: settings
@@ -30,6 +32,13 @@ ScrollView {
             id: uiTheme
             currentIndex: settings.value("UI/theme") === "light" ? 0 : 1
             model: ["light", "dark"]
+        }
+
+        Item {}
+        Button {
+            text: qsTr("Preview Theme Schemes")
+            Layout.alignment: Qt.AlignLeft
+            onClicked: Common.openDialog("settings/ThemeSchemePreviewDialog.qml", parent, {})
         }
 
         Label { text: qsTr("Ui Style")}
