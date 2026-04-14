@@ -17,6 +17,7 @@ Dialog {
         Text {
             text: qsTr("This will reset your nodes (lists) to an optional predefined template. You can use this to start over with a clean slate or to switch to a different template. Your account will be reset on the server and all devices will be forced to do a full resync. This cannot be undone.")
             wrapMode: Text.WordWrap
+            Layout.fillWidth: true
         }
 
         Label {
