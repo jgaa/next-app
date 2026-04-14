@@ -369,9 +369,9 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
                 LOG_TRACE_N << "Got OK from server";
                 if (u.hasDays()) {
                     LOG_TRACE_N << "Got days from server. Count=" << u.days().days().size();
-                    for(const auto& item : u.days().days()) {
-                        if (!co_await storeDay(item)) {
-                            LOG_ERROR_N << "Failed to persist green day batch item locally. Aborting sync.";
+                    if (!u.days().days().isEmpty()) {
+                        if (!co_await storeDays(u.days().days())) {
+                            LOG_ERROR_N << "Failed to persist green day batch locally. Aborting sync.";
                             co_return false;
                         }
                     }
