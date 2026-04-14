@@ -1081,6 +1081,11 @@ QCoro::Task<void> ServerComm::createNodesFromTemplate(nextapp::pb::NodeTemplate 
     co_await rpc(root, &nextapp::pb::Nextapp::Client::CreateNodesFromTemplate);
 }
 
+QCoro::Task<void> ServerComm::resetNodes(nextapp::pb::ResetNodesReq req)
+{
+    co_await rpc(req, &nextapp::pb::Nextapp::Client::ResetNodes);
+}
+
 QCoro::Task<nextapp::pb::Status> ServerComm::deleteAccount()
 {
     co_return co_await rpc({}, &nextapp::pb::Nextapp::Client::DeleteAccount);

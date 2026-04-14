@@ -250,6 +250,7 @@ public:
     QCoro::Task<void> setLastReadNotification(uint32_t id) override;
     QCoro::Task<void> updateLastReadNotification();
     QCoro::Task<void> createNodesFromTemplate(nextapp::pb::NodeTemplate root) override;
+    QCoro::Task<void> resetNodes(nextapp::pb::ResetNodesReq req) override;
     QCoro::Task<nextapp::pb::Status> deleteAccount();
 
     // Special stream functions. These will do everything in the main thread to speed up the transfer.

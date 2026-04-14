@@ -201,6 +201,7 @@ public:
         ::grpc::ServerUnaryReactor *GetLastReadNotification(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *SetLastReadNotification(::grpc::CallbackServerContext *, const pb::SetReadNotificationReq *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *CreateNodesFromTemplate(::grpc::CallbackServerContext *, const pb::NodeTemplate *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *ResetNodes(::grpc::CallbackServerContext *, const pb::ResetNodesReq *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *DeleteAccount(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* ExportData(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::ExportDataReq *req) override;
         ::grpc::ServerReadReactor< ::nextapp::pb::ImportDataMsg>* ImportData(::grpc::CallbackServerContext* ctx, ::nextapp::pb::Status* reply) override;

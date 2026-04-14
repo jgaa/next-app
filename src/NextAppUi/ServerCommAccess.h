@@ -106,6 +106,7 @@ public:
     virtual QCoro::Task<nextapp::pb::Status> deleteDevice(const QString& deviceId) = 0;
     virtual QCoro::Task<void> setLastReadNotification(uint32_t id) = 0;
     virtual QCoro::Task<void> createNodesFromTemplate(nextapp::pb::NodeTemplate root) = 0;
+    virtual QCoro::Task<void> resetNodes(nextapp::pb::ResetNodesReq req) = 0;
     virtual QCoro::Task<void> exportData(std::shared_ptr<QFile> file, const write_export_fn_t& write) = 0;
     virtual QCoro::Task<void> importData(const read_export_fn_t& read) = 0;
 

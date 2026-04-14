@@ -1082,6 +1082,20 @@ void add(nextapp::pb::NodeTemplate& nt, const UseCaseTemplates::List &list)
 
 } // namespace)
 
+nextapp::pb::NodeTemplate UseCaseTemplates::buildTemplate(int index) const
+{
+    nextapp::pb::NodeTemplate root;
+    if (index < 1 || index > templates_.size()) {
+        return root;
+    }
+
+    const auto &t = templates_.at(index - 1);
+    for (const auto& list : t.lists) {
+        add(root, list);
+    }
+
+    return root;
+}
 
 void UseCaseTemplates::createFromTemplate(int index)
 {
@@ -1093,14 +1107,20 @@ void UseCaseTemplates::createFromTemplate(int index)
 
     LOG_INFO <<"Creating nodes from template #" << index << ": " << templates_[index].name;
 
-    // Convert our internal representation of the template to the protobuf representation
-    const auto &t = templates_[index];
-    nextapp::pb::NodeTemplate root;
-    for(const auto& list: t.lists) {
-        add(root, list);
-    };
+    runtime_.serverComm().createNodesFromTemplate(buildTemplate(index + 1));
+}
 
-    runtime_.serverComm().createNodesFromTemplate(root);
+void UseCaseTemplates::resetFromTemplate(int index)
+{
+    nextapp::pb::ResetNodesReq req;
+    if (index > 0 && index <= templates_.size()) {
+        LOG_INFO << "Resetting nodes from template #" << (index - 1) << ": " << templates_[index - 1].name;
+        req.setTemplateRoot(buildTemplate(index));
+    } else {
+        LOG_INFO << "Resetting nodes without a template";
+    }
+
+    runtime_.serverComm().resetNodes(std::move(req));
 }
 
 QString UseCaseTemplates::getDescription(int index)

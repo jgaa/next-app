@@ -662,6 +662,7 @@ qt_add_qml_module(NextAppUiLib
         qml/settings/PlanSettings.qml
         qml/settings/PrefSettings.qml
         qml/settings/ResetConfirmation.qml
+        qml/settings/ResetNodesConfirmation.qml
         qml/settings/ServerSettings.qml
         qml/settings/SettingsDlg.qml
         qml/styling/SplitterStyle.qml

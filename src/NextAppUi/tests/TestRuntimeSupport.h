@@ -163,6 +163,10 @@ public:
         created_node_template_ = std::move(root);
         co_return;
     }
+    QCoro::Task<void> resetNodes(nextapp::pb::ResetNodesReq req) override {
+        reset_nodes_req_ = std::move(req);
+        co_return;
+    }
     QCoro::Task<void> exportData(std::shared_ptr<QFile> file, const write_export_fn_t& write) override {
         last_export_file_ = std::move(file);
         last_write_export_fn_ = write;
@@ -263,6 +267,7 @@ public:
     nextapp::pb::Status enable_device_response_;
     nextapp::pb::Status delete_device_response_;
     nextapp::pb::NodeTemplate created_node_template_;
+    nextapp::pb::ResetNodesReq reset_nodes_req_;
     std::shared_ptr<QFile> last_export_file_;
     write_export_fn_t last_write_export_fn_;
     read_export_fn_t last_read_export_fn_;

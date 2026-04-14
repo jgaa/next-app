@@ -307,6 +307,10 @@ message NodeTemplate {
     repeated NodeTemplate children = 4;
 }
 
+message ResetNodesReq {
+    NodeTemplate template_root = 1;
+}
+
 enum ActionStatus {
     ACTIVE  = 0;
     DONE    = 1;
@@ -1212,6 +1216,7 @@ service Nextapp {
     rpc GetLastReadNotification(Empty) returns (Status) {}
     rpc SetLastReadNotification(SetReadNotificationReq) returns (Status) {}
     rpc CreateNodesFromTemplate(NodeTemplate) returns (Status) {}
+    rpc ResetNodes(ResetNodesReq) returns (Status) {}
     rpc DeleteAccount(Empty) returns (Status) {} // Deletes the user account and the tenant account if the user is tenant admin
     rpc ExportData(ExportDataReq) returns (stream Status) {}
     rpc ImportData(stream ImportDataMsg) returns (Status) {}

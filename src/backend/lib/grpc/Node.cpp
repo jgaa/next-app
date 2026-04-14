@@ -190,6 +190,38 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
         });
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::ResetNodes(::grpc::CallbackServerContext *ctx,
+                                                                const pb::ResetNodesReq *req,
+                                                                pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            const auto& cuser = rctx.uctx->userUuid();
+            auto trx = co_await rctx.dbh->transaction();
+
+            co_await rctx.dbh->exec("DELETE FROM time_block WHERE user = ?", cuser);
+            co_await rctx.dbh->exec("DELETE FROM node WHERE user = ?", cuser);
+
+            if (req->has_template_root()) {
+                co_await owner_.addNodes({}, req->template_root(), rctx);
+            }
+
+            co_await rctx.dbh->exec("UPDATE `user` SET data_sync_epoch = data_sync_epoch + 1 WHERE id = ?", cuser);
+            const auto epoch_res = co_await rctx.dbh->exec("SELECT data_sync_epoch FROM `user` WHERE id = ?", cuser);
+            if (epoch_res.rows().empty()) {
+                throw server_err{pb::Error::GENERIC_ERROR, "Failed to load updated data sync epoch"};
+            }
+            const auto data_sync_epoch = epoch_res.rows().front().at(0).as_uint64();
+
+            co_await trx.commit();
+
+            rctx.updates.clear();
+            co_await rctx.uctx->publishFullResync(data_sync_epoch);
+
+            co_return;
+        });
+}
+
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateNode(::grpc::CallbackServerContext *ctx, const pb::Node *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,

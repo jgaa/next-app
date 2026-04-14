@@ -2281,6 +2281,15 @@ void tst_NextAppUiRuntime::useCaseTemplatesExposeSortedNamesAndCreateSelectedTre
     const auto out_of_range = names.size() + 1;
     templates.createFromTemplate(out_of_range);
     QCOMPARE(runtime.server_comm_.created_node_template_.children().size(), top_level.size());
+
+    templates.resetFromTemplate(0);
+    QVERIFY(!runtime.server_comm_.reset_nodes_req_.hasTemplateRoot());
+
+    templates.resetFromTemplate(index);
+    QVERIFY(runtime.server_comm_.reset_nodes_req_.hasTemplateRoot());
+    const auto reset_root = runtime.server_comm_.reset_nodes_req_.templateRoot();
+    QCOMPARE(reset_root.children().size(), top_level.size());
+    QCOMPARE(reset_root.children().front().name(), top_level.front().name());
 }
 
 QTEST_GUILESS_MAIN(tst_NextAppUiRuntime)

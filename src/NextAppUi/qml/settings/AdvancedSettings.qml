@@ -199,6 +199,14 @@ ScrollView {
         RowLayout {
             spacing: 10
             Button {
+                text: qsTr("Start Over")
+                visible: expertMode.checked
+                onClicked: {
+                    Common.openDialog("settings/ResetNodesConfirmation.qml", root, {})
+                }
+            }
+
+            Button {
                 text: qsTr("Factory Reset")
                 visible: expertMode.checked
                 onClicked: {

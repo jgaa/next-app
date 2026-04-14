@@ -40,9 +40,12 @@ public:
 
     Q_INVOKABLE QStringList getTemplateNames() const noexcept;
     Q_INVOKABLE void createFromTemplate(int index);
+    Q_INVOKABLE void resetFromTemplate(int index);
     Q_INVOKABLE QString getDescription(int index);
 
 private:
+    [[nodiscard]] nextapp::pb::NodeTemplate buildTemplate(int index) const;
+
     QList<UseCaseTemplate> templates_;
     RuntimeServices& runtime_;
 };
