@@ -169,13 +169,15 @@ Rectangle {
 
             Repeater {
                 model: root.days
+
                 Label {
                     id: label
+                    property bool isToday : root.model.valid && root.model.isToday(index)
                     color: MaterialDesignStyling.onPrimaryContainer
+                    font.bold: isToday
                     x: scrollView.dayWidth * index + hbar.width + (index * 4) + 6
                     width: scrollView.dayWidth
                     height: header.height
-                    //text: root.model.valid ? root.model.getDateStr(index) : "unset"
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
 

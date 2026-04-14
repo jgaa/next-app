@@ -67,6 +67,7 @@ public:
     Q_INVOKABLE void deleteTimeBlock(const QString& eventId);
     Q_INVOKABLE time_t getDate(int index);
     Q_INVOKABLE QString getDateStr(int index);
+    Q_INVOKABLE bool isToday(int index);
     Q_INVOKABLE void goPrev();
     Q_INVOKABLE void goNext();
     Q_INVOKABLE void goToday();

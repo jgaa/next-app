@@ -194,6 +194,12 @@ QString CalendarModel::getDateStr(int index)
     return first_.addDays(index).toString("ddd, MMM d");
 }
 
+bool CalendarModel::isToday(int index)
+{
+    const auto date = first_.addDays(index);
+    return date == QDate::currentDate();
+}
+
 void CalendarModel::goPrev()
 {
     switch(mode_) {
