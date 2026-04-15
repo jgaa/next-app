@@ -58,6 +58,7 @@ set PATH=%VCPKG_ROOT%;%CLEANED_PATH%
 echo Path is now: %PATH%
 
 echo Static Qt target dir is: %QT_TARGET_DIR%
+set "QT_DEPS_READY_MARKER=%QT_TARGET_DIR%\nextapp-static-qt-deps-ready.txt"
 if /I "%REBUILD_WINDOWS_DEPS%"=="ON" (
     echo REBUILD_WINDOWS_DEPS is ON. Removing cached static Qt build and install directories.
     if exist "%QT_BUILD_DIR%" rmdir /S /Q "%QT_BUILD_DIR%"
@@ -138,9 +139,16 @@ if not defined QT_DEPS_BIN (
 if defined QT_DEPS_BIN (
     set "PATH=%QT_TARGET_DIR%\bin;%QT_DEPS_BIN%;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\tools\brotli;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\tools\protobuf;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin;%MY_BUILD_DIR%\bin;%PATH%"
 ) else (
-    echo Warning: Qt vcpkg dependency bin directory not found under %QT_BUILD_DIR%.
-    echo The Qt generator tools will use DLLs from %QT_TARGET_DIR%\bin and PATH.
-    set "PATH=%QT_TARGET_DIR%\bin;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\tools\brotli;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\tools\protobuf;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin;%MY_BUILD_DIR%\bin;%PATH%"
+    if exist "%QT_DEPS_READY_MARKER%" (
+        echo Qt host tool dependency marker found: %QT_DEPS_READY_MARKER%
+        echo The Qt generator tools will use dependency DLLs from %QT_TARGET_DIR%\bin.
+        set "PATH=%QT_TARGET_DIR%\bin;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\tools\brotli;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\tools\protobuf;%MY_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin;%MY_BUILD_DIR%\bin;%PATH%"
+    ) else (
+        echo Error: Qt vcpkg dependency bin directory was not found under %QT_BUILD_DIR%.
+        echo Error: %QT_DEPS_READY_MARKER% is also missing, so this C:\qt-static install predates the dependency DLL fix.
+        echo Error: Re-run this Jenkins job with REBUILD_WINDOWS_DEPS checked, or set QT_DEPS_BIN to the vcpkg bin directory used to build static Qt.
+        exit /b 1
+    )
 )
 
 echo PATH is: %PATH%

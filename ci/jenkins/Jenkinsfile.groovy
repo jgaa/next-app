@@ -9,7 +9,7 @@ pipeline {
     booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Run Windows stage')
     booleanParam(name: 'RUN_LINUX', defaultValue: true, description: 'Run Linux stage')
     booleanParam(name: 'RUN_MACOS', defaultValue: true, description: 'Run macOS stage')
-    booleanParam(name: 'REBUILD_WINDOWS_DEPS', defaultValue: false, description: 'Windows only: rebuild static Qt and vcpkg dependencies from source')
+    booleanParam(name: 'REBUILD_WINDOWS_DEPS', defaultValue: false, description: 'Windows only: rebuild static Qt and vcpkg dependencies from source; use once after Qt/vcpkg tool DLL changes')
   }
   agent { label 'main' }
 

@@ -169,19 +169,37 @@ if errorlevel 1 (
     exit /b
 )
 
+set "QT_HOST_DEPS_COPIED=OFF"
 if exist "%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin\*.dll" (
     echo Copying Qt host tool dependency DLLs from %QT_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin to %QT_TARGET_DIR%\bin
     copy /Y "%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin\*.dll" "%QT_TARGET_DIR%\bin\"
+    if errorlevel 1 (
+        echo Failed to copy Qt host tool dependency DLLs
+        exit /b 1
+    )
+    set "QT_HOST_DEPS_COPIED=ON"
 ) else (
     if exist "%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin\*.dll" (
         echo Copying Qt host tool dependency DLLs from %QT_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin to %QT_TARGET_DIR%\bin
         copy /Y "%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin\*.dll" "%QT_TARGET_DIR%\bin\"
+        if errorlevel 1 (
+            echo Failed to copy Qt host tool dependency DLLs
+            exit /b 1
+        )
+        set "QT_HOST_DEPS_COPIED=ON"
     ) else (
-        echo Warning: no Qt host tool dependency DLLs found under %QT_BUILD_DIR%\vcpkg_installed
+        echo Error: no Qt host tool dependency DLLs found under %QT_BUILD_DIR%\vcpkg_installed
+        exit /b 1
     )
 )
 
 echo Successfully built and installed static Qt to %QT_TARGET_DIR%
+if /I "%QT_HOST_DEPS_COPIED%"=="ON" (
+    echo Static Qt dependency DLLs prepared for NextApp Windows build. > "%QT_TARGET_DIR%\nextapp-static-qt-deps-ready.txt"
+    echo QT_VERSION=%QT_VERSION% >> "%QT_TARGET_DIR%\nextapp-static-qt-deps-ready.txt"
+    echo VCPKG_DEFAULT_TRIPLET=%VCPKG_DEFAULT_TRIPLET% >> "%QT_TARGET_DIR%\nextapp-static-qt-deps-ready.txt"
+    echo VCPKG_ACTUAL_TRIPLET=%VCPKG_ACTUAL_TRIPLET% >> "%QT_TARGET_DIR%\nextapp-static-qt-deps-ready.txt"
+)
 
 set "PATH=%ORIGINAL_PATH%"
 popd
