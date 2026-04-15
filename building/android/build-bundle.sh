@@ -185,11 +185,11 @@ app_version=$(cat VERSION.txt)
 echo "App version: ${app_version}"
 
 echo "Building NextApp for Android, apk and aab, all abi's ..."
-# Build the native libraries and copy all ABI dependencies into the Android
-# package directory. Do not build the default APK target here: that can invoke
-# Gradle's debug variant and make google-services require a *.debug Firebase
-# client even though this CI job only publishes a signed release bundle.
-cmake --build ${CMAKEBUILD_DIR} --target appNextAppUi_copy_apk_dependencies
+# Build the native libraries and prepare the Android package directory. This
+# copies the default ABI binary as well as all secondary ABI dependencies, but
+# avoids the default APK target that can invoke Gradle's debug variant and make
+# google-services require a *.debug Firebase client.
+cmake --build ${CMAKEBUILD_DIR} --target appNextAppUi_prepare_apk_dir
 
 DEPLOY_CONFIG=`find src -name '*-deployment-settings.json'`
 echo "Deploy config: ${DEPLOY_CONFIG}"
