@@ -32,6 +32,14 @@ if not defined VCPKG_ACTUAL_TRIPLET (
     set "VCPKG_ACTUAL_TRIPLET=x64-windows"
 )
 
+if not defined REBUILD_WINDOWS_DEPS (
+    set "REBUILD_WINDOWS_DEPS=OFF"
+)
+
+if /I "%REBUILD_WINDOWS_DEPS%"=="TRUE" set "REBUILD_WINDOWS_DEPS=ON"
+if /I "%REBUILD_WINDOWS_DEPS%"=="YES" set "REBUILD_WINDOWS_DEPS=ON"
+if "%REBUILD_WINDOWS_DEPS%"=="1" set "REBUILD_WINDOWS_DEPS=ON"
+
 
 echo From build-static-qt.bat
 echo VCPKG_ROOT is: %VCPKG_ROOT%
@@ -39,6 +47,7 @@ echo VCPKG_DEFAULT_TRIPLET is: %VCPKG_DEFAULT_TRIPLET%
 echo QT_VERSION is: %QT_VERSION%
 echo QT_TARGET_DIR is: %QT_TARGET_DIR%
 echo VCPKG_ROOT is: %VCPKG_ROOT%
+echo REBUILD_WINDOWS_DEPS is: %REBUILD_WINDOWS_DEPS%
 
 set QT_BUILD_DIR=%BUILD_DIR%\qt
 echo Qt build dir is: %QT_BUILD_DIR%
@@ -78,7 +87,15 @@ if errorlevel 1 (
 
 echo "Ready to install vcpkg dependencies"
 dir
-vcpkg install --triplet "%VCPKG_DEFAULT_TRIPLET%"
+if /I "%REBUILD_WINDOWS_DEPS%"=="ON" (
+    vcpkg install --triplet "%VCPKG_DEFAULT_TRIPLET%" --no-binarycaching --clean-after-build
+) else (
+    vcpkg install --triplet "%VCPKG_DEFAULT_TRIPLET%"
+)
+if errorlevel 1 (
+    echo Failed to install Qt vcpkg dependencies
+    exit /b
+)
 
 set BAD_CMAKE_FILE=%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\share\openssl\OpenSSLConfig.cmake
 echo Patching OpenSSLConfig.cmake - removing invalid applink requirement: %BAD_CMAKE_FILE%
@@ -150,6 +167,18 @@ cmake --install .
 if errorlevel 1 (
     echo Installing Qt failed
     exit /b
+)
+
+if exist "%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin\*.dll" (
+    echo Copying Qt host tool dependency DLLs from %QT_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin to %QT_TARGET_DIR%\bin
+    copy /Y "%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_DEFAULT_TRIPLET%\bin\*.dll" "%QT_TARGET_DIR%\bin\"
+) else (
+    if exist "%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin\*.dll" (
+        echo Copying Qt host tool dependency DLLs from %QT_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin to %QT_TARGET_DIR%\bin
+        copy /Y "%QT_BUILD_DIR%\vcpkg_installed\%VCPKG_ACTUAL_TRIPLET%\bin\*.dll" "%QT_TARGET_DIR%\bin\"
+    ) else (
+        echo Warning: no Qt host tool dependency DLLs found under %QT_BUILD_DIR%\vcpkg_installed
+    )
 )
 
 echo Successfully built and installed static Qt to %QT_TARGET_DIR%

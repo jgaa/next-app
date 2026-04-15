@@ -9,6 +9,7 @@ pipeline {
     booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Run Windows stage')
     booleanParam(name: 'RUN_LINUX', defaultValue: true, description: 'Run Linux stage')
     booleanParam(name: 'RUN_MACOS', defaultValue: true, description: 'Run macOS stage')
+    booleanParam(name: 'REBUILD_WINDOWS_DEPS', defaultValue: false, description: 'Windows only: rebuild static Qt and vcpkg dependencies from source')
   }
   agent { label 'main' }
 
@@ -72,6 +73,7 @@ pipeline {
                 git pull
                 popd
 
+                set "REBUILD_WINDOWS_DEPS=${params.REBUILD_WINDOWS_DEPS ? 'ON' : 'OFF'}"
                 echo "Starting build..."
                 building\\static-qt-windows\\build-nextapp.bat
               """
