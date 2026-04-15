@@ -195,6 +195,7 @@ DEPLOY_CONFIG=`find src -name '*-deployment-settings.json'`
 echo "Deploy config: ${DEPLOY_CONFIG}"
 
 echo 'Preparing and signing Android App Bundle (.aab) ...'
+export NEXTAPP_ANDROID_RELEASE_ONLY=1
 ${QT_INSTALL_DIR}/gcc_64/bin/androiddeployqt \
   --input ${DEPLOY_CONFIG} \
   --output ${CMAKEBUILD_DIR}/src/NextAppUi/android-build-appNextAppUi \

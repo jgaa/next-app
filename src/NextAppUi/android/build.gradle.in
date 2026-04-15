@@ -2,6 +2,7 @@ def appId = "@PACKAGE_NAME@"
 def appName = "@NEXTAPP_APP_NAME@"
 def appLibName = "@APP_LIB@"
 def appNamespace = "eu.lastviking.nextapp.app"
+def releaseOnlyBuild = System.getenv("NEXTAPP_ANDROID_RELEASE_ONLY") == "1"
 
 buildscript {
     repositories {
@@ -26,6 +27,14 @@ repositories {
 apply plugin: qtGradlePluginType
 if (@FCM_ENABLED@) {
     apply plugin: 'com.google.gms.google-services'
+}
+
+if (releaseOnlyBuild) {
+    androidComponents {
+        beforeVariants(selector().withBuildType("debug")) { variantBuilder ->
+            variantBuilder.enable = false
+        }
+    }
 }
 
 dependencies {
