@@ -5,6 +5,23 @@ on:
     branches:
       - main
       - macos-ga
+    paths:
+      - '.github/workflows/build-macos-arm64.yaml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'include/**'
+      - 'src/NextAppUi/**'
+      - 'src/proto/**'
+      - 'building/macos/**'
+      - 'ci/vcpkg/**'
+      - 'dependencies/date'
+      - 'dependencies/date/**'
+      - 'dependencies/expected'
+      - 'dependencies/expected/**'
+      - 'dependencies/logfault'
+      - 'dependencies/logfault/**'
+      - 'dependencies/qcoro'
+      - 'dependencies/qcoro/**'
       
 permissions:
   contents: read

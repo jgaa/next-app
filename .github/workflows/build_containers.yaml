@@ -6,6 +6,33 @@ on:
       - main
       - devel
       - plans
+    paths:
+      - '.github/workflows/build_containers.yaml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'include/**'
+      - 'src/backend/**'
+      - 'src/common/**'
+      - 'src/proto/**'
+      - 'src/signup/**'
+      - 'docker/**'
+      - 'building/build-nextapp-image.sh'
+      - 'building/build-project-image.sh'
+      - 'building/build-signup-image.sh'
+      - 'dependencies/cpp-push'
+      - 'dependencies/cpp-push/**'
+      - 'dependencies/date'
+      - 'dependencies/date/**'
+      - 'dependencies/expected'
+      - 'dependencies/expected/**'
+      - 'dependencies/logfault'
+      - 'dependencies/logfault/**'
+      - 'dependencies/mysqlpool-cpp'
+      - 'dependencies/mysqlpool-cpp/**'
+      - 'dependencies/payments-pub'
+      - 'dependencies/payments-pub/**'
+      - 'dependencies/yahat-cpp'
+      - 'dependencies/yahat-cpp/**'
   release:
     types: [published]  # Run when a release is published
 
