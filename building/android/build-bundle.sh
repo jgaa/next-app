@@ -33,21 +33,20 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
-QT_VERSION="${QT_VERSION:-6.10.0}"
+QT_VERSION="${QT_VERSION:-6.10.2}"
 QT_ARCHIVE="qt-${QT_VERSION}.tar"
 QT_DOWNLOAD_URL="${QT_DOWNLOAD_URL:-http://192.168.1.95/ci/${QT_ARCHIVE}}"
 QT_INSTALL_DIR="${QT_INSTALL_DIR-/var/local/build/qt-${QT_VERSION}}"
 
 export SOURCE_DIR="${SOURCE_DIR:-${SCRIPT_DIR}/../../}"
 export BUILD_DIR="${BUILD_DIR:-/var/local/build/nextapp-android}"
-#export NDK_VERSION="${NDK_VERSION:-27.2.12479018}"
-export NDK_VERSION="${NDK_VERSION:-28.2.13676358}"
+export NDK_VERSION="${NDK_VERSION:-27.2.12479018}"
 export SDK_PATH_BASE="${SDK_PATH_BASE:-/var/local/build/android-sdk}"
 #export SDK_PATH="${SDK_PATH:-/var/local/build/android-sdk-$NDK_VERSION}"
 if [ -z "$SDK_PATH" ]; then
   export SDK_PATH="${SDK_PATH_BASE}"
 fi
-export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-35}"
+export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-36}"
 ASSETS_PATH="${ASSETS_PATH:-${BUILD_DIR}/assets}"
 
 echo "QT_VERSION is ${QT_VERSION}"
@@ -186,7 +185,11 @@ app_version=$(cat VERSION.txt)
 echo "App version: ${app_version}"
 
 echo "Building NextApp for Android, apk and aab, all abi's ..."
-cmake --build ${CMAKEBUILD_DIR} --target all
+# Build the native libraries and copy all ABI dependencies into the Android
+# package directory. Do not build the default APK target here: that can invoke
+# Gradle's debug variant and make google-services require a *.debug Firebase
+# client even though this CI job only publishes a signed release bundle.
+cmake --build ${CMAKEBUILD_DIR} --target appNextAppUi_copy_apk_dependencies
 
 DEPLOY_CONFIG=`find src -name '*-deployment-settings.json'`
 echo "Deploy config: ${DEPLOY_CONFIG}"
@@ -197,7 +200,7 @@ ${QT_INSTALL_DIR}/gcc_64/bin/androiddeployqt \
   --output ${CMAKEBUILD_DIR}/src/NextAppUi/android-build-appNextAppUi \
   --android-platform ${ANDROID_PLATFORM} \
   --gradle --aab --jarsigner --release \
-  --sign ${KEYSTORE_PATH} eu.lastviking.app --storepass ${KEYSTORE_PASSWORD} --no-gdbserver
+  --sign ${KEYSTORE_PATH} ${KEY_ALIAS:-eu.lastviking.app} --storepass ${KEYSTORE_PASSWORD} --no-gdbserver
 
 AAB_FILE=`find src/NextAppUi/android-build-appNextAppUi  -name '*.aab' | grep output | grep release`
 APK_FILE=`find src/NextAppUi/android-build-appNextAppUi  -name '*.apk' | grep output | grep release`
@@ -217,4 +220,3 @@ echo "Copying APK to ${APK_DST}"
 cp -v "${APK_FILE}" "${APK_DST}"
 
 echo "✔ AAB built and stored in ${aab_dst}"
-
