@@ -1,4 +1,4 @@
-name: Build macOS App
+name: Build macOS
 
 on:
   push:
@@ -13,7 +13,6 @@ on:
       - 'src/NextAppUi/**'
       - 'src/proto/**'
       - 'building/macos/**'
-      - 'ci/vcpkg/**'
       - 'dependencies/date'
       - 'dependencies/date/**'
       - 'dependencies/expected'
@@ -22,22 +21,32 @@ on:
       - 'dependencies/logfault/**'
       - 'dependencies/qcoro'
       - 'dependencies/qcoro/**'
-      
+
 permissions:
   contents: read
 
 env:
-  SRC_DIR:   ${{ github.workspace }}
-  BUILD_DIR: ${{ github.workspace }}/build
-  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-  VCPKG_TRIPLET: arm64-osx-release
-  VCPKG_INSTALL_OPTIONS: "--clean-after-build"
-  VCPKG_MANIFEST_MODE: "ON"
   SIGN_ID: "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"
+  QT_SDK_VERSION: "6.11.0"
+  QT_SDK_BASE_URL: "https://next-app.org/ci"
+  QT_SDK_USERNAME: "jgaa"
 
 jobs:
   build-macos:
-    runs-on: macos-latest
+    name: Build macOS (${{ matrix.artifact_suffix }})
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            cmake_arch: arm64
+            artifact_suffix: arm64
+          # - runner: macos-15-intel
+          #   cmake_arch: x86_64
+          #   artifact_suffix: x86_64
+
     defaults:
       run:
         shell: bash
@@ -51,31 +60,114 @@ jobs:
       - name: Import signing certificate
         uses: apple-actions/import-codesign-certs@v3
         with:
-          p12-file-base64: ${{ secrets.DEV_ID_P12 }} 
-          p12-password:   ${{ secrets.DEV_ID_P12_PASS }}
-            
-      - name: Cache vcpkg directory
-        uses: actions/cache@v4
-        with:
-          # Cache the entire vcpkg folder
-          path: ${{ env.VCPKG_ROOT }}
-          # Key on runner OS + triplet + hash of your vcpkg-all.json manifest
-          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('building/macos/build-configs/vcpkg-all.json') }}
+          p12-file-base64: ${{ secrets.DEV_ID_P12 }}
+          p12-password: ${{ secrets.DEV_ID_P12_PASS }}
 
-      - name: Run macOS build script
-        run: ./building/macos/build-nextapp.sh
-
-      - name: Read NEXTAPP_VERSION from file
-        shell: bash
+      - name: Install build dependencies
         run: |
-          ver=$(< "${{ env.BUILD_DIR }}/VERSION.txt")
-          # export it for subsequent steps
-          echo "NEXTAPP_VERSION=$ver" >> $GITHUB_ENV
-          echo "✅ NEXTAPP_VERSION=$ver"
+          set -euo pipefail
+          brew update
+          brew install ninja pkg-config openssl@3 boost
+
+      - name: Download Qt SDK
+        env:
+          QT_SDK_BASE_URL: ${{ env.QT_SDK_BASE_URL }}
+          QT_SDK_USERNAME: ${{ env.QT_SDK_USERNAME }}
+          QT_SDK_PASSWORD: ${{ secrets.QT_SDK_PASSWORD }}
+          QT_SDK_VERSION: ${{ env.QT_SDK_VERSION }}
+        run: |
+          set -euo pipefail
+
+          QT_SDK_URL="${QT_SDK_BASE_URL}/qt-${QT_SDK_VERSION}-macos.tar.gz"
+
+          test -n "${QT_SDK_URL:-}" || { echo "::error::Missing QT_SDK_URL secret"; exit 1; }
+          test -n "${QT_SDK_USERNAME:-}" || { echo "::error::Missing QT_SDK_USERNAME value"; exit 1; }
+          test -n "${QT_SDK_PASSWORD:-}" || { echo "::error::Missing QT_SDK_PASSWORD secret"; exit 1; }
+
+          curl --fail --show-error --location \
+            --user "${QT_SDK_USERNAME}:${QT_SDK_PASSWORD}" \
+            --output qt-sdk.tar.gz \
+            "${QT_SDK_URL}"
+
+          rm -rf qt-sdk
+          mkdir -p qt-sdk
+          tar -xf qt-sdk.tar.gz -C qt-sdk
+
+          QT_ROOT="${PWD}/qt-sdk/${QT_SDK_VERSION}"
+          test -d "${QT_ROOT}" || { echo "::error::Expected Qt SDK root ${QT_ROOT} missing after extract"; exit 1; }
+
+          QT_MACDEPLOYQT="$(find "${QT_ROOT}" -type f -path '*/bin/macdeployqt' -print -quit)"
+          test -n "${QT_MACDEPLOYQT:-}" || { echo "::error::Unable to locate macdeployqt in downloaded Qt SDK"; exit 1; }
+
+          QT_PREFIX="$(cd "$(dirname "${QT_MACDEPLOYQT}")/.." && pwd)"
+          QT_CMAKE="$(find "${QT_ROOT}" -type f -path '*/bin/qt-cmake' -print -quit)"
+          test -n "${QT_CMAKE:-}" || { echo "::error::Unable to locate qt-cmake in downloaded Qt SDK"; exit 1; }
+
+          echo "QT_ROOT=${QT_ROOT}" >> "$GITHUB_ENV"
+          echo "QT_PREFIX=${QT_PREFIX}" >> "$GITHUB_ENV"
+          echo "QT_CMAKE=${QT_CMAKE}" >> "$GITHUB_ENV"
+          echo "QT_MACDEPLOYQT=${QT_MACDEPLOYQT}" >> "$GITHUB_ENV"
+
+      - name: Configure, build, bundle and package
+        env:
+          BUILD_DIR: ${{ github.workspace }}/build-macos-${{ matrix.artifact_suffix }}
+          STAGE_DIR: ${{ github.workspace }}/stage-macos-${{ matrix.artifact_suffix }}
+        run: |
+          set -euo pipefail
+
+          OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          BOOST_PREFIX="$(brew --prefix boost)"
+
+          rm -rf "${BUILD_DIR}" "${STAGE_DIR}"
+
+          "${QT_CMAKE}" -S "${GITHUB_WORKSPACE}" -B "${BUILD_DIR}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="${{ matrix.cmake_arch }}" \
+            -DCMAKE_PREFIX_PATH="${OPENSSL_PREFIX};${BOOST_PREFIX}" \
+            -DOPENSSL_ROOT_DIR="${OPENSSL_PREFIX}" \
+            -DNEXTAPP_WITH_TESTS=OFF \
+            -DNEXTAPP_WITH_BACKEND=OFF \
+            -DNEXTAPP_WITH_SIGNUP=OFF \
+            -DUSE_STATIC_QT=OFF \
+            -DSIGN_ID="${SIGN_ID}"
+
+          cmake --build "${BUILD_DIR}" --config Release
+          cmake --install "${BUILD_DIR}" --prefix "${STAGE_DIR}"
+
+          APP_PATH="$(find "${STAGE_DIR}" -maxdepth 2 -type d -name 'nextapp.app' -print -quit)"
+          test -n "${APP_PATH:-}" || { echo "::error::Unable to locate installed nextapp.app"; exit 1; }
+
+          "${QT_MACDEPLOYQT}" "${APP_PATH}" \
+            -always-overwrite \
+            -verbose=2 \
+            -qmldir="${GITHUB_WORKSPACE}/src/NextAppUi" \
+            -codesign="${SIGN_ID}"
+
+          codesign --force --deep --options runtime --sign "${SIGN_ID}" "${APP_PATH}"
+          codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+
+          APP_BIN="${APP_PATH}/Contents/MacOS/nextapp"
+          echo "== file ==" && file "${APP_BIN}"
+          echo "== lipo -info ==" && lipo -info "${APP_BIN}"
+          lipo "${APP_BIN}" -verify_arch "${{ matrix.cmake_arch }}"
+
+          VERSION="$(< "${BUILD_DIR}/VERSION.txt")"
+          DMG_NAME="nextapp-macos-${{ matrix.artifact_suffix }}-${VERSION}.dmg"
+          hdiutil create \
+            -volname "NextApp ${VERSION}" \
+            -srcfolder "${STAGE_DIR}" \
+            -ov \
+            -format UDZO \
+            "${BUILD_DIR}/${DMG_NAME}"
+
+          codesign --force --sign "${SIGN_ID}" "${BUILD_DIR}/${DMG_NAME}" || true
+
+          echo "NEXTAPP_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "DMG_PATH=${BUILD_DIR}/${DMG_NAME}" >> "$GITHUB_ENV"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nextapp-macos-arm64-dmg-${{ env.NEXTAPP_VERSION }}
-          path: ${{ env.BUILD_DIR }}/*.dmg
+          name: nextapp-macos-${{ matrix.artifact_suffix }}-dmg-${{ env.NEXTAPP_VERSION }}
+          path: ${{ env.DMG_PATH }}
           retention-days: 3
