@@ -67,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           brew update
-          brew install ninja pkg-config openssl@3 boost
+          brew install ninja pkg-config openssl@3 boost protobuf
 
       - name: Download Qt SDK
         env:
