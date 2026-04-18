@@ -33,17 +33,80 @@ env:
   MACOS_DEPLOYMENT_TARGET: "15.0"
 
 jobs:
+  prepare-qt-sdk:
+    name: Prepare Qt SDK archive
+    runs-on: macos-15
+
+    defaults:
+      run:
+        shell: bash
+
+    outputs:
+      artifact-name: ${{ steps.meta.outputs.artifact_name }}
+
+    steps:
+      - name: Set artifact metadata
+        id: meta
+        run: |
+          echo "artifact_name=qt-sdk-macos-${QT_SDK_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Qt SDK archive cache
+        id: cache-qt-sdk
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
+          key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}
+
+      - name: Download Qt SDK archive
+        if: steps.cache-qt-sdk.outputs.cache-hit != 'true'
+        env:
+          QT_SDK_BASE_URL: ${{ env.QT_SDK_BASE_URL }}
+          QT_SDK_USERNAME: ${{ env.QT_SDK_USERNAME }}
+          QT_SDK_PASSWORD: ${{ secrets.QT_SDK_PASSWORD }}
+          QT_SDK_VERSION: ${{ env.QT_SDK_VERSION }}
+        run: |
+          set -euo pipefail
+
+          QT_SDK_URL="${QT_SDK_BASE_URL}/qt-${QT_SDK_VERSION}-macos.tar.zst"
+          QT_SDK_ARCHIVE="${RUNNER_TEMP}/qt-sdk-cache/qt-${QT_SDK_VERSION}-macos.tar.zst"
+
+          test -n "${QT_SDK_URL:-}" || { echo "::error::Missing QT_SDK_URL"; exit 1; }
+          test -n "${QT_SDK_USERNAME:-}" || { echo "::error::Missing QT_SDK_USERNAME value"; exit 1; }
+          test -n "${QT_SDK_PASSWORD:-}" || { echo "::error::Missing QT_SDK_PASSWORD secret"; exit 1; }
+
+          mkdir -p "$(dirname "${QT_SDK_ARCHIVE}")"
+
+          curl --fail --show-error --location \
+            --user "${QT_SDK_USERNAME}:${QT_SDK_PASSWORD}" \
+            --output "${QT_SDK_ARCHIVE}" \
+            "${QT_SDK_URL}"
+
+      - name: Save Qt SDK archive cache
+        if: steps.cache-qt-sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
+          key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}
+
+      - name: Upload Qt SDK archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
+          retention-days: 1
+
   build-macos:
     name: Build macOS (${{ matrix.artifact_suffix }})
+    needs: prepare-qt-sdk
     runs-on: ${{ matrix.runner }}
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            cmake_arch: arm64
-            artifact_suffix: arm64
+          # - runner: macos-15
+          #   cmake_arch: arm64
+          #   artifact_suffix: arm64
           - runner: macos-15-intel
             cmake_arch: x86_64
             artifact_suffix: x86_64
@@ -70,29 +133,24 @@ jobs:
           brew update
           brew install ninja pkg-config openssl@3 boost protobuf
 
-      - name: Download Qt SDK
+      - name: Download Qt SDK archive artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare-qt-sdk.outputs.artifact-name }}
+          path: ${{ github.workspace }}/qt-sdk-cache
+
+      - name: Extract Qt SDK
         env:
-          QT_SDK_BASE_URL: ${{ env.QT_SDK_BASE_URL }}
-          QT_SDK_USERNAME: ${{ env.QT_SDK_USERNAME }}
-          QT_SDK_PASSWORD: ${{ secrets.QT_SDK_PASSWORD }}
           QT_SDK_VERSION: ${{ env.QT_SDK_VERSION }}
         run: |
           set -euo pipefail
 
-          QT_SDK_URL="${QT_SDK_BASE_URL}/qt-${QT_SDK_VERSION}-macos.tar.gz"
-
-          test -n "${QT_SDK_URL:-}" || { echo "::error::Missing QT_SDK_URL secret"; exit 1; }
-          test -n "${QT_SDK_USERNAME:-}" || { echo "::error::Missing QT_SDK_USERNAME value"; exit 1; }
-          test -n "${QT_SDK_PASSWORD:-}" || { echo "::error::Missing QT_SDK_PASSWORD secret"; exit 1; }
-
-          curl --fail --show-error --location \
-            --user "${QT_SDK_USERNAME}:${QT_SDK_PASSWORD}" \
-            --output qt-sdk.tar.gz \
-            "${QT_SDK_URL}"
+          QT_SDK_ARCHIVE="${GITHUB_WORKSPACE}/qt-sdk-cache/qt-${QT_SDK_VERSION}-macos.tar.zst"
+          test -f "${QT_SDK_ARCHIVE}" || { echo "::error::Qt SDK archive ${QT_SDK_ARCHIVE} not found"; exit 1; }
 
           rm -rf qt-sdk
           mkdir -p qt-sdk
-          tar -xf qt-sdk.tar.gz -C qt-sdk
+          tar -xf "${QT_SDK_ARCHIVE}" -C qt-sdk
 
           QT_ROOT="${PWD}/qt-sdk/${QT_SDK_VERSION}"
           test -d "${QT_ROOT}" || { echo "::error::Expected Qt SDK root ${QT_ROOT} missing after extract"; exit 1; }
@@ -113,13 +171,14 @@ jobs:
         env:
           BUILD_DIR: ${{ github.workspace }}/build-macos-${{ matrix.artifact_suffix }}
           STAGE_DIR: ${{ github.workspace }}/stage-macos-${{ matrix.artifact_suffix }}
+          DMG_DIR: ${{ github.workspace }}/dmg-macos-${{ matrix.artifact_suffix }}
         run: |
           set -euo pipefail
 
           OPENSSL_PREFIX="$(brew --prefix openssl@3)"
           BOOST_PREFIX="$(brew --prefix boost)"
 
-          rm -rf "${BUILD_DIR}" "${STAGE_DIR}"
+          rm -rf "${BUILD_DIR}" "${STAGE_DIR}" "${DMG_DIR}"
 
           "${QT_CMAKE}" -S "${GITHUB_WORKSPACE}" -B "${BUILD_DIR}" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -134,7 +193,7 @@ jobs:
             -DSIGN_ID="${SIGN_ID}"
 
           cmake --build "${BUILD_DIR}" --config Release
-          cmake --install "${BUILD_DIR}" --prefix "${STAGE_DIR}"
+          cmake --install "${BUILD_DIR}" --prefix "${STAGE_DIR}" --component Application
 
           APP_PATH="$(find "${STAGE_DIR}" -maxdepth 2 -type d -name 'nextapp.app' -print -quit)"
           test -n "${APP_PATH:-}" || { echo "::error::Unable to locate installed nextapp.app"; exit 1; }
@@ -155,9 +214,13 @@ jobs:
 
           VERSION="$(< "${BUILD_DIR}/VERSION.txt")"
           DMG_NAME="nextapp-macos-${{ matrix.artifact_suffix }}-${VERSION}.dmg"
+          mkdir -p "${DMG_DIR}"
+          ditto "${APP_PATH}" "${DMG_DIR}/nextapp.app"
+          ln -s /Applications "${DMG_DIR}/Applications"
+
           hdiutil create \
             -volname "NextApp ${VERSION}" \
-            -srcfolder "${STAGE_DIR}" \
+            -srcfolder "${DMG_DIR}" \
             -ov \
             -format UDZO \
             "${BUILD_DIR}/${DMG_NAME}"
