@@ -279,6 +279,12 @@ set (protofile_common "${CMAKE_CURRENT_SOURCE_DIR}/../proto/common.proto")
 
 add_library(qt_grpc STATIC)
 
+if(MACOS_BUILD)
+    # Keep generated protobuf/grpc client code inside the app binary on macOS.
+    add_library(na_proto_lib STATIC)
+    add_library(na_grpc_lib STATIC)
+endif()
+
 qt_add_protobuf(na_proto_lib
     QML
     QML_URI nextapp.pb
