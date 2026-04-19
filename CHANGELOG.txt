@@ -11,6 +11,7 @@ NextApp user application — supported platforms:
 
 * Linux x64 (Flatpak)
 * Windows x64 (EXE installer)
-* macOS amd64 (DMG installer)
-* Android (APK; also available on Google Play)
+* macOS (DMG installers)
+
+The Android version is distributed on [Google Play](https://play.google.com/store/apps/details?id=eu.lastviking.nextapp).
 
