@@ -1,12 +1,13 @@
 name: Build macOS
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
       - macos-ga
     paths:
-      - '.github/workflows/build-macos-arm64.yaml'
+      - '.github/workflows/build-macos.yaml'
       - 'CMakeLists.txt'
       - 'cmake/**'
       - 'include/**'
@@ -221,4 +222,5 @@ jobs:
         with:
           name: nextapp-macos-${{ matrix.artifact_suffix }}-dmg-${{ env.NEXTAPP_VERSION }}
           path: ${{ env.DMG_PATH }}
-          retention-days: 3
+          if-no-files-found: error
+          retention-days: 7

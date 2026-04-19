@@ -20,8 +20,14 @@ echo SRC_DIR: ${src_dir}
 cd ${APP_BUILD_DIR}
 
 MAIN_BINARY="${ASSETS_DIR}/nextapp"
+METAINFO_FILE="${src_dir}/flatpak/${APP_ID}.metainfo.xml"
 if [[ ! -f "$MAIN_BINARY" ]]; then
   echo "Error: $MAIN_BINARY not found. The script won't find dependencies for your main app."
+  exit 1
+fi
+
+if [[ ! -f "$METAINFO_FILE" ]]; then
+  echo "Error: $METAINFO_FILE not found."
   exit 1
 fi
 
@@ -33,7 +39,12 @@ ldd "${MAIN_BINARY}"
 ############################
 CMAKEFILE="${src_dir}/CMakeLists.txt"
 echo CMAKEFILE: ${CMAKEFILE}
-VERSION="$(grep -Po '^[[:space:]]*set[[:space:]]*\([[:space:]]*NEXTAPP_VERSION[[:space:]]+\K[0-9]+\.[0-9]+\.[0-9]+' "$CMAKEFILE")"
+VERSION="$(awk '
+  match($0, /^[[:space:]]*set[[:space:]]*\([[:space:]]*NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)/, m) {
+    print m[1]
+    exit
+  }
+' "$CMAKEFILE")"
 
 echo VERSION: ${VERSION}
 
@@ -133,7 +144,8 @@ cat << EOF > ${MANIFEST}
       "buildsystem": "simple",
       "build-commands": [
         "install -Dm644 nextapp.svg /app/share/icons/hicolor/scalable/apps/eu.lastviking.NextApp.svg",
-        "install -Dm644 eu.lastviking.NextApp.desktop /app/share/applications/eu.lastviking.NextApp.desktop"
+        "install -Dm644 eu.lastviking.NextApp.desktop /app/share/applications/eu.lastviking.NextApp.desktop",
+        "install -Dm644 eu.lastviking.NextApp.metainfo.xml /app/share/metainfo/eu.lastviking.NextApp.metainfo.xml"
       ],
       "sources": [
         {
@@ -143,6 +155,10 @@ cat << EOF > ${MANIFEST}
         {
           "type": "file",
           "path": "${APP_BUILD_DIR}/eu.lastviking.NextApp.desktop"
+        },
+        {
+          "type": "file",
+          "path": "${METAINFO_FILE}"
         }
       ]
     }
@@ -188,4 +204,3 @@ flatpak build-bundle ${REPO_DIR} \
 cp -v ${FP_NAME} "${ASSETS_DIR}"
 
 echo Flatpak file is: ${ASSETS_DIR}/${FP_NAME}
-
