@@ -10,7 +10,8 @@ WORK_ROOT="${WORK_ROOT:-${ROOT_DIR}/.flatpak-kde}"
 SOURCE_STAGE_DIR="${SOURCE_STAGE_DIR:-${WORK_ROOT}/source}"
 MANIFEST_PATH="${MANIFEST_PATH:-${WORK_ROOT}/${APP_ID}.yml}"
 DESKTOP_FILE="${DESKTOP_FILE:-${WORK_ROOT}/${APP_ID}.desktop}"
-METAINFO_FILE="${METAINFO_FILE:-${ROOT_DIR}/flatpak/${APP_ID}.metainfo.xml}"
+METAINFO_TEMPLATE="${METAINFO_TEMPLATE:-${ROOT_DIR}/flatpak/${APP_ID}.metainfo.xml.in}"
+METAINFO_FILE="${METAINFO_FILE:-${WORK_ROOT}/${APP_ID}.metainfo.xml}"
 BUILD_DIR="${BUILD_DIR:-${WORK_ROOT}/build}"
 REPO_DIR="${REPO_DIR:-${WORK_ROOT}/repo}"
 DIST_DIR="${DIST_DIR:-${WORK_ROOT}/dist}"
@@ -116,6 +117,13 @@ Categories=Office;Utility;
 EOF
 }
 
+write_metainfo_file() {
+    cat "${METAINFO_TEMPLATE}" \
+        | sed "s/@VERSION@/${APP_VERSION}/g" \
+        | sed "s/@RELEASE_DATE@/${RELEASE_DATE}/g" \
+        > "${METAINFO_FILE}"
+}
+
 write_manifest() {
     cat > "${MANIFEST_PATH}" <<EOF
 id: ${APP_ID}
@@ -138,6 +146,10 @@ finish-args:
   - --filesystem=home/NextApp:create
 
 build-options:
+  cflags: -O2
+  cxxflags: -O2
+  strip: true
+  no-debuginfo: true
   env:
     CMAKE_PREFIX_PATH: /app;/usr
     CMAKE_SYSTEM_PREFIX_PATH: /app;/usr
@@ -287,6 +299,22 @@ modules:
                 install -Dm755 "\${lib}" "/app/lib/\$(basename "\${lib}")"
               done
         fi
+
+        # Prune SDK/dev payload from the final app export. The runtime only
+        # needs the app binary, shared libs, QML plugins, and desktop metadata.
+        rm -rf /app/include
+        rm -rf /app/lib/cmake /app/lib/pkgconfig /app/lib/metatypes /app/lib/modules /app/lib/sbom
+        rm -rf /app/mkspecs
+        rm -rf /app/share/man /app/share/pkgconfig
+        rm -rf /app/lib/qml/QtGraphs/designer
+
+        rm -f /app/bin/adig /app/bin/ahost /app/bin/grpc_* /app/bin/protoc*
+
+        find /app/lib -maxdepth 1 \\( -type f -o -type l \\) \\
+          \\( -name '*.a' -o -name '*.la' -o -name 'libprotoc.so*' -o -name 'libprotobuf*.so*' -o -name 'libutf8_*.so*' \\) \\
+          -delete
+
+        find /app/lib/x86_64-linux-gnu -maxdepth 1 \\( -type f -o -type l \\) -name '*.prl' -delete
     sources:
       - type: dir
         path: ${SOURCE_STAGE_DIR}
@@ -310,9 +338,10 @@ main() {
     require_cmd sort
     require_cmd awk
     require_cmd grep
+    require_cmd appstreamcli
 
-    [[ -f "${METAINFO_FILE}" ]] || {
-        echo "Missing AppStream metainfo file: ${METAINFO_FILE}" >&2
+    [[ -f "${METAINFO_TEMPLATE}" ]] || {
+        echo "Missing AppStream metainfo template: ${METAINFO_TEMPLATE}" >&2
         exit 1
     }
 
@@ -322,13 +351,22 @@ main() {
 
     KDE_RUNTIME_VERSION="${KDE_RUNTIME_VERSION:-$(detect_kde_runtime_version)}"
 
-    flatpak install -y --user flathub \
+    flatpak install -y --noninteractive --user flathub \
         "org.kde.Sdk//${KDE_RUNTIME_VERSION}" \
         "org.kde.Platform//${KDE_RUNTIME_VERSION}"
 
     QT_SDK_VERSION="${QT_SDK_VERSION:-$(detect_qt_sdk_version "org.kde.Sdk//${KDE_RUNTIME_VERSION}")}"
     QT_MODULE_REF="${QT_MODULE_REF:-v${QT_SDK_VERSION}}"
     ARCH="$(flatpak --default-arch)"
+    APP_VERSION="$(
+        awk '
+            match($0, /^[[:space:]]*set[[:space:]]*\([[:space:]]*NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)/, m) {
+                print m[1]
+                exit
+            }
+        ' "${ROOT_DIR}/CMakeLists.txt"
+    )"
+    RELEASE_DATE="$(date -u +%F)"
 
     echo "Using KDE runtime branch: ${KDE_RUNTIME_VERSION}"
     echo "Using Qt SDK version: ${QT_SDK_VERSION}"
@@ -336,6 +374,8 @@ main() {
 
     stage_sources
     write_desktop_file
+    write_metainfo_file
+    appstreamcli validate --no-net "${METAINFO_FILE}"
     write_manifest
 
     rm -rf "${BUILD_DIR}" "${REPO_DIR}"
@@ -349,14 +389,6 @@ main() {
         "${BUILD_DIR}" \
         "${MANIFEST_PATH}"
 
-    APP_VERSION="$(
-        awk '
-            match($0, /^[[:space:]]*set[[:space:]]*\([[:space:]]*NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)/, m) {
-                print m[1]
-                exit
-            }
-        ' "${ROOT_DIR}/CMakeLists.txt"
-    )"
     BUNDLE_NAME="NextApp-${APP_VERSION}-${ARCH}-${BUNDLE_BRANCH}.flatpak"
     flatpak build-bundle \
         "${REPO_DIR}" \

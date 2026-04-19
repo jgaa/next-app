@@ -20,14 +20,20 @@ echo SRC_DIR: ${src_dir}
 cd ${APP_BUILD_DIR}
 
 MAIN_BINARY="${ASSETS_DIR}/nextapp"
-METAINFO_FILE="${src_dir}/flatpak/${APP_ID}.metainfo.xml"
+METAINFO_TEMPLATE="${src_dir}/flatpak/${APP_ID}.metainfo.xml.in"
+METAINFO_FILE="${APP_BUILD_DIR}/${APP_ID}.metainfo.xml"
 if [[ ! -f "$MAIN_BINARY" ]]; then
   echo "Error: $MAIN_BINARY not found. The script won't find dependencies for your main app."
   exit 1
 fi
 
-if [[ ! -f "$METAINFO_FILE" ]]; then
-  echo "Error: $METAINFO_FILE not found."
+if [[ ! -f "$METAINFO_TEMPLATE" ]]; then
+  echo "Error: $METAINFO_TEMPLATE not found."
+  exit 1
+fi
+
+if ! command -v appstreamcli >/dev/null 2>&1; then
+  echo "Error: appstreamcli not found."
   exit 1
 fi
 
@@ -47,6 +53,14 @@ VERSION="$(awk '
 ' "$CMAKEFILE")"
 
 echo VERSION: ${VERSION}
+
+RELEASE_DATE="$(date -u +%F)"
+sed \
+  -e "s/@VERSION@/${VERSION}/g" \
+  -e "s/@RELEASE_DATE@/${RELEASE_DATE}/g" \
+  "${METAINFO_TEMPLATE}" > "${METAINFO_FILE}"
+
+appstreamcli validate --no-net "${METAINFO_FILE}"
 
 ############################
 # Generate the .desktop file
@@ -190,7 +204,7 @@ fi
 ############################
 
 flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install -y --user flathub org.freedesktop.Sdk//${FLATPAK_RUNTIME_VERSION} org.freedesktop.Platform//${FLATPAK_RUNTIME_VERSION}
+flatpak install -y --noninteractive --user flathub org.freedesktop.Sdk//${FLATPAK_RUNTIME_VERSION} org.freedesktop.Platform//${FLATPAK_RUNTIME_VERSION}
 flatpak-builder --user --disable-rofiles-fuse --force-clean --default-branch=stable  --repo="${REPO_DIR}" "${FP_BUILD_DIR}" "${MANIFEST}"
 
 FP_NAME=NextApp-${VERSION}-x86_64-stable.flatpak

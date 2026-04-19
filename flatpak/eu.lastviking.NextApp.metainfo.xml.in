@@ -31,7 +31,7 @@
     <category>Utility</category>
   </categories>
   <releases>
-    <release version="0.21.0" date="2026-04-19"/>
+    <release version="@VERSION@" date="@RELEASE_DATE@"/>
   </releases>
   <content_rating type="oars-1.1"/>
 </component>
