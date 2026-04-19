@@ -1,0 +1,97 @@
+name: Build Flatpak
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: false
+        type: string
+      expected_version:
+        required: false
+        type: string
+      artifact_retention_days:
+        required: false
+        type: number
+        default: 7
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - devel
+    paths:
+      - '.github/workflows/build-flatpak.yaml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'include/**'
+      - 'src/**'
+      - 'flatpak/**'
+      - 'building/build-flatpak-kde.sh'
+      - 'dependencies/date'
+      - 'dependencies/date/**'
+      - 'dependencies/expected'
+      - 'dependencies/expected/**'
+      - 'dependencies/logfault'
+      - 'dependencies/logfault/**'
+      - 'dependencies/qcoro'
+      - 'dependencies/qcoro/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build-flatpak:
+    name: Build Flatpak (x86_64)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref != '' && inputs.source_ref || github.ref }}
+          submodules: true
+
+      - name: Install Flatpak tooling
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            flatpak \
+            flatpak-builder \
+            rsync
+
+      - name: Build Flatpak bundle
+        env:
+          WORK_ROOT: ${{ github.workspace }}/.flatpak-kde
+        run: |
+          set -euo pipefail
+          bash ./building/build-flatpak-kde.sh
+
+          BUNDLE_PATH="$(find "${WORK_ROOT}/dist" -maxdepth 1 -type f -name '*.flatpak' -print -quit)"
+          test -n "${BUNDLE_PATH:-}" || { echo "::error::Flatpak bundle not found"; exit 1; }
+
+          BUNDLE_NAME="$(basename "${BUNDLE_PATH}")"
+          VERSION="$(sed -E 's/^NextApp-([0-9]+\.[0-9]+\.[0-9]+)-([A-Za-z0-9_]+)-stable\.flatpak$/\1/' <<< "${BUNDLE_NAME}")"
+          ARCH="$(sed -E 's/^NextApp-([0-9]+\.[0-9]+\.[0-9]+)-([A-Za-z0-9_]+)-stable\.flatpak$/\2/' <<< "${BUNDLE_NAME}")"
+
+          test "${VERSION}" != "${BUNDLE_NAME}" || { echo "::error::Unable to parse version from ${BUNDLE_NAME}"; exit 1; }
+          test "${ARCH}" != "${BUNDLE_NAME}" || { echo "::error::Unable to parse architecture from ${BUNDLE_NAME}"; exit 1; }
+          if [[ -n "${{ inputs.expected_version }}" && "${VERSION}" != "${{ inputs.expected_version }}" ]]; then
+            echo "::error::Flatpak version ${VERSION} does not match expected version ${{ inputs.expected_version }}"
+            exit 1
+          fi
+
+          echo "NEXTAPP_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "NEXTAPP_ARCH=${ARCH}" >> "$GITHUB_ENV"
+          echo "FLATPAK_PATH=${BUNDLE_PATH}" >> "$GITHUB_ENV"
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextapp-flatpak-${{ env.NEXTAPP_ARCH }}-${{ env.NEXTAPP_VERSION }}
+          path: ${{ env.FLATPAK_PATH }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.artifact_retention_days }}

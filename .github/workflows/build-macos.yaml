@@ -1,10 +1,23 @@
 name: Build macOS
 
 on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: false
+        type: string
+      expected_version:
+        required: false
+        type: string
+      artifact_retention_days:
+        required: false
+        type: number
+        default: 7
   workflow_dispatch:
   push:
     branches:
       - main
+      - devel
       - macos-ga
     paths:
       - '.github/workflows/build-macos.yaml'
@@ -105,6 +118,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.source_ref != '' && inputs.source_ref || github.ref }}
           submodules: true
 
       - name: Import signing certificate
@@ -200,6 +214,10 @@ jobs:
           lipo "${APP_BIN}" -verify_arch "${{ matrix.cmake_arch }}"
 
           VERSION="$(< "${BUILD_DIR}/VERSION.txt")"
+          if [[ -n "${{ inputs.expected_version }}" && "${VERSION}" != "${{ inputs.expected_version }}" ]]; then
+            echo "::error::macOS version ${VERSION} does not match expected version ${{ inputs.expected_version }}"
+            exit 1
+          fi
           DMG_NAME="nextapp-macos-${{ matrix.artifact_suffix }}-${VERSION}.dmg"
           mkdir -p "${DMG_DIR}"
           ditto "${APP_PATH}" "${DMG_DIR}/nextapp.app"
@@ -223,4 +241,4 @@ jobs:
           name: nextapp-macos-${{ matrix.artifact_suffix }}-dmg-${{ env.NEXTAPP_VERSION }}
           path: ${{ env.DMG_PATH }}
           if-no-files-found: error
-          retention-days: 7
+          retention-days: ${{ inputs.artifact_retention_days }}

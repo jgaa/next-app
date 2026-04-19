@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>eu.lastviking.NextApp</id>
+  <name>NextApp</name>
+  <summary>Personal organizer based on the GTD method</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="eu.lastviking">
+    <name>The Last Viking LTD</name>
+  </developer>
+  <launchable type="desktop-id">eu.lastviking.NextApp.desktop</launchable>
+  <provides>
+    <binary>nextapp</binary>
+  </provides>
+  <url type="homepage">https://next-app.org</url>
+  <url type="bugtracker">https://github.com/jgaa/next-app/issues</url>
+  <description>
+    <p>
+      NextApp is a personal organizer for desktop and mobile built around the
+      Getting Things Done method. It keeps projects, actions, calendars, and
+      reviews in a native Qt application with optional backend sync.
+    </p>
+    <p>
+      The application is intended for users who want a native cross-platform
+      organizer instead of a web app, while keeping local data storage and the
+      option to run their own backend.
+    </p>
+  </description>
+  <categories>
+    <category>Office</category>
+    <category>Utility</category>
+  </categories>
+  <releases>
+    <release version="0.21.0" date="2026-04-19"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>
