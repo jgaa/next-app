@@ -61,7 +61,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             flatpak \
             flatpak-builder \
-            rsync
+            rsync \
+            elfutils \
+            zstd
 
       - name: Build Flatpak bundle
         env:
@@ -74,8 +76,8 @@ jobs:
           test -n "${BUNDLE_PATH:-}" || { echo "::error::Flatpak bundle not found"; exit 1; }
 
           BUNDLE_NAME="$(basename "${BUNDLE_PATH}")"
-          VERSION="$(sed -E 's/^NextApp-([0-9]+\.[0-9]+\.[0-9]+)-([A-Za-z0-9_]+)-stable\.flatpak$/\1/' <<< "${BUNDLE_NAME}")"
-          ARCH="$(sed -E 's/^NextApp-([0-9]+\.[0-9]+\.[0-9]+)-([A-Za-z0-9_]+)-stable\.flatpak$/\2/' <<< "${BUNDLE_NAME}")"
+          VERSION="$(sed -E 's/^NextApp-([0-9]+\.[0-9]+\.[0-9]+)-([A-Za-z0-9_-]+)-stable\.flatpak$/\1/' <<< "${BUNDLE_NAME}")"
+          ARCH="$(sed -E 's/^NextApp-([0-9]+\.[0-9]+\.[0-9]+)-([A-Za-z0-9_-]+)-stable\.flatpak$/\2/' <<< "${BUNDLE_NAME}")"
 
           test "${VERSION}" != "${BUNDLE_NAME}" || { echo "::error::Unable to parse version from ${BUNDLE_NAME}"; exit 1; }
           test "${ARCH}" != "${BUNDLE_NAME}" || { echo "::error::Unable to parse architecture from ${BUNDLE_NAME}"; exit 1; }
