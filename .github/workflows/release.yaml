@@ -23,16 +23,16 @@ jobs:
   build-flatpak:
     uses: ./.github/workflows/build-flatpak.yaml
     with:
-      source_ref: ${{ env.RELEASE_TAG }}
-      expected_version: ${{ env.VERSION }}
+      source_ref: ${{ format('v{0}', github.event.inputs.tag) }}
+      expected_version: ${{ github.event.inputs.tag }}
       artifact_retention_days: 7
     secrets: inherit
 
   build-macos:
     uses: ./.github/workflows/build-macos.yaml
     with:
-      source_ref: ${{ env.RELEASE_TAG }}
-      expected_version: ${{ env.VERSION }}
+      source_ref: ${{ format('v{0}', github.event.inputs.tag) }}
+      expected_version: ${{ github.event.inputs.tag }}
       artifact_retention_days: 7
     secrets: inherit
 
