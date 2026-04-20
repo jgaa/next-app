@@ -121,6 +121,7 @@ write_metainfo_file() {
     cat "${METAINFO_TEMPLATE}" \
         | sed "s/@VERSION@/${APP_VERSION}/g" \
         | sed "s/@RELEASE_DATE@/${RELEASE_DATE}/g" \
+        | sed "s|<id>.*</id>|<id>${APP_ID}</id>|" \
         > "${METAINFO_FILE}"
 }
 
@@ -293,6 +294,13 @@ modules:
         install -Dm644 ${APP_ID}.desktop /app/share/applications/${APP_ID}.desktop
         install -Dm644 ${APP_ID}.metainfo.xml /app/share/metainfo/${APP_ID}.metainfo.xml
 
+        test -r /app/share/icons/hicolor/scalable/apps/${APP_ID}.svg || { echo "App icon is not readable"; exit 1; }
+        test -r /app/share/applications/${APP_ID}.desktop || { echo "Desktop file is not readable"; exit 1; }
+        test -r /app/share/metainfo/${APP_ID}.metainfo.xml || {
+          echo "Metainfo is not readable in /app/share/metainfo"
+          ls -la /app/share/metainfo || true
+          exit 1
+        }
         if [[ -d build/lib ]]; then
           find build/lib -maxdepth 1 -type f \\( -name '*.so' -o -name '*.so.*' \\) -print0 \\
             | while IFS= read -r -d '' lib; do
