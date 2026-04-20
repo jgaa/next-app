@@ -95,10 +95,13 @@ stage_sources() {
     rsync -a --delete \
         --exclude '.git' \
         --exclude '.git/' \
+        --exclude '.codex/' \
         --exclude '.flatpak-builder/' \
         --exclude '.flatpak-kde/' \
+        --exclude '.qtcreator/' \
         --exclude 'build/' \
         --exclude 'build-*/' \
+        --exclude 'devops/' \
         --exclude '.idea/' \
         --exclude '.vscode/' \
         "${ROOT_DIR}/" "${SOURCE_STAGE_DIR}/"
@@ -190,7 +193,6 @@ modules:
       - type: git
         url: https://github.com/grpc/grpc.git
         tag: v${GRPC_VERSION}
-        disable-shallow-clone: true
 
   - name: qtgraphs
     buildsystem: cmake-ninja
@@ -206,7 +208,6 @@ modules:
       - type: git
         url: https://code.qt.io/qt/qtgraphs.git
         tag: ${QT_MODULE_REF}
-        disable-shallow-clone: true
 
   - name: qtgrpc
     buildsystem: cmake-ninja
@@ -231,7 +232,6 @@ modules:
       - type: git
         url: https://code.qt.io/qt/qtgrpc.git
         tag: ${QT_MODULE_REF}
-        disable-shallow-clone: true
 
   - name: boost-headers
     buildsystem: simple
@@ -291,10 +291,12 @@ modules:
 
         install -Dm755 build/bin/nextapp /app/bin/nextapp
         install -Dm644 src/NextAppUi/icons/nextapp.svg /app/share/icons/hicolor/scalable/apps/${APP_ID}.svg
+        install -Dm644 src/NextAppUi/icons/nextapp_512x512.png /app/share/icons/hicolor/512x512/apps/${APP_ID}.png
         install -Dm644 ${APP_ID}.desktop /app/share/applications/${APP_ID}.desktop
         install -Dm644 ${APP_ID}.metainfo.xml /app/share/metainfo/${APP_ID}.metainfo.xml
 
         test -r /app/share/icons/hicolor/scalable/apps/${APP_ID}.svg || { echo "App icon is not readable"; exit 1; }
+        test -r /app/share/icons/hicolor/512x512/apps/${APP_ID}.png || { echo "PNG app icon is not readable"; exit 1; }
         test -r /app/share/applications/${APP_ID}.desktop || { echo "Desktop file is not readable"; exit 1; }
         test -r /app/share/metainfo/${APP_ID}.metainfo.xml || {
           echo "Metainfo is not readable in /app/share/metainfo"
@@ -367,12 +369,8 @@ main() {
     QT_MODULE_REF="${QT_MODULE_REF:-v${QT_SDK_VERSION}}"
     ARCH="$(flatpak --default-arch)"
     APP_VERSION="$(
-        awk '
-            match($0, /^[[:space:]]*set[[:space:]]*\([[:space:]]*NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)/, m) {
-                print m[1]
-                exit
-            }
-        ' "${ROOT_DIR}/CMakeLists.txt"
+        sed -nE 's/^[[:space:]]*set[[:space:]]*\([[:space:]]*NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "${ROOT_DIR}/CMakeLists.txt" \
+        | head -n1
     )"
     RELEASE_DATE="$(date -u +%F)"
 
