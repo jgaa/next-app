@@ -14,34 +14,16 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 env:
   VERSION: ${{ github.event.inputs.tag }}
   RELEASE_TAG: v${{ github.event.inputs.tag }}
 
 jobs:
-  build-flatpak:
-    uses: ./.github/workflows/build-flatpak.yaml
-    with:
-      source_ref: ${{ format('v{0}', github.event.inputs.tag) }}
-      expected_version: ${{ github.event.inputs.tag }}
-      artifact_retention_days: 7
-    secrets: inherit
-
-  build-macos:
-    uses: ./.github/workflows/build-macos.yaml
-    with:
-      source_ref: ${{ format('v{0}', github.event.inputs.tag) }}
-      expected_version: ${{ github.event.inputs.tag }}
-      artifact_retention_days: 7
-    secrets: inherit
-
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs:
-      - build-flatpak
-      - build-macos
 
     steps:
       - name: Checkout repository
@@ -49,10 +31,80 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Download build artifacts
+      - name: Find latest successful Flatpak run on main
+        id: flatpak-run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const workflow_id = "build-flatpak.yaml";
+            const branch = "main";
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id,
+              branch,
+              status: "success",
+              per_page: 1,
+            });
+
+            const run = response.data.workflow_runs[0];
+            if (!run) {
+              core.setFailed("No successful Build Flatpak workflow run found on main.");
+              return;
+            }
+
+            core.setOutput("run_id", String(run.id));
+
+      - name: Find latest successful macOS run on main
+        id: macos-run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const workflow_id = "build-macos.yaml";
+            const branch = "main";
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id,
+              branch,
+              status: "success",
+              per_page: 1,
+            });
+
+            const run = response.data.workflow_runs[0];
+            if (!run) {
+              core.setFailed("No successful Build macOS workflow run found on main.");
+              return;
+            }
+
+            core.setOutput("run_id", String(run.id));
+
+      - name: Download Flatpak artifact from main build
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.flatpak-run.outputs.run_id }}
+          pattern: nextapp-flatpak-*-${{ env.VERSION }}
+          path: artifacts/flatpak
+          merge-multiple: true
+
+      - name: Download macOS artifacts from main build
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.macos-run.outputs.run_id }}
+          pattern: nextapp-macos-*-dmg-${{ env.VERSION }}
+          path: artifacts/macos
+          merge-multiple: true
+
+      - name: Verify release artifacts exist
+        run: |
+          set -euo pipefail
+          find artifacts -maxdepth 2 -type f | sort
+          find artifacts -type f -name "*.flatpak" | grep -q .
+          find artifacts -type f -name "*.dmg" | grep -q .
 
       - name: Show release files
         run: find artifacts -maxdepth 2 -type f | sort
