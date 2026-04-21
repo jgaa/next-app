@@ -18,6 +18,7 @@ on:
     branches:
       - main
       - devel
+      - ga-flatpak
     paths:
       - '.github/workflows/build-flatpak.yaml'
       - 'CMakeLists.txt'
@@ -63,30 +64,14 @@ jobs:
             appstream \
             flatpak \
             flatpak-builder \
-            rsync \
-            elfutils \
-            zstd
+            rsync
 
       - name: Build Flatpak bundle
         env:
           WORK_ROOT: ${{ github.workspace }}/.flatpak-kde
         run: |
           set -euo pipefail
-          if ! bash ./building/build-flatpak-kde.sh; then
-            echo "::group::Flatpak AppStream Diagnostics"
-            if [[ -d "${WORK_ROOT}/build/files" ]]; then
-              find "${WORK_ROOT}/build/files/share" -maxdepth 4 -type f | sort || true
-              stat \
-                "${WORK_ROOT}/build/files/share/applications/eu.lastviking.NextApp.desktop" \
-                "${WORK_ROOT}/build/files/share/metainfo/eu.lastviking.NextApp.metainfo.xml" \
-                "${WORK_ROOT}/build/files/share/icons/hicolor/scalable/apps/eu.lastviking.NextApp.svg" \
-                "${WORK_ROOT}/build/files/share/icons/hicolor/512x512/apps/eu.lastviking.NextApp.png" || true
-              appstreamcli validate-tree "${WORK_ROOT}/build/files" || true
-            fi
-            find "${WORK_ROOT}" -maxdepth 4 \( -iname '*appstream*' -o -iname '*compose*' -o -iname '*report*' \) -print || true
-            echo "::endgroup::"
-            exit 1
-          fi
+          bash ./building/build-flatpak-kde.sh
 
           BUNDLE_PATH="$(find "${WORK_ROOT}/dist" -maxdepth 1 -type f -name '*.flatpak' -print -quit)"
           test -n "${BUNDLE_PATH:-}" || { echo "::error::Flatpak bundle not found"; exit 1; }
