@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+set -x
 export APPSTREAM_LOG_LEVEL=debug
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -339,12 +340,12 @@ main() {
 
     stage_sources
     write_metainfo_file
-    appstreamcli validate --no-net "${METAINFO_FILE}"
+    appstreamcli validate --no-net --verbose "${METAINFO_FILE}"
     write_manifest
 
     rm -rf "${BUILD_DIR}" "${REPO_DIR}"
 
-    flatpak-builder \
+    flatpak-builder --verbose \
         --user \
         --force-clean \
         --default-branch="${BUNDLE_BRANCH}" \
@@ -353,7 +354,7 @@ main() {
         "${MANIFEST_PATH}"
 
     BUNDLE_NAME="NextApp-${APP_VERSION}-${ARCH}-${BUNDLE_BRANCH}.flatpak"
-    flatpak build-bundle \
+    flatpak build-bundle --verbose \
         "${REPO_DIR}" \
         "${DIST_DIR}/${BUNDLE_NAME}" \
         "${APP_ID}" \
