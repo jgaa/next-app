@@ -35,6 +35,13 @@ require_cmd() {
     }
 }
 
+print_tool_versions() {
+    echo "Tool versions:"
+    flatpak --version || true
+    flatpak-builder --version || true
+    appstreamcli --version || true
+}
+
 detect_qt_sdk_version() {
     local sdk_ref="$1"
     local sdk_location version_file version
@@ -303,6 +310,8 @@ main() {
     require_cmd rsync
     require_cmd awk
     require_cmd appstreamcli
+
+    print_tool_versions
 
     [[ -f "${METAINFO_TEMPLATE}" ]] || {
         echo "Missing AppStream metainfo template: ${METAINFO_TEMPLATE}" >&2
