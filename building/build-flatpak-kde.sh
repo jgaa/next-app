@@ -46,7 +46,10 @@ detect_qt_sdk_version() {
     local sdk_ref="$1"
     local sdk_location version_file version
 
-    sdk_location="$(flatpak info --show-location --user "${sdk_ref}")"
+    sdk_location="$(
+        env -u G_MESSAGES_DEBUG -u GIO_DEBUG -u RUST_LOG -u RUST_BACKTRACE \
+            flatpak info --show-location --user "${sdk_ref}" 2>/dev/null
+    )"
     version_file="${sdk_location}/files/lib/x86_64-linux-gnu/cmake/Qt6/Qt6ConfigVersionImpl.cmake"
 
     if [[ ! -f "${version_file}" ]]; then
