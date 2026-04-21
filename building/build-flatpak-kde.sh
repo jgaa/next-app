@@ -365,6 +365,16 @@ main() {
         "${BUILD_DIR}" \
         "${MANIFEST_PATH}"
 
+    # strace -f -e trace=execve,execveat -s 256 -o /tmp/flatpak-builder.exec.log \
+    # flatpak-builder --verbose \
+    #   --user \
+    #   --force-clean \
+    #   --default-branch=stable \
+    #   --repo="$REPO_DIR" \
+    #   "$BUILD_DIR" \
+    #   "$MANIFEST_PATH"
+
+
     BUNDLE_NAME="NextApp-${APP_VERSION}-${ARCH}-${BUNDLE_BRANCH}.flatpak"
     flatpak build-bundle --verbose \
         "${REPO_DIR}" \

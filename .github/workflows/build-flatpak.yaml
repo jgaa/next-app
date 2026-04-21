@@ -68,10 +68,6 @@ jobs:
 
       - name: Build Flatpak bundle
         env:
-          G_MESSAGES_DEBUG: all
-          GIO_DEBUG: all
-          RUST_LOG: trace
-          RUST_BACKTRACE: full
           WORK_ROOT: ${{ github.workspace }}/.flatpak-kde
         run: |
           set -euo pipefail
