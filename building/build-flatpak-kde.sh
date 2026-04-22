@@ -2,7 +2,6 @@
 
 set -euo pipefail
 set -x
-export APPSTREAM_LOG_LEVEL=debug
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -356,6 +355,8 @@ main() {
     write_manifest
 
     rm -rf "${BUILD_DIR}" "${REPO_DIR}"
+
+    export G_MESSAGES_DEBUG=all
 
     flatpak-builder --verbose \
         --user \
