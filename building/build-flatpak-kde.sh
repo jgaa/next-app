@@ -354,19 +354,19 @@ main() {
     appstreamcli validate --no-net --verbose "${METAINFO_FILE}"
     write_manifest
 
-    rm -rf "${BUILD_DIR}" "${REPO_DIR}"
-
-    ## Hack to get diag messages from apprstreamcli
-    mkdir -p /tmp/appstream-wrap
-
-    cat >/tmp/appstream-wrap/appstreamcli <<'EOF'
-#!/bin/sh
-export G_MESSAGES_DEBUG=all
-exec /usr/bin/appstreamcli "$@"
-EOF
-
-    chmod +x /tmp/appstream-wrap/appstreamcli
-    export PATH="/tmp/appstream-wrap:$PATH"
+#     rm -rf "${BUILD_DIR}" "${REPO_DIR}"
+#
+#     ## Hack to get diag messages from apprstreamcli
+#     mkdir -p /tmp/appstream-wrap
+#
+#     cat >/tmp/appstream-wrap/appstreamcli <<'EOF'
+# #!/bin/sh
+# export G_MESSAGES_DEBUG=all
+# exec /usr/bin/appstreamcli "$@"
+# EOF
+#
+#     chmod +x /tmp/appstream-wrap/appstreamcli
+#     export PATH="/tmp/appstream-wrap:$PATH"
 
     flatpak-builder --verbose \
         --user \
@@ -376,7 +376,7 @@ EOF
         "${BUILD_DIR}" \
         "${MANIFEST_PATH}"
 
-    unset G_MESSAGES_DEBUG
+#    unset G_MESSAGES_DEBUG
 
     BUNDLE_NAME="NextApp-${APP_VERSION}-${ARCH}-${BUNDLE_BRANCH}.flatpak"
     flatpak build-bundle --verbose \
