@@ -356,7 +356,17 @@ main() {
 
     rm -rf "${BUILD_DIR}" "${REPO_DIR}"
 
-    export G_MESSAGES_DEBUG=all
+    ## Hack to get diag messages from apprstreamcli
+    mkdir -p /tmp/appstream-wrap
+
+    cat >/tmp/appstream-wrap/appstreamcli <<'EOF'
+#!/bin/sh
+export G_MESSAGES_DEBUG=all
+exec /usr/bin/appstreamcli "$@"
+EOF
+
+    chmod +x /tmp/appstream-wrap/appstreamcli
+    export PATH="/tmp/appstream-wrap:$PATH"
 
     flatpak-builder --verbose \
         --user \
@@ -366,15 +376,7 @@ main() {
         "${BUILD_DIR}" \
         "${MANIFEST_PATH}"
 
-    # strace -f -e trace=execve,execveat -s 256 -o /tmp/flatpak-builder.exec.log \
-    # flatpak-builder --verbose \
-    #   --user \
-    #   --force-clean \
-    #   --default-branch=stable \
-    #   --repo="$REPO_DIR" \
-    #   "$BUILD_DIR" \
-    #   "$MANIFEST_PATH"
-
+    unset G_MESSAGES_DEBUG
 
     BUNDLE_NAME="NextApp-${APP_VERSION}-${ARCH}-${BUNDLE_BRANCH}.flatpak"
     flatpak build-bundle --verbose \
