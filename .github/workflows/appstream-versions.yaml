@@ -1,0 +1,43 @@
+name: AppStream Versions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  appstream-versions:
+    name: AppStream Versions
+    runs-on: ubuntu-24.04
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install AppStream tooling
+        run: |
+          set -euo pipefail
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y --no-install-recommends \
+            appstream \
+            appstream-compose
+
+      - name: Show AppStream versions
+        run: |
+          set -euo pipefail
+
+          echo "Installed package versions:"
+          dpkg-query -W -f='${binary:Package}\t${Version}\n' \
+            appstream \
+            appstream-compose
+
+          echo
+          echo "appstreamcli:"
+          command -v appstreamcli
+          appstreamcli --version
+
+          echo
+          echo "appstreamcli compose:"
+          appstreamcli compose --version
