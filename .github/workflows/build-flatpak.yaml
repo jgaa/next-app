@@ -60,83 +60,82 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get -qq update
-          sudo apt-get -qq install -y --no-install-recommends \
-            appstream \
+          sudo apt-get -qq install -y \
             flatpak \
             flatpak-builder \
             rsync
 
-      - name: Install AppStream build dependencies
-        run: |
-          set -euo pipefail
-          sudo apt-get -qq update
-          sudo apt-get -qq install -y --no-install-recommends \
-            git \
-            build-essential \
-            meson \
-            ninja-build \
-            pkg-config \
-            bash-completion \
-            gettext \
-            itstool \
-            gperf \
-            xsltproc \
-            docbook-xsl \
-            libglib2.0-dev \
-            libxml2-dev \
-            libyaml-dev \
-            libfyaml-dev \
-            libxmlb-dev \
-            libcurl4-gnutls-dev \
-            libgdk-pixbuf-2.0-dev \
-            librsvg2-dev \
-            libcairo2-dev \
-            libfontconfig-dev \
-            libpango1.0-dev \
-            libfreetype-dev \
-            gobject-introspection \
-            libgirepository1.0-dev
-
-      - name: Build patched AppStream compose client
-        env:
-          APPSTREAM_REPO: https://github.com/jgaa/appstream.git
-          APPSTREAM_BRANCH: jgaa-add-error-info
-          APPSTREAM_SRC_DIR: ${{ runner.temp }}/appstream-src
-          APPSTREAM_BUILD_DIR: ${{ runner.temp }}/appstream-build
-        run: |
-          set -euo pipefail
-          rm -rf "${APPSTREAM_SRC_DIR}" "${APPSTREAM_BUILD_DIR}"
-          git clone --branch "${APPSTREAM_BRANCH}" --single-branch "${APPSTREAM_REPO}" "${APPSTREAM_SRC_DIR}"
-          meson setup "${APPSTREAM_BUILD_DIR}" \
-            "${APPSTREAM_SRC_DIR}" \
-            -Dcompose=true \
-            -Dsvg-support=true \
-            -Dstemming=false \
-            -Dqt=false \
-            -Dvapi=false \
-            -Ddocs=false \
-            -Dgir=false \
-            -Dapt-support=false \
-            -Dsystemd=false
-          meson compile -C "${APPSTREAM_BUILD_DIR}" appstreamcli appstreamcli-compose
-
-      - name: Install patched AppStream client ahead of distro one
-        env:
-          APPSTREAM_BUILD_DIR: ${{ runner.temp }}/appstream-build
-        run: |
-          set -euo pipefail
-          sudo install -Dm755 "${APPSTREAM_BUILD_DIR}/tools/appstreamcli" /usr/local/bin/appstreamcli
-          sudo install -Dm755 "${APPSTREAM_BUILD_DIR}/tools/appstreamcli-compose" /usr/local/libexec/appstreamcli-compose
-          sudo install -Dm755 "${APPSTREAM_BUILD_DIR}/compose/libappstream-compose.so.0" /usr/local/lib/libappstream-compose.so.0
-          sudo ldconfig
-
-      - name: Verify patched client and SVG support
-        run: |
-          set -euo pipefail
-          which appstreamcli
-          appstreamcli --version
-          ldd /usr/local/libexec/appstreamcli-compose | grep -i rsvg
-          ldd /usr/local/lib/libappstream-compose.so.0 | grep -i rsvg
+      # - name: Install AppStream build dependencies
+      #   run: |
+      #     set -euo pipefail
+      #     sudo apt-get -qq update
+      #     sudo apt-get -qq install -y --no-install-recommends \
+      #       git \
+      #       build-essential \
+      #       meson \
+      #       ninja-build \
+      #       pkg-config \
+      #       bash-completion \
+      #       gettext \
+      #       itstool \
+      #       gperf \
+      #       xsltproc \
+      #       docbook-xsl \
+      #       libglib2.0-dev \
+      #       libxml2-dev \
+      #       libyaml-dev \
+      #       libfyaml-dev \
+      #       libxmlb-dev \
+      #       libcurl4-gnutls-dev \
+      #       libgdk-pixbuf-2.0-dev \
+      #       librsvg2-dev \
+      #       libcairo2-dev \
+      #       libfontconfig-dev \
+      #       libpango1.0-dev \
+      #       libfreetype-dev \
+      #       gobject-introspection \
+      #       libgirepository1.0-dev
+      #
+      # - name: Build patched AppStream compose client
+      #   env:
+      #     APPSTREAM_REPO: https://github.com/jgaa/appstream.git
+      #     APPSTREAM_BRANCH: jgaa-add-error-info
+      #     APPSTREAM_SRC_DIR: ${{ runner.temp }}/appstream-src
+      #     APPSTREAM_BUILD_DIR: ${{ runner.temp }}/appstream-build
+      #   run: |
+      #     set -euo pipefail
+      #     rm -rf "${APPSTREAM_SRC_DIR}" "${APPSTREAM_BUILD_DIR}"
+      #     git clone --branch "${APPSTREAM_BRANCH}" --single-branch "${APPSTREAM_REPO}" "${APPSTREAM_SRC_DIR}"
+      #     meson setup "${APPSTREAM_BUILD_DIR}" \
+      #       "${APPSTREAM_SRC_DIR}" \
+      #       -Dcompose=true \
+      #       -Dsvg-support=true \
+      #       -Dstemming=false \
+      #       -Dqt=false \
+      #       -Dvapi=false \
+      #       -Ddocs=false \
+      #       -Dgir=false \
+      #       -Dapt-support=false \
+      #       -Dsystemd=false
+      #     meson compile -C "${APPSTREAM_BUILD_DIR}" appstreamcli appstreamcli-compose
+      #
+      # - name: Install patched AppStream client ahead of distro one
+      #   env:
+      #     APPSTREAM_BUILD_DIR: ${{ runner.temp }}/appstream-build
+      #   run: |
+      #     set -euo pipefail
+      #     sudo install -Dm755 "${APPSTREAM_BUILD_DIR}/tools/appstreamcli" /usr/local/bin/appstreamcli
+      #     sudo install -Dm755 "${APPSTREAM_BUILD_DIR}/tools/appstreamcli-compose" /usr/local/libexec/appstreamcli-compose
+      #     sudo install -Dm755 "${APPSTREAM_BUILD_DIR}/compose/libappstream-compose.so.0" /usr/local/lib/libappstream-compose.so.0
+      #     sudo ldconfig
+      #
+      # - name: Verify patched client and SVG support
+      #   run: |
+      #     set -euo pipefail
+      #     which appstreamcli
+      #     appstreamcli --version
+      #     ldd /usr/local/libexec/appstreamcli-compose | grep -i rsvg
+      #     ldd /usr/local/lib/libappstream-compose.so.0 | grep -i rsvg
 
       - name: Build Flatpak bundle
         env:

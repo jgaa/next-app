@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
-set -x
+#set -x
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -354,20 +354,6 @@ main() {
     appstreamcli validate --no-net --verbose "${METAINFO_FILE}"
     write_manifest
 
-#     rm -rf "${BUILD_DIR}" "${REPO_DIR}"
-#
-#     ## Hack to get diag messages from apprstreamcli
-#     mkdir -p /tmp/appstream-wrap
-#
-#     cat >/tmp/appstream-wrap/appstreamcli <<'EOF'
-# #!/bin/sh
-# export G_MESSAGES_DEBUG=all
-# exec /usr/bin/appstreamcli "$@"
-# EOF
-#
-#     chmod +x /tmp/appstream-wrap/appstreamcli
-#     export PATH="/tmp/appstream-wrap:$PATH"
-
     flatpak-builder --verbose \
         --user \
         --force-clean \
@@ -375,8 +361,6 @@ main() {
         --repo="${REPO_DIR}" \
         "${BUILD_DIR}" \
         "${MANIFEST_PATH}"
-
-#    unset G_MESSAGES_DEBUG
 
     BUNDLE_NAME="NextApp-${APP_VERSION}-${ARCH}-${BUNDLE_BRANCH}.flatpak"
     flatpak build-bundle --verbose \
