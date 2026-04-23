@@ -80,8 +80,11 @@ jobs:
             gettext \
             itstool \
             gperf \
+            xsltproc \
+            docbook-xsl \
             libglib2.0-dev \
             libxml2-dev \
+            libyaml-dev \
             libfyaml-dev \
             libxmlb-dev \
             libcurl4-gnutls-dev \
@@ -112,11 +115,9 @@ jobs:
             -Dqt=false \
             -Dvapi=false \
             -Ddocs=false \
-            -Dman=false \
             -Dgir=false \
             -Dapt-support=false \
-            -Dsystemd=false \
-            -Dblake3-support=false
+            -Dsystemd=false
           meson compile -C "${APPSTREAM_BUILD_DIR}" appstreamcli appstreamcli-compose
 
       - name: Install patched AppStream client ahead of distro one
