@@ -16,10 +16,21 @@ permissions:
   contents: write
   actions: read
 
+# Release contract:
+# - This workflow creates the release tag and GitHub release, but it must not build packages.
+# - It must reuse existing successful package artifacts that already exist in GitHub Actions.
+# - Artifact selection is intentionally based on versioned artifact filenames, not commit SHA.
+# - This allows rebuilding a single package for the same version without forcing a full rebuild.
+# - The only artifact sanity check here is that the required artifact names match the release version.
+# - The tag is created only after the required version-matched artifacts have been found and downloaded.
+
 jobs:
-  create-release:
-    name: Create Release
+  prepare-release:
+    name: Prepare Release
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
 
     steps:
       - name: Normalize release inputs
@@ -37,73 +48,177 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.release.outputs.release_tag }}
+          fetch-depth: 1
+          submodules: false
 
-      - name: Find latest successful Flatpak run on main
-        id: flatpak-run
+      - name: Validate repository version and tag state
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          REPO_VERSION="$(sed -nE 's/^[[:space:]]*set\(NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt | head -n1)"
+          test -n "${REPO_VERSION:-}" || { echo "::error::Unable to determine NEXTAPP_VERSION from CMakeLists.txt"; exit 1; }
+
+          if [[ "${REPO_VERSION}" != "${VERSION}" ]]; then
+            echo "::error::Requested release version ${VERSION} does not match repository version ${REPO_VERSION}"
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "::error::Tag ${RELEASE_TAG} already exists locally"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "::error::Tag ${RELEASE_TAG} already exists on origin"
+            exit 1
+          fi
+
+  find-flatpak-run:
+    name: Find Flatpak Artifacts
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    outputs:
+      run_id: ${{ steps.find.outputs.run_id }}
+
+    steps:
+      # Look up the newest successful Flatpak artifact for this version only.
+      # Do not bind this to a commit; a single package may need a later rebuild.
+      - name: Find successful Flatpak run for this version
+        id: find
         uses: actions/github-script@v7
+        env:
+          TARGET_VERSION: ${{ needs.prepare-release.outputs.version }}
         with:
           script: |
             const { owner, repo } = context.repo;
             const workflow_id = "build-flatpak.yaml";
-            const branch = "main";
-            const response = await github.rest.actions.listWorkflowRuns({
-              owner,
-              repo,
-              workflow_id,
-              branch,
-              status: "success",
-              per_page: 1,
-            });
+            const targetVersion = process.env.TARGET_VERSION;
+            const expectedArtifactName = `nextapp-flatpak-x86_64-${targetVersion}`;
 
-            const run = response.data.workflow_runs[0];
-            if (!run) {
-              core.setFailed("No successful Build Flatpak workflow run found on main.");
-              return;
+            let page = 1;
+            while (page <= 10) {
+              const response = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id,
+                status: "success",
+                per_page: 100,
+                page,
+              });
+
+              for (const run of response.data.workflow_runs) {
+                const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100,
+                });
+
+                const match = artifacts.data.artifacts.find((artifact) => artifact.name === expectedArtifactName);
+                if (match) {
+                  core.setOutput("run_id", String(run.id));
+                  return;
+                }
+              }
+
+              if (response.data.workflow_runs.length < 100) {
+                break;
+              }
+
+              page += 1;
             }
 
-            core.setOutput("run_id", String(run.id));
+            core.setFailed(`No successful Flatpak build artifacts named ${expectedArtifactName} found.`);
 
-      - name: Find latest successful macOS run on main
-        id: macos-run
+  find-macos-run:
+    name: Find macOS Artifacts
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    outputs:
+      run_id: ${{ steps.find.outputs.run_id }}
+
+    steps:
+      # Look up the newest successful macOS artifact for this version only.
+      # Do not bind this to a commit; a single package may need a later rebuild.
+      - name: Find successful macOS run for this version
+        id: find
         uses: actions/github-script@v7
+        env:
+          TARGET_VERSION: ${{ needs.prepare-release.outputs.version }}
         with:
           script: |
             const { owner, repo } = context.repo;
             const workflow_id = "build-macos.yaml";
-            const branch = "main";
-            const response = await github.rest.actions.listWorkflowRuns({
-              owner,
-              repo,
-              workflow_id,
-              branch,
-              status: "success",
-              per_page: 1,
-            });
+            const targetVersion = process.env.TARGET_VERSION;
+            const expectedArtifactName = `nextapp-macos-x86_64-dmg-${targetVersion}`;
 
-            const run = response.data.workflow_runs[0];
-            if (!run) {
-              core.setFailed("No successful Build macOS workflow run found on main.");
-              return;
+            let page = 1;
+            while (page <= 10) {
+              const response = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id,
+                status: "success",
+                per_page: 100,
+                page,
+              });
+
+              for (const run of response.data.workflow_runs) {
+                const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100,
+                });
+
+                const match = artifacts.data.artifacts.find((artifact) => artifact.name === expectedArtifactName);
+                if (match) {
+                  core.setOutput("run_id", String(run.id));
+                  return;
+                }
+              }
+
+              if (response.data.workflow_runs.length < 100) {
+                break;
+              }
+
+              page += 1;
             }
 
-            core.setOutput("run_id", String(run.id));
+            core.setFailed(`No successful macOS build artifacts named ${expectedArtifactName} found.`);
 
-      - name: Download Flatpak artifact from main build
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-release
+      - find-flatpak-run
+      - find-macos-run
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download Flatpak artifact
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: ${{ steps.flatpak-run.outputs.run_id }}
-          pattern: nextapp-flatpak-*-${{ steps.release.outputs.version }}
+          run-id: ${{ needs.find-flatpak-run.outputs.run_id }}
+          pattern: nextapp-flatpak-*-${{ needs.prepare-release.outputs.version }}
           path: artifacts/flatpak
           merge-multiple: true
 
-      - name: Download macOS artifacts from main build
+      - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: ${{ steps.macos-run.outputs.run_id }}
-          pattern: nextapp-macos-*-dmg-${{ steps.release.outputs.version }}
+          run-id: ${{ needs.find-macos-run.outputs.run_id }}
+          pattern: nextapp-macos-*-dmg-${{ needs.prepare-release.outputs.version }}
           path: artifacts/macos
           merge-multiple: true
 
@@ -114,14 +229,34 @@ jobs:
           find artifacts -type f -name "*.flatpak" | grep -q .
           find artifacts -type f -name "*.dmg" | grep -q .
 
-      - name: Show release files
-        run: find artifacts -maxdepth 2 -type f | sort
+      # Only create the tag after the required release artifacts are already present.
+      - name: Create and push release tag
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "::error::Tag ${RELEASE_TAG} already exists locally"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "::error::Tag ${RELEASE_TAG} already exists on origin"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "${RELEASE_TAG}" -m "Release ${RELEASE_TAG}"
+          git push origin "refs/tags/${RELEASE_TAG}"
 
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release.outputs.release_tag }}
-          name: Release ${{ steps.release.outputs.release_tag }}
+          tag_name: ${{ needs.prepare-release.outputs.release_tag }}
+          name: Release ${{ needs.prepare-release.outputs.release_tag }}
           draft: false
           prerelease: ${{ github.event.inputs.prerelease }}
           body_path: ${{ github.workspace }}/CHANGELOG.txt
