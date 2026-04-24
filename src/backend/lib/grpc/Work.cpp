@@ -1043,10 +1043,13 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportWork(
     assert(rctx.dbh);
     const auto full_sync = cursor.use_updated_id && cursor.since == 0;
     const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto tombstone_filter = removeDeleted
+        ? "AND state != 'deleted' AND action is NOT NULL"
+        : "AND (action is NOT NULL OR state = 'deleted')";
     const auto sql = format("SELECT {} from work_session WHERE user=? AND {} {} ORDER BY {}",
                             ToWorkSession::selectCols,
                             where_clause,
-                            removeDeleted ? "AND state != 'deleted' AND action is NOT NULL" : "",
+                            tombstone_filter,
                             cursor.use_updated_id
                                 ? "updated_id, action, start_time, id"
                                 // Remove after the legacy client migration is complete.

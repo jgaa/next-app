@@ -88,7 +88,9 @@ struct ToDevice {
         if (!row[MESSAGE].is_null()) {
             notification.set_message(pb_adapt(row[MESSAGE].as_string()));
         }
-        notification.set_senderid(pb_adapt(row[SENDER_ID].as_string()));
+        if (!row[SENDER_ID].is_null()) {
+            notification.set_senderid(pb_adapt(row[SENDER_ID].as_string()));
+        }
         if (!row[TO_TENANT].is_null()) {
             notification.mutable_totenant()->set_uuid(pb_adapt(row[TO_TENANT].as_string()));
         }

@@ -334,10 +334,13 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
     assert(rctx.dbh);
     const auto full_sync = cursor.use_updated_id && cursor.since == 0;
     const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto tombstone_filter = removeDeleted
+        ? "AND kind != 'deleted'"
+        : "AND ((start_time IS NOT NULL AND end_time IS NOT NULL) OR kind = 'deleted')";
     const auto sql = format("SELECT {} from time_block WHERE user=? AND {} {} ORDER BY {}",
                             ToTimeBlock::columns,
                             where_clause,
-                            removeDeleted ? "AND kind != 'deleted'" : "",
+                            tombstone_filter,
                             cursor.use_updated_id
                                 ? "updated_id, start_time, end_time, id"
                                 // Remove after the legacy client migration is complete.

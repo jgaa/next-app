@@ -1780,6 +1780,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
     static const auto prefixed_cols = prefixNames(ToAction::allSelectCols(), "a.");
     const auto full_sync = cursor.use_updated_id && cursor.since == 0;
     const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto tombstone_filter = removeDeleted
+        ? "AND status != 'deleted'"
+        : "AND (node IS NOT NULL OR status = 'deleted')";
     const auto order_clause = cursor.use_updated_id
         ? "updated_id, node, origin, start_time, due_by_time, id"
         // Remove after the legacy client migration is complete.
@@ -1816,7 +1819,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
     const auto sql = format("SELECT {} from action WHERE user=? AND {} {} ORDER BY {}",
                             ToAction::allSelectCols(),
                             where_clause,
-                            removeDeleted ? "AND status != 'deleted'" : "",
+                            tombstone_filter,
                             order_clause);
 
     if (full_sync) {
