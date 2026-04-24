@@ -46,10 +46,11 @@ jobs:
           echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: false
+          token: ${{ secrets.MY_PAT }}
 
       - name: Validate repository version and tag state
         env:
@@ -88,7 +89,7 @@ jobs:
       # Do not bind this to a commit; a single package may need a later rebuild.
       - name: Find successful Flatpak run for this version
         id: find
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           TARGET_VERSION: ${{ needs.prepare-release.outputs.version }}
         with:
@@ -145,7 +146,7 @@ jobs:
       # Do not bind this to a commit; a single package may need a later rebuild.
       - name: Find successful macOS run for this version
         id: find
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           TARGET_VERSION: ${{ needs.prepare-release.outputs.version }}
         with:
@@ -200,23 +201,24 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
+          token: ${{ secrets.MY_PAT }}
 
       - name: Download Flatpak artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.MY_PAT }}
           run-id: ${{ needs.find-flatpak-run.outputs.run_id }}
           pattern: nextapp-flatpak-*-${{ needs.prepare-release.outputs.version }}
           path: artifacts/flatpak
           merge-multiple: true
 
       - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.MY_PAT }}
           run-id: ${{ needs.find-macos-run.outputs.run_id }}
           pattern: nextapp-macos-*-dmg-${{ needs.prepare-release.outputs.version }}
           path: artifacts/macos
@@ -250,10 +252,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git tag -a "${RELEASE_TAG}" -m "Release ${RELEASE_TAG}"
-          git push origin "refs/tags/${RELEASE_TAG}"
+          if ! git push origin "refs/tags/${RELEASE_TAG}"; then
+            echo "::error::Failed to push tag ${RELEASE_TAG}. If repository rules restrict tag creation, ensure secrets.MY_PAT has permission and bypass rights for tag creation, or adjust the repository rules for refs/tags/*."
+            exit 1
+          fi
 
       - name: Create or update GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_PAT }}
         with:
           tag_name: ${{ needs.prepare-release.outputs.release_tag }}
           name: Release ${{ needs.prepare-release.outputs.release_tag }}
