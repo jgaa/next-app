@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The tag to release without the leading v (e.g. 1.2.3)'
+        description: 'The tag to release, with or without the leading v (e.g. 1.2.3 or v1.2.3)'
         required: true
       prerelease:
         description: 'Mark this as a prerelease?'
@@ -16,20 +16,28 @@ permissions:
   contents: write
   actions: read
 
-env:
-  VERSION: ${{ github.event.inputs.tag }}
-  RELEASE_TAG: v${{ github.event.inputs.tag }}
-
 jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
 
     steps:
+      - name: Normalize release inputs
+        id: release
+        run: |
+          set -euo pipefail
+
+          RAW_TAG="${{ github.event.inputs.tag }}"
+          VERSION="${RAW_TAG#v}"
+          RELEASE_TAG="v${VERSION}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ steps.release.outputs.release_tag }}
 
       - name: Find latest successful Flatpak run on main
         id: flatpak-run
@@ -86,7 +94,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.flatpak-run.outputs.run_id }}
-          pattern: nextapp-flatpak-*-${{ env.VERSION }}
+          pattern: nextapp-flatpak-*-${{ steps.release.outputs.version }}
           path: artifacts/flatpak
           merge-multiple: true
 
@@ -95,7 +103,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.macos-run.outputs.run_id }}
-          pattern: nextapp-macos-*-dmg-${{ env.VERSION }}
+          pattern: nextapp-macos-*-dmg-${{ steps.release.outputs.version }}
           path: artifacts/macos
           merge-multiple: true
 
@@ -112,8 +120,8 @@ jobs:
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          name: Release ${{ env.RELEASE_TAG }}
+          tag_name: ${{ steps.release.outputs.release_tag }}
+          name: Release ${{ steps.release.outputs.release_tag }}
           draft: false
           prerelease: ${{ github.event.inputs.prerelease }}
           body_path: ${{ github.workspace }}/CHANGELOG.txt
