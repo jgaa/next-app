@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+#set -x
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -9,13 +10,14 @@ APP_ID="${APP_ID:-eu.lastviking.NextApp}"
 WORK_ROOT="${WORK_ROOT:-${ROOT_DIR}/.flatpak-kde}"
 SOURCE_STAGE_DIR="${SOURCE_STAGE_DIR:-${WORK_ROOT}/source}"
 MANIFEST_PATH="${MANIFEST_PATH:-${WORK_ROOT}/${APP_ID}.yml}"
-DESKTOP_FILE="${DESKTOP_FILE:-${WORK_ROOT}/${APP_ID}.desktop}"
+DESKTOP_FILE="${DESKTOP_FILE:-${ROOT_DIR}/flatpak/${APP_ID}.desktop}"
 METAINFO_TEMPLATE="${METAINFO_TEMPLATE:-${ROOT_DIR}/flatpak/${APP_ID}.metainfo.xml.in}"
 METAINFO_FILE="${METAINFO_FILE:-${WORK_ROOT}/${APP_ID}.metainfo.xml}"
 BUILD_DIR="${BUILD_DIR:-${WORK_ROOT}/build}"
 REPO_DIR="${REPO_DIR:-${WORK_ROOT}/repo}"
 DIST_DIR="${DIST_DIR:-${WORK_ROOT}/dist}"
 BUNDLE_BRANCH="${BUNDLE_BRANCH:-stable}"
+KDE_RUNTIME_VERSION="${KDE_RUNTIME_VERSION:-6.10}"
 
 PROTOBUF_VERSION="${PROTOBUF_VERSION:-32.1}"
 PROTOBUF_SHA256="${PROTOBUF_SHA256:-3feeabd077a112b56af52519bc4ece90e28b4583f4fc2549c95d765985e0fd3c}"
@@ -32,11 +34,21 @@ require_cmd() {
     }
 }
 
+print_tool_versions() {
+    echo "Tool versions:"
+    flatpak --version || true
+    flatpak-builder --version || true
+    appstreamcli --version || true
+}
+
 detect_qt_sdk_version() {
     local sdk_ref="$1"
     local sdk_location version_file version
 
-    sdk_location="$(flatpak info --show-location --user "${sdk_ref}")"
+    sdk_location="$(
+        env -u G_MESSAGES_DEBUG -u GIO_DEBUG -u RUST_LOG -u RUST_BACKTRACE \
+            flatpak info --show-location --user "${sdk_ref}" 2>/dev/null
+    )"
     version_file="${sdk_location}/files/lib/x86_64-linux-gnu/cmake/Qt6/Qt6ConfigVersionImpl.cmake"
 
     if [[ ! -f "${version_file}" ]]; then
@@ -56,38 +68,6 @@ detect_qt_sdk_version() {
     printf '%s\n' "${version}"
 }
 
-detect_kde_runtime_version() {
-    local sdk_versions platform_versions common_versions
-
-    sdk_versions="$(
-        flatpak remote-ls --user --columns=application,branch flathub \
-        | awk '$1 == "org.kde.Sdk" { print $2 }' \
-        | grep -E '^[0-9]+(\.[0-9]+)+$' \
-        | sort -Vu
-    )"
-
-    platform_versions="$(
-        flatpak remote-ls --user --columns=application,branch flathub \
-        | awk '$1 == "org.kde.Platform" { print $2 }' \
-        | grep -E '^[0-9]+(\.[0-9]+)+$' \
-        | sort -Vu
-    )"
-
-    common_versions="$(
-        comm -12 \
-            <(printf '%s\n' "${sdk_versions}" | sed '/^$/d') \
-            <(printf '%s\n' "${platform_versions}" | sed '/^$/d')
-    )"
-
-    if [[ -z "${common_versions}" ]]; then
-        echo "Unable to determine a common org.kde.Sdk/org.kde.Platform branch from Flathub." >&2
-        echo "Set KDE_RUNTIME_VERSION explicitly." >&2
-        exit 1
-    fi
-
-    printf '%s\n' "${common_versions}" | tail -n1
-}
-
 stage_sources() {
     rm -rf "${SOURCE_STAGE_DIR}"
     mkdir -p "${SOURCE_STAGE_DIR}"
@@ -105,19 +85,6 @@ stage_sources() {
         --exclude '.idea/' \
         --exclude '.vscode/' \
         "${ROOT_DIR}/" "${SOURCE_STAGE_DIR}/"
-}
-
-write_desktop_file() {
-    cat > "${DESKTOP_FILE}" <<'EOF'
-[Desktop Entry]
-Name=NextApp
-Comment=Your Personal Organizer
-Exec=nextapp
-Icon=eu.lastviking.NextApp
-Terminal=false
-Type=Application
-Categories=Office;Utility;
-EOF
 }
 
 write_metainfo_file() {
@@ -291,12 +258,10 @@ modules:
 
         install -Dm755 build/bin/nextapp /app/bin/nextapp
         install -Dm644 src/NextAppUi/icons/nextapp.svg /app/share/icons/hicolor/scalable/apps/${APP_ID}.svg
-        install -Dm644 src/NextAppUi/icons/nextapp_512x512.png /app/share/icons/hicolor/512x512/apps/${APP_ID}.png
         install -Dm644 ${APP_ID}.desktop /app/share/applications/${APP_ID}.desktop
         install -Dm644 ${APP_ID}.metainfo.xml /app/share/metainfo/${APP_ID}.metainfo.xml
 
         test -r /app/share/icons/hicolor/scalable/apps/${APP_ID}.svg || { echo "App icon is not readable"; exit 1; }
-        test -r /app/share/icons/hicolor/512x512/apps/${APP_ID}.png || { echo "PNG app icon is not readable"; exit 1; }
         test -r /app/share/applications/${APP_ID}.desktop || { echo "Desktop file is not readable"; exit 1; }
         test -r /app/share/metainfo/${APP_ID}.metainfo.xml || {
           echo "Metainfo is not readable in /app/share/metainfo"
@@ -345,21 +310,23 @@ main() {
     require_cmd flatpak
     require_cmd flatpak-builder
     require_cmd rsync
-    require_cmd sort
     require_cmd awk
-    require_cmd grep
     require_cmd appstreamcli
+
+    print_tool_versions
 
     [[ -f "${METAINFO_TEMPLATE}" ]] || {
         echo "Missing AppStream metainfo template: ${METAINFO_TEMPLATE}" >&2
+        exit 1
+    }
+    [[ -f "${DESKTOP_FILE}" ]] || {
+        echo "Missing desktop file: ${DESKTOP_FILE}" >&2
         exit 1
     }
 
     mkdir -p "${WORK_ROOT}" "${DIST_DIR}"
 
     flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-
-    KDE_RUNTIME_VERSION="${KDE_RUNTIME_VERSION:-$(detect_kde_runtime_version)}"
 
     flatpak install -y --noninteractive --user flathub \
         "org.kde.Sdk//${KDE_RUNTIME_VERSION}" \
@@ -372,6 +339,10 @@ main() {
         sed -nE 's/^[[:space:]]*set[[:space:]]*\([[:space:]]*NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "${ROOT_DIR}/CMakeLists.txt" \
         | head -n1
     )"
+    [[ -n "${APP_VERSION}" ]] || {
+        echo "Unable to determine NEXTAPP_VERSION from ${ROOT_DIR}/CMakeLists.txt" >&2
+        exit 1
+    }
     RELEASE_DATE="$(date -u +%F)"
 
     echo "Using KDE runtime branch: ${KDE_RUNTIME_VERSION}"
@@ -379,16 +350,12 @@ main() {
     echo "Using Qt module ref: ${QT_MODULE_REF}"
 
     stage_sources
-    write_desktop_file
     write_metainfo_file
-    appstreamcli validate --no-net "${METAINFO_FILE}"
+    appstreamcli validate --no-net --verbose "${METAINFO_FILE}"
     write_manifest
 
-    rm -rf "${BUILD_DIR}" "${REPO_DIR}"
-
-    flatpak-builder \
+    flatpak-builder --verbose \
         --user \
-        --disable-rofiles-fuse \
         --force-clean \
         --default-branch="${BUNDLE_BRANCH}" \
         --repo="${REPO_DIR}" \
@@ -396,7 +363,7 @@ main() {
         "${MANIFEST_PATH}"
 
     BUNDLE_NAME="NextApp-${APP_VERSION}-${ARCH}-${BUNDLE_BRANCH}.flatpak"
-    flatpak build-bundle \
+    flatpak build-bundle --verbose \
         "${REPO_DIR}" \
         "${DIST_DIR}/${BUNDLE_NAME}" \
         "${APP_ID}" \

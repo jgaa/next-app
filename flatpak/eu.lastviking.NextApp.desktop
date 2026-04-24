@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NextApp
+Comment=Your Personal Organizer
+Exec=nextapp
+Icon=eu.lastviking.NextApp
+Terminal=false
+Categories=Office;Utility;
