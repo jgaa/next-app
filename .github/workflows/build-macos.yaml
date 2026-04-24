@@ -103,9 +103,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # - runner: macos-15
-          #   cmake_arch: arm64
-          #   artifact_suffix: arm64
+          - runner: macos-15
+            cmake_arch: arm64
+            artifact_suffix: arm64
           - runner: macos-15-intel
             cmake_arch: x86_64
             artifact_suffix: x86_64
