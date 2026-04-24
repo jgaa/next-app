@@ -50,7 +50,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.source_ref != '' && inputs.source_ref || github.ref }}
           show-progress: false
@@ -164,7 +164,7 @@ jobs:
           echo "FLATPAK_PATH=${BUNDLE_PATH}" >> "$GITHUB_ENV"
 
       - name: Upload Flatpak artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nextapp-flatpak-${{ env.NEXTAPP_ARCH }}-${{ env.NEXTAPP_VERSION }}
           path: ${{ env.FLATPAK_PATH }}

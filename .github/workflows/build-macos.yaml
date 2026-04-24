@@ -58,7 +58,7 @@ jobs:
     steps:
       - name: Restore Qt SDK archive cache
         id: cache-qt-sdk
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
           key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}
@@ -89,7 +89,7 @@ jobs:
 
       - name: Save Qt SDK archive cache
         if: steps.cache-qt-sdk.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
           key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}
@@ -116,13 +116,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.source_ref != '' && inputs.source_ref || github.ref }}
           submodules: true
 
       - name: Import signing certificate
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@v5
         with:
           p12-file-base64: ${{ secrets.DEV_ID_P12 }}
           p12-password: ${{ secrets.DEV_ID_P12_PASS }}
@@ -135,7 +135,7 @@ jobs:
 
       - name: Restore Qt SDK archive cache
         id: cache-qt-sdk
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
           key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}
@@ -236,7 +236,7 @@ jobs:
           echo "DMG_PATH=${BUILD_DIR}/${DMG_NAME}" >> "$GITHUB_ENV"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nextapp-macos-${{ matrix.artifact_suffix }}-dmg-${{ env.NEXTAPP_VERSION }}
           path: ${{ env.DMG_PATH }}
