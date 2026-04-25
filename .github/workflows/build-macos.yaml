@@ -17,7 +17,6 @@ on:
   push:
     branches:
       - main
-      - devel
       - macos-ga
     paths:
       - '.github/workflows/build-macos.yaml'
