@@ -40,7 +40,7 @@ Rectangle {
 
     StyledHeaderView {
         id: horizontalHeader
-        anchors.left: tableView.left
+        anchors.left: scrollView.left
         anchors.top: root.top
         syncView: tableView
         implicitHeight: 40
