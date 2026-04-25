@@ -57,6 +57,7 @@ std::string toMsDateTime(uint64_t msSinceEpoc, const chrono::time_zone& tz, bool
 
 struct IncrementalSyncCursor {
     bool use_updated_id = false;
+    bool full_sync = false;
     uint64_t since = 0;
 };
 
@@ -64,6 +65,7 @@ inline IncrementalSyncCursor getIncrementalSyncCursor(const pb::GetNewReq& req) 
     IncrementalSyncCursor cursor;
     cursor.use_updated_id = req.has_protocolversion()
         && req.protocolversion() >= pb::ProtopcolVersion::USE_UPDATED_ID;
+    cursor.full_sync = req.has_fullsync() && req.fullsync();
     cursor.since = req.since();
     return cursor;
 }

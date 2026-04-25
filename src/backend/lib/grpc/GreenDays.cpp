@@ -309,10 +309,10 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    const auto full_sync = cursor.use_updated_id && cursor.since == 0;
-    const auto sql = full_sync
+    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
+    const auto sql = fetch_all
         ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
-                   WHERE user=?
+                   WHERE user=? AND (?=0 OR deleted=0)
                    ORDER BY updated_id, date)"
         : cursor.use_updated_id
             ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
@@ -321,8 +321,8 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
             // Remove after the legacy client migration is complete.
             : R"(SELECT deleted, updated, CAST(0 AS UNSIGNED), date, color, notes, report FROM day
                        WHERE user=? AND updated > ?)";
-    if (full_sync) {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
+    if (fetch_all) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.full_sync ? 1 : 0);
     } else if (cursor.use_updated_id) {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
     } else {
@@ -418,9 +418,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     [this, req] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
         const auto cursor = getIncrementalSyncCursor(*req);
-        const auto full_sync = cursor.use_updated_id && cursor.since == 0;
+        const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
         boost::mysql::results res;
-        if (full_sync) {
+        if (fetch_all) {
             res = co_await rctx.dbh->exec(
                 "SELECT id, name, color, score, updated, updated_id "
                 "FROM day_colors "

@@ -481,8 +481,8 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
     const auto cursor = getIncrementalSyncCursor(req);
-    const auto full_sync = cursor.use_updated_id && cursor.since == 0;
-    const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
+    const auto where_clause = fetch_all ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
     const auto order_clause = cursor.use_updated_id ? "updated_id, sort_path, id" : "updated, sort_path, id";
     const auto sql = format(R"(
         WITH RECURSIVE node_tree AS (
@@ -506,9 +506,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
         ToNode::selectCols,
         prefixed_cols,
         where_clause,
-        removeDeleted ? "AND deleted=0" : "",
+        (removeDeleted || cursor.full_sync) ? "AND deleted=0" : "",
         order_clause);
-    if (full_sync) {
+    if (fetch_all) {
         co_await rctx.dbh->start_exec(sql,
             uctx->dbOptions(), cuser, cuser);
     } else if (cursor.use_updated_id) {

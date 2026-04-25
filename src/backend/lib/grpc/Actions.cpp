@@ -1773,18 +1773,15 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
     const auto cursor = getIncrementalSyncCursor(req);
-    const auto batch_size = cursor.use_updated_id
-        ? server().config().options.stream_batch_size
-        // Remove after the legacy client migration is complete.
-        : std::min<size_t>(server().config().options.stream_batch_size, 100);
+    const auto batch_size = std::min<size_t>(server().config().options.stream_batch_size, 100);
     static const auto prefixed_cols = prefixNames(ToAction::allSelectCols(), "a.");
-    const auto full_sync = cursor.use_updated_id && cursor.since == 0;
-    const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
-    const auto tombstone_filter = removeDeleted
+    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
+    const auto where_clause = fetch_all ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto tombstone_filter = (removeDeleted || cursor.full_sync)
         ? "AND status != 'deleted'"
         : "AND (node IS NOT NULL OR status = 'deleted')";
     const auto order_clause = cursor.use_updated_id
-        ? "updated_id, node, origin, start_time, due_by_time, id"
+        ? "updated_id"
         // Remove after the legacy client migration is complete.
         : "updated, node, origin, start_time, due_by_time, id";
 
@@ -1822,7 +1819,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
                             tombstone_filter,
                             order_clause);
 
-    if (full_sync) {
+    if (fetch_all) {
         co_await dbh.start_exec(
             sql,
             uctx->dbOptions(), cuser);
@@ -1848,7 +1845,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
         reply.set_error(::nextapp::pb::Error::OK);
         assert(reply.has_completeactions());
         ++batch_num;
-        reply.set_message(format("Fetched {} actions in batch {}", reply.actions().actions_size(), batch_num));
+        reply.set_message(format("Fetched {} actions in batch {}", reply.completeactions().actions_size(), batch_num));
         co_await flush_fn(reply);
         reply.Clear();
         actions = reply.mutable_completeactions();

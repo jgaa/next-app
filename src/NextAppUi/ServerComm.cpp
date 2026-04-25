@@ -1952,6 +1952,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
     deferred_update_id_ = 0;
     updated_id_sync_initialized_ = settings().value("sync/updatedIdInitialized", false).toBool();
     server_supports_updated_id_ = false;
+    bootstrapping_updated_id_sync_ = false;
 
     {
         auto prev_version = settings().value("client/version", "").toString();
@@ -2066,6 +2067,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
                 LOG_INFO_N << "Server supports updated_id sync, but local baseline is not initialized. Forcing one full sync.";
                 full_sync = true;
                 needs_sync = true;
+                bootstrapping_updated_id_sync_ = true;
             } else if (!server_supports_updated_id_ && updated_id_sync_initialized_) {
                 LOG_INFO_N << "Server does not support updated_id sync. Falling back to legacy since-based sync.";
             }
@@ -2190,6 +2192,7 @@ failed:
         configure_sync_targets(nullptr, true);
     };
 
+    const auto sync_start_time = chrono::steady_clock::now();
     if (needs_sync || full_sync) {
         if (full_sync) {
             LOG_WARN << "Resyncing from the server using a staged local database.";
@@ -2398,6 +2401,12 @@ failed:
             }
         }
     }
+
+    LOG_DEBUG_N << "Server sync phase completed in "
+                << std::fixed << std::setprecision(2)
+                << std::chrono::duration<double>(std::chrono::steady_clock::now() - sync_start_time).count()
+                << " seconds. full_sync=" << full_sync
+                << ", needs_sync=" << needs_sync;
 
     if ((needs_sync || full_sync)
         && (server_reset_detected || last_seen_update_id_ < session_start_publish_id_)) {

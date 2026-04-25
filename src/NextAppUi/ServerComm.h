@@ -280,7 +280,8 @@ public:
     void setLocalActionCategoryVersion(uint64_t version) override;
 
     bool shouldUseUpdatedIdSync() const noexcept override {
-        return server_supports_updated_id_ && updated_id_sync_initialized_;
+        return server_supports_updated_id_
+            && (updated_id_sync_initialized_ || bootstrapping_updated_id_sync_);
     }
 
     static bool isTemporaryError(nextapp::pb::ErrorGadget::Error error);
@@ -692,6 +693,7 @@ private:
     uint64_t session_user_data_epoch_{};
     bool server_supports_updated_id_{false};
     bool updated_id_sync_initialized_{false};
+    bool bootstrapping_updated_id_sync_{false};
     bool resync_scheduled_{false};
     bool import_data_in_progress_{false};
     bool import_data_resync_received_{false};

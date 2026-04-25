@@ -3,6 +3,8 @@
 #include "qcorotask.h"
 #include "nextapp.qpb.h"
 
+#include <QElapsedTimer>
+
 #include "NextAppCore.h"
 #include "RuntimeServices.h"
 #include "ServerComm.h"
@@ -165,6 +167,9 @@ public:
     virtual QCoro::Task<bool> synchFromServer()
     {
         nextapp::pb::GetNewReq req;
+        if (isFullSync()) {
+            req.setFullSync(true);
+        }
         if (runtime().serverComm().shouldUseUpdatedIdSync()) {
             req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
             req.setSince(static_cast<qlonglong>(co_await getLastUpdatedId()));
@@ -173,48 +178,115 @@ public:
         }
 
         auto stream = openServerStream(req);
+        QElapsedTimer sync_timer;
+        sync_timer.start();
+        qint64 db_write_ns = 0;
+        qint64 processing_ns = 0;
+        uint64_t status_messages = 0;
+        uint64_t item_messages = 0;
+        uint64_t item_count = 0;
+        uint64_t batches = 0;
+        const auto log_sync_stats = [&](std::string_view outcome) {
+            const auto stream_stats = stream->stats();
+            const auto total_ns = sync_timer.nsecsElapsed();
+            const auto processing_without_db_ns = processing_ns >= db_write_ns
+                ? processing_ns - db_write_ns
+                : qint64{0};
+            const auto ns_to_ms = [](qint64 ns) {
+                return static_cast<double>(ns) / 1000000.0;
+            };
+            LOG_DEBUG_N << "Sync stats for " << itemName()
+                        << ". outcome=" << outcome
+                        << ", messages=" << status_messages
+                        << ", item_messages=" << item_messages
+                        << ", batches=" << batches
+                        << ", items=" << item_count
+                        << ", total_ms=" << ns_to_ms(total_ns)
+                        << ", wait_ms=" << ns_to_ms(stream_stats.wait_ns)
+                        << ", db_write_ms=" << ns_to_ms(db_write_ns)
+                        << ", processing_ms=" << ns_to_ms(processing_without_db_ns)
+                        << ", message_received_ms=" << ns_to_ms(stream_stats.message_received_ns)
+                        << ", message_received_signals=" << stream_stats.message_received_signals
+                        << ", queued_messages=" << stream_stats.queued_messages
+                        << ", wait_iterations=" << stream_stats.wait_iterations
+                        << ", read_failures=" << stream_stats.read_failures;
+        };
 
         LOG_TRACE_N << "Entering message-loop";
         while (auto update = co_await stream->template next<nextapp::pb::Status>()) {
 
             LOG_TRACE_N << "next returned something";
             if (update.has_value()) {
+                ++status_messages;
+                QElapsedTimer processing_timer;
+                processing_timer.start();
                 auto &u = update.value();
                 LOG_TRACE_N << "next has value";
                 if (u.error() == nextapp::pb::ErrorGadget::Error::OK) {
                     LOG_TRACE_N << "Got OK from server: " << u.message();
                     if (hasItems(u)) {
                         const auto& items = getItems(u);
+                        ++item_messages;
+                        item_count += static_cast<uint64_t>(items.size());
                         LOG_TRACE_N << "Got " << itemName() << " from server. Count=" << items.size();
                         if (haveBatch()) {
+                            QElapsedTimer batch_timer;
+                            batch_timer.start();
+                            LOG_DEBUG_N << "Persisting " << itemName() << " batch. Batch="
+                                        << (batches + 1) << ", count=" << items.size()
+                                        << ", items_seen=" << item_count;
                             if (!co_await saveBatch(items)) {
+                                db_write_ns += batch_timer.nsecsElapsed();
+                                processing_ns += processing_timer.nsecsElapsed();
                                 LOG_ERROR_N << "Failed to persist " << itemName()
                                             << " batch locally. Aborting sync.";
+                                log_sync_stats("persist-failed");
                                 co_return false;
                             }
+                            const auto elapsed_ns = batch_timer.nsecsElapsed();
+                            db_write_ns += elapsed_ns;
+                            ++batches;
+                            const auto elapsed_ms = elapsed_ns / 1000000;
+                            if (elapsed_ms > 5000) {
+                                LOG_WARN_N << "Persisted slow " << itemName() << " batch. Count="
+                                           << items.size() << ", elapsed_ms=" << elapsed_ms;
+                            } else {
+                                LOG_DEBUG_N << "Persisted " << itemName() << " batch. Count="
+                                            << items.size() << ", elapsed_ms=" << elapsed_ms;
+                            }
                         } else {
+                            QElapsedTimer save_timer;
+                            save_timer.start();
                             for(const auto& item : items) {
                                 if (!co_await save(item)) {
+                                    db_write_ns += save_timer.nsecsElapsed();
+                                    processing_ns += processing_timer.nsecsElapsed();
                                     LOG_ERROR_N << "Failed to persist " << itemName()
                                                 << " item locally. Aborting sync.";
+                                    log_sync_stats("persist-failed");
                                     co_return false;
                                 }
                             }
+                            db_write_ns += save_timer.nsecsElapsed();
                         }
                     }
                 } else {
+                    processing_ns += processing_timer.nsecsElapsed();
                     LOG_DEBUG_N << "Got error from server. err=" << u.error()
                     << " msg=" << u.message();
+                    log_sync_stats("server-error");
                     co_return false;
                 }
+                processing_ns += processing_timer.nsecsElapsed();
             } else {
                 LOG_TRACE_N << "Stream returned nothing. Done. err="
                             << update.error().err_code();
+                log_sync_stats("stream-error");
                 co_return false;
             }
         }
 
-
+        log_sync_stats("ok");
         co_return true;
     }
 

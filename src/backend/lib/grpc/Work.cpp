@@ -1032,18 +1032,15 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportWork(
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
     const auto cursor = getIncrementalSyncCursor(req);
-    const auto batch_size = cursor.use_updated_id
-        ? server().config().options.stream_batch_size
-        // Remove after the legacy client migration is complete.
-        : std::min<size_t>(server().config().options.stream_batch_size, 100);
+    const auto batch_size = std::min<size_t>(server().config().options.stream_batch_size, 100);
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    const auto full_sync = cursor.use_updated_id && cursor.since == 0;
-    const auto where_clause = full_sync ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
-    const auto tombstone_filter = removeDeleted
+    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
+    const auto where_clause = fetch_all ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto tombstone_filter = (removeDeleted || cursor.full_sync)
         ? "AND state != 'deleted' AND action is NOT NULL"
         : "AND (action is NOT NULL OR state = 'deleted')";
     const auto sql = format("SELECT {} from work_session WHERE user=? AND {} {} ORDER BY {}",
@@ -1051,10 +1048,10 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportWork(
                             where_clause,
                             tombstone_filter,
                             cursor.use_updated_id
-                                ? "updated_id, action, start_time, id"
+                                ? "updated_id"
                                 // Remove after the legacy client migration is complete.
                                 : "updated, action, start_time, id");
-    if (full_sync) {
+    if (fetch_all) {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
     } else if (cursor.use_updated_id) {
         co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);

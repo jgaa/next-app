@@ -283,6 +283,9 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
     LOG_DEBUG_N << "Synching colors from server";
     nextapp::pb::GetNewReq req;
     auto& db = dbStore();
+    if (!load_after_sync_) {
+        req.setFullSync(true);
+    }
 
     LOG_TRACE_N << "Getting last updated";
     if (runtime_.serverComm().shouldUseUpdatedIdSync()) {
@@ -343,6 +346,9 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
     LOG_DEBUG_N << "Synching days from server";
     nextapp::pb::GetNewReq req;
     auto& db = dbStore();
+    if (!load_after_sync_) {
+        req.setFullSync(true);
+    }
 
     LOG_TRACE_N << "Getting last updated";
     if (runtime_.serverComm().shouldUseUpdatedIdSync()) {
@@ -357,39 +363,89 @@ QCoro::Task<bool> GreenDaysModel::synchDaysFromServer()
 
     LOG_TRACE_N << "Calling synchGreenDays";
     auto stream = runtime_.serverComm().synchGreenDays(req);
+    QElapsedTimer sync_timer;
+    sync_timer.start();
+    qint64 db_write_ns = 0;
+    qint64 processing_ns = 0;
+    uint64_t status_messages = 0;
+    uint64_t item_messages = 0;
+    uint64_t item_count = 0;
+    uint64_t batches = 0;
+    const auto log_sync_stats = [&](std::string_view outcome) {
+        const auto stream_stats = stream->stats();
+        const auto total_ns = sync_timer.nsecsElapsed();
+        const auto processing_without_db_ns = processing_ns >= db_write_ns
+            ? processing_ns - db_write_ns
+            : qint64{0};
+        const auto ns_to_ms = [](qint64 ns) {
+            return static_cast<double>(ns) / 1000000.0;
+        };
+        LOG_DEBUG_N << "Sync stats for green days"
+                    << ". outcome=" << outcome
+                    << ", messages=" << status_messages
+                    << ", item_messages=" << item_messages
+                    << ", batches=" << batches
+                    << ", items=" << item_count
+                    << ", total_ms=" << ns_to_ms(total_ns)
+                    << ", wait_ms=" << ns_to_ms(stream_stats.wait_ns)
+                    << ", db_write_ms=" << ns_to_ms(db_write_ns)
+                    << ", processing_ms=" << ns_to_ms(processing_without_db_ns)
+                    << ", message_received_ms=" << ns_to_ms(stream_stats.message_received_ns)
+                    << ", message_received_signals=" << stream_stats.message_received_signals
+                    << ", queued_messages=" << stream_stats.queued_messages
+                    << ", wait_iterations=" << stream_stats.wait_iterations
+                    << ", read_failures=" << stream_stats.read_failures;
+    };
 
     bool looks_ok = false;
     LOG_TRACE_N << "Entering message-loop";
     while (auto update = co_await stream->next<nextapp::pb::Status>()) {
         LOG_TRACE_N << "next returned something";
         if (update.has_value()) {
+            ++status_messages;
+            QElapsedTimer processing_timer;
+            processing_timer.start();
             auto &u = update.value();
             LOG_TRACE_N << "next has value";
             if (u.error() == nextapp::pb::ErrorGadget::Error::OK) {
                 LOG_TRACE_N << "Got OK from server";
                 if (u.hasDays()) {
                     LOG_TRACE_N << "Got days from server. Count=" << u.days().days().size();
+                    ++item_messages;
+                    item_count += static_cast<uint64_t>(u.days().days().size());
                     if (!u.days().days().isEmpty()) {
+                        QElapsedTimer batch_timer;
+                        batch_timer.start();
                         if (!co_await storeDays(u.days().days())) {
+                            db_write_ns += batch_timer.nsecsElapsed();
+                            processing_ns += processing_timer.nsecsElapsed();
                             LOG_ERROR_N << "Failed to persist green day batch locally. Aborting sync.";
+                            log_sync_stats("persist-failed");
                             co_return false;
                         }
+                        db_write_ns += batch_timer.nsecsElapsed();
+                        ++batches;
                     }
                  }
 
             } else {
+                processing_ns += processing_timer.nsecsElapsed();
                 LOG_DEBUG_N << "Got error from server. err=" << u.error()
                 << " msg=" << u.message();
+                log_sync_stats("server-error");
                 co_return false;
             }
+            processing_ns += processing_timer.nsecsElapsed();
         } else {
             LOG_TRACE_N << "Stream returned nothing. Done. err="
                         << update.error().err_code();
+            log_sync_stats("stream-error");
             co_return false;
         }
     }
 
     LOG_TRACE_N << "End of message-loop. Returns true";
+    log_sync_stats("ok");
     co_return true;
 }
 
