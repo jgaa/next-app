@@ -1,7 +1,14 @@
 #pragma once
 
+#include <array>
+#include <map>
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include <QQmlEngine>
 #include <QAbstractTableModel>
+#include "qcorotask.h"
 #include "RuntimeServices.h"
 #include "util.h"
 #include "nextapp.qpb.h"
@@ -18,11 +25,22 @@ public:
         LAST_WEEK,
         SELECTED_WEEK
     };
+    Q_ENUM(WeekSelection)
+
+    enum Grouping {
+        LIST,
+        PROJECT,
+        ORGANIZATION,
+        PERSON,
+        CATEGORY
+    };
+    Q_ENUM(Grouping)
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged) // Set by the view
     Q_PROPERTY(bool isAvailable READ isAvailable NOTIFY isAvailableChanged); // Set by the model
     Q_PROPERTY(time_t startTime READ startTime WRITE setStartTime NOTIFY startTimeChanged);
     Q_PROPERTY(WeekSelection weekSelection READ weekSelection WRITE setWeekSelection NOTIFY weekSelectionChanged FINAL)
+    Q_PROPERTY(Grouping grouping READ grouping WRITE setGrouping NOTIFY groupingChanged FINAL)
 public:
     enum Roles {
         SummaryRole = Qt::UserRole + 1,
@@ -38,6 +56,8 @@ public:
         return startTime_;
     }
 
+    Q_INVOKABLE void refresh();
+
     WeeklyWorkReportModel(QObject *parent = nullptr);
     WeeklyWorkReportModel(RuntimeServices& runtime, QObject *parent = nullptr);
 
@@ -48,15 +68,13 @@ public:
     void setIsVisible(bool visible);
 
     bool isAvailable() const noexcept {
-        return initialized_ && online_;
+        return initialized_;
     }
 
     void setOnline(bool online);
 
     void start();
     void fetch();
-
-    void receivedDetailedWorkSummary(const nextapp::pb::DetailedWorkSummary& summary, const ServerCommAccess::MetaData& meta);
 
     // QAbstractItemModel interface
     int rowCount(const QModelIndex &parent) const override;
@@ -67,6 +85,8 @@ public:
 
     WeekSelection weekSelection() const;
     void setWeekSelection(WeekSelection when);
+    Grouping grouping() const noexcept;
+    void setGrouping(Grouping grouping);
 
 signals:
     void isVisibleChanged();
@@ -74,12 +94,16 @@ signals:
     void startTimeChanged();
 
     void weekSelectionChanged();
+    void groupingChanged();
 
 private:
     RuntimeServices& runtime_;
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void onUpdatedDuration();
     void needRefresh();
+    QCoro::Task<void> fetchFromLocalCache(uint64_t generation);
+    std::optional<QUuid> resolveGroup(const QString& node_id, const QString& category_id) const;
+    QString groupName(const QUuid& uuid) const;
 
     bool initialized_ = false;
     bool online_ = false;
@@ -88,6 +112,8 @@ private:
     std::vector<QUuid> sorted_nodes_;
     const QUuid uuid_ = QUuid::createUuid();
     WeekSelection week_selection_ = THIS_WEEK;
+    Grouping grouping_ = LIST;
     time_t startTime_ = time({});
     bool refresh_when_activated_ = false;
+    uint64_t fetch_generation_ = 0;
 };

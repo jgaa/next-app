@@ -40,8 +40,8 @@ Rectangle {
 
     StyledHeaderView {
         id: horizontalHeader
-        anchors.left: scrollView.left
-        anchors.top: root.top
+        // anchors.left: scrollView.left
+        // anchors.top: root.top
         syncView: tableView
         implicitHeight: 40
         implicitWidth: scrollView.width >= 0 ? scrollView.width : 100

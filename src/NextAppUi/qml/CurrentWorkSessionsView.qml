@@ -19,8 +19,6 @@ Rectangle {
         id: rowCtl
 
         WorkSessionList {
-            //Layout.preferredWidth: 800
-            //Layout.minimumWidth: 300
             Layout.fillWidth: true
             id: workSessionList
             model: NaWorkSessionsModel

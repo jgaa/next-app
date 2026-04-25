@@ -18,6 +18,13 @@ Rectangle {
     property int cellwidth: 70
     property string prevLabel: ""
 
+    // Refresh first time the view is visible
+    onVisibleChanged: {
+        if (root.visible) {
+            tableView.model.refresh();
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
 
@@ -40,6 +47,8 @@ Rectangle {
                         ListElement { text: qsTr("Select week") }
                     }
 
+                    currentIndex: tableView.model.weekSelection
+
                     onCurrentIndexChanged: () => {
                         prevLabel = displayText
                         tableView.model.weekSelection = currentIndex
@@ -50,6 +59,23 @@ Rectangle {
                         } else {
                             displayText = textAt(currentIndex)
                         }
+                    }
+                }
+
+                StyledComboBox {
+                    id: groupingCtl
+                    model: ListModel {
+                        ListElement { text: qsTr("Lists") }
+                        ListElement { text: qsTr("Projects") }
+                        ListElement { text: qsTr("Organizations") }
+                        ListElement { text: qsTr("Persons") }
+                        ListElement { text: qsTr("Categories") }
+                    }
+
+                    currentIndex: tableView.model.grouping
+
+                    onActivated: (index) => {
+                        tableView.model.grouping = index
                     }
                 }
 
