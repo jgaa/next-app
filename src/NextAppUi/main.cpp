@@ -377,7 +377,9 @@ int main(int argc, char *argv[])
         "debug";
 #endif
     QGuiApplication app(argc, argv);
-    QGuiApplication::setDesktopFileName("eu.lastviking.nextapp");
+#ifdef NEXTAPP_DESKTOP_FILE_NAME
+    QGuiApplication::setDesktopFileName(QStringLiteral(NEXTAPP_DESKTOP_FILE_NAME));
+#endif
 
     LogModel log_handler;
 

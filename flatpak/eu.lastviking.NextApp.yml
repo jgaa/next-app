@@ -135,9 +135,9 @@ modules:
       - -DNEXTAPP_WITH_UI=ON
       - -DNEXTAPP_WITH_BACKEND=OFF
       - -DNEXTAPP_WITH_SIGNUP=OFF
+      - -DNEXTAPP_DESKTOP_FILE_NAME=eu.lastviking.NextApp
     sources:
       - type: dir
         path: ../
-
 
 
