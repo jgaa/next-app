@@ -6,6 +6,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 
 #include <boost/asio.hpp>
@@ -335,6 +336,14 @@ public:
     auto currentPublishId() const {
         std::shared_lock lock(mutex_);
         return publish_message_id_;
+    }
+
+    auto oldestRetainedPublishId() const -> std::optional<uint32_t> {
+        std::shared_lock lock(mutex_);
+        if (retained_updates_.empty()) {
+            return {};
+        }
+        return retained_updates_.front()->messageid();
     }
 
     auto currentPublishEpoch() const {

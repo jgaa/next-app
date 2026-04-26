@@ -1615,6 +1615,7 @@ QCoro::Task<void> ServerComm::replayDeferredUpdates()
 {
     if (deferred_updates_.empty()) {
         LOG_TRACE_N << "No deferred updates to replay after initial sync.";
+        deferred_update_id_ = 0;
         co_return;
     }
 
@@ -1651,6 +1652,13 @@ void ServerComm::onUpdateMessage()
 #endif
             LOG_TRACE << "Got update: #" << msg->messageId() << " " << msg->when().seconds();
             const auto msgid = msg->messageId();
+
+            if (msg->hasResync() && msg->resync()) {
+                LOG_INFO_N << "Received resync request from server on update stream.";
+                applyUpdateMessage(msg);
+                return;
+            }
+
             const auto effective_last_seen = effectiveLastSeenUpdateId();
             if (msgid <= effective_last_seen) {
                 LOG_WARN_N << "Ignoring duplicate or stale update #" << msgid
@@ -1998,6 +2006,10 @@ QCoro::Task<void> ServerComm::startNextappSession()
                         << ", server instance tag: " << res.hello().serverInstanceTag()
                         << ", server user publish epoch: " << res.hello().userPublishEpoch()
                         << ", server user data epoch: " << res.hello().userDataEpoch()
+                        << ", oldest retained publish id: "
+                        << (res.hello().hasOldestRetainedPublishId()
+                                ? QString::number(res.hello().oldestRetainedPublishId())
+                                : QStringLiteral("none"))
                         << ", server-id: " << res.hello().serverId()
                         << ", session-id: " << session_id_
                         << ", plans enabled: " << res.hello().plansEnabled()
@@ -2040,9 +2052,20 @@ QCoro::Task<void> ServerComm::startNextappSession()
                            << res.hello().lastPublishId()
                            << " because updated_id sync is supported and the durable baseline is tracked locally.";
             } else if (res.hello().lastPublishId() > last_seen_update_id_) {
-                LOG_INFO_N << "Server has " << (res.hello().lastPublishId() - last_seen_update_id_)
-                           << " unapplied updates. Will request replay from message id "
-                           << last_seen_update_id_;
+                const auto next_needed_publish_id = last_seen_update_id_ + 1;
+                const auto replay_available = res.hello().hasOldestRetainedPublishId()
+                    && next_needed_publish_id >= res.hello().oldestRetainedPublishId();
+                if (res.hello().supportsUpdatedId() && !replay_available) {
+                    needs_sync = true;
+                    LOG_INFO_N << "Server has " << (res.hello().lastPublishId() - last_seen_update_id_)
+                               << " unapplied live updates, but replay from message id "
+                               << last_seen_update_id_
+                               << " is unavailable. Will run durable incremental sync using updated_id.";
+                } else {
+                    LOG_INFO_N << "Server has " << (res.hello().lastPublishId() - last_seen_update_id_)
+                               << " unapplied updates. Will request replay from message id "
+                               << last_seen_update_id_;
+                }
             }
 
             if (session_user_data_epoch_ != last_seen_user_data_epoch_) {
@@ -2121,6 +2144,10 @@ failed:
     nextapp::pb::UpdatesReq ureq;
     if (!full_sync && !needs_sync && session_start_publish_id_ >= last_seen_update_id_) {
         ureq.setFromMessageId(last_seen_update_id_);
+    } else if ((full_sync || needs_sync) && session_start_publish_id_ > last_seen_update_id_) {
+        deferred_update_id_ = session_start_publish_id_;
+        LOG_DEBUG_N << "Using session-start publish id " << session_start_publish_id_
+                    << " as temporary live-update baseline while initial sync is running.";
     }
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
     auto fcn_config = getPushConfig();

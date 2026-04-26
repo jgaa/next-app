@@ -129,6 +129,9 @@ struct ToDevice {
             hello->set_lastnotification(owner_.getLastNotificationUpdated());
             hello->set_plansenabled(server.config().payment.enable_plan);
             hello->set_supportsupdatedid(true);
+            if (auto oldest = rctx.uctx->oldestRetainedPublishId()) {
+                hello->set_oldestretainedpublishid(*oldest);
+            }
         };
 
         co_return;
@@ -241,8 +244,8 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 if (replay_result == UserContext::SubscribeReplayResult::REPLAY_UNAVAILABLE) {
                     LOG_INFO_N << "Replay is unavailable for subscriber " << uuid()
                                << " on user " << session->user().userUuid()
-                               << ". Requesting full resync.";
-                    queueResyncAndClose();
+                               << ". Closing stream without requesting full resync.";
+                    requestCloseAfterDrain();
                     return;
                 }
             } catch (const server_err& err) {

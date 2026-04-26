@@ -968,6 +968,7 @@ message Hello {
     bool supportsUpdatedId = 7; // If true, the server supports stronger updated_id-based incremental sync
     uint64 userPublishEpoch = 8; // Identifies the lifetime of the per-user publish counter
     uint64 userDataEpoch = 9; // Identifies the current full-sync data generation for this user
+    optional uint32 oldestRetainedPublishId = 10; // Oldest live update still available for replay
 }
 
 // Debug info about the user-sessions on the server
