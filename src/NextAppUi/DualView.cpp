@@ -1,6 +1,8 @@
 #include <QQmlComponent>
 #include <QQmlProperty>
 #include <QQmlEngine>
+#include <algorithm>
+#include <cmath>
 
 #include "DualView.h"
 #include "NextAppCore.h"
@@ -32,6 +34,13 @@ constexpr auto names = to_array<string_view>({
     "None"
 });
 
+constexpr auto kPersistSplitKey = "UI/mobile/persistDualViewSplit";
+constexpr auto kSplitRatioKey = "UI/mobile/dualViewSplitRatio";
+constexpr qreal kDefaultSplitRatio = 0.5;
+constexpr qreal kMinSplitHeight = 120.0;
+constexpr qreal kMinSplitRatio = 0.15;
+constexpr qreal kMaxSplitRatio = 0.85;
+
 } // ns
 
 ostream& operator << (ostream& os, DualView::ViewType type)
@@ -55,6 +64,10 @@ DualView::DualView(RuntimeServices& runtime, QQuickItem *parent)
     view_paths_.at(static_cast<size_t>(ViewType::Lists)) = "qrc:/qt/qml/NextAppUi/qml/MainTree.qml";
     view_paths_.at(static_cast<size_t>(ViewType::WorkSessions)) = "qrc:/qt/qml/NextAppUi/qml/android/WorkSessionsStacked.qml";
     view_paths_.at(static_cast<size_t>(ViewType::Calendar)) = "qrc:/qt/qml/NextAppUi/qml/calendar/CalendarView.qml";
+    if (runtime_.settings().value(kPersistSplitKey, false).toBool()) {
+        split_ratio_ = std::clamp(runtime_.settings().value(kSplitRatioKey, kDefaultSplitRatio).toDouble(),
+                                  kMinSplitRatio, kMaxSplitRatio);
+    }
 
     connect(this, &QQuickItem::heightChanged, [this] {
         LOG_TRACE << "DualView height changed to" << height();
@@ -127,6 +140,47 @@ void DualView::setViews(DualView::ViewType first, DualView::ViewType second)
     recalculateLayout();
 }
 
+void DualView::setSplitRatio(qreal ratio)
+{
+    const auto clamped = std::clamp(ratio, kMinSplitRatio, kMaxSplitRatio);
+    if (std::abs(split_ratio_ - clamped) < 0.0001) {
+        return;
+    }
+
+    split_ratio_ = clamped;
+    emit splitRatioChanged();
+    recalculateLayout();
+    persistSplitRatio();
+}
+
+void DualView::setSplitPosition(qreal y)
+{
+    if (!second_ || !split_view_) {
+        return;
+    }
+
+    const auto available = height() - split_view_->height();
+    if (available <= 0) {
+        return;
+    }
+
+    setSplitRatio(y / available);
+}
+
+void DualView::adjustSplitBy(qreal deltaY)
+{
+    if (!second_ || !split_view_) {
+        return;
+    }
+
+    const auto available = height() - split_view_->height();
+    if (available <= 0) {
+        return;
+    }
+
+    setSplitRatio(split_ratio_ + (deltaY / available));
+}
+
 QQuickItem *DualView::createView(ViewType type) {
     const auto index = static_cast<size_t>(type);
     QQmlComponent component{&runtime_.qmlEngine(), view_paths_.at(index)};
@@ -192,29 +246,47 @@ void DualView::recalculateLayout()
         return;
     }
 
-    auto h = height();
+    auto first_h = height();
+    auto second_h = 0.0;
     if (second_) {
-        h = (h /= 2) - split_view_->height();
+        const auto available = height() - split_view_->height();
+        if (available <= 0) {
+            return;
+        }
+
+        const auto min_h = std::min(kMinSplitHeight, available / 2.0);
+        first_h = std::clamp(available * split_ratio_, min_h, available - min_h);
+        second_h = available - first_h;
     }
 
     first_->setX(0);
     first_->setY(0);
     first_->setWidth(width());
     first_->resetHeight();
-    first_->setHeight(h);
-    assert(first_->height() == h);
+    first_->setHeight(first_h);
+    assert(first_->height() == first_h);
 
     if (second_) {
         split_view_->setX(0);
-        split_view_->setY(h);
+        split_view_->setY(first_h);
         split_view_->setWidth(width());
+        split_view_->setZ(1000);
 
         second_->setX(0);
-        second_->setY(h + split_view_->height());
+        second_->setY(first_h + split_view_->height());
         second_->setWidth(width());
-        second_->setHeight(h);
-        assert(second_->height() == h);
+        second_->setHeight(second_h);
+        assert(second_->height() == second_h);
     }
 
     logChildItems("this (after layout)", this);
+}
+
+void DualView::persistSplitRatio() const
+{
+    if (!runtime_.settings().value(kPersistSplitKey, false).toBool()) {
+        return;
+    }
+
+    runtime_.settings().setValue(kSplitRatioKey, split_ratio_);
 }

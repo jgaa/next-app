@@ -18,6 +18,7 @@ ScrollView {
     function commit() {
         settings.setValue("UI/theme", uiTheme.currentText)
         settings.setValue("UI/style", uiStyle.currentIndex.toString())
+        settings.setValue("UI/mobile/persistDualViewSplit", persistDualViewSplit.checked)
         //settings.setValue("UI/scale", uiScale.currentIndex.toString())
         settings.sync()
     }
@@ -54,6 +55,14 @@ ScrollView {
                 // qsTr("macOS"),
                 // qsTr("iOS"),
                 qsTr("Windows")]
+        }
+
+        Label { text: qsTr("Remember mobile split size") }
+        Switch {
+            id: persistDualViewSplit
+            visible: NaCore.isMobile
+            checked: settings.value("UI/mobile/persistDualViewSplit", false)
+            Layout.alignment: Qt.AlignLeft
         }
 
         // Label { text: qsTr("Ui Scale")}
