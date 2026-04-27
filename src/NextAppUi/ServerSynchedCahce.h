@@ -347,7 +347,7 @@ public:
     }
 
 private:
-    State state_;
+    State state_{State::LOCAL};
     std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
     bool full_sync_{};
     bool load_after_sync_{true};

@@ -700,17 +700,19 @@ QCoro::Task<bool> MainTreeModel::repairStoredNodes()
 
     auto& db = syncDb();
     const auto token = syncTransactionToken();
+    LOG_DEBUG_N << "Repairing " << pending_parent_repairs_.size()
+                << " staged node parent references.";
     const auto rows = token
-        ? co_await db.legacyQueryInTransaction(*token, "SELECT uuid, data FROM node")
-        : co_await db.legacyQuery("SELECT uuid, data FROM node");
+        ? co_await db.queryInTransaction(*token, "SELECT uuid, data FROM node")
+        : co_await db.query("SELECT uuid, data FROM node");
     if (!rows) {
         LOG_ERROR_N << "Failed to load nodes for parent repair: " << rows.error();
         co_return false;
     }
 
     QHash<QString, QByteArray> serialized_nodes;
-    serialized_nodes.reserve(rows->size());
-    for (const auto& row : *rows) {
+    serialized_nodes.reserve(rows->rows.size());
+    for (const auto& row : rows->rows) {
         serialized_nodes.insert(row.at(0).toString(), row.at(1).toByteArray());
     }
 
@@ -755,6 +757,7 @@ QCoro::Task<bool> MainTreeModel::repairStoredNodes()
     }
 
     pending_parent_repairs_.clear();
+    LOG_DEBUG_N << "Finished repairing staged node parent references.";
     co_return true;
 }
 

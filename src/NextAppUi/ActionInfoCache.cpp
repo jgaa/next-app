@@ -1180,17 +1180,19 @@ QCoro::Task<bool> ActionInfoCache::repairStoredOrigins()
 
     auto& db = syncDb();
     const auto token = syncTransactionToken();
+    LOG_DEBUG_N << "Repairing " << pending_origin_repairs_.size()
+                << " staged action origin references.";
     const auto rows = token
-        ? co_await db.legacyQueryInTransaction(*token, "SELECT id FROM action")
-        : co_await db.legacyQuery("SELECT id FROM action");
+        ? co_await db.queryInTransaction(*token, "SELECT id FROM action")
+        : co_await db.query("SELECT id FROM action");
     if (!rows) {
         LOG_ERROR_N << "Failed to load actions for origin repair: " << rows.error();
         co_return false;
     }
 
     QSet<QString> existing_actions;
-    existing_actions.reserve(rows->size());
-    for (const auto& row : *rows) {
+    existing_actions.reserve(rows->rows.size());
+    for (const auto& row : rows->rows) {
         existing_actions.insert(row.at(0).toString());
     }
 
@@ -1223,6 +1225,7 @@ QCoro::Task<bool> ActionInfoCache::repairStoredOrigins()
     }
 
     pending_origin_repairs_.clear();
+    LOG_DEBUG_N << "Finished repairing staged action origin references.";
     co_return true;
 }
 
