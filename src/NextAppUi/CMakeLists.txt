@@ -38,6 +38,7 @@ if (NEXTAPP_WITH_TESTS)
     option(NEXTAPP_WITH_TESTS_UI "Enable Nextapp UI Tests" ON)
 endif()
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
+option(NEXTAPP_DB_COPY_BATCH_DATA "Copy database batch data before queued coroutine writes" OFF)
 option(NEXTAPP_EXPAT_FIX "Injects a dependency for expat in fontconfig to deal with a breakage in vcpkg/fontconfig/qtbase" OFF)
 set(NEXTAPP_DESKTOP_FILE_NAME "" CACHE STRING "Desktop file ID used by Linux desktop portals, without the .desktop suffix.")
 if (NEXTAPP_DESKTOP_FILE_NAME)
@@ -795,6 +796,11 @@ target_link_libraries(NextAppUiCoreLib
         ${OPEN_SSL_CORE_DEPS}
         ${FMT_DEPS}
         miniaudio
+)
+
+target_compile_definitions(NextAppUiCoreLib
+    PUBLIC
+        NEXTAPP_DB_COPY_BATCH_DATA=$<BOOL:${NEXTAPP_DB_COPY_BATCH_DATA}>
 )
 
 target_link_libraries(NextAppUiLib

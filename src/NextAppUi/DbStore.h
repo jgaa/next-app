@@ -5,11 +5,13 @@
 #include <atomic>
 #include <mutex>
 #include <optional>
+#include <exception>
 #include <QObject>
 #include <QVariant>
 #include <QThread>
 #include <QFuture>
 #include <QPromise>
+#include <QSharedPointer>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QFutureWatcher>
@@ -17,7 +19,12 @@
 #include "qcorotask.h"
 #include "qcorofuture.h"
 
+#include "logging.h"
 #include "nextapp.qpb.h"
+
+#ifndef NEXTAPP_DB_COPY_BATCH_DATA
+#define NEXTAPP_DB_COPY_BATCH_DATA 0
+#endif
 
 class DbStore : public QObject
 {
@@ -168,38 +175,81 @@ private:
         const E& perRowFn = nullptr) {
         auto promise = QSharedPointer<QPromise<bool>>::create();
         auto future = promise->future();
+#if NEXTAPP_DB_COPY_BATCH_DATA
+        auto data_copy = QSharedPointer<T>::create(data);
+        const T *data_ptr = data_copy.data();
+#else
+        QSharedPointer<T> data_copy;
+        const T *data_ptr = &data;
+#endif
+        const auto row_count = data_ptr->size();
+
+        auto finish = [](const QSharedPointer<QPromise<bool>>& promise, bool success) {
+            promise->start();
+            promise->addResult(success);
+            promise->finish();
+        };
+
+        LOG_TRACE_N << "Preparing database batch operation. rows=" << row_count
+                    << ", copy_data=" << static_cast<bool>(NEXTAPP_DB_COPY_BATCH_DATA);
 
         co_await waitForTransactionAccess(transaction_token);
 
         // Wrap the operation in a lambda that will be executed in the DBs thread
-        QMetaObject::invokeMethod(this, [&]() {
-            auto success = true;
-            QSqlQuery query{*db_};
-            query.prepare(insertQurey);
+        LOG_TRACE_N << "Queueing database batch operation. rows=" << row_count;
+        const auto queued = QMetaObject::invokeMethod(this,
+            [this, promise, finish, insertQurey, deleteQuery, data_copy, data_ptr,
+             getParams, isDeleted, getId, perRowFn, row_count]() mutable {
+                try {
+                    LOG_TRACE_N << "Executing database batch operation. rows=" << row_count;
+                    auto success = true;
+                    QSqlQuery query{*db_};
+                    if (!query.prepare(insertQurey)) {
+                        LOG_ERROR_N << "Failed to prepare database batch query: " << insertQurey
+                                    << ", db=" << query.lastError().databaseText()
+                                    << ", driver=" << query.lastError().driverText();
+                        finish(promise, false);
+                        return;
+                    }
 
-            for (const auto &row : data) {
-                if (isDeleted(row)) {
-                    QList<QVariant> params;
-                    params << getId(row);
-                    (void) queryImpl_(deleteQuery, &params);
-                    continue;
-                };
+                    for (const auto &row : *data_ptr) {
+                        if (isDeleted(row)) {
+                            QList<QVariant> params;
+                            params << getId(row);
+                            (void) queryImpl_(deleteQuery, &params);
+                            continue;
+                        };
 
-                bindParams(query, getParams(row));
-                if (batchQueryImpl(query)) {
-                    if constexpr (!std::is_same_v<E, std::nullptr_t>) {
-                        if (!perRowFn(row)) {
+                        bindParams(query, getParams(row));
+                        if (batchQueryImpl(query)) {
+                            if constexpr (!std::is_same_v<E, std::nullptr_t>) {
+                                if (!perRowFn(row)) {
+                                    success = false;
+                                }
+                            }
+                        } else {
                             success = false;
                         }
                     }
-                } else {
-                    success = false;
+                    if (success) {
+                        LOG_TRACE_N << "Database batch operation completed. rows=" << row_count;
+                    } else {
+                        LOG_DEBUG_N << "Database batch operation completed with failures. rows=" << row_count;
+                    }
+                    finish(promise, success);
+                } catch (const std::exception& e) {
+                    LOG_ERROR_N << "Exception while executing database batch: " << e.what();
+                    finish(promise, false);
+                } catch (...) {
+                    LOG_ERROR_N << "Unknown exception while executing database batch";
+                    finish(promise, false);
                 }
-            }
-            promise->start();
-            promise->addResult(success);
-            promise->finish();
-        });
+            },
+            Qt::QueuedConnection);
+        if (!queued) {
+            LOG_ERROR_N << "Failed to queue database batch operation. rows=" << row_count;
+            finish(promise, false);
+        }
 
         QFutureWatcher<bool> watcher;
         watcher.setFuture(future);
