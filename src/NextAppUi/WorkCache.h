@@ -87,9 +87,10 @@ private:
     void updateSessionsDurations();
     QCoro::Task<bool> validateStoredWorkSessions();
     QCoro::Task<void> remove(const QUuid& id);
-    static Outcome updateOutcome(nextapp::pb::WorkSession &work);
+    Outcome updateOutcome(nextapp::pb::WorkSession &work);
 
     std::map<QUuid, std::shared_ptr<nextapp::pb::WorkSession>> items_;    
     std::vector<std::shared_ptr<nextapp::pb::WorkSession>> active_;
     QTimer *timer_ = {};
+    std::map<QString, QString> known_durations_;
 };

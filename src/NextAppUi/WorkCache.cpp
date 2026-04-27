@@ -327,6 +327,7 @@ void WorkCache::clear()
 {
     items_.clear();
     active_.clear();
+    known_durations_.clear();
 }
 
 QCoro::Task<std::vector<std::shared_ptr<nextapp::pb::WorkSession>>>
@@ -460,7 +461,9 @@ void WorkCache::updateSessionsDurations()
     bool changed = false;
     active_duration_changes_t changes;
     changes.reserve(active_.size());
+    std::set<QString> seen_ids;
     for(auto& ws : active_) {
+        seen_ids.insert(ws->id_proto());
         const auto outcome = updateOutcome(*ws);
         auto& change = changes.emplace_back();
         if (outcome.changed()) {
@@ -471,6 +474,10 @@ void WorkCache::updateSessionsDurations()
             }
         }
     }
+
+    std::erase_if(known_durations_, [&seen_ids](const auto& pair) {
+        return !seen_ids.contains(pair.first);
+    });
 
     if (changed) {
         LOG_TRACE_N << "Active duration changed. Emitting signal.";
@@ -486,6 +493,7 @@ QCoro::Task<void> WorkCache::remove(const QUuid &id)
     if (!res || !res->affected_rows.has_value() || res->affected_rows.value() != 1) {
         LOG_DEBUG_N << "Failed to delete work session: " << res.error();
     }
+    known_durations_.erase(id.toString(QUuid::WithoutBraces));
     co_return;
 }
 
@@ -622,9 +630,15 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
     }
 
     Outcome outcome;
+    auto duration_str = NextAppCore::toTime(work.duration());
+    if (known_durations_[work.id_proto()] != duration_str) {
+        LOG_TRACE_N << "Duration changed for session " << work.name() << " from " << known_durations_[work.id_proto()] << " to " << duration_str;
+        known_durations_[work.id_proto()] = duration_str;
+        outcome.duration = true;
+    }
+
     outcome.start = orig_start != (work.start() / 60);
     outcome.end = orig_end != (work.hasEnd() ? work.end() / 60 : 0);
-    outcome.duration = str_duration != NextAppCore::toTime(work.duration());
     outcome.paused = str_paused != NextAppCore::toTime(work.paused());
     outcome.name = orig_name != work.name();
 
