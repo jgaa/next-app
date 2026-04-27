@@ -102,6 +102,12 @@ CalendarCache::CalendarCache(RuntimeServices& runtime)
     : ServerSynchedCahce<nextapp::pb::TimeBlock, CalendarCache>{runtime}
     , runtime_{runtime}
 {
+    audio_timer_update_delay_.setSingleShot(true);
+    audio_timer_update_delay_.setInterval(500);
+    connect(&audio_timer_update_delay_, &QTimer::timeout, this, [this] {
+        setAudioTimers();
+    });
+
     connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate,
         [this](const std::shared_ptr<nextapp::pb::Update>& update) {
             onUpdate(update);
@@ -109,11 +115,11 @@ CalendarCache::CalendarCache(RuntimeServices& runtime)
 
     if (auto *core = dynamic_cast<NextAppCore*>(&runtime_)) {
         connect(core, &NextAppCore::settingsChanged, this, [this]{
-            setAudioTimers();
+            requestAudioTimerUpdate();
         });
 
         connect(core, &NextAppCore::currentDateChanged, this, [this]{
-            setAudioTimers();
+            requestAudioTimerUpdate();
         });
 
         connect(core, &NextAppCore::propertyChanged, this, [this](const QString& name){
@@ -242,7 +248,7 @@ QCoro::Task<void> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
 
     if (need_to_update_alarms) {
         LOG_DEBUG_N << "Updating audio timers after calendar update.";
-        co_await setAudioTimers();
+        requestAudioTimerUpdate();
     }
 
     if (need_to_update_actions_on_calendar) {
@@ -482,26 +488,35 @@ QCoro::Task<bool> CalendarCache::repairStoredTimeBlocks()
     co_return true;
 }
 
+void CalendarCache::requestAudioTimerUpdate()
+{
+    if (audio_timer_update_delay_.isActive()) {
+        LOG_TRACE_N << "Audio timer update is already scheduled.";
+        return;
+    }
+
+    audio_timer_update_delay_.start();
+}
+
 QCoro::Task<void> CalendarCache::setAudioTimers()
 {
     // For now, find the next audio-event and set a timer for that.
     // In the future, we may want to set a timer for all audio-events.
 
     // Make sure we only enter once.
-    static std::atomic_bool in_progress{false};
-    if (in_progress.exchange(true)) {
-        LOG_DEBUG_N << "Audio timers are already being set.";
-
-        // Try again after 2 seconds.
-        // There may have happened something after the current setAudioTimers() call fectched the data.
-        QTimer::singleShot(2000, this, [this] {
-            setAudioTimers();
-        });
+    if (audio_timers_in_progress_) {
+        audio_timer_update_pending_ = true;
+        LOG_TRACE_N << "Audio timers are already being set; queued one follow-up update.";
         co_return;
     }
+    audio_timers_in_progress_ = true;
 
-    ScopedExit exit_scope{[&] {
-        in_progress.store(false);
+    ScopedExit exit_scope{[this] {
+        audio_timers_in_progress_ = false;
+        if (audio_timer_update_pending_) {
+            audio_timer_update_pending_ = false;
+            requestAudioTimerUpdate();
+        }
     }};
 
     LOG_TRACE_N << "Setting audio timers...";
@@ -617,7 +632,7 @@ void CalendarCache::onAudioEvent()
     }
 
     // Set the timer for the next event
-    setAudioTimers();
+    requestAudioTimerUpdate();
 }
 
 QCoro::Task<void> CalendarCache::updateActionsOnCalendarCache()

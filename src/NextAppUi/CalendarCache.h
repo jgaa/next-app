@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QList>
+#include <QTimer>
 
 #include "nextapp.qpb.h"
 
@@ -67,6 +68,7 @@ private:
     QCoro::Task<bool> finalizeSyncPersistence() override;
     QCoro::Task<bool> loadFromCache() override;
     QCoro::Task<bool> repairStoredTimeBlocks();
+    void requestAudioTimerUpdate();
     QCoro::Task<void> setAudioTimers();
     void onAudioEvent();
     QCoro::Task<void> updateActionsOnCalendarCache();
@@ -92,5 +94,8 @@ private:
     QDate current_calendar_date_{QDate::currentDate()};
     bool is_updating_actions_cache_{false};
     bool update_actions_cache_pending_{false};
+    bool audio_timers_in_progress_{false};
+    bool audio_timer_update_pending_{false};
+    QTimer audio_timer_update_delay_;
     RuntimeServices& runtime_;
 };
