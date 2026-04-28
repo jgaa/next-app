@@ -14,6 +14,7 @@
 #include <QSharedPointer>
 #include <QSqlDatabase>
 #include <QSqlQuery>
+#include <QSqlError>
 #include <QFutureWatcher>
 #include <QtConcurrent>
 #include "qcorotask.h"
