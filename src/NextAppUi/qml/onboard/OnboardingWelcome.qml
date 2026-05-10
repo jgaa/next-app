@@ -5,7 +5,6 @@ import NextAppUi
 import Nextapp.Models
 
 ColumnLayout  {
-    anchors.fill: parent
     spacing: 20
     signal nextClicked()
 
@@ -54,4 +53,3 @@ ColumnLayout  {
         Layout.preferredHeight: 20
     }
 }
-

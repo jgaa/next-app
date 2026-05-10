@@ -8,7 +8,6 @@ import Nextapp.Models
 
 ColumnLayout  {
     id: root
-    anchors.fill: parent
     spacing: 20
     property bool accepted : false
     signal nextClicked()

@@ -19,7 +19,7 @@ Dialog {
     property string parentUuid: NaMainTreeModel.selected
     property string currentUuid: ""
     property var kinds: ["folder", "organization", "person", "project", "task"]
-    property string icon: "../icons/folder/.svg"
+    property string icon: "qrc:/qt/qml/NextAppUi/icons/folder.svg"
     property alias excluded: excluded.checked
 
     x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
@@ -128,14 +128,14 @@ Dialog {
                 }
 
                 onCurrentIndexChanged: {
-                    if (currentIndex >= 0 || currentIndex >= kinds.length) {
+                    if (currentIndex >= 0 && currentIndex < kinds.length) {
                         root.kind = kinds[currentIndex]
                     } else {
                         root.kind = kinds[0]
                     }
 
                     // console.log("root.kind is ", root.kind)
-                    root.icon = "../icons/" + root.kind + ".svg"
+                    root.icon = "qrc:/qt/qml/NextAppUi/icons/" + root.kind + ".svg"
                 }
             }
 
@@ -195,4 +195,3 @@ Dialog {
         close()
     }
 }
-

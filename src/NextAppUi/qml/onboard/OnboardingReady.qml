@@ -8,7 +8,6 @@ import Nextapp.Models
 
 ColumnLayout  {
     id: root
-    anchors.fill: parent
     spacing: 20
     property bool newUser: false
     signal nextClicked()
@@ -94,4 +93,3 @@ ColumnLayout  {
         Layout.preferredHeight: 20
     }
 }
-

@@ -34,6 +34,11 @@ Rectangle {
         treeView.positionViewAtRow(treeView.rowAtIndex(ix), TableView.Visible)
     }
 
+    function iconSourceForKind(kind) {
+        const safeKind = kind && kind.length > 0 ? kind : "generic_file"
+        return "qrc:/qt/qml/NextAppUi/icons/" + safeKind + ".svg"
+    }
+
     ColumnLayout {
         anchors.fill: parent
 
@@ -181,7 +186,7 @@ Rectangle {
                                 id: kindIcon
                                 Layout.preferredWidth: root.iconSize
                                 Layout.fillWidth: false
-                                source:  "../icons/" + treeDelegate.kind + ".svg"
+                                source: root.iconSourceForKind(treeDelegate.kind)
                                 sourceSize.width: root.iconFontSize
                                 sourceSize.height: root.iconFontSize
                                 fillMode: Image.PreserveAspectFit
