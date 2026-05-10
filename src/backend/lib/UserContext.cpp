@@ -1312,7 +1312,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         }
 
         shared_ptr<TenantPlan> tenant_plan;
-        if (server_.config().payment.enable_plan) {
+        if (server_.config().payment.enable_plan && !row.at(PLAN).is_null()) {
             tenant_plan = make_shared<TenantPlan>();
             tenant_plan->plan = getPlan(row.at(PLAN).as_string());
             if (row.at(PLAN_UPDATED).is_datetime()) {

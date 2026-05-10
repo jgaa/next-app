@@ -1571,6 +1571,16 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v28_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        "ALTER TABLE tenant MODIFY COLUMN plan VARCHAR(32) NULL DEFAULT 'trial'",
+
+        "UPDATE tenant SET plan = NULL WHERE system_tenant = 1",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -1599,6 +1609,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v25_upgrade,
         v26_upgrade,
         v27_upgrade,
+        v28_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
@@ -1622,7 +1633,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         const auto user_name = format("admin-{}", to_string(user_id));
 
         // Add tenant
-        co_await handle.exec("INSERT INTO tenant (id, name, kind, system_tenant) VALUES (?, ?, 'super', 1)", tenant_id, tenant_name);
+        co_await handle.exec("INSERT INTO tenant (id, name, kind, system_tenant, plan) VALUES (?, ?, 'super', 1, NULL)", tenant_id, tenant_name);
         // Add user
         co_await handle.exec("INSERT INTO user (id, tenant, name, kind, system_user) VALUES (?, ?, ?, 'super', 1)", user_id, tenant_id, user_name);
     }
