@@ -16,6 +16,7 @@
 
 #include "nextapp/Server.h"
 #include "nextapp/GrpcServer.h"
+#include "nextapp/Plans.h"
 #include "nextapp/logging.h"
 #include "nextapp/util.h"
 
@@ -61,6 +62,17 @@ boost::asio::awaitable<void> Server::initDb() {
     }
 }
 
+boost::asio::awaitable<void> Server::startPaymentServiceClient()
+{
+    if (!config().payment.enable_plan) {
+        LOG_INFO << "Plans and payment service client are disabled.";
+        co_return;
+    }
+
+    plans_ = std::make_shared<Plans>(*this);
+    co_await plans_->connect();
+}
+
 void Server::run()
 {
     assert(db_);
@@ -83,7 +95,11 @@ void Server::run()
                     google_pusher_ = jgaa::cpp_push::createPusherForGoogle(config().push, ctx_);
                 }
             }
+            co_await startPaymentServiceClient();
             co_await startGrpcService();
+            if (plans_) {
+                co_await plans_->syncPlans();
+            }
             co_await prepareMetricsAuth();
             co_await onMetricsTimer();
         }, boost::asio::use_future).get();
@@ -133,6 +149,10 @@ void Server::stop()
     done_ = true;
     if (grpc_service_) {
         grpc_service_->stop();
+    }
+    if (plans_) {
+        plans_->shutdown();
+        plans_.reset();
     }
     if (db_) {
         LOG_DEBUG << "Closing database connections...";

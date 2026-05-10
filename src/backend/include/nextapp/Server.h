@@ -23,6 +23,8 @@ namespace grpc {
 class GrpcServer;
 }
 
+class Plans;
+
 class Server {
 public:
     static constexpr uint latest_version = 27;
@@ -134,6 +136,7 @@ private:
     boost::asio::awaitable<void> createDb(const BootstrapOptions& opts);
     boost::asio::awaitable<void> upgradeDbTables(uint version);
     boost::asio::awaitable<void> loadCertAuthority();
+    boost::asio::awaitable<void> startPaymentServiceClient();
     boost::asio::awaitable<void> startGrpcService();
     boost::asio::awaitable<void> resetMetricsPassword(jgaa::mysqlpool::Mysqlpool::Handle& handle);
     boost::asio::awaitable<void> prepareMetricsAuth();
@@ -162,6 +165,7 @@ private:
     std::string server_id_;
     std::string metrics_auth_hash_;
     std::shared_ptr<jgaa::cpp_push::Pusher> google_pusher_;
+    std::shared_ptr<Plans> plans_;
 };
 
 template <ProtoMessage T>

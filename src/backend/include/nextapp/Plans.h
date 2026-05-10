@@ -1,0 +1,117 @@
+#pragma once
+
+#include <memory>
+#include <string>
+#include <unordered_map>
+
+#include <boost/asio.hpp>
+
+#include <grpcpp/grpcpp.h>
+
+#include "payments/v1/payments.grpc.pb.h"
+
+#include "nextapp/config.h"
+#include "nextapp/error_mapping.h"
+#include "nextapp/logging.h"
+#include "nextapp/util.h"
+
+namespace nextapp {
+
+class Server;
+
+class Plans {
+public:
+    explicit Plans(Server& server);
+    ~Plans();
+
+    boost::asio::awaitable<void> connect();
+    void shutdown();
+
+    bool isConnected() const noexcept {
+        return static_cast<bool>(stub_);
+    }
+
+    boost::asio::awaitable<payments::v1::CreateCheckoutContextResponse>
+    createCheckoutContext(payments::v1::CreateCheckoutContextRequest request);
+
+    boost::asio::awaitable<payments::v1::GetEntitlementResponse>
+    getEntitlement(payments::v1::GetEntitlementRequest request);
+
+    boost::asio::awaitable<payments::v1::GetEntitlementsResponse>
+    getEntitlements(payments::v1::GetEntitlementsRequest request);
+
+    boost::asio::awaitable<payments::v1::ConfirmExternalPurchaseResponse>
+    confirmExternalPurchase(payments::v1::ConfirmExternalPurchaseRequest request);
+
+    boost::asio::awaitable<payments::v1::RegisterGooglePlayPurchaseResponse>
+    registerGooglePlayPurchase(payments::v1::RegisterGooglePlayPurchaseRequest request);
+
+    boost::asio::awaitable<payments::v1::GetPlansResponse>
+    getPlans(payments::v1::GetPlansRequest request);
+
+
+    boost::asio::awaitable<void> syncPlans();
+
+private:
+    template <ProtoMessage ReplyT, ProtoMessage ReqT, typename T>
+    struct CallData {
+        CallData(ReqT&& req, T& self)
+            : request{std::forward<ReqT>(req)}, self_{std::move(self)} {}
+
+        ReqT request;
+        ::grpc::ClientContext ctx;
+        ReplyT reply;
+        std::remove_cvref_t<T> self_;
+    };
+
+    template <ProtoMessage ReplyT, ProtoMessage ReqT, typename CompletionToken>
+    auto callRpc(
+        ReqT request,
+        void (::payments::v1::PaymentsService::Stub::async::*call)(
+            ::grpc::ClientContext* context,
+            const ReqT* request,
+            ReplyT* response,
+            std::function<void(::grpc::Status)>),
+        CompletionToken&& token) {
+
+        return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, ReplyT)>(
+            [this, request = std::move(request), call](auto& self) mutable {
+                auto cd = std::make_shared<CallData<ReplyT, ReqT, decltype(self)>>(std::move(request), self);
+
+                auto fn = [this, cd](const ::grpc::Status& status) mutable {
+                    boost::system::error_code ec;
+                    if (!status.ok()) {
+                        ec = make_error_code(status.error_code());
+                    }
+
+                    LOG_TRACE << "Payment RPC completed. Status: " << status.error_message();
+                    LOG_TRACE << "Reply: " << toJson(cd->reply, logProtobufMode());
+                    cd->self_.complete(ec, cd->reply);
+                };
+
+                if (!stub_) {
+                    cd->self_.complete(make_error_code(::grpc::StatusCode::UNAVAILABLE), cd->reply);
+                    return;
+                }
+
+                (stub_->async()->*call)(&cd->ctx, &cd->request, &cd->reply,
+                                        [fn = std::move(fn)](const ::grpc::Status& status) mutable {
+                                            fn(status);
+                                        });
+            },
+            token);
+    }
+
+    const PaymentOptions& config() const noexcept;
+    int logProtobufMode() const noexcept;
+    std::string grpcServerAddress() const;
+    std::shared_ptr<::grpc::ChannelCredentials> createCredentials() const;
+
+    Server& server_;
+    std::shared_ptr<::grpc::Channel> channel_;
+    std::unique_ptr<payments::v1::PaymentsService::Stub> stub_;
+    std::atomic_bool is_syncing_plans_{false};
+    std::unordered_map<std::string, int32_t> synced_plan_versions_;
+};
+
+} // namespace nextapp

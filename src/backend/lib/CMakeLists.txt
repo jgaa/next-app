@@ -3,6 +3,7 @@ project(nalib VERSION ${NEXTAPP_VERSION} LANGUAGES CXX)
 add_library(${PROJECT_NAME}
     ${NEXTAPP_BACKEND}/include/nextapp/GrpcServer.h
     ${NEXTAPP_BACKEND}/include/nextapp/Metrics.h
+    ${NEXTAPP_BACKEND}/include/nextapp/Plans.h
     ${NEXTAPP_BACKEND}/include/nextapp/Server.h
     ${NEXTAPP_BACKEND}/include/nextapp/UserContext.h
     ${NEXTAPP_BACKEND}/include/nextapp/certs.h
@@ -17,6 +18,7 @@ add_library(${PROJECT_NAME}
     Server.cpp
     UserContext.cpp
     certs.cpp
+    grpc/Plans.cpp
     grpc/Actions.cpp
     grpc/Calendar.cpp
     grpc/GreenDays.cpp
@@ -49,7 +51,7 @@ message("PROTO_GENERATED_INCLUDE_PATH: ${PROTO_GENERATED_INCLUDE_PATH}")
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
-add_dependencies(${PROJECT_NAME} yahat mysqlpool logfault common proto ${GRPC_LIBS} date-tz)
+add_dependencies(${PROJECT_NAME} yahat mysqlpool logfault common proto payments_proto ${GRPC_LIBS} date-tz)
 
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
@@ -59,6 +61,7 @@ target_link_libraries(${PROJECT_NAME}
         $<BUILD_INTERFACE:common>
         $<BUILD_INTERFACE:date-tz>
         $<BUILD_INTERFACE:proto>
+        $<BUILD_INTERFACE:payments_proto>
         $<BUILD_INTERFACE:mysqlpool>
         $<BUILD_INTERFACE:yahat>
         $<BUILD_INTERFACE:CppPush::CppPush>

@@ -19,8 +19,8 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
 # set_property(TARGET boost PROPERTY
 #     INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
 
-add_subdirectory(lib)
 add_subdirectory(payments_proto)
+add_subdirectory(lib)
 add_subdirectory(server)
 
 if (NEXTAPP_WITH_TESTS)

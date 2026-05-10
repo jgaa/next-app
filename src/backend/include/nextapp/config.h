@@ -36,6 +36,20 @@ struct PaymentOptions {
      *  Enables tenant limits and payed plans.
      */
     bool enable_plan = false;
+
+    /*! Payment service gRPC endpoint URL.
+     *
+     *  Examples:
+     *  - http://127.0.0.1:10421
+     *  - https://payments.internal:10443
+     */
+    std::string service_url;
+    std::string product_id = "nextapp";
+
+    /*! TLS PEM files used when connecting to the payment service over https. */
+    std::string tls_ca;
+    std::string tls_cert;
+    std::string tls_key;
 };
 
 struct ServerOptions {

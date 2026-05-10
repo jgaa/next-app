@@ -253,6 +253,16 @@ int main(int argc, char* argv[]) {
         payment.add_options()
             ("enable-plans", po::bool_switch(&config.payment.enable_plan),
              "Enable Plans feature (limits tenants and users within the bounds of their active plan.)")
+            ("payment-service", po::value(&config.payment.service_url),
+             "Payment service gRPC URL. Required when --enable-plans is provided.")
+            ("payment-product-id", po::value(&config.payment.product_id)->default_value(config.payment.product_id),
+             "Product id to use when querying the payment service for plans.")
+            ("payment-service-tls-ca", po::value(&config.payment.tls_ca),
+             "PEM CA file for the payment service gRPC client. Required for https payment service URLs.")
+            ("payment-service-tls-cert", po::value(&config.payment.tls_cert),
+             "PEM client certificate file for the payment service gRPC client. Required for https payment service URLs.")
+            ("payment-service-tls-key", po::value(&config.payment.tls_key),
+             "PEM client private key file for the payment service gRPC client. Required for https payment service URLs.")
             ;
 
         po::options_description metrics("Metrics");
@@ -501,6 +511,21 @@ int main(int argc, char* argv[]) {
                       << "Branch " << GIT_BRANCH << endl
                       << "Commit " << GIT_COMMIT_ID << endl;
             return -3;
+        }
+
+        if (config.payment.enable_plan) {
+            if (config.payment.service_url.empty()) {
+                cerr << appname << " Missing required option --payment-service when --enable-plans is provided." << endl;
+                return -8;
+            }
+
+            if (config.payment.service_url.starts_with("https://")) {
+                if (config.payment.tls_ca.empty() || config.payment.tls_cert.empty() || config.payment.tls_key.empty()) {
+                    cerr << appname << " Options --payment-service-tls-ca, --payment-service-tls-cert and "
+                         << "--payment-service-tls-key are required for https payment service URLs." << endl;
+                    return -8;
+                }
+            }
         }
 
         LOG_TRACE_N << "Getting ready...";
