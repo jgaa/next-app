@@ -127,6 +127,11 @@ public:
         return google_pusher_;
     }
 
+    std::shared_ptr<Plans> plans() const noexcept {
+        assert(plans_);
+        return plans_;
+    }
+
 private:
     void handleSignals();
     void initCtx(size_t numThreads);
@@ -148,6 +153,7 @@ private:
 
     void createCa();
     void createServerCert();
+    void startPlanSyncSchedule();
 
     Metrics metrics_;
     boost::asio::io_context ctx_;
@@ -166,6 +172,7 @@ private:
     std::string metrics_auth_hash_;
     std::shared_ptr<jgaa::cpp_push::Pusher> google_pusher_;
     std::shared_ptr<Plans> plans_;
+    boost::asio::steady_timer update_plan_timer_{ctx_};
 };
 
 template <ProtoMessage T>

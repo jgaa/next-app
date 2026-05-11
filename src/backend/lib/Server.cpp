@@ -70,6 +70,7 @@ boost::asio::awaitable<void> Server::startPaymentServiceClient()
     }
 
     plans_ = std::make_shared<Plans>(*this);
+    co_await plans_->loadActivePlans();
     co_await plans_->connect();
 }
 
@@ -98,7 +99,13 @@ void Server::run()
             co_await startPaymentServiceClient();
             co_await startGrpcService();
             if (plans_) {
-                co_await plans_->syncPlans();
+                try {
+                    co_await plans_->syncPlans();
+                    co_await plans_->loadActivePlans();
+                } catch (const std::exception& ex) {
+                    LOG_WARN_N << "Caught exception while syncing payment plans / fetching active plans during startup: " << ex.what();
+                }
+                startPlanSyncSchedule();
             }
             co_await prepareMetricsAuth();
             co_await onMetricsTimer();
@@ -381,6 +388,37 @@ void Server::startMetricsTimer()
             }
         }
     }, asio::detached);
+}
+
+void Server::startPlanSyncSchedule()
+{
+    if (!plans_) {
+        return;
+    }
+
+    if (auto seconds = config().payment.plan_sync_interval_seconds) {
+        asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+            auto scope = metrics().asio_worker_threads().scoped();
+            while (!ctx_.stopped()) {
+                LOG_DEBUG_N << "Waiting for " << seconds
+                            << " seconds until the next payment plan sync...";
+                co_await asio::steady_timer{ctx_,
+                    std::chrono::seconds(seconds)
+                }.async_wait(asio::use_awaitable);
+
+                try {
+                    LOG_INFO_N << "Starting payment plan sync...";
+                    co_await plans_->syncPlans();
+                    co_await plans_->loadActivePlans();
+                } catch (const std::exception& ex) {
+                    LOG_WARN_N << "Caught exception during plan sync: " << ex.what();
+                }
+            }
+        }, asio::detached);
+    } else {
+        LOG_DEBUG << "Plan sync timer is disabled.";
+        return;
+    }
 }
 
 string Server::hashPassword(std::string_view passwd)

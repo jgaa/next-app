@@ -50,6 +50,14 @@ struct PaymentOptions {
     std::string tls_ca;
     std::string tls_cert;
     std::string tls_key;
+
+    /*! Interval in seconds for syncing plans with the payment service.
+     *
+     *  This is to make sure we have up to date information about the plans, and can enforce limits correctly.
+     *
+     *  0 disables the feature and plans will only be synced when the server starts up.
+     */
+    uint32_t plan_sync_interval_seconds = 60 * 60 * 3;
 };
 
 struct ServerOptions {

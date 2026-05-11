@@ -2,8 +2,12 @@
 #include <deque>
 #include <array>
 
+#include "nextapp/Plans.h"
 #include "shared_grpc_server.h"
 #include "nextapp/logging.h"
+
+using namespace std;
+using namespace std::string_literals;
 
 namespace nextapp::grpc {
 
@@ -92,7 +96,7 @@ std::array<pb::ActionCategory, 4> getDefaultActionCategories()
                 enum Cols {ID, STATE};
                 pb::Tenant::State state = pb::Tenant::State::Tenant_State_SUSPENDED;
                 auto tid = res.rows().front().at(ID).as_string();
-                pb::Tenant::State_Parse(res.rows().front().at(STATE).as_string(), &state);
+                (void)pb::Tenant::State_Parse(res.rows().front().at(STATE).as_string(), &state);
                 if (state == pb::Tenant::State::Tenant_State_PENDING_ACTIVATION) {
                     // Remove it.
                     LOG_DEBUG << "Removing tenant " << tid << " in pending state because of new tenant creation re-using name "
@@ -111,7 +115,7 @@ std::array<pb::ActionCategory, 4> getDefaultActionCategories()
                     auto tid = r.at(TENANT).as_string();
                     pb::Tenant::State state = pb::Tenant::State::Tenant_State_SUSPENDED;
                     const auto state_name = r.at(STATE).as_string();
-                    pb::Tenant::State_Parse(toUpper(state_name), &state);
+                    (void)pb::Tenant::State_Parse(toUpper(state_name), &state);
                     auto uid = r.at(USER).as_string();
                     if (state == pb::Tenant::State::Tenant_State_PENDING_ACTIVATION) {
                         if (removed_tenants.insert(tid).second) {
@@ -134,14 +138,25 @@ std::array<pb::ActionCategory, 4> getDefaultActionCategories()
 
             auto trx = co_await rctx.dbh->transaction();
 
+            std::optional<string> plan;
+            if (owner_.server().config().payment.enable_plan) {
+                if (auto p = owner_.server().plans()) {
+                    plan  = p->getPlanForSignup();
+                    LOG_TRACE_N << "Assigning plan " << (plan ? *plan : "[NULL]"s) << " to tenant " << tenant.name() << " during creation";
+                } else {
+                    LOG_ERROR_N << "Payment plans are enabled but failed to load plans from payment service. No plan will be assigned to tenant " << tenant.uuid() << " during creation.";
+                }
+            }
+
             co_await owner_.server().db().exec(
-                "INSERT INTO tenant (id, name, kind, descr, state, properties) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO tenant (id, name, kind, descr, state, properties, plan) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 tenant.uuid(),
                 tenant.name(),
                 toLower(pb::Tenant::Kind_Name(tenant.kind())),
                 tenant.descr(),
                 toLower(pb::Tenant::State_Name(tenant.state())),
-                properties);
+                properties,
+                plan);
 
             LOG_INFO << "User " << cuser
                      << " has created tenant name=" << tenant.name() << ", id=" << tenant.uuid()

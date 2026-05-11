@@ -79,6 +79,69 @@ void Plans::shutdown()
     channel_.reset();
 }
 
+asio::awaitable<void> Plans::loadActivePlans()
+{
+    bool available{false};
+    if (!is_loading_plans_.compare_exchange_strong(available, true)) {
+        LOG_WARN_N << "Already loading plans. Skipping.";
+        // If it fails, the server will normally retry in the plan sync schedule,
+        // so we can just skip this load and wait for the next one.
+        co_return;
+    }
+    ScopedExit clear_syncing{[this] {
+        is_loading_plans_.store(false);
+    }};
+
+    auto snapshot = make_shared<ActivePlans>();
+    auto db = co_await server_.db().getConnection();
+
+    {
+        auto res = co_await db.exec(R"(SELECT name, max_users, max_devices, max_nodes, max_actions,
+            max_worksessions, max_time_blocks, mobile_only FROM plan WHERE active=TRUE ORDER BY name)");
+        enum Cols {
+            NAME,
+            MAX_USERS,
+            MAX_DEVICES,
+            MAX_NODES,
+            MAX_ACTIONS,
+            MAX_WORKSESSIONS,
+            MAX_TIME_BLOCKS,
+            MOBILE_ONLY
+        };
+
+        for (const auto& row : res.rows()) {
+            PlanProperties plan;
+            plan.max_users = row.at(MAX_USERS).as_int64();
+            plan.max_devices = row.at(MAX_DEVICES).as_int64();
+            plan.max_nodes = row.at(MAX_NODES).as_int64();
+            plan.max_actions = row.at(MAX_ACTIONS).as_int64();
+            plan.max_worksessions = row.at(MAX_WORKSESSIONS).as_int64();
+            plan.max_time_blocks = row.at(MAX_TIME_BLOCKS).as_int64();
+            plan.mobile_only = row.at(MOBILE_ONLY).as_int64() != 0;
+            snapshot->plans.emplace(row.at(NAME).as_string(), std::move(plan));
+        }
+    }
+
+    {
+        auto res = co_await db.exec(
+            "SELECT name, value FROM config WHERE name IN ('default_for_signup', 'default_for_free')");
+        enum Cols { NAME, VALUE };
+
+        for (const auto& row : res.rows()) {
+            const auto name = row.at(NAME).as_string();
+            const auto value = row.at(VALUE).as_string();
+            if (name == "default_for_signup") {
+                snapshot->default_for_signup = value;
+            } else if (name == "default_for_free") {
+                snapshot->default_for_free = value;
+            }
+        }
+    }
+
+    active_plans_.store(std::move(snapshot));
+    LOG_INFO << "Loaded active payment plan snapshot with " << active_plans_.load()->plans.size() << " plans.";
+}
+
 namespace {
 
 struct DbPlan {
@@ -110,7 +173,8 @@ int64_t getIntValue(const payments::v1::Plan& plan, string_view key)
     throw runtime_error{format("Missing required payment plan '{}' field '{}'", plan.plan_id(), key)};
 }
 
-bool getBoolValue(const payments::v1::Plan& plan, string_view key)
+bool getBoolValue(const payments::v1::Plan& plan, string_view key,
+                  std::optional<bool> defaultValue = {})
 {
     if (auto it = plan.values().find(string{key}); it != plan.values().end()) {
         const auto value = toLower(it->second);
@@ -124,6 +188,10 @@ bool getBoolValue(const payments::v1::Plan& plan, string_view key)
                                   it->second, plan.plan_id(), key)};
     }
 
+    if (defaultValue) {
+        return *defaultValue;
+    }
+
     throw runtime_error{format("Missing required payment plan '{}' field '{}'", plan.plan_id(), key)};
 }
 
@@ -135,7 +203,7 @@ DbPlan toDbPlan(const payments::v1::Plan& plan)
 
     DbPlan out;
     out.name = plan.plan_id();
-    out.active = getBoolValue(plan, "active");
+    out.active = getBoolValue(plan, "active", true);
     out.max_users = getIntValue(plan, "max_users");
     out.max_devices = getIntValue(plan, "max_devices");
     out.max_nodes = getIntValue(plan, "max_nodes");
@@ -285,6 +353,10 @@ boost::asio::awaitable<void> Plans::syncPlans()
         synced_plan_versions_[plan_id] = version;
     }
 
+    if (changed || config_updates || !active_plans_.load()) {
+        co_await loadActivePlans();
+    }
+
     if (changed) {
         co_await server_.grpc().sessionManager().loadPlans();
     }
@@ -293,6 +365,20 @@ boost::asio::awaitable<void> Plans::syncPlans()
              << " plans received, " << added << " added, " << updated
              << " updated, " << skipped_by_version << " skipped by version, "
              << config_updates << " config values updated.";
+}
+
+string Plans::getPlanForSignup() const
+{
+    if (const auto p = active_plans_.load()) {
+        if (!p->default_for_signup.empty()) {
+            return p->default_for_signup;
+        }
+        if (!p->default_for_free.empty()) {
+            return p->default_for_free;
+        }
+    }
+
+    throw runtime_error{"No default payment plan configured for new signups"};
 }
 
 asio::awaitable<payments::v1::CreateCheckoutContextResponse>
