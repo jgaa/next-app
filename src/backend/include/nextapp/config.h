@@ -45,6 +45,9 @@ struct PaymentOptions {
      */
     std::string service_url;
     std::string product_id = "nextapp";
+    std::string return_url;
+    std::string cancel_url;
+    std::string success_url;
 
     /*! TLS PEM files used when connecting to the payment service over https. */
     std::string tls_ca;
@@ -58,6 +61,7 @@ struct PaymentOptions {
      *  0 disables the feature and plans will only be synced when the server starts up.
      */
     uint32_t plan_sync_interval_seconds = 60 * 60 * 3;
+
 };
 
 struct ServerOptions {

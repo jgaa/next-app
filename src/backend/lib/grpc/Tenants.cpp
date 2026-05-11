@@ -2,7 +2,11 @@
 #include <deque>
 #include <array>
 
+#include <boost/url.hpp>
+
 #include "nextapp/Plans.h"
+#include "payments/v1/payments.pb.h"
+#include "payments/v1/payments.grpc.pb.h"
 #include "shared_grpc_server.h"
 #include "nextapp/logging.h"
 
@@ -739,7 +743,7 @@ ORDER BY t.id;
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
-            // TODO: Handle refresh
+            // TODO: Handle refresh to payment server for this tenant
 
             if (auto *p = reply->mutable_subscription()) {
                 *p = rctx.uctx->getSubscription();
@@ -754,9 +758,38 @@ ORDER BY t.id;
 {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-            //setError(*reply, pb::Error::NOT_FOUND, "Payments page is not available.");
+        const auto& pconf = owner_.server().config().payment;
+            if (!pconf.enable_plan) {
+                setError(*reply, pb::Error::INVALID_REQUEST, "Payments and plans are disabled");
+            }
+
+            ::payments::v1::CreateCheckoutContextRequest preq;
+            preq.set_product_id(pconf.product_id);
+            preq.set_tenant_id(rctx.uctx->tenantUuid());
+            preq.set_initial_seats(1);
+            preq.set_min_seats(1);
+            preq.set_max_seats(1);
+            preq.set_return_url(pconf.return_url);
+            preq.set_cancel_url(pconf.cancel_url);
+            preq.set_success_url(pconf.success_url);
+
+            // Throws on error, but should be handled by the unaryHandler wrapper
+            const auto checkout_context = co_await owner_.server().plans()->createCheckoutContext(preq);
+
+            // TODO: Do we need to use a different client reference id here to make requests idempotent?
+            preq.set_client_reference_id(to_string(rctx.session().sessionId()));
+
             if (auto *p = reply->mutable_paymentspage()) {
-                p->set_url("https://example.com");
+                boost::urls::url url{checkout_context.hosted_page_url()};
+
+                url.params().set(
+                    "checkout_context_id",
+                    checkout_context.checkout_context_id()
+                    );
+                std::string safe_url{url.buffer()};
+                p->set_url(safe_url);
+
+                LOG_TRACE_EX(rctx) << "Generated checkout URL " << safe_url;
             }
             co_return;
         }, __func__);

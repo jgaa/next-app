@@ -13,6 +13,7 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED NO_MODULE COMPONENTS
      json
      program_options
      stacktrace_basic
+     url
      )
 
 #add_library(boost INTERFACE IMPORTED)

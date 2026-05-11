@@ -109,10 +109,14 @@ private:
                     boost::system::error_code ec;
                     if (!status.ok()) {
                         ec = make_error_code(status.error_code());
+                        LOG_WARN_N << "Payment RPC failed. Status code: "
+                                   << static_cast<int>(status.error_code())
+                                   << ", message: " << status.error_message();
+                    } else {
+                        LOG_TRACE << "Payment RPC completed. Status: " << status.error_message();
+                        LOG_TRACE << "Reply: " << toJson(cd->reply, logProtobufMode());
                     }
 
-                    LOG_TRACE << "Payment RPC completed. Status: " << status.error_message();
-                    LOG_TRACE << "Reply: " << toJson(cd->reply, logProtobufMode());
                     cd->self_.complete(ec, cd->reply);
                 };
 

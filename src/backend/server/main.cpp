@@ -257,6 +257,12 @@ int main(int argc, char* argv[]) {
              "Payment service gRPC URL. Required when --enable-plans is provided.")
             ("payment-product-id", po::value(&config.payment.product_id)->default_value(config.payment.product_id),
              "Product id to use when querying the payment service for plans.")
+            ("payment-return-url", po::value(&config.payment.return_url),
+             "URL Stripe redirects to after the user returns from payment or subscription management.")
+            ("payment-cancel-url", po::value(&config.payment.cancel_url),
+             "URL Stripe redirects to when the user cancels payment or subscription management.")
+            ("payment-success-url", po::value(&config.payment.success_url),
+             "URL Stripe redirects to after successful payment or subscription management.")
             ("payment-service-tls-ca", po::value(&config.payment.tls_ca),
              "PEM CA file for the payment service gRPC client. Required for https payment service URLs.")
             ("payment-service-tls-cert", po::value(&config.payment.tls_cert),
