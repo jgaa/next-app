@@ -124,12 +124,21 @@ asio::awaitable<void> Plans::loadActivePlans()
 
     {
         auto res = co_await db.exec(
-            "SELECT name, value FROM config WHERE name IN ('default_for_signup', 'default_for_free')");
+            "SELECT name, value FROM config WHERE name IN ('trial_days', 'default_for_signup', 'default_for_free')");
         enum Cols { NAME, VALUE };
 
         for (const auto& row : res.rows()) {
             const auto name = row.at(NAME).as_string();
             const auto value = row.at(VALUE).as_string();
+            if (name == "trial_days") {
+                size_t pos = 0;
+                auto parsed = stoul(value, &pos);
+                if (pos != value.size()) {
+                    throw runtime_error{format("Invalid trial_days value '{}' in config table", value)};
+                }
+                snapshot->trial_days = static_cast<uint32_t>(parsed);
+                continue;
+            }
             if (name == "default_for_signup") {
                 snapshot->default_for_signup = value;
             } else if (name == "default_for_free") {
@@ -271,7 +280,6 @@ boost::asio::awaitable<void> Plans::syncPlans()
     size_t updated = 0;
     size_t skipped_by_version = 0;
     bool changed = false;
-    optional<string> trial_days;
     unordered_map<string, int32_t> processed_versions;
 
     for (const auto& remote_plan : response.plans()) {
@@ -284,12 +292,6 @@ boost::asio::awaitable<void> Plans::syncPlans()
             it != synced_plan_versions_.end() && it->second == remote_plan.version()) {
             ++skipped_by_version;
             continue;
-        }
-
-        if (auto it = remote_plan.values().find("trial_days"); it != remote_plan.values().end()) {
-            if (plan_id == "trial" || !trial_days) {
-                trial_days = it->second;
-            }
         }
 
         const auto db_plan = toDbPlan(remote_plan);
@@ -337,13 +339,12 @@ boost::asio::awaitable<void> Plans::syncPlans()
         if (res.rows().empty() || res.rows().front().front().as_string() != value) {
             co_await db.exec("INSERT INTO config (name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = ?",
                              key, value, value);
+            LOG_TRACE_N << "Updated config '" << key << "' to '" << value << "'";
             ++config_updates;
         }
     };
 
-    if (trial_days) {
-        co_await upsert_config("trial_days", *trial_days);
-    }
+    co_await upsert_config("trial_days", response.has_trial_days() ? to_string(response.trial_days()) : "0");
     co_await upsert_config("default_for_signup", response.default_for_signup());
     co_await upsert_config("default_for_free", response.default_for_free());
 
@@ -367,14 +368,14 @@ boost::asio::awaitable<void> Plans::syncPlans()
              << config_updates << " config values updated.";
 }
 
-string Plans::getPlanForSignup() const
+std::tuple<std::string/* plan id*/, bool /* is trial */> Plans::getPlanForSignup() const
 {
     if (const auto p = active_plans_.load()) {
         if (!p->default_for_signup.empty()) {
-            return p->default_for_signup;
+            return {p->default_for_signup, true};
         }
         if (!p->default_for_free.empty()) {
-            return p->default_for_free;
+            return {p->default_for_free, false};
         }
     }
 

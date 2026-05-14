@@ -143,24 +143,42 @@ std::array<pb::ActionCategory, 4> getDefaultActionCategories()
             auto trx = co_await rctx.dbh->transaction();
 
             std::optional<string> plan;
+            std::optional<string> trial_end;
             if (owner_.server().config().payment.enable_plan) {
                 if (auto p = owner_.server().plans()) {
-                    plan  = p->getPlanForSignup();
+                    auto [pfs, is_trial] = p->getPlanForSignup();
+                    plan = pfs;
                     LOG_TRACE_N << "Assigning plan " << (plan ? *plan : "[NULL]"s) << " to tenant " << tenant.name() << " during creation";
+
+                    if (is_trial) {
+                        if (auto pc = p->activePlans()) {
+                            if (pc->trial_days > 0) {
+                                auto trial_end_time = std::chrono::system_clock::now() + std::chrono::hours(24 * pc->trial_days);
+                                std::time_t trial_end_time_t = std::chrono::system_clock::to_time_t(trial_end_time);
+                                //Round up to midnight on the last day
+                                trial_end_time_t = ((trial_end_time_t + 86399) / 86400) * 86400;
+                                trial_end = toAnsiTime(trial_end_time_t);
+                                LOG_TRACE_N << "Setting trial end to " << *trial_end << " for tenant " << tenant.name() << " during creation";
+                            }
+                        } else {
+                            assert(false); // This should not happen, because getPlanForSignup should throw if there is no active plan for signup, and if there is an active plan for signup, there should be an active plans snapshot.
+                        }
+                    } // is_trial
                 } else {
                     LOG_ERROR_N << "Payment plans are enabled but failed to load plans from payment service. No plan will be assigned to tenant " << tenant.uuid() << " during creation.";
                 }
             }
 
             co_await owner_.server().db().exec(
-                "INSERT INTO tenant (id, name, kind, descr, state, properties, plan) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO tenant (id, name, kind, descr, state, properties, plan, plan_expires) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 tenant.uuid(),
                 tenant.name(),
                 toLower(pb::Tenant::Kind_Name(tenant.kind())),
                 tenant.descr(),
                 toLower(pb::Tenant::State_Name(tenant.state())),
                 properties,
-                plan);
+                plan,
+                trial_end);
 
             LOG_INFO << "User " << cuser
                      << " has created tenant name=" << tenant.name() << ", id=" << tenant.uuid()
@@ -780,16 +798,9 @@ ORDER BY t.id;
             preq.set_client_reference_id(to_string(rctx.session().sessionId()));
 
             if (auto *p = reply->mutable_paymentspage()) {
-                boost::urls::url url{checkout_context.hosted_page_url()};
+                p->set_url(checkout_context.hosted_page_url());
 
-                url.params().set(
-                    "checkout_context_id",
-                    checkout_context.checkout_context_id()
-                    );
-                std::string safe_url{url.buffer()};
-                p->set_url(safe_url);
-
-                LOG_TRACE_EX(rctx) << "Generated checkout URL " << safe_url;
+                LOG_TRACE_EX(rctx) << "Received checkout URL " << p->url();
             }
             co_return;
         }, __func__);

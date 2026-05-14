@@ -36,6 +36,7 @@ public:
 
     struct ActivePlans {
         std::map<std::string, PlanProperties> plans;
+        uint32_t trial_days = 0;
         std::string default_for_signup;
         std::string default_for_free;
     };
@@ -75,7 +76,7 @@ public:
         return active_plans_.load();
     }
 
-    std::string getPlanForSignup() const;
+    std::tuple<std::string/* plan id*/, bool /* is trial */> getPlanForSignup() const;
 
     boost::asio::awaitable<void> loadActivePlans();
 
