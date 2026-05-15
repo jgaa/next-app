@@ -62,6 +62,7 @@ struct PaymentOptions {
      */
     uint32_t plan_sync_interval_seconds = 60 * 60 * 3;
 
+    uint32_t grace_period_days = 7;
 };
 
 struct ServerOptions {

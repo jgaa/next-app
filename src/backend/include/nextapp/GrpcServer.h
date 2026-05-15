@@ -9,6 +9,8 @@
 #include <grpcpp/server_builder.h>
 #include <grpcpp/server_context.h>
 
+#include "nextapp/logging.h"
+
 #include "nextapp/Server.h"
 #include "nextapp/nextapp.h"
 #include "nextapp/config.h"

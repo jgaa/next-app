@@ -1,14 +1,13 @@
 
 
-#include "nextapp/UserContext.h"
 #include "nextapp/logging.h"
 #include "nextapp/util.h"
-
+#include "nextapp/UserContext.h"
 #include "nextapp/Server.h"
+#include "nextapp/GrpcServer.h"
 #include "nextapp/errors.h"
 #include "grpc/grpc_security_constants.h"
 
-#include "nextapp/logging.h"
 #include <limits>
 
 using namespace std;
@@ -308,6 +307,34 @@ boost::asio::awaitable<void> SessionManager::publishNotification(const pb::Notif
     co_return;
 }
 
+boost::asio::awaitable<void> SessionManager::refreshTenantPlansAndPublish(
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    std::string_view tenantUuid)
+{
+    vector<shared_ptr<UserContext>> users;
+    {
+        shared_lock lock{mutex_};
+        users.reserve(users_.size());
+        for (const auto& [_, uctx] : users_) {
+            if (uctx && uctx->tenantUuid() == tenantUuid) {
+                users.emplace_back(uctx);
+            }
+        }
+    }
+
+    for (auto& uctx : users) {
+        co_await uctx->reloadTenantPlan(dbh);
+
+        auto update = make_shared<pb::Update>();
+        update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+        *update->mutable_subscription() = uctx->getSubscription();
+
+        LOG_INFO_N << "Publishing refreshed subscription to user " << uctx->userUuid()
+                   << " on tenant " << tenantUuid;
+        co_await uctx->publish(update);
+    }
+}
+
 std::shared_ptr<Plan> SessionManager::getPlan(const std::string_view planName) const
 {
     // read lock to plan_mutex_
@@ -432,7 +459,7 @@ void UserContext::removePublisher(const boost::uuids::uuid &uuid)
 {
     LOG_TRACE_N << "Removing publisher " << uuid << " from user context for user " << userUuid();
     unique_lock lock{mutex_};
-    ranges::remove_if(publishers_, [uuid](const auto& p) {
+    (void)ranges::remove_if(publishers_, [uuid](const auto& p) {
         if (auto pub = p.lock()) {
             return pub->uuid() == uuid;
         } else {
@@ -581,6 +608,62 @@ pb::Subscription UserContext::getSubscription() const
     }
 
     return s;
+}
+
+boost::asio::awaitable<void> UserContext::reloadTenantPlan(jgaa::mysqlpool::Mysqlpool::Handle& dbh)
+{
+    if (!Server::instance().config().payment.enable_plan) {
+        setTenantPlan({});
+        co_return;
+    }
+
+    auto res = co_await dbh.exec(
+        "SELECT plan, plan_updated, plan_expires, plan_seats, grace_period_expires, account_expires "
+        "FROM tenant WHERE id = ?",
+        tenant_uuid_);
+
+    enum Cols {
+        PLAN,
+        PLAN_UPDATED,
+        PLAN_EXPIRES,
+        PLAN_SEATS,
+        GRACE_PERIOD_EXPIRES,
+        ACCOUNT_EXPIRES
+    };
+
+    if (res.rows().empty()) {
+        LOG_WARN_N << "Failed to reload tenant plan for missing tenant " << tenant_uuid_;
+        setTenantPlan({});
+        co_return;
+    }
+
+    const auto& row = res.rows().front();
+    if (row.at(PLAN).is_null()) {
+        setTenantPlan({});
+        co_return;
+    }
+
+    auto tenant_plan = make_shared<TenantPlan>();
+    tenant_plan->plan = Server::instance().grpc().sessionManager().getPlan(row.at(PLAN).as_string());
+    if (row.at(PLAN_UPDATED).is_datetime()) {
+        tenant_plan->updated_at = row.at(PLAN_UPDATED).as_datetime().as_time_point();
+    }
+    if (row.at(PLAN_EXPIRES).is_datetime()) {
+        tenant_plan->expires_at = row.at(PLAN_EXPIRES).as_datetime().as_time_point();
+    }
+    if (row.at(GRACE_PERIOD_EXPIRES).is_datetime()) {
+        tenant_plan->grace_expires_at = row.at(GRACE_PERIOD_EXPIRES).as_datetime().as_time_point();
+    }
+    if (row.at(ACCOUNT_EXPIRES).is_datetime()) {
+        tenant_plan->account_expires_at = row.at(ACCOUNT_EXPIRES).as_datetime().as_time_point();
+    }
+    if (row.at(PLAN_SEATS).is_int64()) {
+        tenant_plan->max_users = row.at(PLAN_SEATS).as_int64();
+    } else {
+        tenant_plan->max_users = 0;
+    }
+
+    setTenantPlan(std::move(tenant_plan));
 }
 
 boost::asio::awaitable<bool>

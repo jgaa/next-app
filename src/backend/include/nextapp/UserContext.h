@@ -454,6 +454,8 @@ public:
         tenant_plan_ = std::move(plan);
     }
 
+    boost::asio::awaitable<void> reloadTenantPlan(jgaa::mysqlpool::Mysqlpool::Handle& dbh);
+
     nextapp::pb::Subscription getSubscription() const;
 
 private:
@@ -536,6 +538,9 @@ public:
     boost::asio::awaitable<pb::UserSessions> listSessions();
 
     boost::asio::awaitable<void> publishNotification(const nextapp::pb::Notification& notification);
+    boost::asio::awaitable<void> refreshTenantPlansAndPublish(
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        std::string_view tenantUuid);
 
     std::shared_ptr<Plan> getPlan(const std::string_view planName) const;
 

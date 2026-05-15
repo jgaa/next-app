@@ -5,15 +5,36 @@
 
 #include <grpcpp/security/credentials.h>
 
+#include "nextapp/logging.h"
 #include "nextapp/Server.h"
 #include "nextapp/GrpcServer.h"
 #include "nextapp/error_mapping.h"
-#include "nextapp/logging.h"
+#include "grpc/shared_grpc_server.h"
+#include "mysqlpool/mysqlpool.h"
 
 using namespace std;
 namespace asio = boost::asio;
 
 namespace nextapp {
+
+namespace {
+
+uint64_t getUint64(const boost::mysql::field_view& field)
+{
+    if (field.is_uint64()) {
+        return field.as_uint64();
+    }
+    if (field.is_int64()) {
+        const auto value = field.as_int64();
+        if (value < 0) {
+            throw runtime_error{"Expected non-negative integer from database"};
+        }
+        return static_cast<uint64_t>(value);
+    }
+    throw runtime_error{"Expected integer value from database"};
+}
+
+} // namespace
 
 Plans::Plans(Server& server)
     : server_{server}
@@ -30,6 +51,357 @@ const PaymentOptions& Plans::config() const noexcept
 int Plans::logProtobufMode() const noexcept
 {
     return server_.config().options.log_protobuf_messages;
+}
+
+boost::asio::awaitable<void> Plans::downgradeTenantToFreePlan(
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const boost::uuids::uuid& tenant_id,
+    std::string_view reason)
+{
+    auto free_plan_res = co_await dbh.exec(
+        "SELECT name FROM plan WHERE name='free' AND active=TRUE LIMIT 1");
+    const auto has_free_plan = !free_plan_res.rows().empty();
+
+    auto tenant_res = co_await dbh.exec(R"(
+        SELECT
+            plan,
+            plan_updated,
+            plan_expires,
+            plan_seats,
+            grace_period_expires,
+            account_expires,
+            state
+        FROM tenant
+        WHERE id = ?
+    )", tenant_id);
+
+    if (tenant_res.rows().empty()) {
+        LOG_WARN_N << "Cannot downgrade tenant " << tenant_id
+                   << " because it does not exist. reason=" << reason;
+        co_return;
+    }
+
+    enum Cols {
+        PLAN,
+        PLAN_UPDATED,
+        PLAN_EXPIRES,
+        PLAN_SEATS,
+        GRACE_PERIOD_EXPIRES,
+        ACCOUNT_EXPIRES,
+        STATE
+    };
+
+    const auto& row = tenant_res.rows().front();
+    const auto current_plan = row.at(PLAN).is_null() ? string{} : string{row.at(PLAN).as_string()};
+    const auto current_plan_expires = row.at(PLAN_EXPIRES).is_datetime()
+        ? static_cast<uint64_t>(grpc::toTimeT(row.at(PLAN_EXPIRES).as_datetime()))
+        : uint64_t{};
+    const auto current_plan_seats = row.at(PLAN_SEATS).as_int64();
+    const auto current_grace_expires = row.at(GRACE_PERIOD_EXPIRES).is_datetime()
+        ? static_cast<uint64_t>(grpc::toTimeT(row.at(GRACE_PERIOD_EXPIRES).as_datetime()))
+        : uint64_t{};
+    const auto current_account_expires = row.at(ACCOUNT_EXPIRES).is_datetime()
+        ? static_cast<uint64_t>(grpc::toTimeT(row.at(ACCOUNT_EXPIRES).as_datetime()))
+        : uint64_t{};
+    const auto current_state = row.at(STATE).as_string();
+
+    const auto target_plan = has_free_plan ? string{"free"} : string{};
+    const auto target_state = has_free_plan ? string{"active"} : string{"suspended"};
+    constexpr int64_t target_plan_seats = 1;
+
+    if (current_plan == target_plan
+        && current_plan_expires == 0
+        && current_plan_seats == target_plan_seats
+        && current_grace_expires == 0
+        && current_account_expires == 0
+        && current_state == target_state) {
+        co_return;
+    }
+
+    co_await dbh.exec(R"(
+        UPDATE tenant
+        SET
+            plan = NULLIF(?, ''),
+            plan_updated = UTC_TIMESTAMP(),
+            plan_expires = NULL,
+            plan_seats = ?,
+            grace_period_expires = NULL,
+            account_expires = NULL,
+            state = ?
+        WHERE id = ?
+    )",
+        target_plan,
+        target_plan_seats,
+        target_state,
+        tenant_id);
+
+    if (has_free_plan) {
+        LOG_INFO << "Downgraded tenant " << tenant_id
+                 << " to free plan. reason=" << reason
+                 << " previous_plan=" << (current_plan.empty() ? "<null>" : current_plan)
+                 << " previous_state=" << current_state;
+    } else {
+        LOG_INFO << "Suspended tenant " << tenant_id
+                 << " because no active free plan exists. reason=" << reason
+                 << " previous_plan=" << (current_plan.empty() ? "<null>" : current_plan)
+                 << " previous_state=" << current_state;
+    }
+}
+
+boost::asio::awaitable<bool> Plans::updatePlanFromEntitlement(
+//    const payments::v1::EntitlementChangeEvent &event,
+    jgaa::mysqlpool::Mysqlpool::Handle &dbh,
+    const boost::uuids::uuid& tenant_id,
+    const payments::v1::Entitlement& entitlement)
+{
+    LOG_DEBUG_N << "Processing entitlement change for tenant "
+                << tenant_id << " version " << entitlement.version()
+                << " Plan  " << entitlement.plan_id()
+                << " product " << entitlement.product_id()
+                << " " << toJsonForLog(entitlement);
+
+    // Check version
+    {
+        auto res = co_await dbh.exec(
+            "SELECT version FROM entitlement WHERE tenant_id = ? AND product_id = ?",
+            tenant_id, entitlement.product_id());
+        if (!res.rows().empty()) {
+            const auto current_version = getUint64(res.rows().front().at(0));
+            if (entitlement.version() < current_version) {
+                LOG_WARN_N << "Ignoring stale entitlement change"
+                << " for tenant " << tenant_id
+                << " product " << entitlement.product_id()
+                << ": current version=" << current_version
+                << ", incoming version=" << entitlement.version();
+                co_return false;
+            }
+            if (entitlement.version() == current_version) {
+                LOG_WARN_N << "Overwriting entitlement with identical version "
+                << " tenant " << tenant_id
+                << " product " << entitlement.product_id()
+                << " version=" << entitlement.version();
+            }
+        }
+    }
+
+    // Update current entitlement
+    const auto valid_until_seconds = entitlement.has_valid_until()
+                                         ? entitlement.valid_until().seconds()
+                                         : int64_t{};
+    const auto updated_at_seconds = entitlement.has_updated_at()
+                                        ? entitlement.updated_at().seconds()
+                                        : int64_t{};
+    const auto plan_id = entitlement.plan_id();
+    const auto seats = entitlement.has_seats() ? entitlement.seats() : -1;
+    const auto source_ref = entitlement.source_ref();
+
+    co_await dbh.exec(R"(
+        INSERT INTO entitlement (
+            tenant_id, product_id, plan_id, seats, state, valid_until, source, source_ref, version, updated_at
+        ) VALUES (
+            ?, ?, NULLIF(?, ''), NULLIF(?, -1), ?, FROM_UNIXTIME(NULLIF(?, 0)), ?, NULLIF(?, ''), ?, FROM_UNIXTIME(NULLIF(?, 0))
+        )
+        ON DUPLICATE KEY UPDATE
+            plan_id = VALUES(plan_id),
+            seats = VALUES(seats),
+            state = VALUES(state),
+            valid_until = VALUES(valid_until),
+            source = VALUES(source),
+            source_ref = VALUES(source_ref),
+            version = VALUES(version),
+            updated_at = VALUES(updated_at)
+        )",
+        tenant_id,
+        entitlement.product_id(),
+        plan_id,
+        seats,
+        static_cast<uint32_t>(entitlement.state()),
+        valid_until_seconds,
+        static_cast<uint32_t>(entitlement.source()),
+        source_ref,
+        entitlement.version(),
+        updated_at_seconds);
+
+    auto tenant_res = co_await dbh.exec(R"(
+        SELECT
+            plan,
+            plan_updated,
+            plan_expires,
+            plan_seats,
+            grace_period_expires,
+            account_expires,
+            state
+        FROM tenant
+        WHERE id = ?
+    )", tenant_id);
+
+    if (tenant_res.rows().empty()) {
+        LOG_WARN_N << "Tenant " << tenant_id
+                   << " disappeared while applying entitlement version "
+                   << entitlement.version() << " for product " << entitlement.product_id();
+        co_return true;
+    }
+
+    enum TenantCols {
+        PLAN,
+        PLAN_UPDATED,
+        PLAN_EXPIRES,
+        PLAN_SEATS,
+        GRACE_PERIOD_EXPIRES,
+        ACCOUNT_EXPIRES,
+        STATE
+    };
+
+    const auto& row = tenant_res.rows().front();
+    const auto current_plan = row.at(PLAN).is_null() ? string{} : string{row.at(PLAN).as_string()};
+    const auto current_plan_expires = row.at(PLAN_EXPIRES).is_datetime()
+        ? static_cast<uint64_t>(grpc::toTimeT(row.at(PLAN_EXPIRES).as_datetime()))
+        : uint64_t{};
+    const auto current_plan_seats = row.at(PLAN_SEATS).as_int64();
+    const auto current_grace_expires = row.at(GRACE_PERIOD_EXPIRES).is_datetime()
+        ? static_cast<uint64_t>(grpc::toTimeT(row.at(GRACE_PERIOD_EXPIRES).as_datetime()))
+        : uint64_t{};
+    const auto current_account_expires = row.at(ACCOUNT_EXPIRES).is_datetime()
+        ? static_cast<uint64_t>(grpc::toTimeT(row.at(ACCOUNT_EXPIRES).as_datetime()))
+        : uint64_t{};
+    const auto current_state = row.at(STATE).as_string();
+
+    const auto now = static_cast<int64_t>(time(nullptr));
+    const auto target_plan_updated = entitlement.has_updated_at() ? updated_at_seconds : now;
+
+    if (entitlement.state() == payments::v1::ENTITLEMENT_STATE_EXPIRED && config().grace_period_days > 0) {
+        const auto target_plan = entitlement.plan_id();
+        const auto target_plan_expires = valid_until_seconds;
+        const auto target_grace_expires = now + static_cast<int64_t>(config().grace_period_days) * 24 * 60 * 60;
+        constexpr int64_t target_plan_seats = 1;
+        constexpr uint64_t target_account_expires = 0;
+        const auto target_state = string{"active"};
+
+        if (current_plan == target_plan
+            && current_plan_expires == static_cast<uint64_t>(target_plan_expires)
+            && current_plan_seats == target_plan_seats
+            && current_grace_expires == static_cast<uint64_t>(target_grace_expires)
+            && current_account_expires == target_account_expires
+            && current_state == target_state) {
+            co_return true;
+        }
+
+        co_await dbh.exec(R"(
+            UPDATE tenant
+            SET
+                plan = NULLIF(?, ''),
+                plan_updated = FROM_UNIXTIME(?),
+                plan_expires = FROM_UNIXTIME(NULLIF(?, 0)),
+                plan_seats = ?,
+                grace_period_expires = FROM_UNIXTIME(?),
+                account_expires = NULL,
+                state = ?
+            WHERE id = ?
+        )",
+            target_plan,
+            target_plan_updated,
+            target_plan_expires,
+            target_plan_seats,
+            target_grace_expires,
+            target_state,
+            tenant_id);
+
+        LOG_INFO << "Updated tenant " << tenant_id
+                 << " to grace period after expired entitlement."
+                 << " product=" << entitlement.product_id()
+                 << " version=" << entitlement.version()
+                 << " plan=" << (target_plan.empty() ? "<null>" : target_plan)
+                 << " plan_expires_unix=" << target_plan_expires
+                 << " grace_expires_unix=" << target_grace_expires
+                 << " reason=expired_entitlement";
+        co_return true;
+    }
+
+    if (entitlement.state() != payments::v1::ENTITLEMENT_STATE_ACTIVE) {
+        co_await downgradeTenantToFreePlan(
+            dbh,
+            tenant_id,
+            format("entitlement_state={} product={} version={}",
+                   static_cast<uint32_t>(entitlement.state()),
+                   entitlement.product_id(),
+                   entitlement.version()));
+        co_return true;
+    }
+
+    const auto target_plan = entitlement.plan_id();
+    const auto target_plan_expires = valid_until_seconds;
+    constexpr int64_t target_plan_seats = 1;
+    constexpr uint64_t target_grace_expires = 0;
+    constexpr uint64_t target_account_expires = 0;
+    const auto target_state = string{"active"};
+
+    if (current_plan == target_plan
+        && current_plan_expires == static_cast<uint64_t>(target_plan_expires)
+        && current_plan_seats == target_plan_seats
+        && current_grace_expires == target_grace_expires
+        && current_account_expires == target_account_expires
+        && current_state == target_state) {
+        co_return true;
+    }
+
+    co_await dbh.exec(R"(
+        UPDATE tenant
+        SET
+            plan = NULLIF(?, ''),
+            plan_updated = FROM_UNIXTIME(?),
+            plan_expires = FROM_UNIXTIME(NULLIF(?, 0)),
+            plan_seats = ?,
+            grace_period_expires = NULL,
+            account_expires = NULL,
+            state = ?
+        WHERE id = ?
+    )",
+        target_plan,
+        target_plan_updated,
+        target_plan_expires,
+        target_plan_seats,
+        target_state,
+        tenant_id);
+
+    LOG_INFO << "Updated tenant " << tenant_id
+             << " from active entitlement."
+             << " product=" << entitlement.product_id()
+             << " version=" << entitlement.version()
+             << " plan=" << (target_plan.empty() ? "<null>" : target_plan)
+             << " seats=" << target_plan_seats
+             << " plan_expires_unix=" << target_plan_expires;
+
+    co_return true;
+}
+
+boost::asio::awaitable<bool> Plans::refreshTenantEntitlement(
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const boost::uuids::uuid& tenant_id)
+{
+    payments::v1::GetEntitlementRequest req;
+    req.set_tenant_id(to_string(tenant_id));
+    req.set_product_id(config().product_id);
+
+    const auto response = co_await getEntitlement(std::move(req));
+    const auto& entitlement = response.entitlement();
+
+    if (entitlement.product_id().empty()) {
+        LOG_WARN_N << "Ignoring pulled entitlement for tenant " << tenant_id
+                   << " because product_id is empty.";
+        co_return false;
+    }
+
+    if (!entitlement.tenant_id().empty()) {
+        const auto response_tenant = toUuid(entitlement.tenant_id());
+        if (response_tenant != tenant_id) {
+            LOG_WARN_N << "Pulled entitlement tenant mismatch for tenant " << tenant_id
+                       << ": response tenant_id=" << entitlement.tenant_id()
+                       << ". Ignoring response.";
+            co_return false;
+        }
+    }
+
+    co_return co_await updatePlanFromEntitlement(dbh, tenant_id, entitlement);
 }
 
 string Plans::grpcServerAddress() const
@@ -58,6 +430,7 @@ shared_ptr<::grpc::ChannelCredentials> Plans::createCredentials() const
 asio::awaitable<void> Plans::connect()
 {
     LOG_INFO << "Connecting to payment service at " << config().service_url;
+    stopping_.store(false);
 
     ::grpc::ChannelArguments args;
     args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, server_.config().grpc.keepalive_time_sec * 1000);
@@ -65,9 +438,17 @@ asio::awaitable<void> Plans::connect()
 
     channel_ = ::grpc::CreateCustomChannel(grpcServerAddress(), createCredentials(), args);
     stub_ = payments::v1::PaymentsService::NewStub(channel_);
+    notifications_stub_ = payments::v1::EntitlementNotificationsService::NewStub(channel_);
 
-    if (!stub_) {
+    if (!stub_ || !notifications_stub_) {
         throw runtime_error{"Failed to create payment service gRPC client"};
+    }
+
+    auto expected = false;
+    if (entitlement_subscription_running_.compare_exchange_strong(expected, true)) {
+        asio::co_spawn(server_.ctx(), [this]() -> asio::awaitable<void> {
+            co_await runEntitlementSubscriptionLoop();
+        }, asio::detached);
     }
 
     co_return;
@@ -75,8 +456,172 @@ asio::awaitable<void> Plans::connect()
 
 void Plans::shutdown()
 {
+    stopping_.store(true);
+    {
+        std::scoped_lock lock{entitlement_stream_mutex_};
+        if (entitlement_stream_) {
+            entitlement_stream_->cancel();
+        }
+    }
+    notifications_stub_.reset();
     stub_.reset();
     channel_.reset();
+}
+
+asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
+{
+    ScopedExit clear_running{[this] {
+        entitlement_subscription_running_.store(false);
+    }};
+
+    auto backoff = std::chrono::seconds{1};
+
+    while (!stopping_.load() && !server_.is_done()) {
+        if (!notifications_stub_) {
+            LOG_WARN_N << "Payment entitlement subscription stopped because the notification stub is not available.";
+            break;
+        }
+
+        payments::v1::SubscribeEntitlementChangesRequest req;
+        req.set_backend_instance_id(server_.serverId());
+
+        auto stream = std::make_shared<EntitlementStream>(
+            server_.ctx(),
+            std::move(req),
+            [this](::grpc::ClientContext& ctx,
+                   const payments::v1::SubscribeEntitlementChangesRequest* request,
+                   ::grpc::ClientReadReactor<payments::v1::EntitlementChangeEvent>* reactor) {
+                notifications_stub_->async()->SubscribeEntitlementChanges(&ctx, request, reactor);
+            });
+
+        {
+            std::scoped_lock lock{entitlement_stream_mutex_};
+            entitlement_stream_ = stream;
+        }
+
+        LOG_INFO << "Subscribing to payment entitlement changes as backend instance " << server_.serverId();
+        stream->start();
+
+        try {
+            for (;;) {
+                auto event = co_await stream->read();
+                if (!event) {
+                    break;
+                }
+
+                try {
+                    co_await applyEntitlementChange(*event);
+                } catch (const std::exception& ex) {
+                    LOG_WARN_N << "Caught exception while applying entitlement change event "
+                               << " for tenant " << event->subject_id()
+                               << " product " << event->entitlement().product_id()
+                               << ": " << ex.what();
+                }
+            }
+        } catch (const std::exception& ex) {
+            LOG_WARN_N << "Caught exception while consuming entitlement change stream: " << ex.what();
+        }
+
+        {
+            std::scoped_lock lock{entitlement_stream_mutex_};
+            if (entitlement_stream_ == stream) {
+                entitlement_stream_.reset();
+            }
+        }
+
+        const auto status = co_await stream->waitForDone();
+        if (status.ok()) {
+            LOG_INFO << "Payment entitlement change stream ended normally.";
+        } else {
+            LOG_WARN_N << "Payment entitlement change stream ended with status code "
+                       << static_cast<int>(status.error_code())
+                       << ": " << status.error_message();
+        }
+
+        if (stopping_.load() || server_.is_done()) {
+            break;
+        }
+
+        asio::steady_timer timer{server_.ctx()};
+        timer.expires_after(backoff);
+        try {
+            co_await timer.async_wait(asio::use_awaitable);
+        } catch (const boost::system::system_error& e) {
+            if (e.code() != asio::error::operation_aborted) {
+                throw;
+            }
+        }
+        backoff = std::min(backoff * 2, std::chrono::seconds{30});
+    }
+}
+
+asio::awaitable<void> Plans::applyEntitlementChange(const payments::v1::EntitlementChangeEvent& event)
+{
+    LOG_DEBUG_N << "Received entitlement change event: " << toJsonForLog(event);
+
+    if (event.event_id().empty()) {
+        LOG_WARN_N << "Ignoring entitlement change event without event_id.";
+        co_return;
+    }
+
+    if (event.subject_id().empty()) {
+        LOG_WARN_N << "Ignoring entitlement change event "
+                   << event.event_id() << " without subject_id.";
+        co_return;
+    }
+
+    const auto event_id = toUuid(event.event_id());
+    const auto subject_id = toUuid(event.subject_id());
+    const auto& entitlement = event.entitlement();
+    auto tenant_id = subject_id;
+    if (!entitlement.tenant_id().empty()) {
+        const auto entitlement_tenant_id = toUuid(entitlement.tenant_id());
+        if (entitlement_tenant_id != subject_id) {
+            LOG_WARN_N << "Entitlement change event " << event.event_id()
+                       << " has mismatching subject_id=" << event.subject_id()
+                       << " and entitlement.tenant_id=" << entitlement.tenant_id()
+                       << ". Using subject_id.";
+        } else {
+            tenant_id = entitlement_tenant_id;
+        }
+    }
+
+    if (entitlement.product_id().empty()) {
+        LOG_WARN_N << "Ignoring entitlement change event " << event.event_id()
+                   << " because entitlement.product_id is empty.";
+        co_return;
+    }
+
+    auto db = co_await server_.db().getConnection();
+    auto trx = co_await db.transaction();
+
+    // Todo: Add filtering on the nextapp instance-id level when the payment server starts sending it.
+    // Check if tenant exists. If not, the entitlement change event is not relevant for this instance.
+    {
+        auto res = co_await db.exec("SELECT id FROM tenant WHERE id = ?", tenant_id);
+        if (res.rows().empty()) {
+            LOG_DEBUG_N << "Ignoring entitlement change event " << event.event_id()
+                       << " for non-existent tenant " << tenant_id;
+            co_return;
+        }
+    }
+
+    try {
+        co_await db.exec(
+            "INSERT INTO entitlement_event (event_id, subject_id) VALUES (?, ?)",
+            event_id, subject_id);
+    } catch (const jgaa::mysqlpool::db_err_exists&) {
+        LOG_DEBUG_N << "Skipping duplicate entitlement change event " << event.event_id();
+        co_return;
+    }
+
+    if (!co_await updatePlanFromEntitlement(db, tenant_id, entitlement)) {
+        co_return;
+    }
+
+    co_await trx.commit();
+    co_await server_.grpc().sessionManager().refreshTenantPlansAndPublish(db, to_string(tenant_id));
+    co_return;
 }
 
 asio::awaitable<void> Plans::loadActivePlans()

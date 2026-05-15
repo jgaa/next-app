@@ -2,8 +2,10 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <map>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -12,10 +14,15 @@
 #include <grpcpp/grpcpp.h>
 
 #include "payments/v1/payments.grpc.pb.h"
+#include "payments/v1/notifications.grpc.pb.h"
 
+#include "nextapp/logging.h"
+
+#include "mysqlpool/mysqlpool.h"
+
+#include "nextapp/AsyncClientReadReactor.h"
 #include "nextapp/config.h"
 #include "nextapp/error_mapping.h"
-#include "nextapp/logging.h"
 #include "nextapp/util.h"
 
 namespace nextapp {
@@ -79,8 +86,15 @@ public:
     std::tuple<std::string/* plan id*/, bool /* is trial */> getPlanForSignup() const;
 
     boost::asio::awaitable<void> loadActivePlans();
+    boost::asio::awaitable<bool> refreshTenantEntitlement(
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const boost::uuids::uuid& tenant_id);
 
 private:
+    using EntitlementStream = AsyncClientReadReactor<
+        payments::v1::SubscribeEntitlementChangesRequest,
+        payments::v1::EntitlementChangeEvent>;
+
     template <ProtoMessage ReplyT, ProtoMessage ReqT, typename T>
     struct CallData {
         CallData(ReqT&& req, T& self)
@@ -138,14 +152,29 @@ private:
     int logProtobufMode() const noexcept;
     std::string grpcServerAddress() const;
     std::shared_ptr<::grpc::ChannelCredentials> createCredentials() const;
+    boost::asio::awaitable<void> runEntitlementSubscriptionLoop();
+    boost::asio::awaitable<void> applyEntitlementChange(const payments::v1::EntitlementChangeEvent& event);
+    boost::asio::awaitable<bool> updatePlanFromEntitlement(
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const boost::uuids::uuid& tenant_id,
+        const payments::v1::Entitlement& entitlement);
+    boost::asio::awaitable<void> downgradeTenantToFreePlan(
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const boost::uuids::uuid& tenant_id,
+        std::string_view reason);
 
     Server& server_;
     std::shared_ptr<::grpc::Channel> channel_;
     std::unique_ptr<payments::v1::PaymentsService::Stub> stub_;
+    std::unique_ptr<payments::v1::EntitlementNotificationsService::Stub> notifications_stub_;
     std::atomic_bool is_syncing_plans_{false};
     std::atomic_bool is_loading_plans_{false};
+    std::atomic_bool stopping_{false};
+    std::atomic_bool entitlement_subscription_running_{false};
     std::unordered_map<std::string, int32_t> synced_plan_versions_;
     std::atomic<std::shared_ptr<const ActivePlans>> active_plans_;
+    mutable std::mutex entitlement_stream_mutex_;
+    std::shared_ptr<EntitlementStream> entitlement_stream_;
 };
 
 } // namespace nextapp

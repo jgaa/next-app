@@ -124,6 +124,12 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
 
     });
 
+    connect(server_comm_.get(), &ServerComm::subscriptionChanged, this,
+            [this](const nextapp::pb::Subscription& subscription) {
+                current_plan_ = subscription;
+                emit currentPlanChanged();
+            });
+
 #ifdef LINUX_BUILD
     dbus_connection_ = make_unique<QDBusConnection>(QDBusConnection::systemBus());
     if (dbus_connection_->isConnected()) {

@@ -774,6 +774,7 @@ message Update {
         bool accountDeleted = 25; // The user account has been deleted
         bool resync = 26; // The client should resync the data
         bool push = 27; // Push notifications has been enabled or disabled at the server
+        Subscription subscription = 28; // The subscription info has been updated
     }
 }
 

@@ -1543,6 +1543,11 @@ void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& 
 {
     assert(msg);
 
+    if (msg->hasSubscription()) {
+        LOG_DEBUG_N << "Received updated subscription from server";
+        emit subscriptionChanged(msg->subscription());
+    }
+
     if (msg->hasUserGlobalSettings()) {
         const auto& new_settings = msg->userGlobalSettings();
         if (new_settings.version() > userGlobalSettings_.version()) {

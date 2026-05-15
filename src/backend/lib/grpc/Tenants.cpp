@@ -761,7 +761,13 @@ ORDER BY t.id;
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
-            // TODO: Handle refresh to payment server for this tenant
+            if (req->forcerefresh() && owner_.server().config().payment.enable_plan) {
+                auto trx = co_await rctx.dbh->transaction();
+                const auto tenant_id = toUuid(rctx.uctx->tenantUuid());
+                (void)co_await owner_.server().plans()->refreshTenantEntitlement(*rctx.dbh, tenant_id);
+                co_await trx.commit();
+                co_await owner_.server().grpc().sessionManager().refreshTenantPlansAndPublish(*rctx.dbh, rctx.uctx->tenantUuid());
+            }
 
             if (auto *p = reply->mutable_subscription()) {
                 *p = rctx.uctx->getSubscription();

@@ -1632,6 +1632,34 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     static constexpr auto v28_upgrade = to_array<string_view>({
         "SET FOREIGN_KEY_CHECKS=0",
 
+        R"(CREATE TABLE IF NOT EXISTS entitlement_event (
+            event_id UUID NOT NULL,
+            subject_id UUID NOT NULL,
+            created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+            PRIMARY KEY (event_id),
+            KEY idx_entitlement_event_subject_created (subject_id, created_at),
+            CONSTRAINT fk_entitlement_event_tenant
+                FOREIGN KEY (subject_id) REFERENCES tenant(id) ON DELETE CASCADE ON UPDATE RESTRICT
+        ))",
+
+        R"(CREATE TABLE IF NOT EXISTS entitlement (
+            tenant_id UUID NOT NULL,
+            product_id VARCHAR(64) NOT NULL,
+            plan_id VARCHAR(64) NULL,
+            seats INT NULL,
+            state TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            valid_until TIMESTAMP NULL,
+            source TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            source_ref VARCHAR(255) NULL,
+            version BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP NULL,
+            PRIMARY KEY (tenant_id, product_id),
+            KEY idx_entitlement_version (version),
+            KEY idx_entitlement_updated (updated_at),
+            CONSTRAINT fk_entitlement_tenant
+                FOREIGN KEY (tenant_id) REFERENCES tenant(id) ON DELETE CASCADE ON UPDATE RESTRICT
+        ))",
+
         "ALTER TABLE tenant MODIFY COLUMN plan VARCHAR(32) NULL DEFAULT 'trial'",
 
         "UPDATE tenant SET plan = NULL WHERE system_tenant = 1",
