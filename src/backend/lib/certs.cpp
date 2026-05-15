@@ -136,6 +136,23 @@ string toHexLower(const unsigned char* data, size_t size, string_view separator 
     return out;
 }
 
+optional<time_t> asn1TimeToTimeT(const ASN1_TIME* value) {
+    if (!value) {
+        return {};
+    }
+
+    tm tm_value{};
+    if (ASN1_TIME_to_tm(value, &tm_value) != 1) {
+        return {};
+    }
+
+#if defined(_WIN32)
+    return _mkgmtime(&tm_value);
+#else
+    return timegm(&tm_value);
+#endif
+}
+
 // https://stackoverflow.com/questions/60476336/programmatically-generate-a-ca-certificate-with-openssl-in-c
 void addExt(X509 *cert, int nid, const char *value)
 {
@@ -343,6 +360,7 @@ ParsedCertInfo inspectCert(std::string_view pem)
     }
 
     info.issuer_line = nameToString(X509_get_issuer_name(cert.get()));
+    info.not_after = asn1TimeToTimeT(X509_get0_notAfter(cert.get()));
 
     if (auto* serial = X509_get_serialNumber(cert.get())) {
         if (auto* bn = ASN1_INTEGER_to_BN(serial, nullptr)) {

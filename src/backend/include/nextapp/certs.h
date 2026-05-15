@@ -4,6 +4,8 @@
 #include <vector>
 #include <cstring>
 #include <memory>
+#include <optional>
+#include <ctime>
 
 #include <boost/uuid/uuid.hpp>
 
@@ -71,6 +73,7 @@ struct ParsedCertInfo {
     std::vector<std::string> subject_alt_names;
     std::string serial_number;
     std::string fingerprint_sha256;
+    std::optional<std::time_t> not_after;
     bool is_ca = false;
 };
 

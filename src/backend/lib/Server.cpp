@@ -28,6 +28,28 @@ using jgaa::mysqlpool::tuple_awaitable;
 
 namespace nextapp {
 
+namespace {
+
+constexpr auto kServerCertWarnThreshold = std::chrono::days{30};
+constexpr auto kServerCertErrorThreshold = std::chrono::days{12};
+constexpr auto kServerCertRenewThreshold = std::chrono::days{90};
+
+void logCertExpiry(std::string_view cert_name, std::time_t not_after,
+                   std::chrono::seconds warn_threshold,
+                   std::chrono::seconds error_threshold) {
+    const auto now = std::time(nullptr);
+    const auto seconds_left = std::chrono::seconds{not_after - now};
+    const auto days_left = std::chrono::duration_cast<std::chrono::days>(seconds_left).count();
+
+    if (seconds_left <= error_threshold) {
+        LOG_ERROR << cert_name << " expires soon: " << days_left << " days remaining.";
+    } else if (seconds_left <= warn_threshold) {
+        LOG_WARN << cert_name << " expires soon: " << days_left << " days remaining.";
+    }
+}
+
+} // anon ns
+
 Server::Server(const Config& config)
     : config_(config), metrics_(*this)
 {
@@ -87,6 +109,7 @@ void Server::run()
             co_await loadServerId();
             co_await db().exec("DELETE FROM user_runtime_publish_state");
             co_await loadCertAuthority();
+            co_await ensureServerCertIsFresh();
             if (pushIsEnabled()) {
                 LOG_INFO << "Push notifications are enabled.";
                 if (config().push.google.config_file.empty()) {
@@ -144,6 +167,7 @@ void Server::run()
     }
 
     startMetricsTimer();
+    startServerCertTimer();
 
     LOG_DEBUG_N << "Main thread joins the IO thread pool...";
     runIoThread(0);
@@ -364,6 +388,21 @@ boost::asio::awaitable<void> Server::onMetricsTimer()
     }
 }
 
+boost::asio::awaitable<void> Server::onServerCertTimer()
+{
+    if (config().grpc.tls_mode != "ca") {
+        co_return;
+    }
+
+    auto cert = co_await getCert("grpc-server", WithMissingCert::CREATE_SERVER);
+    if (const auto parsed = inspectCert(cert.cert); parsed.not_after) {
+        logCertExpiry("Server gRPC TLS certificate",
+                      *parsed.not_after,
+                      std::chrono::duration_cast<std::chrono::seconds>(kServerCertWarnThreshold),
+                      std::chrono::duration_cast<std::chrono::seconds>(kServerCertErrorThreshold));
+    }
+}
+
 void Server::startMetricsTimer()
 {
     if (config().options.metrics_timer_minutes == 0) {
@@ -385,6 +424,28 @@ void Server::startMetricsTimer()
                 co_await onMetricsTimer();
             } catch (const std::exception& ex) {
                 LOG_WARN_N << "Caught exception during metrics timer: " << ex.what();
+            }
+        }
+    }, asio::detached);
+}
+
+void Server::startServerCertTimer()
+{
+    if (config().grpc.tls_mode != "ca") {
+        return;
+    }
+
+    LOG_DEBUG << "Starting daily server certificate health timer.";
+
+    asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        auto scope = metrics().asio_worker_threads().scoped();
+        while (!ctx_.stopped()) {
+            co_await asio::steady_timer{ctx_, std::chrono::hours{24}}.async_wait(asio::use_awaitable);
+
+            try {
+                co_await onServerCertTimer();
+            } catch (const std::exception& ex) {
+                LOG_WARN_N << "Caught exception during server certificate timer: " << ex.what();
             }
         }
     }, asio::detached);
@@ -1759,8 +1820,32 @@ boost::asio::awaitable<void> Server::loadCertAuthority()
 
     assert(!cd.cert.empty());
     assert(!cd.key.empty());
+    if (const auto parsed = inspectCert(cd.cert); parsed.not_after) {
+        logCertExpiry("CA certificate '" + config_.ca.ca_name + "'",
+                      *parsed.not_after,
+                      std::chrono::duration_cast<std::chrono::seconds>(std::chrono::days{90}),
+                      std::chrono::duration_cast<std::chrono::seconds>(std::chrono::days{14}));
+    }
     ca_.emplace(cd, config_.ca);
     co_return;
+}
+
+boost::asio::awaitable<void> Server::ensureServerCertIsFresh()
+{
+    if (config().grpc.tls_mode != "ca") {
+        co_return;
+    }
+
+    auto cert = co_await getCert("grpc-server", WithMissingCert::CREATE_SERVER);
+    const auto parsed = inspectCert(cert.cert);
+    if (parsed.not_after) {
+        const auto now = std::time(nullptr);
+        const auto seconds_left = std::chrono::seconds{*parsed.not_after - now};
+        if (seconds_left <= kServerCertRenewThreshold) {
+            LOG_WARN << "Server gRPC TLS certificate expires in less than 90 days. Recreating it before startup.";
+            co_await recreateServerCert(config().options.server_cert_dns_names);
+        }
+    }
 }
 
 boost::asio::awaitable<void> Server::startGrpcService()
