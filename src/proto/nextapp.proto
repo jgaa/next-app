@@ -955,6 +955,30 @@ message GetNewReq {
 message ListTenantsReq {
 }
 
+message GetCertificatesReq {
+}
+
+message CertificateInfo {
+    string id = 1;
+    common.Time created = 2;
+    optional common.Time expires = 3;
+    string subjectLine = 4;
+    string commonName = 5;
+    repeated string subjectAltNames = 6;
+    string issuerLine = 7;
+    string serialNumber = 8;
+    string fingerprintSha256 = 9;
+    bool hasPrivateKey = 10;
+    bool isCa = 11;
+    string userUuid = 12;
+    string organization = 13;
+    string kind = 14;
+}
+
+message Certificates {
+    repeated CertificateInfo certs = 1;
+}
+
 message ResetPlaybackReq {
     uint32 instanceId = 2; // starts at 1
 }
@@ -1144,6 +1168,7 @@ message Status {
         FullFeedback feedback = 42;
         Subscription subscription = 43;
         PaymentsPage paymentsPage = 44;
+        Certificates certificates = 45;
     }
 }
 
@@ -1161,6 +1186,7 @@ service Nextapp {
     rpc SubscribeToUpdates(UpdatesReq) returns (stream Update) {}
     rpc CreateTenant(CreateTenantReq) returns (Status) {}
     rpc ListTenants(ListTenantsReq) returns (stream Status) {} // admin only
+    rpc GetCertificates(GetCertificatesReq) returns (Status) {} // admin only
 
     // If called by a super-user, user.uuid can point to any tenant. If unset, the logged-in tenant is used.
     rpc CreateUser(User) returns (Status) {}

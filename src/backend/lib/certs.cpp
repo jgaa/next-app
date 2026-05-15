@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <string_view>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/uuid/uuid.hpp>
@@ -79,6 +80,60 @@ string getTextField(const X509& cert, int nid) {
     } else {
         throw runtime_error{"X509_get_subject_name"};
     }
+}
+
+string getTextField(const X509_NAME& name, int nid) {
+    array<char, 4096> buf{};
+    if (auto res = X509_NAME_get_text_by_NID(&name, nid, buf.data(), buf.size()); res >= 0) {
+        return string{buf.data()};
+    }
+    return {};
+}
+
+string nameToString(const X509_NAME* name) {
+    if (!name) {
+        return {};
+    }
+
+    auto* bio = BIO_new(BIO_s_mem());
+    if (!bio) {
+        throw runtime_error{"BIO_new"};
+    }
+
+    ScopedExit bio_cleanup{[bio] {
+        BIO_free(bio);
+    }};
+
+    if (X509_NAME_print_ex(bio, name, 0, XN_FLAG_RFC2253) < 0) {
+        throw runtime_error{"X509_NAME_print_ex"};
+    }
+
+    BUF_MEM* mem = nullptr;
+    BIO_get_mem_ptr(bio, &mem);
+    if (!mem || !mem->data || mem->length == 0) {
+        return {};
+    }
+
+    return {mem->data, mem->length};
+}
+
+string toHexLower(const unsigned char* data, size_t size, string_view separator = {}) {
+    static constexpr char digits[] = "0123456789abcdef";
+    string out;
+    if (!data || size == 0) {
+        return out;
+    }
+
+    out.reserve((size * 2) + (separator.size() * (size > 0 ? size - 1 : 0)));
+    for(size_t i = 0; i < size; ++i) {
+        if (i && !separator.empty()) {
+            out += separator;
+        }
+        const auto byte = data[i];
+        out += digits[(byte >> 4) & 0x0f];
+        out += digits[byte & 0x0f];
+    }
+    return out;
 }
 
 // https://stackoverflow.com/questions/60476336/programmatically-generate-a-ca-certificate-with-openssl-in-c
@@ -274,6 +329,76 @@ string getSubject(const X509& cert) {
 }
 
 } // anon ns
+
+ParsedCertInfo inspectCert(std::string_view pem)
+{
+    auto cert = loadCertFromBuffer(pem);
+    ParsedCertInfo info;
+
+    if (auto* subject = X509_get_subject_name(cert.get())) {
+        info.subject_line = nameToString(subject);
+        info.common_name = getTextField(*subject, NID_commonName);
+        info.organization = getTextField(*subject, NID_organizationName);
+        info.organizational_unit = getTextField(*subject, NID_organizationalUnitName);
+    }
+
+    info.issuer_line = nameToString(X509_get_issuer_name(cert.get()));
+
+    if (auto* serial = X509_get_serialNumber(cert.get())) {
+        if (auto* bn = ASN1_INTEGER_to_BN(serial, nullptr)) {
+            ScopedExit bn_cleanup{[bn] {
+                BN_free(bn);
+            }};
+            if (auto* hex = BN_bn2hex(bn)) {
+                ScopedExit hex_cleanup{[hex] {
+                    OPENSSL_free(hex);
+                }};
+                info.serial_number = toLower(string{hex});
+            }
+        }
+    }
+
+    {
+        unsigned char md[EVP_MAX_MD_SIZE];
+        unsigned md_len = 0;
+        if (X509_digest(cert.get(), EVP_sha256(), md, &md_len) == 1) {
+            info.fingerprint_sha256 = toHexLower(md, md_len, ":");
+        } else {
+            throw runtime_error{"X509_digest"};
+        }
+    }
+
+    if (auto* basic_constraints = static_cast<BASIC_CONSTRAINTS*>(
+            X509_get_ext_d2i(cert.get(), NID_basic_constraints, nullptr, nullptr))) {
+        ScopedExit basic_constraints_cleanup{[basic_constraints] {
+            BASIC_CONSTRAINTS_free(basic_constraints);
+        }};
+        info.is_ca = basic_constraints->ca != 0;
+    }
+
+    if (auto* san_names = static_cast<STACK_OF(GENERAL_NAME)*>(
+            X509_get_ext_d2i(cert.get(), NID_subject_alt_name, nullptr, nullptr))) {
+        ScopedExit san_cleanup{[san_names] {
+            sk_GENERAL_NAME_pop_free(san_names, GENERAL_NAME_free);
+        }};
+
+        const auto num_names = sk_GENERAL_NAME_num(san_names);
+        for(int i = 0; i < num_names; ++i) {
+            const auto* san = sk_GENERAL_NAME_value(san_names, i);
+            if (!san || san->type != GEN_DNS || !san->d.dNSName) {
+                continue;
+            }
+
+            const auto* data = ASN1_STRING_get0_data(san->d.dNSName);
+            const auto len = ASN1_STRING_length(san->d.dNSName);
+            if (data && len > 0) {
+                info.subject_alt_names.emplace_back(reinterpret_cast<const char*>(data), len);
+            }
+        }
+    }
+
+    return info;
+}
 
 
 CertData createCaCert(

@@ -196,6 +196,7 @@ public:
         ::grpc::ServerUnaryReactor *DeleteDevice(::grpc::CallbackServerContext *, const common::Uuid *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *ResetPlayback(::grpc::CallbackServerContext *, const pb::ResetPlaybackReq *, pb::Status *) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* ListTenants(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::ListTenantsReq *req) override;
+        ::grpc::ServerUnaryReactor *GetCertificates(::grpc::CallbackServerContext *, const pb::GetCertificatesReq *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *ListCurrentSessions(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *SendNotification(::grpc::CallbackServerContext *, const pb::Notification *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *DeleteNotification(::grpc::CallbackServerContext *, const pb::DeleteNotificationReq *, pb::Status *) override;

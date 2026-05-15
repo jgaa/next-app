@@ -62,10 +62,24 @@ struct CertData {
     }
 };
 
+struct ParsedCertInfo {
+    std::string subject_line;
+    std::string common_name;
+    std::string organization;
+    std::string organizational_unit;
+    std::string issuer_line;
+    std::vector<std::string> subject_alt_names;
+    std::string serial_number;
+    std::string fingerprint_sha256;
+    bool is_ca = false;
+};
+
 CertData createCaCert(
     const std::string& caName,
     unsigned lifetimeDays = 356 * 10,
     unsigned keyBytes = 4096);
+
+ParsedCertInfo inspectCert(std::string_view pem);
 
 class CertAuthority {
 public:

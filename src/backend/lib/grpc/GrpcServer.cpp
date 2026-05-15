@@ -648,6 +648,77 @@ failed:
         }, __func__, true /* allow new session */, true /* admin only */);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetCertificates(::grpc::CallbackServerContext *ctx,
+                                                                     const pb::GetCertificatesReq *req,
+                                                                     pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            enum Cols {
+                ID,
+                CREATED,
+                EXPIRES,
+                CERT,
+                PKEY
+            };
+
+            auto res = co_await rctx.dbh->exec(
+                "SELECT id, created, expires, cert, pkey FROM cert ORDER BY created DESC",
+                rctx.uctx->dbOptions());
+
+            auto* certificates = reply->mutable_certificates();
+            for(const auto& row : res.rows()) {
+                auto* cert = certificates->add_certs();
+                cert->set_id(pb_adapt(row.at(ID).as_string()));
+                cert->mutable_created()->set_unixtime(toTimeT(row.at(CREATED).as_datetime(), rctx.uctx->tz()));
+
+                if (!row.at(EXPIRES).is_null()) {
+                    cert->mutable_expires()->set_unixtime(toTimeT(row.at(EXPIRES).as_datetime(), rctx.uctx->tz()));
+                }
+
+                if (row.at(CERT).is_null() || row.at(CERT).as_string().empty()) {
+                    cert->set_kind("missing");
+                    continue;
+                }
+
+                const auto pem = row.at(CERT).as_string();
+                const auto parsed = inspectCert(pem);
+
+                cert->set_subjectline(pb_adapt(parsed.subject_line));
+                cert->set_commonname(pb_adapt(parsed.common_name));
+                cert->set_issuerline(pb_adapt(parsed.issuer_line));
+                cert->set_serialnumber(pb_adapt(parsed.serial_number));
+                cert->set_fingerprintsha256(pb_adapt(parsed.fingerprint_sha256));
+                cert->set_isca(parsed.is_ca);
+                cert->set_useruuid(pb_adapt(parsed.organizational_unit));
+                cert->set_organization(pb_adapt(parsed.organization));
+
+                for(const auto& san : parsed.subject_alt_names) {
+                    cert->add_subjectaltnames(pb_adapt(san));
+                }
+
+                bool has_private_key = false;
+                if (!row.at(PKEY).is_null()) {
+                    has_private_key = !row.at(PKEY).as_string().empty();
+                }
+                cert->set_hasprivatekey(has_private_key);
+
+                if (parsed.is_ca) {
+                    cert->set_kind("ca");
+                } else if (!parsed.subject_alt_names.empty()) {
+                    cert->set_kind("server");
+                } else if (!parsed.organizational_unit.empty()) {
+                    cert->set_kind("client");
+                } else {
+                    cert->set_kind("unknown");
+                }
+            }
+
+            reply->set_message(format("Fetched {} certificates", certificates->certs_size()));
+            co_return;
+        }, __func__, true /* allow new session */, true /* admin only */);
+}
+
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteNotification(::grpc::CallbackServerContext *ctx,
                                                                         const pb::DeleteNotificationReq *req,
                                                                         pb::Status *reply)
