@@ -30,7 +30,34 @@ if (Protobuf_VERSION VERSION_GREATER 22.0)
     )
 endif()
 
-add_library(${PROJECT_NAME} STATIC ${PAYMENTS_PROTO_FILES} ${extra_proto_sources})
+if (TARGET gRPC::grpc_cpp_plugin)
+    get_target_property(grpc_cpp_plugin_location gRPC::grpc_cpp_plugin LOCATION)
+else()
+    find_program(grpc_cpp_plugin_location grpc_cpp_plugin REQUIRED)
+endif()
+
+protobuf_generate(
+    OUT_VAR PAYMENTS_PROTO_GENERATED_CPP
+    LANGUAGE cpp
+    PROTOS ${PAYMENTS_PROTO_FILES}
+    IMPORT_DIRS ${PAYMENTS_PROTO_IMPORT_ROOT}
+    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
+)
+protobuf_generate(
+    OUT_VAR PAYMENTS_PROTO_GENERATED_GRPC
+    LANGUAGE grpc
+    GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+    PROTOS ${PAYMENTS_PROTO_FILES}
+    IMPORT_DIRS ${PAYMENTS_PROTO_IMPORT_ROOT}
+    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
+    PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}"
+)
+
+add_library(${PROJECT_NAME} STATIC
+    ${PAYMENTS_PROTO_GENERATED_CPP}
+    ${PAYMENTS_PROTO_GENERATED_GRPC}
+    ${extra_proto_sources}
+)
 
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
@@ -46,25 +73,4 @@ target_include_directories(${PROJECT_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
         $<BUILD_INTERFACE:${PAYMENTS_PROTO_IMPORT_ROOT}>
         $<INSTALL_INTERFACE:include>
-)
-
-if (TARGET gRPC::grpc_cpp_plugin)
-    get_target_property(grpc_cpp_plugin_location gRPC::grpc_cpp_plugin LOCATION)
-else()
-    find_program(grpc_cpp_plugin_location grpc_cpp_plugin REQUIRED)
-endif()
-
-protobuf_generate(
-    TARGET ${PROJECT_NAME}
-    LANGUAGE cpp
-    IMPORT_DIRS ${PAYMENTS_PROTO_IMPORT_ROOT}
-    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
-)
-protobuf_generate(
-    TARGET ${PROJECT_NAME}
-    LANGUAGE grpc
-    GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
-    IMPORT_DIRS ${PAYMENTS_PROTO_IMPORT_ROOT}
-    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
-    PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}"
 )
