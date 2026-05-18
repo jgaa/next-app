@@ -672,10 +672,6 @@ failed:
                 cert->set_id(pb_adapt(row.at(ID).as_string()));
                 cert->mutable_created()->set_unixtime(toTimeT(row.at(CREATED).as_datetime(), rctx.uctx->tz()));
 
-                if (!row.at(EXPIRES).is_null()) {
-                    cert->mutable_expires()->set_unixtime(toTimeT(row.at(EXPIRES).as_datetime(), rctx.uctx->tz()));
-                }
-
                 if (row.at(CERT).is_null() || row.at(CERT).as_string().empty()) {
                     cert->set_kind("missing");
                     continue;
@@ -692,6 +688,9 @@ failed:
                 cert->set_isca(parsed.is_ca);
                 cert->set_useruuid(pb_adapt(parsed.organizational_unit));
                 cert->set_organization(pb_adapt(parsed.organization));
+                if (parsed.not_after) {
+                    cert->mutable_expires()->set_unixtime(*parsed.not_after);
+                }
 
                 for(const auto& san : parsed.subject_alt_names) {
                     cert->add_subjectaltnames(pb_adapt(san));
