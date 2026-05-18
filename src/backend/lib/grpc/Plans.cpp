@@ -679,7 +679,8 @@ asio::awaitable<void> Plans::loadActivePlans()
                 size_t pos = 0;
                 auto parsed = stoul(value, &pos);
                 if (pos != value.size()) {
-                    throw runtime_error{format("Invalid trial_days value '{}' in config table", value)};
+                    throw runtime_error{format("Invalid trial_days value '{}' in config table",
+                                               string_view{value.data(), value.size()})};
                 }
                 snapshot->trial_days = static_cast<uint32_t>(parsed);
                 continue;
