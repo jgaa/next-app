@@ -194,6 +194,7 @@ public:
     enum FetchWhat {
         FW_ACTIVE,
         FW_TODAY,
+        FW_TODAYS_LEFTOVERS,
         FW_TODAY_AND_OVERDUE,
         FW_TOMORROW,
         FW_CURRENT_WEEK,

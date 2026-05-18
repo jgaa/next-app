@@ -72,6 +72,7 @@ Rectangle {
                     model: ListModel {
                         ListElement { text: qsTr("Active") }
                         ListElement { text: qsTr("Today") }
+                        ListElement { text: qsTr("Today's leftovers") }
                         ListElement { text: qsTr("Today and overdue") }
                         ListElement { text: qsTr("Tomorrow") }
                         ListElement { text: qsTr("Current Week") }

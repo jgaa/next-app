@@ -1532,7 +1532,15 @@ LIMIT {} OFFSET {})",
         // Only show todays actions and actions completed today.
         sql = nextapp::format(R"(SELECT DISTINCT a.id,
 CASE WHEN a.completed_time IS NULL THEN 1 ELSE 0 END AS is_completed FROM action a {}{}
-WHERE (a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?) {}
+WHERE (a.status={} {} AND (
+    (a.due_by_time >= ? AND a.due_by_time < ?)
+    OR EXISTS (
+        SELECT 1 FROM time_block_actions tba
+        JOIN time_block tb ON tb.id = tba.time_block
+        WHERE tba.action = a.id
+        AND tb.start_time >= ? AND tb.end_time <= ?
+    )
+)) {}
 ORDER BY {}
 LIMIT {} OFFSET {})",
                     join_action_name_if(),
@@ -1545,10 +1553,37 @@ LIMIT {} OFFSET {})",
         pushMatch();
         params << date.startOfDay();
         params << date.startOfDay().addDays(1);
+        params << date;
+        params << date.addDays(1);
         if (add_completed) {
             params << date.startOfDay();
             params << date.startOfDay().addDays(1);
         }
+        break;
+
+    case FetchWhat::FW_TODAYS_LEFTOVERS:
+        sql = nextapp::format(R"(SELECT DISTINCT a.id,
+1 AS is_completed FROM action a {}{}
+WHERE a.status={} {} AND a.due_by_time >= ? AND a.due_by_time < ?
+AND NOT EXISTS (
+    SELECT 1 FROM time_block_actions tba
+    JOIN time_block tb ON tb.id = tba.time_block
+    WHERE tba.action = a.id
+    AND tb.start_time >= ? AND tb.end_time <= ?
+)
+ORDER BY {}
+LIMIT {} OFFSET {})",
+                    join_action_name_if(),
+                    join_tags_if(),
+                    static_cast<uint>(a_status_t::ACTIVE),
+                    match,
+                    nextapp::format("{}{}", sort_completed, sorting.at(sort_)),
+                    pagination_.pageSize(), pagination_.nextOffset());
+        pushMatch();
+        params << date.startOfDay();
+        params << date.startOfDay().addDays(1);
+        params << date;
+        params << date.addDays(1);
         break;
 
     case FetchWhat::FW_TODAY_AND_OVERDUE:
@@ -1863,9 +1898,16 @@ bool ActionsModel::matchesActionForMode(
         return active;
     case FetchWhat::FW_TODAY:
         return active
+            && ((action.hasDue() && action.due().hasDue()
+                 && action.due().due() >= start_of_today
+                 && action.due().due() < start_of_tomorrow)
+                || ActionsOnCurrentCalendar::instance()->contains(toQuid(action.id_proto())));
+    case FetchWhat::FW_TODAYS_LEFTOVERS:
+        return active
             && action.hasDue() && action.due().hasDue()
             && action.due().due() >= start_of_today
-            && action.due().due() < start_of_tomorrow;
+            && action.due().due() < start_of_tomorrow
+            && !ActionsOnCurrentCalendar::instance()->contains(toQuid(action.id_proto()));
     case FetchWhat::FW_TODAY_AND_OVERDUE:
         return active
             && action.hasDue() && action.due().hasDue()
