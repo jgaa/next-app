@@ -1843,7 +1843,24 @@ boost::asio::awaitable<void> Server::ensureServerCertIsFresh()
         const auto seconds_left = std::chrono::seconds{*parsed.not_after - now};
         if (seconds_left <= kServerCertRenewThreshold) {
             LOG_WARN << "Server gRPC TLS certificate expires in less than 90 days. Recreating it before startup.";
-            co_await recreateServerCert(config().options.server_cert_dns_names);
+            auto renewal_fqdns = config().options.server_cert_dns_names;
+            if (renewal_fqdns.empty()) {
+                renewal_fqdns = parsed.subject_alt_names;
+                if (renewal_fqdns.empty() && !parsed.common_name.empty()) {
+                    renewal_fqdns.push_back(parsed.common_name);
+                }
+
+                if (renewal_fqdns.empty()) {
+                    LOG_ERROR_N << "Unable to renew the server gRPC TLS certificate: no configured FQDNs and "
+                                   "the existing certificate does not expose any DNS names.";
+                    co_return;
+                }
+
+                LOG_INFO_N << "No server FQDNs were configured for renewal. Reusing DNS names from the existing "
+                              "server certificate.";
+            }
+
+            co_await recreateServerCert(renewal_fqdns);
         }
     }
 }
