@@ -125,6 +125,7 @@ void Server::run()
                 try {
                     co_await plans_->syncPlans();
                     co_await plans_->loadActivePlans();
+                    co_await plans_->onServerReady();
                 } catch (const std::exception& ex) {
                     LOG_WARN_N << "Caught exception while syncing payment plans / fetching active plans during startup: " << ex.what();
                 }
@@ -1728,6 +1729,34 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v29_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        R"(ALTER TABLE tenant
+            ADD COLUMN IF NOT EXISTS registration_state
+                ENUM('local_only', 'pending_reg', 'registered')
+                NOT NULL DEFAULT 'pending_reg')",
+        R"(ALTER TABLE tenant
+            ADD COLUMN IF NOT EXISTS registration_attempts INT UNSIGNED NOT NULL DEFAULT 0)",
+        R"(ALTER TABLE tenant
+            ADD COLUMN IF NOT EXISTS last_registration_attempt TIMESTAMP NULL)",
+        R"(ALTER TABLE tenant
+            ADD COLUMN IF NOT EXISTS next_registration_retry TIMESTAMP NULL)",
+
+        R"(UPDATE tenant
+            SET
+                registration_state = CASE
+                    WHEN system_tenant = 1 THEN 'local_only'
+                    ELSE 'pending_reg'
+                END,
+                registration_attempts = 0,
+                last_registration_attempt = NULL,
+                next_registration_retry = NULL)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
+
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
         v2_upgrade,
@@ -1757,6 +1786,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v26_upgrade,
         v27_upgrade,
         v28_upgrade,
+        v29_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version
@@ -1780,7 +1810,26 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         const auto user_name = format("admin-{}", to_string(user_id));
 
         // Add tenant
-        co_await handle.exec("INSERT INTO tenant (id, name, kind, system_tenant, plan) VALUES (?, ?, 'super', 1, NULL)", tenant_id, tenant_name);
+        co_await handle.exec(R"(
+            INSERT INTO tenant (
+                id,
+                name,
+                kind,
+                state,
+                system_tenant,
+                registration_state,
+                plan,
+                plan_updated,
+                plan_expires,
+                plan_seats,
+                grace_period_expires,
+                account_expires,
+                next_registration_retry
+            ) VALUES (
+                ?, ?, 'super', 'active', 1, 'local_only', 'pro',
+                UTC_TIMESTAMP(), NULL, 1, NULL, NULL, NULL
+            )
+        )", tenant_id, tenant_name);
         // Add user
         co_await handle.exec("INSERT INTO user (id, tenant, name, kind, system_user) VALUES (?, ?, ?, 'super', 1)", user_id, tenant_id, user_name);
     }

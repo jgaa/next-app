@@ -2,6 +2,8 @@
 #include <deque>
 #include <array>
 
+#include <boost/asio/co_spawn.hpp>
+
 #include <boost/url.hpp>
 
 #include "nextapp/Plans.h"
@@ -170,15 +172,18 @@ std::array<pb::ActionCategory, 4> getDefaultActionCategories()
             }
 
             co_await owner_.server().db().exec(
-                "INSERT INTO tenant (id, name, kind, descr, state, properties, plan, plan_expires) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO tenant (id, name, kind, descr, state, registration_state, properties, plan, plan_expires, next_registration_retry) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tenant.uuid(),
                 tenant.name(),
                 toLower(pb::Tenant::Kind_Name(tenant.kind())),
                 tenant.descr(),
                 toLower(pb::Tenant::State_Name(tenant.state())),
+                owner_.server().config().payment.enable_plan ? "pending_reg" : "local_only",
                 properties,
                 plan,
-                trial_end);
+                trial_end,
+                owner_.server().config().payment.enable_plan ? std::optional<std::string>{toAnsiTime(std::time(nullptr))} : std::optional<std::string>{});
 
             LOG_INFO << "User " << cuser
                      << " has created tenant name=" << tenant.name() << ", id=" << tenant.uuid()
@@ -238,6 +243,20 @@ std::array<pb::ActionCategory, 4> getDefaultActionCategories()
             *reply->mutable_tenant() = tenant;
 
             co_await trx.commit();
+
+            if (owner_.server().config().payment.enable_plan) {
+                const auto tenant_id = toUuid(tenant.uuid());
+                boost::asio::co_spawn(owner_.server().ctx(),
+                    [plans = owner_.server().plans(), tenant_id]() -> boost::asio::awaitable<void> {
+                        try {
+                            co_await plans->queueTenantRegistration(tenant_id);
+                        } catch (const std::exception& ex) {
+                            LOG_WARN_N << "Failed to queue tenant registration for tenant "
+                                       << tenant_id << ": " << ex.what();
+                        }
+                    },
+                    boost::asio::detached);
+            }
 
             co_return;
         }, __func__);
@@ -762,11 +781,8 @@ ORDER BY t.id;
             const auto& cuser = rctx.uctx->userUuid();
 
             if (req->forcerefresh() && owner_.server().config().payment.enable_plan) {
-                auto trx = co_await rctx.dbh->transaction();
                 const auto tenant_id = toUuid(rctx.uctx->tenantUuid());
-                (void)co_await owner_.server().plans()->refreshTenantEntitlement(*rctx.dbh, tenant_id);
-                co_await trx.commit();
-                co_await owner_.server().grpc().sessionManager().refreshTenantPlansAndPublish(*rctx.dbh, rctx.uctx->tenantUuid());
+                co_await owner_.server().plans()->refreshTenantSubscription(*rctx.dbh, tenant_id);
             }
 
             if (auto *p = reply->mutable_subscription()) {

@@ -27,7 +27,7 @@ class Plans;
 
 class Server {
 public:
-    static constexpr uint latest_version = 28;
+    static constexpr uint latest_version = 29;
 
     struct BootstrapOptions {
         bool drop_old_db = false;
@@ -68,6 +68,10 @@ public:
     auto& grpc() noexcept {
         assert(grpc_service_);
         return *grpc_service_;
+    }
+
+    bool hasGrpcService() const noexcept {
+        return static_cast<bool>(grpc_service_);
     }
 
     auto& ca() noexcept {

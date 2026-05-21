@@ -1,6 +1,7 @@
 #include "nextapp/Plans.h"
 
 #include <format>
+#include <random>
 #include <stdexcept>
 
 #include <grpcpp/security/credentials.h>
@@ -19,6 +20,15 @@ namespace nextapp {
 
 namespace {
 
+constexpr string_view kRegistrationStateLocalOnly = "local_only";
+constexpr string_view kRegistrationStatePending = "pending_reg";
+constexpr string_view kRegistrationStateRegistered = "registered";
+constexpr auto kRegistrationSweepInterval = std::chrono::hours{1};
+constexpr auto kPerTenantSweepDelayMin = std::chrono::milliseconds{50};
+constexpr auto kPerTenantSweepDelayMax = std::chrono::milliseconds{500};
+constexpr uint32_t kRegistrationRetryMinSeconds = 5 * 60;
+constexpr uint32_t kRegistrationRetryMaxSeconds = 65 * 60;
+
 uint64_t getUint64(const boost::mysql::field_view& field)
 {
     if (field.is_uint64()) {
@@ -32,6 +42,14 @@ uint64_t getUint64(const boost::mysql::field_view& field)
         return static_cast<uint64_t>(value);
     }
     throw runtime_error{"Expected integer value from database"};
+}
+
+template <typename IntT>
+IntT randomBetween(IntT min_value, IntT max_value)
+{
+    thread_local std::mt19937 rng{std::random_device{}()};
+    std::uniform_int_distribution<IntT> dist(min_value, max_value);
+    return dist(rng);
 }
 
 } // namespace
@@ -148,6 +166,31 @@ boost::asio::awaitable<void> Plans::downgradeTenantToFreePlan(
     }
 }
 
+bool Plans::tryBeginTenantRegistration(const boost::uuids::uuid& tenant_id)
+{
+    auto guard = std::scoped_lock{tenant_registration_mutex_};
+    return tenant_registrations_in_flight_.insert(to_string(tenant_id)).second;
+}
+
+void Plans::endTenantRegistration(const boost::uuids::uuid& tenant_id) noexcept
+{
+    auto guard = std::scoped_lock{tenant_registration_mutex_};
+    tenant_registrations_in_flight_.erase(to_string(tenant_id));
+}
+
+boost::asio::awaitable<std::string> Plans::getTenantRegistrationState(
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const boost::uuids::uuid& tenant_id)
+{
+    auto res = co_await dbh.exec(
+        "SELECT registration_state FROM tenant WHERE id = ?",
+        tenant_id);
+    if (res.rows().empty()) {
+        co_return string{};
+    }
+    co_return string{res.rows().front().front().as_string()};
+}
+
 boost::asio::awaitable<bool> Plans::updatePlanFromEntitlement(
 //    const payments::v1::EntitlementChangeEvent &event,
     jgaa::mysqlpool::Mysqlpool::Handle &dbh,
@@ -194,6 +237,21 @@ boost::asio::awaitable<bool> Plans::updatePlanFromEntitlement(
     const auto plan_id = entitlement.plan_id();
     const auto seats = entitlement.has_seats() ? entitlement.seats() : -1;
     const auto source_ref = entitlement.source_ref();
+
+    if (!plan_id.empty()) {
+        auto plan_res = co_await dbh.exec("SELECT 1 FROM plan WHERE name = ? LIMIT 1", plan_id);
+        if (plan_res.rows().empty()) {
+            LOG_WARN_N << "Entitlement for tenant " << tenant_id
+                       << " references unknown plan '" << plan_id
+                       << "'. Syncing plans before applying entitlement.";
+            co_await syncPlans();
+            co_await loadActivePlans();
+            plan_res = co_await dbh.exec("SELECT 1 FROM plan WHERE name = ? LIMIT 1", plan_id);
+            if (plan_res.rows().empty()) {
+                throw runtime_error{format("Entitlement references unknown plan '{}'", plan_id)};
+            }
+        }
+    }
 
     co_await dbh.exec(R"(
         INSERT INTO entitlement (
@@ -378,6 +436,15 @@ boost::asio::awaitable<bool> Plans::refreshTenantEntitlement(
     jgaa::mysqlpool::Mysqlpool::Handle& dbh,
     const boost::uuids::uuid& tenant_id)
 {
+    const auto registration_state = co_await getTenantRegistrationState(dbh, tenant_id);
+    if (registration_state.empty()) {
+        co_return false;
+    }
+    if (registration_state == kRegistrationStateLocalOnly) {
+        LOG_DEBUG_N << "Skipping entitlement refresh for local-only tenant " << tenant_id;
+        co_return false;
+    }
+
     payments::v1::GetEntitlementRequest req;
     req.set_tenant_id(to_string(tenant_id));
     req.set_product_id(config().product_id);
@@ -402,6 +469,111 @@ boost::asio::awaitable<bool> Plans::refreshTenantEntitlement(
     }
 
     co_return co_await updatePlanFromEntitlement(dbh, tenant_id, entitlement);
+}
+
+boost::asio::awaitable<bool> Plans::ensureTenantRegistered(
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const boost::uuids::uuid& tenant_id,
+    bool publish_changes)
+{
+    if (!tryBeginTenantRegistration(tenant_id)) {
+        LOG_DEBUG_N << "Tenant registration already in flight for tenant " << tenant_id;
+        co_return false;
+    }
+    ScopedExit clear_inflight{[this, tenant_id] {
+        endTenantRegistration(tenant_id);
+    }};
+
+    const auto state = co_await getTenantRegistrationState(dbh, tenant_id);
+    if (state.empty()) {
+        LOG_DEBUG_N << "Skipping registration for tenant " << tenant_id << " because it no longer exists.";
+        co_return false;
+    }
+    if (state == kRegistrationStateLocalOnly || state == kRegistrationStateRegistered) {
+        co_return true;
+    }
+
+    co_await dbh.exec(R"(
+        UPDATE tenant
+        SET
+            registration_attempts = registration_attempts + 1,
+            last_registration_attempt = UTC_TIMESTAMP()
+        WHERE id = ?
+    )", tenant_id);
+
+    std::optional<payments::v1::EnsureTenantInitializedResponse> response;
+    std::string error_message;
+    try {
+        payments::v1::EnsureTenantInitializedRequest request;
+        request.set_tenant_id(to_string(tenant_id));
+        request.set_product_id(config().product_id);
+        response = co_await ensureTenantInitialized(std::move(request));
+    } catch (const std::exception& ex) {
+        error_message = ex.what();
+    }
+
+    if (!response) {
+        const auto retry_after = randomBetween<uint32_t>(
+            kRegistrationRetryMinSeconds, kRegistrationRetryMaxSeconds);
+        co_await dbh.exec(R"(
+            UPDATE tenant
+            SET next_registration_retry = UTC_TIMESTAMP() + INTERVAL ? SECOND
+            WHERE id = ? AND registration_state = ?
+        )", retry_after, tenant_id, kRegistrationStatePending);
+
+        LOG_WARN_N << "Failed to register tenant " << tenant_id
+                   << " with the payment service: " << error_message
+                   << ". Will retry in " << retry_after << " seconds.";
+        co_return false;
+    }
+
+    auto trx = co_await dbh.transaction();
+    if (const auto& entitlement = response->entitlement(); !entitlement.product_id().empty()) {
+        (void)co_await updatePlanFromEntitlement(dbh, tenant_id, entitlement);
+    } else {
+        LOG_WARN_N << "EnsureTenantInitialized for tenant " << tenant_id
+                   << " returned no entitlement payload. Keeping the local fallback plan.";
+    }
+
+    co_await dbh.exec(R"(
+        UPDATE tenant
+        SET
+            registration_state = ?,
+            next_registration_retry = NULL
+        WHERE id = ?
+    )", kRegistrationStateRegistered, tenant_id);
+    co_await trx.commit();
+
+    LOG_INFO << "Tenant " << tenant_id
+             << " is now registered with the payment service."
+             << " initialized=" << (response->initialized() ? "true" : "false");
+
+    if (publish_changes && server_.hasGrpcService()) {
+        co_await server_.grpc().sessionManager().refreshTenantPlansAndPublish(dbh, to_string(tenant_id));
+    }
+    co_return true;
+}
+
+boost::asio::awaitable<void> Plans::refreshTenantSubscription(
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const boost::uuids::uuid& tenant_id)
+{
+    const auto registration_state = co_await getTenantRegistrationState(dbh, tenant_id);
+    if (registration_state.empty() || registration_state == kRegistrationStateLocalOnly) {
+        co_return;
+    }
+
+    if (registration_state == kRegistrationStatePending) {
+        (void)co_await ensureTenantRegistered(dbh, tenant_id, true);
+        co_return;
+    }
+
+    auto trx = co_await dbh.transaction();
+    (void)co_await refreshTenantEntitlement(dbh, tenant_id);
+    co_await trx.commit();
+    if (server_.hasGrpcService()) {
+        co_await server_.grpc().sessionManager().refreshTenantPlansAndPublish(dbh, to_string(tenant_id));
+    }
 }
 
 string Plans::grpcServerAddress() const
@@ -444,14 +616,64 @@ asio::awaitable<void> Plans::connect()
         throw runtime_error{"Failed to create payment service gRPC client"};
     }
 
+    co_return;
+}
+
+asio::awaitable<void> Plans::onServerReady()
+{
+    co_await reconcileLocalOnlyTenants();
+    startEntitlementSubscription();
+    co_await processPendingTenantRegistrations("startup");
+
+    auto expected = false;
+    if (tenant_registration_loop_running_.compare_exchange_strong(expected, true)) {
+        asio::co_spawn(server_.ctx(), [this]() -> asio::awaitable<void> {
+            co_await runTenantRegistrationLoop();
+        }, asio::detached);
+    }
+}
+
+asio::awaitable<void> Plans::reconcileLocalOnlyTenants()
+{
+    auto db = co_await server_.db().getConnection();
+    auto res = co_await db.exec(R"(
+        UPDATE tenant
+        SET
+            registration_state = ?,
+            plan = 'pro',
+            plan_updated = UTC_TIMESTAMP(),
+            plan_expires = NULL,
+            plan_seats = 1,
+            grace_period_expires = NULL,
+            account_expires = NULL,
+            next_registration_retry = NULL
+        WHERE system_tenant = 1
+          AND (
+              registration_state <> ?
+              OR registration_state IS NULL
+              OR
+              plan <> 'pro'
+              OR plan IS NULL
+              OR plan_expires IS NOT NULL
+              OR grace_period_expires IS NOT NULL
+              OR account_expires IS NOT NULL
+          )
+    )", kRegistrationStateLocalOnly, kRegistrationStateLocalOnly);
+
+    if (res.affected_rows() > 0) {
+        LOG_INFO << "Reconciled " << res.affected_rows()
+                 << " local-only system tenant(s) back to the local pro plan.";
+    }
+}
+
+void Plans::startEntitlementSubscription()
+{
     auto expected = false;
     if (entitlement_subscription_running_.compare_exchange_strong(expected, true)) {
         asio::co_spawn(server_.ctx(), [this]() -> asio::awaitable<void> {
             co_await runEntitlementSubscriptionLoop();
         }, asio::detached);
     }
-
-    co_return;
 }
 
 void Plans::shutdown()
@@ -466,6 +688,95 @@ void Plans::shutdown()
     notifications_stub_.reset();
     stub_.reset();
     channel_.reset();
+}
+
+asio::awaitable<void> Plans::queueTenantRegistration(const boost::uuids::uuid& tenant_id)
+{
+    auto db = co_await server_.db().getConnection();
+    co_await db.exec(R"(
+        UPDATE tenant
+        SET
+            registration_state = CASE
+                WHEN registration_state = ? THEN registration_state
+                ELSE ?
+            END,
+            next_registration_retry = UTC_TIMESTAMP()
+        WHERE id = ?
+    )", kRegistrationStateLocalOnly, kRegistrationStatePending, tenant_id);
+
+    (void)co_await ensureTenantRegistered(db, tenant_id, true);
+}
+
+asio::awaitable<void> Plans::runTenantRegistrationLoop()
+{
+    ScopedExit clear_running{[this] {
+        tenant_registration_loop_running_.store(false);
+    }};
+
+    while (!stopping_.load() && !server_.is_done()) {
+        asio::steady_timer timer{server_.ctx()};
+        timer.expires_after(kRegistrationSweepInterval);
+        try {
+            co_await timer.async_wait(asio::use_awaitable);
+        } catch (const boost::system::system_error& e) {
+            if (e.code() != asio::error::operation_aborted) {
+                throw;
+            }
+        }
+
+        if (stopping_.load() || server_.is_done()) {
+            break;
+        }
+
+        try {
+            co_await processPendingTenantRegistrations("timer");
+        } catch (const std::exception& ex) {
+            LOG_WARN_N << "Caught exception during tenant registration sweep: " << ex.what();
+        }
+    }
+}
+
+asio::awaitable<void> Plans::processPendingTenantRegistrations(std::string_view reason)
+{
+    auto db = co_await server_.db().getConnection();
+    auto res = co_await db.exec(R"(
+        SELECT id
+        FROM tenant
+        WHERE registration_state = ?
+          AND (next_registration_retry IS NULL OR next_registration_retry <= UTC_TIMESTAMP())
+        ORDER BY COALESCE(next_registration_retry, '1970-01-01 00:00:00'), id
+    )", kRegistrationStatePending);
+
+    if (res.rows().empty()) {
+        LOG_DEBUG_N << "No tenant registrations are pending for reason=" << reason;
+        co_return;
+    }
+
+    LOG_INFO << "Processing " << res.rows().size()
+             << " pending tenant registrations. reason=" << reason;
+
+    bool first = true;
+    for (const auto& row : res.rows()) {
+        if (!first) {
+            asio::steady_timer timer{server_.ctx()};
+            timer.expires_after(std::chrono::milliseconds{
+                randomBetween<int>(
+                    static_cast<int>(kPerTenantSweepDelayMin.count()),
+                    static_cast<int>(kPerTenantSweepDelayMax.count()))
+            });
+            try {
+                co_await timer.async_wait(asio::use_awaitable);
+            } catch (const boost::system::system_error& e) {
+                if (e.code() != asio::error::operation_aborted) {
+                    throw;
+                }
+            }
+        }
+        first = false;
+
+        const auto tenant_id = toUuid(row.at(0).as_string());
+        (void)co_await ensureTenantRegistered(db, tenant_id, true);
+    }
 }
 
 asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
@@ -598,10 +909,17 @@ asio::awaitable<void> Plans::applyEntitlementChange(const payments::v1::Entitlem
     // Todo: Add filtering on the nextapp instance-id level when the payment server starts sending it.
     // Check if tenant exists. If not, the entitlement change event is not relevant for this instance.
     {
-        auto res = co_await db.exec("SELECT id FROM tenant WHERE id = ?", tenant_id);
+        auto res = co_await db.exec(
+            "SELECT registration_state FROM tenant WHERE id = ?",
+            tenant_id);
         if (res.rows().empty()) {
             LOG_DEBUG_N << "Ignoring entitlement change event " << event.event_id()
                        << " for non-existent tenant " << tenant_id;
+            co_return;
+        }
+        if (res.rows().front().front().as_string() == kRegistrationStateLocalOnly) {
+            LOG_DEBUG_N << "Ignoring entitlement change event " << event.event_id()
+                        << " for local-only tenant " << tenant_id;
             co_return;
         }
     }
@@ -618,6 +936,17 @@ asio::awaitable<void> Plans::applyEntitlementChange(const payments::v1::Entitlem
     if (!co_await updatePlanFromEntitlement(db, tenant_id, entitlement)) {
         co_return;
     }
+
+    co_await db.exec(R"(
+        UPDATE tenant
+        SET
+            registration_state = CASE
+                WHEN registration_state = ? THEN registration_state
+                ELSE ?
+            END,
+            next_registration_retry = NULL
+        WHERE id = ?
+    )", kRegistrationStateLocalOnly, kRegistrationStateRegistered, tenant_id);
 
     co_await trx.commit();
     co_await server_.grpc().sessionManager().refreshTenantPlansAndPublish(db, to_string(tenant_id));
@@ -934,6 +1263,15 @@ Plans::createCheckoutContext(payments::v1::CreateCheckoutContextRequest request)
     co_return co_await callRpc<payments::v1::CreateCheckoutContextResponse>(
         std::move(request),
         &payments::v1::PaymentsService::Stub::async::CreateCheckoutContext,
+        asio::use_awaitable);
+}
+
+asio::awaitable<payments::v1::EnsureTenantInitializedResponse>
+Plans::ensureTenantInitialized(payments::v1::EnsureTenantInitializedRequest request)
+{
+    co_return co_await callRpc<payments::v1::EnsureTenantInitializedResponse>(
+        std::move(request),
+        &payments::v1::PaymentsService::Stub::async::EnsureTenantInitialized,
         asio::use_awaitable);
 }
 
