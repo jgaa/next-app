@@ -43,6 +43,28 @@ std::array<pb::ActionCategory, 4> getDefaultActionCategories()
     return categories;
 }
 
+uint32_t getUint32(const boost::mysql::field_view& field)
+{
+    if (field.is_uint64()) {
+        return static_cast<uint32_t>(field.as_uint64());
+    }
+    if (field.is_int64()) {
+        const auto value = field.as_int64();
+        if (value < 0) {
+            throw runtime_error{"Expected non-negative integer from database"};
+        }
+        return static_cast<uint32_t>(value);
+    }
+    throw runtime_error{"Expected integer value from database"};
+}
+
+void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& field)
+{
+    if (field.is_datetime()) {
+        time->set_unixtime(toTimeT(field.as_datetime()));
+    }
+}
+
 } // anon ns
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateTenant(::grpc::CallbackServerContext *ctx,
@@ -534,6 +556,9 @@ boost::asio::awaitable<bool> GrpcServer::saveUserGlobalSettings(
         const auto stream_scope = owner_.server().metrics().data_streams_actions().scoped();
         const auto uctx = rctx.uctx;
         const auto& cuser = uctx->userUuid();
+        const bool include_plan_info = req->has_show_plan_info()
+            && req->show_plan_info()
+            && owner_.server().config().payment.enable_plan;
 
         assert(uctx->isAdmin());
 
@@ -545,6 +570,16 @@ boost::asio::awaitable<bool> GrpcServer::saveUserGlobalSettings(
     t.properties AS tenant_properties,
     t.state AS tenant_state,
     t.system_tenant AS tenant_system_tenant,
+    t.plan AS tenant_plan,
+    t.plan_updated AS tenant_plan_updated,
+    t.plan_expires AS tenant_plan_expires,
+    t.plan_seats AS tenant_plan_seats,
+    t.grace_period_expires AS tenant_grace_period_expires,
+    t.account_expires AS tenant_account_expires,
+    t.registration_state AS tenant_registration_state,
+    t.registration_attempts AS tenant_registration_attempts,
+    t.last_registration_attempt AS tenant_last_registration_attempt,
+    t.next_registration_retry AS tenant_next_registration_retry,
     u.id AS user_id,
     u.name AS user_name,
     u.kind AS user_kind,
@@ -559,6 +594,9 @@ ORDER BY t.id;
 )";
         enum Cols {
             TENANT_ID, TENANT_NAME, TENANT_KIND, TENANT_DESCR, TENANT_PROPERTIES, TENANT_STATE, TENANT_SYSTEM_TENANT,
+            TENANT_PLAN, TENANT_PLAN_UPDATED, TENANT_PLAN_EXPIRES, TENANT_PLAN_SEATS,
+            TENANT_GRACE_PERIOD_EXPIRES, TENANT_ACCOUNT_EXPIRES, TENANT_REGISTRATION_STATE,
+            TENANT_REGISTRATION_ATTEMPTS, TENANT_LAST_REGISTRATION_ATTEMPT, TENANT_NEXT_REGISTRATION_RETRY,
             USER_ID, USER_NAME, USER_KIND, USER_DESCR, USER_ACTIVE, USER_EMAIL, USER_PROPERTIES, USER_SYSTEM_USER
         };
 
@@ -638,6 +676,42 @@ ORDER BY t.id;
                     }
                     auto st = row.at(TENANT_SYSTEM_TENANT);
                     tenant->set_system_tenant(!st.is_null() && st.as_int64() > 0);
+                    if (include_plan_info) {
+                        auto* info = tenant->mutable_subscription_info();
+                        const auto registration_state = toUpper(toStringIfValue(row, TENANT_REGISTRATION_STATE));
+                        pb::SubscriptionInfo::RegistrationState registration_state_value{};
+                        if (pb::SubscriptionInfo::RegistrationState_Parse(registration_state, &registration_state_value)) {
+                            info->set_registration_state(registration_state_value);
+                        }
+                        info->set_registration_attempts(getUint32(row.at(TENANT_REGISTRATION_ATTEMPTS)));
+                        setUnixTimeIfPresent(info->mutable_last_registration_attempt(), row.at(TENANT_LAST_REGISTRATION_ATTEMPT));
+                        setUnixTimeIfPresent(info->mutable_next_registration_retry(), row.at(TENANT_NEXT_REGISTRATION_RETRY));
+
+                        const auto plan_name = toStringIfValue(row, TENANT_PLAN);
+                        if (!plan_name.empty()) {
+                            auto* subscription = info->mutable_subscription();
+                            auto* plan = subscription->mutable_plan();
+                            plan->set_name(plan_name);
+
+                            if (const auto cached_plan = owner_.server().grpc().sessionManager().getPlan(plan_name)) {
+                                plan->set_active(cached_plan->active);
+                                plan->mutable_createdat()->set_unixtime(std::chrono::system_clock::to_time_t(cached_plan->created_at));
+                                plan->set_maxusers(cached_plan->max_users);
+                                plan->set_maxdevices(cached_plan->max_devices);
+                                plan->set_maxnodes(cached_plan->max_nodes);
+                                plan->set_maxactions(cached_plan->max_actions);
+                                plan->set_maxworksessions(cached_plan->max_worksessions);
+                                plan->set_maxtimeblocks(cached_plan->max_time_blocks);
+                                plan->set_mobileonly(cached_plan->mobile_only);
+                            }
+
+                            setUnixTimeIfPresent(subscription->mutable_planupdatedat(), row.at(TENANT_PLAN_UPDATED));
+                            setUnixTimeIfPresent(subscription->mutable_planexpires(), row.at(TENANT_PLAN_EXPIRES));
+                            subscription->set_planseats(getUint32(row.at(TENANT_PLAN_SEATS)));
+                            setUnixTimeIfPresent(subscription->mutable_graceperiodexpires(), row.at(TENANT_GRACE_PERIOD_EXPIRES));
+                            setUnixTimeIfPresent(subscription->mutable_accountexpires(), row.at(TENANT_ACCOUNT_EXPIRES));
+                        }
+                    }
 
                     // End of tenant data
                 };

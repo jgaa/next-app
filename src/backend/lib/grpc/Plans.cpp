@@ -1261,6 +1261,7 @@ asio::awaitable<payments::v1::CreateCheckoutContextResponse>
 Plans::createCheckoutContext(payments::v1::CreateCheckoutContextRequest request)
 {
     co_return co_await callRpc<payments::v1::CreateCheckoutContextResponse>(
+        "CreateCheckoutContext",
         std::move(request),
         &payments::v1::PaymentsService::Stub::async::CreateCheckoutContext,
         asio::use_awaitable);
@@ -1270,6 +1271,7 @@ asio::awaitable<payments::v1::EnsureTenantInitializedResponse>
 Plans::ensureTenantInitialized(payments::v1::EnsureTenantInitializedRequest request)
 {
     co_return co_await callRpc<payments::v1::EnsureTenantInitializedResponse>(
+        "EnsureTenantInitialized",
         std::move(request),
         &payments::v1::PaymentsService::Stub::async::EnsureTenantInitialized,
         asio::use_awaitable);
@@ -1279,6 +1281,7 @@ asio::awaitable<payments::v1::GetEntitlementResponse>
 Plans::getEntitlement(payments::v1::GetEntitlementRequest request)
 {
     co_return co_await callRpc<payments::v1::GetEntitlementResponse>(
+        "GetEntitlement",
         std::move(request),
         &payments::v1::PaymentsService::Stub::async::GetEntitlement,
         asio::use_awaitable);
@@ -1288,6 +1291,7 @@ asio::awaitable<payments::v1::GetEntitlementsResponse>
 Plans::getEntitlements(payments::v1::GetEntitlementsRequest request)
 {
     co_return co_await callRpc<payments::v1::GetEntitlementsResponse>(
+        "GetEntitlements",
         std::move(request),
         &payments::v1::PaymentsService::Stub::async::GetEntitlements,
         asio::use_awaitable);
@@ -1297,6 +1301,7 @@ asio::awaitable<payments::v1::ConfirmExternalPurchaseResponse>
 Plans::confirmExternalPurchase(payments::v1::ConfirmExternalPurchaseRequest request)
 {
     co_return co_await callRpc<payments::v1::ConfirmExternalPurchaseResponse>(
+        "ConfirmExternalPurchase",
         std::move(request),
         &payments::v1::PaymentsService::Stub::async::ConfirmExternalPurchase,
         asio::use_awaitable);
@@ -1306,6 +1311,7 @@ asio::awaitable<payments::v1::RegisterGooglePlayPurchaseResponse>
 Plans::registerGooglePlayPurchase(payments::v1::RegisterGooglePlayPurchaseRequest request)
 {
     co_return co_await callRpc<payments::v1::RegisterGooglePlayPurchaseResponse>(
+        "RegisterGooglePlayPurchaseResponse",
         std::move(request),
         &payments::v1::PaymentsService::Stub::async::RegisterGooglePlayPurchase,
         asio::use_awaitable);
@@ -1315,6 +1321,7 @@ asio::awaitable<payments::v1::GetPlansResponse>
 Plans::getPlans(payments::v1::GetPlansRequest request)
 {
     co_return co_await callRpc<payments::v1::GetPlansResponse>(
+        "GetPlans",
         std::move(request),
         &payments::v1::PaymentsService::Stub::async::GetPlans,
         asio::use_awaitable);

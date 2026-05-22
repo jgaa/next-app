@@ -110,6 +110,20 @@ message Subscription {
     optional common.Time accountExpires = 6;
 }
 
+message SubscriptionInfo {
+    enum RegistrationState {
+        LOCAL_ONLY = 0;
+        PENDING_REG = 1;
+        REGISTERED = 2;
+    }
+
+    Subscription subscription = 1;
+    RegistrationState registration_state = 2;
+    uint32 registration_attempts = 3;
+    optional common.Time last_registration_attempt = 4;
+    optional common.Time next_registration_retry = 5;
+}
+
 message Tenant {
     enum Kind {
         SUPER = 0;
@@ -131,6 +145,7 @@ message Tenant {
     optional KeyValue properties = 8;
     repeated User users = 7;
     bool system_tenant = 9;
+    optional SubscriptionInfo subscription_info = 10;
 }
 
 message WorkHours {
@@ -953,6 +968,7 @@ message GetNewReq {
 }
 
 message ListTenantsReq {
+    optional bool show_plan_info = 1;
 }
 
 message GetCertificatesReq {

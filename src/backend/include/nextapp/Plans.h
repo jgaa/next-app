@@ -117,6 +117,7 @@ private:
 
     template <ProtoMessage ReplyT, ProtoMessage ReqT, typename CompletionToken>
     auto callRpc(
+        std::string_view name,
         ReqT request,
         void (::payments::v1::PaymentsService::Stub::async::*call)(
             ::grpc::ClientContext* context,
@@ -126,18 +127,18 @@ private:
         CompletionToken&& token) {
 
         return boost::asio::async_compose<CompletionToken, void(boost::system::error_code, ReplyT)>(
-            [this, request = std::move(request), call](auto& self) mutable {
+            [this, request = std::move(request), call, name](auto& self) mutable {
                 auto cd = std::make_shared<CallData<ReplyT, ReqT, decltype(self)>>(std::move(request), self);
 
-                auto fn = [this, cd](const ::grpc::Status& status) mutable {
+                auto fn = [this, cd, name](const ::grpc::Status& status) mutable {
                     boost::system::error_code ec;
                     if (!status.ok()) {
                         ec = make_error_code(status.error_code());
-                        LOG_WARN_N << "Payment RPC failed. Status code: "
+                        LOG_WARN_N << "Payment RPC " << name << "'failed. Status code: "
                                    << static_cast<int>(status.error_code())
                                    << ", message: " << status.error_message();
                     } else {
-                        LOG_TRACE << "Payment RPC completed. Status: " << status.error_message();
+                        LOG_TRACE << "Payment RPC '" << name << "' completed. Status: " << status.error_message();
                         LOG_TRACE << "Reply: " << toJson(cd->reply, logProtobufMode());
                     }
 
@@ -149,6 +150,7 @@ private:
                     return;
                 }
 
+                LOG_TRACE_N << "Calling payment RPC '" << name << "'. Request: " << toJson(cd->request, logProtobufMode());
                 (stub_->async()->*call)(&cd->ctx, &cd->request, &cd->reply,
                                         [fn = std::move(fn)](const ::grpc::Status& status) mutable {
                                             fn(status);
