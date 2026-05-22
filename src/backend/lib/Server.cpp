@@ -679,7 +679,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
 
     static constexpr auto v2_upgrade = to_array<string_view>({
         "ALTER TABLE tenant ADD COLUMN properties JSON",
-        "ALTER TABLE `user` ADD COLUMN email varchar(255) NOT NULL default 'jgaa@jgaa.com'",
+        "ALTER TABLE `user` ADD COLUMN email varchar(255) NOT NULL default 'nextappd@next-app.org'",
         "ALTER TABLE `user` ADD COLUMN properties JSON",
         "ALTER TABLE node ADD COLUMN version INT NOT NULL DEFAULT 1",
         "UPDATE day_colors SET color = 'hotpink' WHERE id = 'c0f7cb16-a95d-11ee-9da5-b3f4aed7f930'",
