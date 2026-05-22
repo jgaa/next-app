@@ -1287,16 +1287,6 @@ Plans::getEntitlement(payments::v1::GetEntitlementRequest request)
         asio::use_awaitable);
 }
 
-asio::awaitable<payments::v1::GetEntitlementsResponse>
-Plans::getEntitlements(payments::v1::GetEntitlementsRequest request)
-{
-    co_return co_await callRpc<payments::v1::GetEntitlementsResponse>(
-        "GetEntitlements",
-        std::move(request),
-        &payments::v1::PaymentsService::Stub::async::GetEntitlements,
-        asio::use_awaitable);
-}
-
 asio::awaitable<payments::v1::ConfirmExternalPurchaseResponse>
 Plans::confirmExternalPurchase(payments::v1::ConfirmExternalPurchaseRequest request)
 {

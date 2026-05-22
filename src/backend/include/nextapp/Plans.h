@@ -68,9 +68,6 @@ public:
     boost::asio::awaitable<payments::v1::GetEntitlementResponse>
     getEntitlement(payments::v1::GetEntitlementRequest request);
 
-    boost::asio::awaitable<payments::v1::GetEntitlementsResponse>
-    getEntitlements(payments::v1::GetEntitlementsRequest request);
-
     boost::asio::awaitable<payments::v1::ConfirmExternalPurchaseResponse>
     confirmExternalPurchase(payments::v1::ConfirmExternalPurchaseRequest request);
 
