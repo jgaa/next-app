@@ -93,6 +93,18 @@ public:
         return *user_feedbacks_;
     }
 
+    gauge_t& payment_notifications_connected() noexcept {
+        return *payment_notifications_connected_;
+    }
+
+    bool isPaymentNotificationsConnected() const noexcept {
+        return payment_notifications_connected_->value() > 0;
+    }
+
+    void setPaymentNotificationsConnected(bool connected) {
+        payment_notifications_connected_->set(connected ? 1 : 0);
+    }
+
 private:
     Server& server_;
     yahat::Metrics metrics_;
@@ -114,6 +126,7 @@ private:
     counter_t * data_import_errors_{};
     counter_t * data_exports_{};
     counter_t * user_feedbacks_{};
+    gauge_t * payment_notifications_connected_{}; // Boolean gauge: 1 if connected, 0 if not
 };
 
 

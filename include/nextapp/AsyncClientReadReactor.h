@@ -8,6 +8,8 @@
 #include <boost/asio.hpp>
 #include <grpcpp/grpcpp.h>
 
+#include "nextapp/logging.h"
+
 namespace nextapp {
 
 // Reactor for consuming outbound server-streaming RPCs one message at a time.
@@ -18,9 +20,14 @@ class AsyncClientReadReactor
 {
 public:
     using starter_t = std::function<void(::grpc::ClientContext&, const ReqT*, ::grpc::ClientReadReactor<RespT>*)>;
+    using on_connected_fn_t = std::function<void(bool ok)>;
 
-    AsyncClientReadReactor(boost::asio::io_context& asio, ReqT request, starter_t starter)
-        : asio_{asio}, timer_{asio}, request_{std::move(request)}, starter_{std::move(starter)}
+    AsyncClientReadReactor(boost::asio::io_context& asio,
+                           ReqT request,
+                           starter_t starter,
+                           on_connected_fn_t on_connected_fn = {})
+        : asio_{asio}, timer_{asio}, request_{std::move(request)}
+        , starter_{std::move(starter)}, on_connected_fn_{std::move(on_connected_fn)}
     {
     }
 
@@ -28,6 +35,7 @@ public:
     {
         self_ = this->shared_from_this();
         starter_(ctx_, &request_, this);
+
         this->StartRead(&temp_msg_);
         this->StartCall();
     }
@@ -43,6 +51,16 @@ public:
         return status_;
     }
 
+    void OnReadInitialMetadataDone(bool ok) override
+    {
+        LOG_DEBUG_N << "Initial metadata read completed with status " << ok;
+        if (on_connected_fn_) {
+            std::scoped_lock lock{mutex_};
+            on_connected_fn_(ok);
+        }
+        timer_.cancel();
+    }
+
     boost::asio::awaitable<::grpc::Status> waitForDone()
     {
         for (;;) {
@@ -54,6 +72,7 @@ public:
             }
 
             try {
+                timer_.expires_at(std::chrono::steady_clock::time_point::max());
                 co_await timer_.async_wait(boost::asio::use_awaitable);
             } catch (const boost::system::system_error& e) {
                 if (e.code() != boost::asio::error::operation_aborted) {
@@ -107,6 +126,9 @@ public:
             std::scoped_lock lock{mutex_};
             done_ = true;
             status_ = status;
+            if (on_connected_fn_ && !status.ok()) {
+                on_connected_fn_(false);
+            }
         }
         timer_.cancel();
         self_.reset();
@@ -123,6 +145,7 @@ private:
     std::optional<::grpc::Status> status_;
     bool done_{false};
     RespT temp_msg_;
+    on_connected_fn_t on_connected_fn_;
     std::shared_ptr<AsyncClientReadReactor> self_;
 };
 

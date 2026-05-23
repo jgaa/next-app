@@ -97,6 +97,10 @@ public:
     boost::asio::awaitable<void> onServerReady();
 
 private:
+    Server& server() noexcept {
+        return server_;
+    }
+
     using EntitlementStream = AsyncClientReadReactor<
         payments::v1::SubscribeEntitlementChangesRequest,
         payments::v1::EntitlementChangeEvent>;

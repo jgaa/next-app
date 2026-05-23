@@ -604,6 +604,8 @@ asio::awaitable<void> Plans::connect()
     LOG_INFO << "Connecting to payment service at " << config().service_url;
     stopping_.store(false);
 
+    server().metrics().setPaymentNotificationsConnected(false);
+
     ::grpc::ChannelArguments args;
     args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, server_.config().grpc.keepalive_time_sec * 1000);
     args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, server_.config().grpc.keepalive_timeout_sec * 1000);
@@ -803,6 +805,9 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
                    const payments::v1::SubscribeEntitlementChangesRequest* request,
                    ::grpc::ClientReadReactor<payments::v1::EntitlementChangeEvent>* reactor) {
                 notifications_stub_->async()->SubscribeEntitlementChanges(&ctx, request, reactor);
+            },
+            [this] (bool ok) {
+                server().metrics().setPaymentNotificationsConnected(ok);
             });
 
         {

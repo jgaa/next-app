@@ -78,6 +78,9 @@ Metrics::Metrics(Server& server)
     const std::vector quantiles = {0.5, 0.9, 0.95, 0.99};
     grpc_request_latency_ = metrics_.AddSummary("nextapp_grpc_request_latency", "gRPC request latency", {},
                                                 combine(default_labels, lbl{"kind", "grpc-unary"}), quantiles);
+    payment_notifications_connected_ = metrics_.AddGauge("nextapp_payment_notifications_connected",
+                                                         "Whether the connection to payment notifications is active (1) or not (0)",
+                                                         {}, default_labels);
 
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::ERROR, errors_));
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::WARN, warnings_));
