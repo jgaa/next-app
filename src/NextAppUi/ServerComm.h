@@ -545,7 +545,7 @@ private:
 #endif
                 if constexpr (std::is_same_v<nextapp::pb::Status, replyT>) {
                     if (!options.ignore_errors && rval.error() != nextapp::pb::ErrorGadget::Error::OK) {
-                        LOG_ERROR << "RPC request failed with error #" <<
+                        LOG_WARN << "RPC request failed with error #" <<
                             rval.error() << " : " << rval.message();
                     }
                 }
