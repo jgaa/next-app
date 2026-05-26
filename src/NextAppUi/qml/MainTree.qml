@@ -35,8 +35,12 @@ Rectangle {
     }
 
     function iconSourceForKind(kind) {
-        const safeKind = kind && kind.length > 0 ? kind : "generic_file"
-        return "qrc:/qt/qml/NextAppUi/icons/" + safeKind + ".svg"
+        const k = String(kind ?? "").trim()
+
+        if (k === "" || k === "undefined" || k === "null")
+            return "qrc:/qt/qml/NextAppUi/icons/generic_file.svg"
+
+        return "qrc:/qt/qml/NextAppUi/icons/" + k + ".svg"
     }
 
     ColumnLayout {

@@ -62,7 +62,8 @@ Rectangle {
         onTapped: {
             // Start drag
             if (NaCore.dragEnabled) {
-                dragHandler.active = true
+                //dragHandler.active = true
+                root.Drag.active = true
             }
         }
     }
