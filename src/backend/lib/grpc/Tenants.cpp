@@ -295,6 +295,7 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
             if (!rctx.uctx->isAdmin()) {
                 throw server_err{nextapp::pb::Error::PERMISSION_DENIED, "Only Admin users can create devices"};
             }
+            rctx.session().requireWritableForAdd("device");
 
             auto device = req->device();
 
@@ -396,6 +397,10 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
             }
 
             // Save the device
+            optional<UserContext::ResourceReservation> reservation;
+            if (user_id == cuser) {
+                reservation.emplace(rctx.uctx->reserveAddition(1, UserContext::PlanResource::DEVICE));
+            }
             res = co_await rctx.dbh->exec(
                 R"(INSERT INTO device
                     (id, user, hostName, os, osVersion, appVersion, productType, productVersion, arch, prettyName, certHash, name)
@@ -409,6 +414,9 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
                 response->CopyFrom(resp);
             } else {
                 throw runtime_error{"Failed to set response"};
+            }
+            if (reservation) {
+                reservation->commit();
             }
     }, __func__);
 }
@@ -699,9 +707,13 @@ ORDER BY t.id;
                                 plan->set_maxusers(cached_plan->max_users);
                                 plan->set_maxdevices(cached_plan->max_devices);
                                 plan->set_maxnodes(cached_plan->max_nodes);
+                                plan->set_nodexmonthlygrowth(cached_plan->nodes_monthly_growth);
                                 plan->set_maxactions(cached_plan->max_actions);
+                                plan->set_actionsmonthlygrowth(cached_plan->actions_monthly_growth);
                                 plan->set_maxworksessions(cached_plan->max_worksessions);
+                                plan->set_worksessionsmonthlygrowth(cached_plan->work_sessions_monthly_growth);
                                 plan->set_maxtimeblocks(cached_plan->max_time_blocks);
+                                plan->set_timeblocksmonthlygrowth(cached_plan->time_blocks_monthly_growth);
                                 plan->set_mobileonly(cached_plan->mobile_only);
                             }
 
@@ -997,6 +1009,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
 
         LOG_INFO_EX(rctx) << "Starting data import";
         bool success = false;
+        rctx.session().requireWritableForAdd("imported data");
 
         auto trx = co_await rctx.dbh->transaction();
 
@@ -1171,6 +1184,10 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
             co_await rctx.dbh->exec("DELETE FROM request_state WHERE userid = ?", cuser);
             co_await rctx.dbh->exec("DELETE FROM action_category WHERE user = ?", cuser);
             co_await rctx.dbh->exec("DELETE FROM user_settings WHERE user = ?", cuser);
+            rctx.uctx->onMassDelete({UserContext::PlanResource::TIME_BLOCK,
+                                     UserContext::PlanResource::ACTION,
+                                     UserContext::PlanResource::NODE,
+                                     UserContext::PlanResource::WORK_SESSION});
         };
 
         co_await clear_user_data();

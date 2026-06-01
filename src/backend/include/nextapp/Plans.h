@@ -36,9 +36,13 @@ public:
         int64_t max_users = 1;
         int64_t max_devices = 5;
         int64_t max_nodes = 2000;
+        int64_t nodes_monthly_growth = 0;
         int64_t max_actions = 1240;
+        int64_t actions_monthly_growth = 0;
         int64_t max_worksessions = 1240;
+        int64_t work_sessions_monthly_growth = 0;
         int64_t max_time_blocks = 1240;
+        int64_t time_blocks_monthly_growth = 0;
         bool mobile_only = false;
     };
 

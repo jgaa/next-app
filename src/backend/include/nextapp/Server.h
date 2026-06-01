@@ -27,7 +27,7 @@ class Plans;
 
 class Server {
 public:
-    static constexpr uint latest_version = 29;
+    static constexpr uint latest_version = 30;
 
     struct BootstrapOptions {
         bool drop_old_db = false;
@@ -93,6 +93,10 @@ public:
     static Server& instance() noexcept {
         assert(instance_);
         return *instance_;
+    }
+
+    static bool hasInstance() noexcept {
+        return instance_ != nullptr;
     }
 
     /*! A presumably unique tag for this instance of the server.

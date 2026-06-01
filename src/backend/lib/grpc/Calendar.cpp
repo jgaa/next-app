@@ -100,6 +100,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
+            rctx.session().requireWritableForAdd("time block");
 
             validate(*req, *rctx.uctx);
 
@@ -107,6 +108,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
                 throw server_err(pb::CONSTRAINT_FAILED, "Cannot create a time block with actions. Add the actions later.");
             }
 
+            auto reservation = rctx.uctx->reserveAddition(1, UserContext::PlanResource::TIME_BLOCK);
             auto res = co_await rctx.dbh->exec(
                 format("INSERT INTO time_block (user, start_time, end_time, name, kind, category) VALUES (?, ?, ?, ?, ?, ?) RETURNING {} ",
                        ToTimeBlock::columns),
@@ -125,6 +127,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
                 ToTimeBlock::assign(res.rows().front(), tb, *rctx.uctx);
                 rctx.publishLater(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_ADDED));
             }
+            reservation.commit();
 
             co_return;
         }, __func__);
@@ -132,6 +135,9 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 
 boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::TimeBlocks& timeblocks, RequestCtx& rctx) {
     const auto& cuser = rctx.uctx->userUuid();
+    if (timeblocks.blocks().size() > 0) {
+        rctx.session().requireWritableForAdd("time blocks");
+    }
 
     const auto sql = "INSERT INTO time_block (id, user, start_time, end_time, name, kind, category, actions) "
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ";
@@ -149,7 +155,10 @@ boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpo
             );
     });
 
+    auto reservation = rctx.uctx->reserveAddition(static_cast<uint32_t>(timeblocks.blocks().size()),
+                                                  UserContext::PlanResource::TIME_BLOCK);
     co_await dbh.exec(sql, generator);
+    reservation.commit();
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateTimeblock(::grpc::CallbackServerContext *ctx, const pb::TimeBlock *req, pb::Status *reply)
@@ -219,6 +228,7 @@ boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpo
 
             // Remove all data. We don't actually delete the row, but mark it as deleted
             if (!res.empty() && res.affected_rows() > 0) [[likely]] {
+                rctx.uctx->onDeleted(UserContext::PlanResource::TIME_BLOCK);
                 pb::TimeBlock tb;
                 tb.set_id(id);
                 tb.set_kind(pb::TimeBlock::Kind::TimeBlock_Kind_DELETED);

@@ -612,11 +612,13 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
     if (action.status() == pb::ActionStatus::DONE && action.completedtime() == 0) {
         action.set_completedtime(time({}));
     }
+    rctx.session().requireWritableForAdd("action");
 
     sanitize(action);
 
     // Not an idempotent query
     dbopts.reconnect_and_retry_query = false;
+    auto reservation = rctx.uctx->reserveAddition(1, UserContext::PlanResource::ACTION);
 
     const auto res = co_await rctx.dbh->exec(
         format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
@@ -637,6 +639,7 @@ boost::asio::awaitable<void> addAction(pb::Action action, GrpcServer& owner, Req
     } else {
         ToAction::assign(res.rows().front(), *update.mutable_action(), *rctx.uctx);
     }
+    reservation.commit();
 }
 
 boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool::Handle& dbh,
@@ -644,6 +647,9 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
                                          RequestCtx& rctx) {
 
     const auto& cuser = rctx.uctx->userUuid();
+    if (actions.actions().size() > 0) {
+        rctx.session().requireWritableForAdd("actions");
+    }
 
     const auto sql = format("INSERT INTO action ({}) VALUES ({}) RETURNING {} ",
                             ToAction::insertCols(),
@@ -660,7 +666,10 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
         return ToAction::prepareBindingArgs(v, *rctx.uctx, id, node, user);
     });
 
+    auto reservation = rctx.uctx->reserveAddition(static_cast<uint32_t>(actions.actions().size()),
+                                                  UserContext::PlanResource::ACTION);
     co_await dbh.exec(sql, generator);
+    reservation.commit();
     LOG_TRACE_N << "done saving action batch";
 }
 
@@ -937,6 +946,9 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
     }
 
     assert(res.has_value());
+    if (res.affected_rows() > 0) {
+        rctx.uctx->onDeleted(UserContext::PlanResource::ACTION);
+    }
     co_return;
 }
 

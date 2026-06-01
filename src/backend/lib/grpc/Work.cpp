@@ -100,6 +100,7 @@ struct ToWorkSession {
             auto dbopts = rctx.uctx->dbOptions();
             dbopts.reconnect_and_retry_query = false;
             auto trx = co_await rctx.dbh->transaction();
+            rctx.session().requireWritableForAdd("work session");
 
             string name;
 
@@ -137,6 +138,8 @@ struct ToWorkSession {
                 throw server_err{pb::Error::NO_RELEVANT_DATA, "No new actions to add to work sessions"};
             }
 
+            auto reservation = rctx.uctx->reserveAddition(static_cast<uint32_t>(actions.size()),
+                                                          UserContext::PlanResource::WORK_SESSION);
             rctx.updates.reserve(actions.size());
             const auto opt_autostart_session = rctx.uctx->settings().autostartnewworksession();
 
@@ -166,6 +169,7 @@ struct ToWorkSession {
             }
 
             co_await trx.commit();
+            reservation.commit();
 
             co_return;
         }, __func__);
@@ -178,6 +182,7 @@ struct ToWorkSession {
     return unaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
+            rctx.session().requireWritableForAdd("work session");
             auto dbopts = rctx.uctx->dbOptions();
             dbopts.reconnect_and_retry_query = false;
 
@@ -501,6 +506,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
                 work.set_name(action_name);
             }
 
+            auto reservation = rctx.uctx->reserveAddition(1, UserContext::PlanResource::WORK_SESSION);
             // Re-use our method to add a work-session to the database.
             auto res = co_await owner_.insertWork(work, rctx, false /* don't add start event */);
             if (!res.has_value() || res.rows().empty()) {
@@ -524,6 +530,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
             co_await owner_.saveWorkSession(work, rctx);
 
             co_await trx.commit();
+            reservation.commit();
 
             auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
             *update.mutable_work() = work;
@@ -667,6 +674,9 @@ boost::asio::awaitable<void> GrpcServer::saveWorkSession(pb::WorkSession &work, 
 
 boost::asio::awaitable<void> GrpcServer::saveWorkSessions(jgaa::mysqlpool::Mysqlpool::Handle& dbh, const pb::WorkSessions& sessions, RequestCtx& rctx) {
     const auto& cuser = rctx.uctx->userUuid();
+    if (sessions.sessions().size() > 0) {
+        rctx.session().requireWritableForAdd("work sessions");
+    }
 
     auto sql = "INSERT INTO work_session "
                "(id, action, user, state, version, touch_time, start_time, end_time, duration, paused, name, note, events) "
@@ -691,7 +701,10 @@ boost::asio::awaitable<void> GrpcServer::saveWorkSessions(jgaa::mysqlpool::Mysql
                  );
          });
 
+    auto reservation = rctx.uctx->reserveAddition(static_cast<uint32_t>(sessions.sessions().size()),
+                                                  UserContext::PlanResource::WORK_SESSION);
     co_await dbh.exec(sql, generator);
+    reservation.commit();
 }
 
 /* This function is called when a work session is maked as done.
@@ -1123,6 +1136,7 @@ boost::asio::awaitable<void> GrpcServer::deleteWorkSession(const std::string& uu
         WHERE id=? AND user=?)", dbopts, uuid, cuser);
 
     if (res.affected_rows() > 0) {
+        rctx.uctx->onDeleted(UserContext::PlanResource::WORK_SESSION);
         const auto fres = co_await rctx.dbh->exec(
             format("SELECT {} from work_session where id=? and user=?",
                    ToWorkSession::selectCols), dbopts, uuid, cuser);

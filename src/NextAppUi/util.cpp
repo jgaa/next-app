@@ -56,6 +56,8 @@ std::ostream& operator<<(std::ostream& os, const nextapp::pb::ErrorGadget::Error
         "CLIENT_GRPC_ERROR",
         "REPLAY_DETECTED",
         "INVALID_ARGUMENT",
+        "TEMPORATY_FAILURE",
+        "LIMIT_EXCEEDED"
     });
 
     const auto err = static_cast<size_t>(error);

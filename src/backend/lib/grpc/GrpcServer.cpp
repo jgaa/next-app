@@ -129,6 +129,7 @@ struct ToDevice {
             hello->set_lastnotification(owner_.getLastNotificationUpdated());
             hello->set_plansenabled(server.config().payment.enable_plan);
             hello->set_supportsupdatedid(true);
+            hello->mutable_sessionaccess()->CopyFrom(rctx.uctx->currentSessionAccess(rctx.session().deviceId()));
             if (auto oldest = rctx.uctx->oldestRetainedPublishId()) {
                 hello->set_oldestretainedpublishid(*oldest);
             }
@@ -544,6 +545,7 @@ failed:
             if (req->has_enabled()) {
                 co_await rctx.dbh->exec("UPDATE device SET enabled=? WHERE id=? AND user=?",
                     rctx.uctx->dbOptions(), req->enabled(), req->id(), rctx.uctx->userUuid());
+                rctx.uctx->refreshSessionAccess();
             }
 
             // Get the device from the db
@@ -588,6 +590,7 @@ failed:
             const auto delete_res = co_await rctx.dbh->exec("DELETE FROM device WHERE user=? AND id=?",
                 rctx.uctx->dbOptions(), rctx.uctx->userUuid(), req->uuid());
             if (delete_res.has_value() && delete_res.affected_rows() == 1) {
+                rctx.uctx->onDeleted(UserContext::PlanResource::DEVICE);
                 auto& pub = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
                 ToDevice::assign(fetch_res.rows().front(), *pub.mutable_device(), rctx.uctx->tz());
             } else {

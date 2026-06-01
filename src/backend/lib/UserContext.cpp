@@ -9,6 +9,7 @@
 #include "grpc/grpc_security_constants.h"
 
 #include <limits>
+#include <random>
 
 using namespace std;
 
@@ -43,6 +44,22 @@ auto to_string_view(::grpc::string_ref ref) {
 
 auto to_string_view(const boost::mysql::blob_view& blob) {
     return string_view{reinterpret_cast<const char *>(blob.data()), blob.size()};
+}
+
+bool isMobileDevice(string_view product_type, string_view os)
+{
+    const auto pt = toLower(product_type);
+    const auto os_name = toLower(os);
+    return pt == "android" || pt == "ios" || pt == "iphoneos" || pt == "ipados"
+        || os_name == "android" || os_name == "ios" || os_name == "iphoneos" || os_name == "ipados";
+}
+
+template <typename IntT>
+IntT randomBetween(IntT min_value, IntT max_value)
+{
+    thread_local std::mt19937 rng{std::random_device{}()};
+    std::uniform_int_distribution<IntT> dist(min_value, max_value);
+    return dist(rng);
 }
 
 } // anon ns
@@ -145,16 +162,24 @@ boost::asio::awaitable<void> SessionManager::loadPlans()
     auto db = co_await server_.db().getConnection();
 
     // Query the plans
-    auto res = co_await db.exec("SELECT name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only FROM plan");
+    auto res = co_await db.exec(
+        "SELECT name, active, createdAt, max_users, max_devices, max_nodes, nodes_monthly_growth, "
+        "max_actions, actions_monthly_growth, max_worksessions, work_sessions_monthly_growth, "
+        "max_time_blocks, time_blocks_monthly_growth, mobile_only FROM plan");
     enum Cols {
         NAME,
         ACTIVE,
+        CREATED_AT,
         MAX_USERS,
         MAX_DEVICES,
         MAX_NODES,
+        NODES_MONTHLY_GROWTH,
         MAX_ACTIONS,
+        ACTIONS_MONTHLY_GROWTH,
         MAX_WORKSESSIONS,
+        WORK_SESSIONS_MONTHLY_GROWTH,
         MAX_TIME_BLOCKS,
+        TIME_BLOCKS_MONTHLY_GROWTH,
         MOBILE_ONLY
     };
 
@@ -165,12 +190,17 @@ boost::asio::awaitable<void> SessionManager::loadPlans()
 
         pp->name = row[NAME].as_string();
         pp->active = row[ACTIVE].as_int64() != 0;
+        pp->created_at = row[CREATED_AT].as_datetime().as_time_point();
         pp->max_users = row[MAX_USERS].as_int64();
         pp->max_devices = row[MAX_DEVICES].as_int64();
         pp->max_nodes = row[MAX_NODES].as_int64();
+        pp->nodes_monthly_growth = row[NODES_MONTHLY_GROWTH].as_int64();
         pp->max_actions = row[MAX_ACTIONS].as_int64();
+        pp->actions_monthly_growth = row[ACTIONS_MONTHLY_GROWTH].as_int64();
         pp->max_worksessions = row[MAX_WORKSESSIONS].as_int64();
+        pp->work_sessions_monthly_growth = row[WORK_SESSIONS_MONTHLY_GROWTH].as_int64();
         pp->max_time_blocks = row[MAX_TIME_BLOCKS].as_int64();
+        pp->time_blocks_monthly_growth = row[TIME_BLOCKS_MONTHLY_GROWTH].as_int64();
         pp->mobile_only = row[MOBILE_ONLY].as_int64() != 0;
 
         const string_view plan_name = pp->name;
@@ -349,12 +379,14 @@ std::shared_ptr<Plan> SessionManager::getPlan(const std::string_view planName) c
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid, const std::string_view timeZone,
                          bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options &dbOptions,
-                         uint32_t publishId, uint64_t publishEpoch, uint64_t dataSyncEpoch)
+                         uint32_t publishId, uint64_t publishEpoch, uint64_t dataSyncEpoch,
+                         std::chrono::system_clock::time_point createdAt)
     : user_uuid_{userUuid},
     tenant_uuid_{tenantUuid},
     publish_message_id_{publishId},
     publish_epoch_{publishEpoch ? publishEpoch : newPublishEpoch()},
     data_sync_epoch_{dataSyncEpoch},
+    created_at_{createdAt == std::chrono::system_clock::time_point{} ? std::chrono::system_clock::now() : createdAt},
     db_options_{dbOptions} {
 
     if (timeZone.empty()) {
@@ -368,15 +400,21 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
             throw std::invalid_argument("Invalid timezone: " + std::string{timeZone});
         }
     }
+
+    if (Server::hasInstance()) {
+        plan_usage_timer_.emplace(Server::instance().ctx());
+    }
 }
 
 UserContext::UserContext(const std::string &tenantUuid, const std::string &userUuid,
                          pb::User::Kind kind,
                          const pb::UserGlobalSettings &settings, std::shared_ptr<TenantPlan> tenantPlan,
-                         uint32_t publishId, uint64_t publishEpoch, uint64_t dataSyncEpoch)
+                         uint32_t publishId, uint64_t publishEpoch, uint64_t dataSyncEpoch,
+                         std::chrono::system_clock::time_point createdAt)
     : user_uuid_{userUuid}, tenant_uuid_{tenantUuid}, publish_message_id_{publishId}, settings_(settings)
     , publish_epoch_{publishEpoch ? publishEpoch : newPublishEpoch()}
     , data_sync_epoch_{dataSyncEpoch}
+    , created_at_{createdAt == std::chrono::system_clock::time_point{} ? std::chrono::system_clock::now() : createdAt}
     , kind_{kind}, tenant_plan_{std::move(tenantPlan)} {
 
     try {
@@ -397,6 +435,496 @@ UserContext::UserContext(const std::string &tenantUuid, const std::string &userU
     assert(tz_ != nullptr);
     db_options_.time_zone = tz_->name();
     db_options_.reconnect_and_retry_query = true;
+
+    if (Server::hasInstance()) {
+        plan_usage_timer_.emplace(Server::instance().ctx());
+    }
+}
+
+UserContext::~UserContext()
+{
+    if (plan_usage_timer_) {
+        plan_usage_timer_->cancel();
+    }
+}
+
+size_t UserContext::planIndex(PlanResource resource) noexcept
+{
+    return static_cast<size_t>(resource);
+}
+
+string_view UserContext::planResourceName(PlanResource resource) noexcept
+{
+    switch (resource) {
+    case PlanResource::DEVICE: return "enabled device";
+    case PlanResource::NODE: return "node";
+    case PlanResource::ACTION: return "action";
+    case PlanResource::WORK_SESSION: return "work session";
+    case PlanResource::TIME_BLOCK: return "time block";
+    case PlanResource::COUNT: break;
+    }
+    return "resource";
+}
+
+string_view UserContext::sessionAccessReason(SessionAccessMode mode) noexcept
+{
+    switch (mode) {
+    case SessionAccessMode::FULL_ACCESS:
+        return "full access";
+    case SessionAccessMode::READ_ONLY_DEVICE_LIMIT:
+        return "read-only because the device limit is reached";
+    case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
+        return "read-only because this plan only allows mobile devices full access";
+    }
+    return "read-only";
+}
+
+uint32_t UserContext::countTemplateNodes(const pb::NodeTemplate& root) noexcept
+{
+    uint32_t total = root.name().empty() ? 0u : 1u;
+    for (const auto& child : root.children()) {
+        total += countTemplateNodes(child);
+    }
+    return total;
+}
+
+uint32_t UserContext::elapsedWholeMonths(std::chrono::system_clock::time_point createdAt,
+                                         std::chrono::system_clock::time_point now) noexcept
+{
+    if (now <= createdAt) {
+        return 0;
+    }
+
+    const auto created_day = std::chrono::floor<std::chrono::days>(createdAt);
+    const auto now_day = std::chrono::floor<std::chrono::days>(now);
+    const std::chrono::year_month_day created_ymd{created_day};
+    const std::chrono::year_month_day now_ymd{now_day};
+
+    int months = (int(now_ymd.year()) - int(created_ymd.year())) * 12
+        + (unsigned(now_ymd.month()) - unsigned(created_ymd.month()));
+    if (unsigned(now_ymd.day()) < unsigned(created_ymd.day())) {
+        --months;
+    }
+    return static_cast<uint32_t>(std::max(months, 0));
+}
+
+void UserContext::ResourceReservation::commit() noexcept
+{
+    if (owner_ && !committed_) {
+        owner_->commitReservation(resource_, amount_);
+        committed_ = true;
+    }
+}
+
+void UserContext::ResourceReservation::release() noexcept
+{
+    if (owner_ && !committed_) {
+        owner_->releaseReservation(resource_, amount_);
+    }
+    owner_ = nullptr;
+}
+
+uint32_t UserContext::configuredGraceWindow_() const noexcept
+{
+    return Server::instance().config().svr.plan_delete_grace_window;
+}
+
+uint32_t UserContext::allowedWithGrace_(const PlanCounter& counter) const noexcept
+{
+    if (counter.allowed == 0) {
+        return 0;
+    }
+
+    uint64_t effective = counter.allowed;
+    if (counter.stale_after_delete) {
+        effective += configuredGraceWindow_();
+    }
+
+    return static_cast<uint32_t>(std::min<uint64_t>(effective, std::numeric_limits<uint32_t>::max()));
+}
+
+boost::asio::awaitable<void> UserContext::loadPlanUsageState_(jgaa::mysqlpool::Mysqlpool::Handle& dbh)
+{
+    if (!Server::instance().config().payment.enable_plan || !tenant_plan_ || !tenant_plan_->plan) {
+        std::lock_guard lock{plan_usage_mutex_};
+        plan_usage_.loaded = true;
+        plan_usage_.refresh_in_progress = false;
+        plan_usage_.next_refresh_at = std::chrono::steady_clock::now() + std::chrono::hours{24};
+        for (auto& counter : plan_usage_.counters) {
+            counter = {};
+        }
+        co_return;
+    }
+
+    auto count_one = [&](std::string_view sql) -> boost::asio::awaitable<uint32_t> {
+        auto res = co_await dbh.exec(sql, user_uuid_);
+        if (res.rows().empty()) {
+            co_return 0;
+        }
+        co_return static_cast<uint32_t>(std::max<int64_t>(res.rows().front().front().as_int64(), 0));
+    };
+
+    PlanUsageState next;
+    next.loaded = true;
+    next.refresh_in_progress = false;
+
+    const auto months = elapsedWholeMonths(created_at_, std::chrono::system_clock::now());
+    const auto* plan = tenant_plan_->plan.get();
+    auto compute_allowed = [months](uint32_t base, uint32_t growth) -> uint32_t {
+        if (base == 0) {
+            return 0;
+        }
+        uint64_t total = base + uint64_t{growth} * months;
+        return static_cast<uint32_t>(std::min<uint64_t>(total, std::numeric_limits<uint32_t>::max()));
+    };
+
+    next.counters[planIndex(PlanResource::DEVICE)].used = co_await count_one(
+        "SELECT COUNT(*) FROM device WHERE user=? AND enabled=1");
+    next.counters[planIndex(PlanResource::DEVICE)].allowed = plan->max_devices;
+
+    next.counters[planIndex(PlanResource::NODE)].used = co_await count_one(
+        "SELECT COUNT(*) FROM node WHERE user=? AND deleted=0");
+    next.counters[planIndex(PlanResource::NODE)].allowed = compute_allowed(plan->max_nodes, plan->nodes_monthly_growth);
+
+    next.counters[planIndex(PlanResource::ACTION)].used = co_await count_one(
+        "SELECT COUNT(*) FROM action WHERE user=? AND status != 'deleted'");
+    next.counters[planIndex(PlanResource::ACTION)].allowed = compute_allowed(plan->max_actions, plan->actions_monthly_growth);
+
+    next.counters[planIndex(PlanResource::WORK_SESSION)].used = co_await count_one(
+        "SELECT COUNT(*) FROM work_session WHERE user=? AND state != 'deleted'");
+    next.counters[planIndex(PlanResource::WORK_SESSION)].allowed = compute_allowed(
+        plan->max_worksessions, plan->work_sessions_monthly_growth);
+
+    next.counters[planIndex(PlanResource::TIME_BLOCK)].used = co_await count_one(
+        "SELECT COUNT(*) FROM time_block WHERE user=? AND kind != 'deleted'");
+    next.counters[planIndex(PlanResource::TIME_BLOCK)].allowed = compute_allowed(
+        plan->max_time_blocks, plan->time_blocks_monthly_growth);
+
+    next.next_refresh_at = std::chrono::steady_clock::now() + std::chrono::hours{24}
+        + std::chrono::minutes{randomBetween(0, 180)};
+
+    std::lock_guard lock{plan_usage_mutex_};
+    for (size_t i = 0; i < plan_usage_.counters.size(); ++i) {
+        next.counters[i].reserved = plan_usage_.counters[i].reserved;
+    }
+    plan_usage_ = next;
+    co_return;
+}
+
+boost::asio::awaitable<void> UserContext::initializePlanUsage(jgaa::mysqlpool::Mysqlpool::Handle& dbh)
+{
+    co_await loadPlanUsageState_(dbh);
+    schedulePeriodicPlanUsageRefresh();
+    co_return;
+}
+
+boost::asio::awaitable<void> UserContext::refreshPlanUsageNow()
+{
+    {
+        std::lock_guard lock{plan_usage_mutex_};
+        if (plan_usage_.refresh_in_progress) {
+            co_return;
+        }
+        plan_usage_.refresh_in_progress = true;
+    }
+
+    try {
+        auto db = co_await Server::instance().db().getConnection();
+        co_await loadPlanUsageState_(db);
+        schedulePeriodicPlanUsageRefresh();
+    } catch (const std::exception& ex) {
+        LOG_WARN_N << "Failed to refresh plan usage for user " << user_uuid_ << ": " << ex.what();
+        std::lock_guard lock{plan_usage_mutex_};
+        plan_usage_.refresh_in_progress = false;
+        plan_usage_.next_refresh_at = std::chrono::steady_clock::now() + std::chrono::minutes{5};
+    }
+}
+
+void UserContext::schedulePlanUsageRefresh(std::chrono::milliseconds delay)
+{
+    if (!plan_usage_timer_) {
+        return;
+    }
+    auto weak = weak_from_this();
+    const auto generation = ++plan_refresh_generation_;
+    plan_usage_timer_->cancel();
+    plan_usage_timer_->expires_after(delay);
+    plan_usage_timer_->async_wait([weak, generation](const boost::system::error_code& ec) {
+        if (ec == boost::asio::error::operation_aborted) {
+            return;
+        }
+        if (ec) {
+            LOG_WARN_N << "Plan usage timer failed: " << ec.message();
+            return;
+        }
+        if (auto self = weak.lock(); self && self->plan_refresh_generation_ == generation) {
+            boost::asio::co_spawn(Server::instance().ctx(),
+                                  [self]() -> boost::asio::awaitable<void> {
+                                      co_await self->refreshPlanUsageNow();
+                                  },
+                                  boost::asio::detached);
+        }
+    });
+}
+
+void UserContext::schedulePeriodicPlanUsageRefresh()
+{
+    std::lock_guard lock{plan_usage_mutex_};
+    const auto now = std::chrono::steady_clock::now();
+    const auto next = plan_usage_.next_refresh_at > now ? plan_usage_.next_refresh_at - now : std::chrono::seconds{1};
+    schedulePlanUsageRefresh(std::chrono::duration_cast<std::chrono::milliseconds>(next));
+}
+
+void UserContext::scheduleShortPlanUsageRefresh()
+{
+    schedulePlanUsageRefresh(std::chrono::milliseconds{randomBetween(100, 2000)});
+}
+
+UserContext::ResourceReservation UserContext::reserveAddition(uint32_t amount, PlanResource resource)
+{
+    if (amount == 0 || !Server::instance().config().payment.enable_plan) {
+        return {};
+    }
+
+    std::lock_guard lock{plan_usage_mutex_};
+    auto& state = plan_usage_;
+    auto& counter = state.counters[planIndex(resource)];
+    if (!state.loaded) {
+        throw server_err{pb::Error::TEMPORATY_FAILURE,
+                         format("Plan limits are not ready yet for {}", planResourceName(resource))};
+    }
+
+    LOG_TRACE_EX(*this) << "Reserving " << amount << " " << planResourceName(resource) << "(s) for user " << userUuid()
+               << ". Currently used: " << counter.used
+               << ", reserved: " << counter.reserved
+               << ", allowed: " << counter.allowed
+               << (counter.stale_after_delete ? " (stale after delete)" : "")
+               << ", effective allowed with grace: " << allowedWithGrace_(counter);
+
+    if (state.next_refresh_at <= std::chrono::steady_clock::now() && !state.refresh_in_progress) {
+        state.refresh_in_progress = true;
+        boost::asio::co_spawn(Server::instance().ctx(),
+                              [self = shared_from_this()]() -> boost::asio::awaitable<void> {
+                                  co_await self->refreshPlanUsageNow();
+                              },
+                              boost::asio::detached);
+    }
+
+    const auto effective_allowed = allowedWithGrace_(counter);
+    if (effective_allowed != 0) {
+        const uint64_t total = uint64_t{counter.used} + counter.reserved + amount;
+        if (total > effective_allowed) {
+            const auto plan_name = tenant_plan_ && tenant_plan_->plan ? tenant_plan_->plan->name : "unknown";
+            const auto resource_name = std::string{planResourceName(resource)};
+            throw server_err{
+                pb::Error::LIMIT_EXCEEDED,
+                format("Plan '{}' allows {} {}{}, user currently has {} and requested {} more",
+                       plan_name,
+                       counter.allowed,
+                       resource_name,
+                       counter.stale_after_delete ? format(" (temporary grace cap {})", effective_allowed) : "",
+                       counter.used + counter.reserved,
+                       amount)};
+        }
+    }
+
+    counter.reserved += amount;
+    return ResourceReservation{this, resource, amount};
+}
+
+void UserContext::commitReservation(PlanResource resource, uint32_t amount) noexcept
+{
+    std::lock_guard lock{plan_usage_mutex_};
+    auto& counter = plan_usage_.counters[planIndex(resource)];
+    counter.reserved = counter.reserved >= amount ? counter.reserved - amount : 0;
+    counter.used += amount;
+}
+
+void UserContext::releaseReservation(PlanResource resource, uint32_t amount) noexcept
+{
+    std::lock_guard lock{plan_usage_mutex_};
+    auto& counter = plan_usage_.counters[planIndex(resource)];
+    counter.reserved = counter.reserved >= amount ? counter.reserved - amount : 0;
+}
+
+void UserContext::onDeleted(PlanResource resource, uint32_t amount) noexcept
+{
+    if (!Server::instance().config().payment.enable_plan || amount == 0) {
+        return;
+    }
+
+    std::lock_guard lock{plan_usage_mutex_};
+    auto& counter = plan_usage_.counters[planIndex(resource)];
+    counter.used = counter.used >= amount ? counter.used - amount : 0;
+    counter.stale_after_delete = false;
+}
+
+void UserContext::onMassDelete(PlanResource resource)
+{
+    onMassDelete({resource});
+}
+
+void UserContext::onMassDelete(std::initializer_list<PlanResource> resources)
+{
+    if (!Server::instance().config().payment.enable_plan) {
+        return;
+    }
+
+    {
+        std::lock_guard lock{plan_usage_mutex_};
+        for (const auto resource : resources) {
+            plan_usage_.counters[planIndex(resource)].stale_after_delete = true;
+        }
+    }
+    scheduleShortPlanUsageRefresh();
+}
+
+void UserContext::setDeviceMobile(const boost::uuids::uuid& deviceId, bool isMobile)
+{
+    {
+        std::lock_guard lock{instance_mutex_};
+        devices_[deviceId].is_mobile = isMobile;
+    }
+    refreshSessionAccess();
+}
+
+pb::SessionAccess UserContext::currentSessionAccess(const boost::uuids::uuid& deviceId) const
+{
+    pb::SessionAccess access;
+    access.mutable_deviceid()->set_uuid(to_string(deviceId));
+
+    SessionAccessMode mode = SessionAccessMode::FULL_ACCESS;
+    {
+        std::shared_lock lock{mutex_};
+        for (const auto& session : sessions_) {
+            if (session->deviceId() == deviceId) {
+                mode = session->accessMode();
+                break;
+            }
+        }
+    }
+
+    switch (mode) {
+    case SessionAccessMode::FULL_ACCESS:
+        access.set_mode(pb::SessionAccess::FULL_ACCESS);
+        break;
+    case SessionAccessMode::READ_ONLY_DEVICE_LIMIT:
+        access.set_mode(pb::SessionAccess::READ_ONLY_DEVICE_LIMIT);
+        break;
+    case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
+        access.set_mode(pb::SessionAccess::READ_ONLY_MOBILE_ONLY);
+        break;
+    }
+    return access;
+}
+
+void UserContext::refreshSessionAccessLocked_(vector<pair<boost::uuids::uuid, SessionAccessMode>>& changed)
+{
+    lock_guard instance_lock{instance_mutex_};
+
+    struct DeviceState {
+        boost::uuids::uuid device_id;
+        uint64_t connected_order = 0;
+        bool is_mobile = false;
+        vector<shared_ptr<Session>> sessions;
+    };
+
+    unordered_map<boost::uuids::uuid, DeviceState, UuidHash> by_device;
+    for (const auto& session : sessions_) {
+        auto& state = by_device[session->deviceId()];
+        state.device_id = session->deviceId();
+        state.is_mobile = devices_[session->deviceId()].is_mobile;
+        state.sessions.push_back(session);
+        if (state.connected_order == 0 || session->connectedOrder() < state.connected_order) {
+            state.connected_order = session->connectedOrder();
+        }
+    }
+
+    SessionAccessMode default_mode = SessionAccessMode::FULL_ACCESS;
+    uint32_t max_devices = 0;
+    bool mobile_only = false;
+    if (Server::instance().config().payment.enable_plan && tenant_plan_ && tenant_plan_->plan) {
+        max_devices = tenant_plan_->plan->max_devices;
+        mobile_only = tenant_plan_->plan->mobile_only;
+    } else {
+        max_devices = 0;
+        mobile_only = false;
+    }
+
+    vector<DeviceState*> ranked;
+    ranked.reserve(by_device.size());
+    for (auto& [_, state] : by_device) {
+        ranked.push_back(&state);
+    }
+    ranges::sort(ranked, [](const DeviceState* a, const DeviceState* b) {
+        if (a->connected_order != b->connected_order) {
+            return a->connected_order < b->connected_order;
+        }
+        return a->device_id < b->device_id;
+    });
+
+    uint32_t granted = 0;
+    for (auto* state : ranked) {
+        auto mode = default_mode;
+        const bool eligible = !mobile_only || state->is_mobile;
+        if (!eligible) {
+            mode = SessionAccessMode::READ_ONLY_MOBILE_ONLY;
+        } else if (max_devices != 0 && granted >= max_devices) {
+            mode = SessionAccessMode::READ_ONLY_DEVICE_LIMIT;
+        } else {
+            ++granted;
+        }
+
+        for (auto& session : state->sessions) {
+            const auto old_mode = session->accessMode();
+            if (old_mode != mode) {
+                session->setAccessMode(mode);
+                changed.emplace_back(session->deviceId(), mode);
+            }
+        }
+    }
+}
+
+void UserContext::refreshSessionAccess()
+{
+    vector<pair<boost::uuids::uuid, SessionAccessMode>> changed;
+    {
+        unique_lock lock{mutex_};
+        refreshSessionAccessLocked_(changed);
+    }
+
+    publishSessionAccessChanges(std::move(changed));
+}
+
+void UserContext::publishSessionAccessChanges(vector<pair<boost::uuids::uuid, SessionAccessMode>> changed)
+{
+
+    if (changed.empty() || !Server::hasInstance()) {
+        return;
+    }
+
+    for (const auto& [device_id, mode] : changed) {
+        auto update = make_shared<pb::Update>();
+        update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+        auto* access = update->mutable_sessionaccess();
+        access->mutable_deviceid()->set_uuid(to_string(device_id));
+        switch (mode) {
+        case SessionAccessMode::FULL_ACCESS:
+            access->set_mode(pb::SessionAccess::FULL_ACCESS);
+            break;
+        case SessionAccessMode::READ_ONLY_DEVICE_LIMIT:
+            access->set_mode(pb::SessionAccess::READ_ONLY_DEVICE_LIMIT);
+            break;
+        case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
+            access->set_mode(pb::SessionAccess::READ_ONLY_MOBILE_ONLY);
+            break;
+        }
+        boost::asio::co_spawn(Server::instance().ctx(),
+                              [self = shared_from_this(), update]() mutable -> boost::asio::awaitable<void> {
+                                  co_await self->publish(update);
+                              },
+                              boost::asio::detached);
+    }
 }
 
 UserContext::SubscribeReplayResult
@@ -587,9 +1115,13 @@ pb::Subscription UserContext::getSubscription() const
             plan.set_maxusers(tp.plan->max_users);
             plan.set_maxdevices(tp.plan->max_devices);
             plan.set_maxnodes(tp.plan->max_nodes);
+            plan.set_nodexmonthlygrowth(tp.plan->nodes_monthly_growth);
             plan.set_maxactions(tp.plan->max_actions);
+            plan.set_actionsmonthlygrowth(tp.plan->actions_monthly_growth);
             plan.set_maxworksessions(tp.plan->max_worksessions);
+            plan.set_worksessionsmonthlygrowth(tp.plan->work_sessions_monthly_growth);
             plan.set_maxtimeblocks(tp.plan->max_time_blocks);
+            plan.set_timeblocksmonthlygrowth(tp.plan->time_blocks_monthly_growth);
             plan.set_mobileonly(tp.plan->mobile_only);
         }
         if (tp.updated_at) {
@@ -664,6 +1196,8 @@ boost::asio::awaitable<void> UserContext::reloadTenantPlan(jgaa::mysqlpool::Mysq
     }
 
     setTenantPlan(std::move(tenant_plan));
+    refreshSessionAccess();
+    scheduleShortPlanUsageRefresh();
 }
 
 boost::asio::awaitable<bool>
@@ -792,6 +1326,20 @@ void UserContext::Session::setHasPush(bool enabled) {
     has_push_ = enabled;
     if (auto p = publisher_.lock()) {
         p->setHasPush(enabled);
+    }
+}
+
+void UserContext::Session::requireWritableForAdd(string_view resource) const
+{
+    switch (accessMode()) {
+    case SessionAccessMode::FULL_ACCESS:
+        return;
+    case SessionAccessMode::READ_ONLY_DEVICE_LIMIT:
+        throw server_err{pb::Error::LIMIT_EXCEEDED,
+                         format("This device is currently in read-only mode because the device limit is reached. Cannot add {}.", resource)};
+    case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
+        throw server_err{pb::Error::LIMIT_EXCEEDED,
+                         format("This device is currently in read-only mode because the active plan only allows mobile devices full access. Cannot add {}.", resource)};
     }
 }
 
@@ -1072,8 +1620,9 @@ initial_auth_ok:
     assert(ucx);
 
     auto scope = ucx->isAdmin() ? server_.metrics().sessions_admin().scoped() : server_.metrics().sessions_user().scoped();
+    const auto connected_order = next_connected_order_.fetch_add(1, std::memory_order_relaxed);
 
-    auto session = make_shared<UserContext::Session>(ucx, device_uuid, new_sid, std::move(scope));
+    auto session = make_shared<UserContext::Session>(ucx, device_uuid, new_sid, connected_order, std::move(scope));
     {
         unique_lock lock{mutex_};
         sessions_[session->sessionId()] = session.get();
@@ -1300,15 +1849,16 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
     const auto devid = to_string(deviceId);
     string uid;
     boost::uuids::uuid userUuid;
+    bool is_mobile = false;
 
     {
         auto res = co_await db.exec(
-            "SELECT user, certHash, enabled FROM device where id=? ", devid);
+            "SELECT user, certHash, enabled, productType, os FROM device where id=? ", devid);
         if (res.rows().empty()) {
             LOG_WARN << "Failed to lookup device " << devid << " in the database, although the user appears to have a signed cert with that ID.";
             throw server_err{pb::Error::NOT_FOUND, "Device not found"};
         }
-        enum Cols { USER, CERT_HASH, ENABLED };
+        enum Cols { USER, CERT_HASH, ENABLED, PRODUCT_TYPE, OS };
 
         const auto& row = res.rows().front();
         uid = row.at(USER).as_string();
@@ -1318,11 +1868,20 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
             throw server_err{pb::Error::DEVICE_DISABLED, "Device is disabled"};
         }
 
+        const auto product_type = row.at(PRODUCT_TYPE).is_null()
+            ? string_view{}
+            : string_view{row.at(PRODUCT_TYPE).as_string().data(), row.at(PRODUCT_TYPE).as_string().size()};
+        const auto os_name = row.at(OS).is_null()
+            ? string_view{}
+            : string_view{row.at(OS).as_string().data(), row.at(OS).as_string().size()};
+        is_mobile = isMobileDevice(product_type, os_name);
+
         {
             // Happy path
             shared_lock lock{mutex_};
             if (auto id = users_.find(userUuid) ; id != users_.end()) {
                 LOG_TRACE << "UserContext: Found user " << uid << " in cache";
+                id->second->setDeviceMobile(deviceId, is_mobile);
                 co_return id->second;
             }
         }
@@ -1339,12 +1898,13 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         shared_lock lock{mutex_};
         if (auto id = users_.find(userUuid) ; id != users_.end()) {
             LOG_TRACE << "UserContext: Found user " << uid << " in cache after waiting for creation lock";
+            id->second->setDeviceMobile(deviceId, is_mobile);
             co_return id->second;
         }
     }
 
     auto res = co_await db.exec(
-        "SELECT u.tenant, t.kind, u.kind, t.state, u.active, s.settings, "
+        "SELECT u.tenant, t.kind, u.kind, t.state, u.active, s.settings, u.created, "
         "t.plan, t.plan_updated, t.plan_expires, t.plan_seats, t.grace_period_expires, t.account_expires, "
         "u.data_sync_epoch "
         "FROM user u "
@@ -1352,7 +1912,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         "LEFT JOIN user_settings s on s.user=u.id "
         "WHERE u.id=? ", uid);
 
-    enum Cols { TENANT, TENANT_KIND, USER_KIND, TENANT_STATE, USER_ACTIVE, SETTINGS,
+    enum Cols { TENANT, TENANT_KIND, USER_KIND, TENANT_STATE, USER_ACTIVE, SETTINGS, CREATED,
                 PLAN, PLAN_UPDATED, PLAN_EXPIRES, PLAN_SEATS, GRACE_PERIOD_EXPIRES, ACCOUNT_EXPIRES,
                 DATA_SYNC_EPOCH};
     if (res.rows().empty()) [[unlikely]] {
@@ -1394,6 +1954,10 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
             LOG_INFO << "Activated pending tenant " << tenant << " because user " << uid << " logged in.";
         }
 
+        const auto created_at = row.at(CREATED).is_datetime()
+            ? row.at(CREATED).as_datetime().as_time_point()
+            : std::chrono::system_clock::now();
+
         shared_ptr<TenantPlan> tenant_plan;
         if (server_.config().payment.enable_plan && !row.at(PLAN).is_null()) {
             tenant_plan = make_shared<TenantPlan>();
@@ -1423,12 +1987,15 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         const auto publishState = co_await loadPublishState_(userUuid, uid);
         const auto dataSyncEpoch = row.at(DATA_SYNC_EPOCH).as_uint64();
         auto ucx = make_shared<UserContext>(tenant, uid, ukind, tmp_settings, tenant_plan,
-                                            publishState.publish_id, publishState.publish_epoch, dataSyncEpoch);
+                                            publishState.publish_id, publishState.publish_epoch, dataSyncEpoch,
+                                            created_at);
         {
             unique_lock lock{mutex_};
             users_[userUuid] = ucx;
         }
 
+        ucx->setDeviceMobile(deviceId, is_mobile);
+        co_await ucx->initializePlanUsage(db);
         co_await ucx->reloadPushers();
         co_return ucx;
     }

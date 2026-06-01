@@ -617,6 +617,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               tenant UUID NOT NULL,
               name VARCHAR(128) NOT NULL,
               kind ENUM('super', 'regular', 'guest') NOT NULL DEFAULT 'regular',
+              created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
               descr TEXT,
               active TINYINT(1) NOT NULL DEFAULT 1,
               system_user TINYINT(1),
@@ -1391,53 +1392,75 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
             max_users         INT NOT NULL DEFAULT 1,
             max_devices       INT NOT NULL DEFAULT 5,
             max_nodes         INT NOT NULL DEFAULT 2000,
+            nodes_monthly_growth INT NOT NULL DEFAULT 0,
             max_actions       INT NOT NULL DEFAULT 1240,
+            actions_monthly_growth INT NOT NULL DEFAULT 0,
             max_worksessions  INT NOT NULL DEFAULT 1240,
+            work_sessions_monthly_growth INT NOT NULL DEFAULT 0,
             max_time_blocks   INT NOT NULL DEFAULT 1240,
+            time_blocks_monthly_growth INT NOT NULL DEFAULT 0,
             mobile_only       BOOLEAN NOT NULL DEFAULT FALSE,
             PRIMARY KEY (name)
   ))",
 
         R"(INSERT INTO plan
-            (name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only)
+            (name, active, max_users, max_devices, max_nodes, nodes_monthly_growth, max_actions,
+             actions_monthly_growth, max_worksessions, work_sessions_monthly_growth, max_time_blocks,
+             time_blocks_monthly_growth, mobile_only)
           VALUES
-            ('free',  TRUE, 1, 1, 2000, 1240, 1240, 1240, TRUE)
+            ('free',  TRUE, 1, 1, 2000, 0, 1240, 0, 1240, 0, 1240, 0, TRUE)
           ON DUPLICATE KEY UPDATE
             active=VALUES(active),
             max_users=VALUES(max_users),
             max_devices=VALUES(max_devices),
             max_nodes=VALUES(max_nodes),
+            nodes_monthly_growth=VALUES(nodes_monthly_growth),
             max_actions=VALUES(max_actions),
+            actions_monthly_growth=VALUES(actions_monthly_growth),
             max_worksessions=VALUES(max_worksessions),
+            work_sessions_monthly_growth=VALUES(work_sessions_monthly_growth),
             max_time_blocks=VALUES(max_time_blocks),
+            time_blocks_monthly_growth=VALUES(time_blocks_monthly_growth),
             mobile_only=VALUES(mobile_only))",
 
         R"(INSERT INTO plan
-            (name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only)
+            (name, active, max_users, max_devices, max_nodes, nodes_monthly_growth, max_actions,
+             actions_monthly_growth, max_worksessions, work_sessions_monthly_growth, max_time_blocks,
+             time_blocks_monthly_growth, mobile_only)
           VALUES
-            ('trial', TRUE, 1, 5, 2000, 1240, 1240, 1240, FALSE)
+            ('trial', TRUE, 1, 5, 2000, 0, 1240, 0, 1240, 0, 1240, 0, FALSE)
           ON DUPLICATE KEY UPDATE
             active=VALUES(active),
             max_users=VALUES(max_users),
             max_devices=VALUES(max_devices),
             max_nodes=VALUES(max_nodes),
+            nodes_monthly_growth=VALUES(nodes_monthly_growth),
             max_actions=VALUES(max_actions),
+            actions_monthly_growth=VALUES(actions_monthly_growth),
             max_worksessions=VALUES(max_worksessions),
+            work_sessions_monthly_growth=VALUES(work_sessions_monthly_growth),
             max_time_blocks=VALUES(max_time_blocks),
+            time_blocks_monthly_growth=VALUES(time_blocks_monthly_growth),
             mobile_only=VALUES(mobile_only))",
 
         R"(INSERT INTO plan
-    (name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only)
+    (name, active, max_users, max_devices, max_nodes, nodes_monthly_growth, max_actions,
+     actions_monthly_growth, max_worksessions, work_sessions_monthly_growth, max_time_blocks,
+     time_blocks_monthly_growth, mobile_only)
           VALUES
-            ('pro',   TRUE, 1, 5, 2000, 1240, 1240, 1240, FALSE)
+            ('pro',   TRUE, 1, 5, 2000, 0, 1240, 0, 1240, 0, 1240, 0, FALSE)
           ON DUPLICATE KEY UPDATE
             active=VALUES(active),
             max_users=VALUES(max_users),
             max_devices=VALUES(max_devices),
             max_nodes=VALUES(max_nodes),
+            nodes_monthly_growth=VALUES(nodes_monthly_growth),
             max_actions=VALUES(max_actions),
+            actions_monthly_growth=VALUES(actions_monthly_growth),
             max_worksessions=VALUES(max_worksessions),
+            work_sessions_monthly_growth=VALUES(work_sessions_monthly_growth),
             max_time_blocks=VALUES(max_time_blocks),
+            time_blocks_monthly_growth=VALUES(time_blocks_monthly_growth),
             mobile_only=VALUES(mobile_only))",
 
         // Tenant plan fields
@@ -1756,6 +1779,25 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v30_upgrade = to_array<string_view>({
+        "SET FOREIGN_KEY_CHECKS=0",
+
+        "ALTER TABLE plan ADD COLUMN IF NOT EXISTS nodes_monthly_growth INT NOT NULL DEFAULT 0",
+        "ALTER TABLE plan ADD COLUMN IF NOT EXISTS actions_monthly_growth INT NOT NULL DEFAULT 0",
+        "ALTER TABLE plan ADD COLUMN IF NOT EXISTS work_sessions_monthly_growth INT NOT NULL DEFAULT 0",
+        "ALTER TABLE plan ADD COLUMN IF NOT EXISTS time_blocks_monthly_growth INT NOT NULL DEFAULT 0",
+
+        "UPDATE plan SET nodes_monthly_growth = 60 WHERE nodes_monthly_growth IS NULL",
+        "UPDATE plan SET actions_monthly_growth = 300 WHERE actions_monthly_growth IS NULL",
+        "UPDATE plan SET work_sessions_monthly_growth = 300 WHERE work_sessions_monthly_growth IS NULL",
+        "UPDATE plan SET time_blocks_monthly_growth = 300 WHERE time_blocks_monthly_growth IS NULL",
+
+        R"(ALTER TABLE `user`
+            ADD COLUMN IF NOT EXISTS created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+
+        "SET FOREIGN_KEY_CHECKS=1"
+    });
+
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
@@ -1787,6 +1829,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v27_upgrade,
         v28_upgrade,
         v29_upgrade,
+        v30_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

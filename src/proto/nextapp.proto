@@ -38,6 +38,7 @@ enum Error {
     REPLAY_DETECTED = 29; // The request-id is already seen. This is a replay
     INVALID_ARGUMENT = 30;
     TEMPORATY_FAILURE = 31;
+    LIMIT_EXCEEDED = 32;
 }
 
 message Page {
@@ -90,12 +91,16 @@ message Plan {
     string name = 1;
     bool active = 2;
     common.Time createdAt = 3;
-    uint32 maxUsers = 4;
-    uint32 maxDevices = 5;
-    uint32 maxNodes = 6;
-    uint32 maxActions = 7;
-    uint32 maxWorkSessions = 8;
-    uint32 maxTimeBlocks = 9;
+    uint32 maxUsers = 4; // Only one user supported for now
+    uint32 maxDevices = 5; // 0 for no limit
+    uint32 maxNodes = 6; // 0 for no limit
+    uint32 nodexMonthlyGrowth = 11; // If zero, maxcNodex is absolute
+    uint32 maxActions = 7; // 0 for no limit
+    uint32 actionsMonthlyGrowth = 12; // If zero, maxActions is absolute
+    uint32 maxWorkSessions = 8; // 0 for no limit
+    uint32 workSessionsMonthlyGrowth = 13; // If zero, maxWorkSessions is absolute
+    uint32 maxTimeBlocks = 9; // 0 for no limit
+    uint32 timeBlocksMonthlyGrowth = 14; // If zero, maxTimeBlocks is absolute
     bool mobileOnly = 10;
 }
 
@@ -122,6 +127,17 @@ message SubscriptionInfo {
     uint32 registration_attempts = 3;
     optional common.Time last_registration_attempt = 4;
     optional common.Time next_registration_retry = 5;
+}
+
+message SessionAccess {
+    enum Mode {
+        FULL_ACCESS = 0;
+        READ_ONLY_DEVICE_LIMIT = 1;
+        READ_ONLY_MOBILE_ONLY = 2;
+    }
+
+    common.Uuid deviceId = 1;
+    Mode mode = 2;
 }
 
 message Tenant {
@@ -790,6 +806,7 @@ message Update {
         bool resync = 26; // The client should resync the data
         bool push = 27; // Push notifications has been enabled or disabled at the server
         Subscription subscription = 28; // The subscription info has been updated
+        SessionAccess sessionAccess = 29; // Access mode for a specific device/session changed
     }
 }
 
@@ -1010,6 +1027,7 @@ message Hello {
     uint64 userPublishEpoch = 8; // Identifies the lifetime of the per-user publish counter
     uint64 userDataEpoch = 9; // Identifies the current full-sync data generation for this user
     optional uint32 oldestRetainedPublishId = 10; // Oldest live update still available for replay
+    SessionAccess sessionAccess = 11; // Access mode for the current device/session
 }
 
 // Debug info about the user-sessions on the server

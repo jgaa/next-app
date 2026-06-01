@@ -975,16 +975,22 @@ asio::awaitable<void> Plans::loadActivePlans()
     auto db = co_await server_.db().getConnection();
 
     {
-        auto res = co_await db.exec(R"(SELECT name, max_users, max_devices, max_nodes, max_actions,
-            max_worksessions, max_time_blocks, mobile_only FROM plan WHERE active=TRUE ORDER BY name)");
+        auto res = co_await db.exec(R"(SELECT name, max_users, max_devices, max_nodes, nodes_monthly_growth,
+            max_actions, actions_monthly_growth, max_worksessions, work_sessions_monthly_growth,
+            max_time_blocks, time_blocks_monthly_growth, mobile_only
+            FROM plan WHERE active=TRUE ORDER BY name)");
         enum Cols {
             NAME,
             MAX_USERS,
             MAX_DEVICES,
             MAX_NODES,
+            NODES_MONTHLY_GROWTH,
             MAX_ACTIONS,
+            ACTIONS_MONTHLY_GROWTH,
             MAX_WORKSESSIONS,
+            WORK_SESSIONS_MONTHLY_GROWTH,
             MAX_TIME_BLOCKS,
+            TIME_BLOCKS_MONTHLY_GROWTH,
             MOBILE_ONLY
         };
 
@@ -993,9 +999,13 @@ asio::awaitable<void> Plans::loadActivePlans()
             plan.max_users = row.at(MAX_USERS).as_int64();
             plan.max_devices = row.at(MAX_DEVICES).as_int64();
             plan.max_nodes = row.at(MAX_NODES).as_int64();
+            plan.nodes_monthly_growth = row.at(NODES_MONTHLY_GROWTH).as_int64();
             plan.max_actions = row.at(MAX_ACTIONS).as_int64();
+            plan.actions_monthly_growth = row.at(ACTIONS_MONTHLY_GROWTH).as_int64();
             plan.max_worksessions = row.at(MAX_WORKSESSIONS).as_int64();
+            plan.work_sessions_monthly_growth = row.at(WORK_SESSIONS_MONTHLY_GROWTH).as_int64();
             plan.max_time_blocks = row.at(MAX_TIME_BLOCKS).as_int64();
+            plan.time_blocks_monthly_growth = row.at(TIME_BLOCKS_MONTHLY_GROWTH).as_int64();
             plan.mobile_only = row.at(MOBILE_ONLY).as_int64() != 0;
             snapshot->plans.emplace(row.at(NAME).as_string(), std::move(plan));
         }
@@ -1039,15 +1049,20 @@ struct DbPlan {
     int64_t max_users = 1;
     int64_t max_devices = 5;
     int64_t max_nodes = 2000;
+    int64_t nodes_monthly_growth = 0;
     int64_t max_actions = 1240;
+    int64_t actions_monthly_growth = 0;
     int64_t max_worksessions = 1240;
+    int64_t work_sessions_monthly_growth = 0;
     int64_t max_time_blocks = 1240;
+    int64_t time_blocks_monthly_growth = 0;
     bool mobile_only = false;
 
     bool operator==(const DbPlan&) const = default;
 };
 
-int64_t getIntValue(const payments::v1::Plan& plan, string_view key)
+int64_t getIntValue(const payments::v1::Plan& plan, string_view key,
+                    std::optional<int64_t> defaultValue = {})
 {
     if (auto it = plan.values().find(string{key}); it != plan.values().end()) {
         size_t pos = 0;
@@ -1057,6 +1072,10 @@ int64_t getIntValue(const payments::v1::Plan& plan, string_view key)
                                       it->second, plan.plan_id(), key)};
         }
         return value;
+    }
+
+    if (defaultValue) {
+        return *defaultValue;
     }
 
     throw runtime_error{format("Missing required payment plan '{}' field '{}'", plan.plan_id(), key)};
@@ -1096,9 +1115,13 @@ DbPlan toDbPlan(const payments::v1::Plan& plan)
     out.max_users = getIntValue(plan, "max_users");
     out.max_devices = getIntValue(plan, "max_devices");
     out.max_nodes = getIntValue(plan, "max_nodes");
+    out.nodes_monthly_growth = getIntValue(plan, "nodes_monthly_growth", 0);
     out.max_actions = getIntValue(plan, "max_actions");
+    out.actions_monthly_growth = getIntValue(plan, "actions_monthly_growth", 0);
     out.max_worksessions = getIntValue(plan, "max_worksessions");
+    out.work_sessions_monthly_growth = getIntValue(plan, "work_sessions_monthly_growth", 0);
     out.max_time_blocks = getIntValue(plan, "max_time_blocks");
+    out.time_blocks_monthly_growth = getIntValue(plan, "time_blocks_monthly_growth", 0);
     out.mobile_only = getBoolValue(plan, "mobile_only");
     return out;
 }
@@ -1127,17 +1150,22 @@ boost::asio::awaitable<void> Plans::syncPlans()
 
     unordered_map<string, DbPlan> existing_plans;
     {
-        auto res = co_await db.exec(R"(SELECT name, active, max_users, max_devices, max_nodes, max_actions,
-            max_worksessions, max_time_blocks, mobile_only FROM plan)");
+        auto res = co_await db.exec(R"(SELECT name, active, max_users, max_devices, max_nodes, nodes_monthly_growth,
+            max_actions, actions_monthly_growth, max_worksessions, work_sessions_monthly_growth,
+            max_time_blocks, time_blocks_monthly_growth, mobile_only FROM plan)");
         enum Cols {
             NAME,
             ACTIVE,
             MAX_USERS,
             MAX_DEVICES,
             MAX_NODES,
+            NODES_MONTHLY_GROWTH,
             MAX_ACTIONS,
+            ACTIONS_MONTHLY_GROWTH,
             MAX_WORKSESSIONS,
+            WORK_SESSIONS_MONTHLY_GROWTH,
             MAX_TIME_BLOCKS,
+            TIME_BLOCKS_MONTHLY_GROWTH,
             MOBILE_ONLY
         };
 
@@ -1148,9 +1176,13 @@ boost::asio::awaitable<void> Plans::syncPlans()
             plan.max_users = row.at(MAX_USERS).as_int64();
             plan.max_devices = row.at(MAX_DEVICES).as_int64();
             plan.max_nodes = row.at(MAX_NODES).as_int64();
+            plan.nodes_monthly_growth = row.at(NODES_MONTHLY_GROWTH).as_int64();
             plan.max_actions = row.at(MAX_ACTIONS).as_int64();
+            plan.actions_monthly_growth = row.at(ACTIONS_MONTHLY_GROWTH).as_int64();
             plan.max_worksessions = row.at(MAX_WORKSESSIONS).as_int64();
+            plan.work_sessions_monthly_growth = row.at(WORK_SESSIONS_MONTHLY_GROWTH).as_int64();
             plan.max_time_blocks = row.at(MAX_TIME_BLOCKS).as_int64();
+            plan.time_blocks_monthly_growth = row.at(TIME_BLOCKS_MONTHLY_GROWTH).as_int64();
             plan.mobile_only = row.at(MOBILE_ONLY).as_int64() != 0;
             existing_plans.emplace(plan.name, std::move(plan));
         }
@@ -1177,29 +1209,41 @@ boost::asio::awaitable<void> Plans::syncPlans()
         const auto db_plan = toDbPlan(remote_plan);
         if (auto existing = existing_plans.find(db_plan.name); existing == existing_plans.end()) {
             co_await db.exec(R"(INSERT INTO plan
-                (name, active, max_users, max_devices, max_nodes, max_actions, max_worksessions, max_time_blocks, mobile_only)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?))",
+                (name, active, max_users, max_devices, max_nodes, nodes_monthly_growth, max_actions,
+                 actions_monthly_growth, max_worksessions, work_sessions_monthly_growth, max_time_blocks,
+                 time_blocks_monthly_growth, mobile_only)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
                 db_plan.name,
                 db_plan.active,
                 db_plan.max_users,
                 db_plan.max_devices,
                 db_plan.max_nodes,
+                db_plan.nodes_monthly_growth,
                 db_plan.max_actions,
+                db_plan.actions_monthly_growth,
                 db_plan.max_worksessions,
+                db_plan.work_sessions_monthly_growth,
                 db_plan.max_time_blocks,
+                db_plan.time_blocks_monthly_growth,
                 db_plan.mobile_only);
             ++added;
             changed = true;
         } else if (existing->second != db_plan) {
             co_await db.exec(R"(UPDATE plan SET active=?, max_users=?, max_devices=?, max_nodes=?,
-                max_actions=?, max_worksessions=?, max_time_blocks=?, mobile_only=? WHERE name=?)",
+                nodes_monthly_growth=?, max_actions=?, actions_monthly_growth=?, max_worksessions=?,
+                work_sessions_monthly_growth=?, max_time_blocks=?, time_blocks_monthly_growth=?,
+                mobile_only=? WHERE name=?)",
                 db_plan.active,
                 db_plan.max_users,
                 db_plan.max_devices,
                 db_plan.max_nodes,
+                db_plan.nodes_monthly_growth,
                 db_plan.max_actions,
+                db_plan.actions_monthly_growth,
                 db_plan.max_worksessions,
+                db_plan.work_sessions_monthly_growth,
                 db_plan.max_time_blocks,
+                db_plan.time_blocks_monthly_growth,
                 db_plan.mobile_only,
                 db_plan.name);
             ++updated;

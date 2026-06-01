@@ -5,6 +5,15 @@ namespace nextapp::grpc {
 
 namespace {
 
+uint32_t countTemplateNodes(const pb::NodeTemplate& root)
+{
+    uint32_t total = root.name().empty() ? 0u : 1u;
+    for (const auto& child : root.children()) {
+        total += countTemplateNodes(child);
+    }
+    return total;
+}
+
 struct ToNode {
     enum Cols {
         ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION, UPDATED, UPDATED_ID, DELETED, EXCLUDE_FROM_WR, CATEGORY
@@ -67,6 +76,7 @@ struct ToNode {
             if (id.empty()) {
                 id = newUuidStr();
             }
+            rctx.session().requireWritableForAdd("node");
 
             bool active = true;
             if (!req->node().has_active()) {
@@ -74,6 +84,7 @@ struct ToNode {
             }
 
             dbopts.reconnect_and_retry_query = false;
+            auto reservation = rctx.uctx->reserveAddition(1, UserContext::PlanResource::NODE);
             const auto res = co_await owner_.server().db().exec(format(
                     "INSERT INTO node (id, user, name, kind, descr, active, parent, exclude_from_wr, category) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
@@ -101,6 +112,7 @@ struct ToNode {
             auto node = update->mutable_node();
             *node = reply->node();
             rctx.publishLater(update);
+            reservation.commit();
 
             co_return;
         });
@@ -110,6 +122,9 @@ boost::asio::awaitable<void> GrpcServer::saveNodes(jgaa::mysqlpool::Mysqlpool::H
     const auto& cuser = rctx.uctx->userUuid();
     const auto &items = nodes.nodes();
     const size_t num_items = items.size();
+    if (num_items > 0) {
+        rctx.session().requireWritableForAdd("nodes");
+    }
 
     const auto sql = "INSERT INTO node (id, user, name, kind, descr, active, parent, exclude_from_wr, category) "
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ";
@@ -136,7 +151,9 @@ boost::asio::awaitable<void> GrpcServer::saveNodes(jgaa::mysqlpool::Mysqlpool::H
         ++index;
     }
 
+    auto reservation = rctx.uctx->reserveAddition(static_cast<uint32_t>(num_items), UserContext::PlanResource::NODE);
     co_await dbh.exec(sql, values);
+    reservation.commit();
 }
 
 
@@ -180,9 +197,12 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
             const auto& cuser = uctx->userUuid();
             auto dbopts = uctx->dbOptions();
             auto trx = co_await rctx.dbh->transaction();
+            rctx.session().requireWritableForAdd("nodes");
+            auto reservation = rctx.uctx->reserveAddition(countTemplateNodes(*req), UserContext::PlanResource::NODE);
 
             co_await owner_.addNodes({}, *req, rctx);
             co_await trx.commit();
+            reservation.commit();
             auto& publish = rctx.publishLater(pb::Update::Operation::Update_Operation_ADDED);
             publish.set_reload(pb::Update::Reload::Update_Reload_NODES);
 
@@ -198,11 +218,19 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             auto trx = co_await rctx.dbh->transaction();
+            rctx.session().requireWritableForAdd("nodes");
 
             co_await rctx.dbh->exec("DELETE FROM time_block WHERE user = ?", cuser);
             co_await rctx.dbh->exec("DELETE FROM node WHERE user = ?", cuser);
+            rctx.uctx->onMassDelete({UserContext::PlanResource::TIME_BLOCK,
+                                     UserContext::PlanResource::NODE,
+                                     UserContext::PlanResource::ACTION,
+                                     UserContext::PlanResource::WORK_SESSION});
 
+            optional<UserContext::ResourceReservation> reservation;
             if (req->has_template_root()) {
+                reservation.emplace(rctx.uctx->reserveAddition(countTemplateNodes(req->template_root()),
+                                                               UserContext::PlanResource::NODE));
                 co_await owner_.addNodes({}, req->template_root(), rctx);
             }
 
@@ -214,6 +242,9 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
             const auto data_sync_epoch = epoch_res.rows().front().at(0).as_uint64();
 
             co_await trx.commit();
+            if (reservation) {
+                reservation->commit();
+            }
 
             rctx.updates.clear();
             co_await rctx.uctx->publishFullResync(data_sync_epoch);
@@ -615,6 +646,10 @@ boost::asio::awaitable<void> GrpcServer::deleteNode(const std::string& uuid, Req
     if (dres.affected_rows() == 0) {
         throw server_err{pb::Error::NOT_FOUND, format("Node {} not found", uuid)};
     }
+    rctx.uctx->onMassDelete({UserContext::PlanResource::NODE,
+                             UserContext::PlanResource::ACTION,
+                             UserContext::PlanResource::WORK_SESSION,
+                             UserContext::PlanResource::TIME_BLOCK});
 
     co_await rctx.dbh->exec("INSERT INTO node (id, user, active, deleted) VALUES (?, ?, 0, 1)", dbopts, uuid, cuser);
 

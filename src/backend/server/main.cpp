@@ -231,6 +231,9 @@ int main(int argc, char* argv[]) {
              "TLS mode; one of 'ca' or 'none'. Ca will use a self-signed server cert.")
             ("session-timeout", po::value(&config.svr.session_timeout_sec)->default_value(config.svr.session_timeout_sec),
              "Client-session timeout in seconds. Client sessions are removed after this period." )
+            ("plan-delete-grace-window",
+             po::value(&config.svr.plan_delete_grace_window)->default_value(config.svr.plan_delete_grace_window),
+             "Temporary extra allowance per quota while counts are stale after mass deletes.")
             ("stream_batch_size", po::value(&config.options.stream_batch_size)->default_value(config.options.stream_batch_size),
              "Number of messages to batch together in an update stream")
             ("max-page-size", po::value(&config.options.max_page_size)->default_value(config.options.max_page_size),

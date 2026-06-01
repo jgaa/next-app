@@ -2,12 +2,15 @@
 #pragma once
 
 #include <string>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
+#include <utility>
 
 #include <boost/asio.hpp>
 #include <grpcpp/server_context.h>
@@ -115,9 +118,13 @@ public:
     uint16_t max_users{0};
     uint16_t max_devices{0};
     uint16_t max_nodes{0};
+    uint32_t nodes_monthly_growth{0};
     uint16_t max_actions{0};
+    uint32_t actions_monthly_growth{0};
     uint16_t max_worksessions{0};
+    uint32_t work_sessions_monthly_growth{0};
     uint16_t max_time_blocks{0};
+    uint32_t time_blocks_monthly_growth{0};
     bool mobile_only{false};
 };
 
@@ -139,10 +146,70 @@ public:
 
 class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
+    enum class SessionAccessMode : uint8_t {
+        FULL_ACCESS = 0,
+        READ_ONLY_DEVICE_LIMIT,
+        READ_ONLY_MOBILE_ONLY
+    };
+
+    enum class PlanResource : uint8_t {
+        DEVICE = 0,
+        NODE,
+        ACTION,
+        WORK_SESSION,
+        TIME_BLOCK,
+        COUNT
+    };
+
     enum class SubscribeReplayResult {
         LIVE_ONLY,
         REPLAY_QUEUED,
         REPLAY_UNAVAILABLE,
+    };
+
+    class ResourceReservation {
+    public:
+        ResourceReservation() = default;
+        ResourceReservation(UserContext* owner, PlanResource resource, uint32_t amount) noexcept
+            : owner_{owner}, resource_{resource}, amount_{amount} {}
+
+        ResourceReservation(const ResourceReservation&) = delete;
+        ResourceReservation& operator=(const ResourceReservation&) = delete;
+
+        ResourceReservation(ResourceReservation&& other) noexcept
+            : owner_{std::exchange(other.owner_, nullptr)}
+            , resource_{other.resource_}
+            , amount_{other.amount_}
+            , committed_{other.committed_} {}
+
+        ResourceReservation& operator=(ResourceReservation&& other) noexcept {
+            if (this != &other) {
+                release();
+                owner_ = std::exchange(other.owner_, nullptr);
+                resource_ = other.resource_;
+                amount_ = other.amount_;
+                committed_ = other.committed_;
+            }
+            return *this;
+        }
+
+        ~ResourceReservation() {
+            release();
+        }
+
+        void commit() noexcept;
+
+        [[nodiscard]] explicit operator bool() const noexcept {
+            return owner_ != nullptr;
+        }
+
+    private:
+        void release() noexcept;
+
+        UserContext* owner_{};
+        PlanResource resource_{PlanResource::DEVICE};
+        uint32_t amount_{0};
+        bool committed_{false};
     };
 
     /*! \brief Sends push notifications to a user on a specific device.
@@ -189,14 +256,17 @@ public:
         using values_t = ValueContainer<value_t, 10>;
         std::optional<values_t> last_request_id;
         std::shared_ptr<PushNotifications> push_notifications_;
+        bool is_mobile{false};
     };
 
     class Session : public std::enable_shared_from_this<Session> {
     public:
         using cleanup_t = std::function<void()>;
 
-        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid devid, boost::uuids::uuid sessionid, Metrics::gauge_scoped_t scope)
-            : user_(user), sessionid_{sessionid}, deviceid_{devid}, instance_scope_{std::move(scope)} {
+        Session(std::shared_ptr<UserContext>& user, boost::uuids::uuid devid, boost::uuids::uuid sessionid,
+                uint64_t connectedOrder, Metrics::gauge_scoped_t scope)
+            : user_(user), sessionid_{sessionid}, deviceid_{devid}, connected_order_{connectedOrder},
+              instance_scope_{std::move(scope)} {
         }
 
         const boost::uuids::uuid& sessionId() const noexcept {
@@ -249,6 +319,24 @@ public:
 
         void push(const std::shared_ptr<pb::Update>& message);
 
+        uint64_t connectedOrder() const noexcept {
+            return connected_order_;
+        }
+
+        SessionAccessMode accessMode() const noexcept {
+            return static_cast<SessionAccessMode>(access_mode_.load(std::memory_order_relaxed));
+        }
+
+        bool isReadOnly() const noexcept {
+            return accessMode() != SessionAccessMode::FULL_ACCESS;
+        }
+
+        void setAccessMode(SessionAccessMode mode) noexcept {
+            access_mode_.store(static_cast<uint8_t>(mode), std::memory_order_relaxed);
+        }
+
+        void requireWritableForAdd(std::string_view resource) const;
+
         /*! Indicates if the session has push notifications enabled.
          *
          *  This is used to determine if the session should handle push notifications.
@@ -272,10 +360,12 @@ public:
         std::shared_ptr<UserContext> user_{}; // NB: Circular reference.
         const boost::uuids::uuid sessionid_;
         const boost::uuids::uuid deviceid_;
+        const uint64_t connected_order_{0};
         const Metrics::gauge_scoped_t instance_scope_;
         std::vector<cleanup_t> cleanup_;
         std::atomic<std::chrono::steady_clock::time_point> last_access_{std::chrono::steady_clock::now()};
         std::chrono::steady_clock::time_point created_{std::chrono::steady_clock::now()};
+        std::atomic<uint8_t> access_mode_{static_cast<uint8_t>(SessionAccessMode::FULL_ACCESS)};
         bool has_push_{false}; // Indicates if the session has push enabled.
         std::weak_ptr<Publisher> publisher_; // The publisher for this session, if any.
     };
@@ -285,14 +375,16 @@ public:
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid, const std::string_view timeZone,
                 bool sundayIsFirstWeekday, const jgaa::mysqlpool::Options& dbOptions,
-                uint32_t publishId = 0, uint64_t publishEpoch = 0, uint64_t dataSyncEpoch = 0);
+                uint32_t publishId = 0, uint64_t publishEpoch = 0, uint64_t dataSyncEpoch = 0,
+                std::chrono::system_clock::time_point createdAt = {});
 
     UserContext(const std::string& tenantUuid, const std::string& userUuid,
                 pb::User::Kind kind,
                 const pb::UserGlobalSettings& settings, std::shared_ptr<TenantPlan> tenantPlan,
-                uint32_t publishId = 0, uint64_t publishEpoch = 0, uint64_t dataSyncEpoch = 0);
+                uint32_t publishId = 0, uint64_t publishEpoch = 0, uint64_t dataSyncEpoch = 0,
+                std::chrono::system_clock::time_point createdAt = {});
 
-    ~UserContext() = default;
+    ~UserContext();
 
     const std::string& userUuid() const noexcept {
         return user_uuid_;
@@ -369,12 +461,20 @@ public:
     void addSession(std::shared_ptr<Session> session) {
         std::unique_lock lock(mutex_);
         sessions_.push_back(std::move(session));
+        std::vector<std::pair<boost::uuids::uuid, SessionAccessMode>> changed;
+        refreshSessionAccessLocked_(changed);
+        lock.unlock();
+        publishSessionAccessChanges(std::move(changed));
     }
 
     void removeSession(const boost::uuids::uuid& sessionId) {
         std::unique_lock lock(mutex_);
         std::erase_if(sessions_, [&sessionId](const auto& s) { return s->sessionId() == sessionId; });
         purgeExpiredPublishers();
+        std::vector<std::pair<boost::uuids::uuid, SessionAccessMode>> changed;
+        refreshSessionAccessLocked_(changed);
+        lock.unlock();
+        publishSessionAccessChanges(std::move(changed));
     }
 
     bool hasNoSessions() const {
@@ -455,13 +555,53 @@ public:
     }
 
     boost::asio::awaitable<void> reloadTenantPlan(jgaa::mysqlpool::Mysqlpool::Handle& dbh);
+    boost::asio::awaitable<void> initializePlanUsage(jgaa::mysqlpool::Mysqlpool::Handle& dbh);
+
+    [[nodiscard]] ResourceReservation reserveAddition(uint32_t amount, PlanResource resource);
+    void onDeleted(PlanResource resource, uint32_t amount = 1) noexcept;
+    void onMassDelete(PlanResource resource);
+    void onMassDelete(std::initializer_list<PlanResource> resources);
+    void setDeviceMobile(const boost::uuids::uuid& deviceId, bool isMobile);
+    void refreshSessionAccess();
+    pb::SessionAccess currentSessionAccess(const boost::uuids::uuid& deviceId) const;
 
     nextapp::pb::Subscription getSubscription() const;
 
 private:
+    struct PlanCounter {
+        uint32_t used{0};
+        uint32_t reserved{0};
+        uint32_t allowed{0};
+        bool stale_after_delete{false};
+    };
+
+    struct PlanUsageState {
+        bool loaded{false};
+        bool refresh_in_progress{false};
+        std::chrono::steady_clock::time_point next_refresh_at{};
+        std::array<PlanCounter, static_cast<size_t>(PlanResource::COUNT)> counters{};
+    };
+
     static boost::uuids::uuid newUuid();
+    static size_t planIndex(PlanResource resource) noexcept;
+    static std::string_view planResourceName(PlanResource resource) noexcept;
+    static std::string_view sessionAccessReason(SessionAccessMode mode) noexcept;
+    static uint32_t countTemplateNodes(const pb::NodeTemplate& root) noexcept;
+    static uint32_t elapsedWholeMonths(std::chrono::system_clock::time_point createdAt,
+                                       std::chrono::system_clock::time_point now) noexcept;
     void validateInstanceId(uint instanceId);
     boost::asio::awaitable<void> saveLastReqIds(const boost::uuids::uuid& deviceId);
+    boost::asio::awaitable<void> refreshPlanUsageNow();
+    void schedulePlanUsageRefresh(std::chrono::milliseconds delay);
+    void schedulePeriodicPlanUsageRefresh();
+    void scheduleShortPlanUsageRefresh();
+    void refreshSessionAccessLocked_(std::vector<std::pair<boost::uuids::uuid, SessionAccessMode>>& changed);
+    void publishSessionAccessChanges(std::vector<std::pair<boost::uuids::uuid, SessionAccessMode>> changed);
+    void commitReservation(PlanResource resource, uint32_t amount) noexcept;
+    void releaseReservation(PlanResource resource, uint32_t amount) noexcept;
+    boost::asio::awaitable<void> loadPlanUsageState_(jgaa::mysqlpool::Mysqlpool::Handle& dbh);
+    uint32_t allowedWithGrace_(const PlanCounter& counter) const noexcept;
+    uint32_t configuredGraceWindow_() const noexcept;
     // Requires mutex_ to be held exclusively.
     void purgeExpiredPublishers();
     void retainPublishedUpdate(const std::shared_ptr<pb::Update>& update);
@@ -471,6 +611,7 @@ private:
     uint32_t publish_message_id_{0};
     uint64_t publish_epoch_{0};
     uint64_t data_sync_epoch_{0};
+    std::chrono::system_clock::time_point created_at_{std::chrono::system_clock::now()};
     const std::chrono::time_zone* tz_{};
     jgaa::mysqlpool::Options db_options_;
     pb::UserGlobalSettings settings_;
@@ -482,8 +623,12 @@ private:
     std::atomic_int32_t last_read_notification_id_{-1};
     mutable PaddedMutex<std::shared_mutex> mutex_;
     mutable PaddedMutex<std::mutex> instance_mutex_;
+    mutable PaddedMutex<std::mutex> plan_usage_mutex_;
     std::atomic_bool valid_{true}; // Indicates if the user context is still valid.
     std::shared_ptr<TenantPlan> tenant_plan_;
+    PlanUsageState plan_usage_;
+    std::optional<boost::asio::steady_timer> plan_usage_timer_;
+    uint64_t plan_refresh_generation_{0};
 };
 
 class Publisher {
@@ -563,6 +708,7 @@ private:
     Server& server_;
     boost::asio::steady_timer timer_{ioContext()};
     const bool skip_tls_auth_;
+    std::atomic_uint64_t next_connected_order_{1};
     mutable PaddedMutex<std::shared_mutex> mutex_;
     mutable PaddedMutex<std::mutex> user_creation_mutexes_mutex_;
     mutable PaddedMutex<std::mutex> publish_states_mutex_;
