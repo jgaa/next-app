@@ -415,7 +415,7 @@ Rectangle {
                         }
                         MenuSeparator {}
                         Action {
-                            enabled: uuid !== ""
+                            enabled: uuid !== "" && NaCore.canAddLimitedResources
                             text: qsTr("Add Action")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {
@@ -423,7 +423,7 @@ Rectangle {
                             }
                         }
                         Action {
-                            enabled: uuid !== ""
+                            enabled: uuid !== "" && NaCore.canAddLimitedResources
                             text: qsTr("Add Action Today")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {
@@ -435,7 +435,7 @@ Rectangle {
                             }
                         }
                         Action {
-                            enabled: uuid !== ""
+                            enabled: uuid !== "" && NaCore.canAddLimitedResources
                             text: qsTr("Add Action Tomorrow")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {
@@ -448,6 +448,7 @@ Rectangle {
                         }
                         MenuSeparator {}
                         Action {
+                            enabled: NaCore.canAddLimitedResources
                             text: qsTr("Add Folder")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {
@@ -455,6 +456,7 @@ Rectangle {
                             }
                         }
                         Action {
+                            enabled: NaCore.canAddLimitedResources
                             text: qsTr("Add Organization")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {
@@ -462,6 +464,7 @@ Rectangle {
                             }
                         }
                         Action {
+                            enabled: NaCore.canAddLimitedResources
                             text: qsTr("Add Person")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {
@@ -469,6 +472,7 @@ Rectangle {
                             }
                         }
                         Action {
+                            enabled: NaCore.canAddLimitedResources
                             text: qsTr("Add Project")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {
@@ -476,6 +480,7 @@ Rectangle {
                             }
                         }
                         Action {
+                            enabled: NaCore.canAddLimitedResources
                             text: qsTr("Add Task")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"
                             onTriggered: {

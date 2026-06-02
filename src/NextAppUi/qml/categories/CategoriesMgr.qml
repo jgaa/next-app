@@ -145,6 +145,7 @@ Dialog {
         GridLayout {
             RoundButton {
                 text: qsTr("Add")
+                enabled: NaCore.canAddLimitedResources
 
                 onClicked: {
                     editDlg.actionCategory = listCtl.model.get(-1)

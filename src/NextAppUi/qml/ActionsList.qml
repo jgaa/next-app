@@ -536,6 +536,7 @@ Rectangle {
         Action {
             text: qsTr("Start Work Session")
             icon.source: "../icons/fontawsome/clock.svg"
+            enabled: NaCore.canAddLimitedResources
             onTriggered: {
                 NaWorkSessionsModel.startWork(contextMenu.uuid)
             }
@@ -543,6 +544,7 @@ Rectangle {
         Action {
             text: qsTr("Add completed Work Session")
             icon.source: "../icons/fontawsome/clock.svg"
+            enabled: NaCore.canAddLimitedResources
             onTriggered: {
                 openAddWorkDialog(contextMenu.uuid, contextMenu.name)
             }

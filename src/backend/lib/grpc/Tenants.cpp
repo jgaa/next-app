@@ -284,6 +284,126 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
         }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetTenantState(::grpc::CallbackServerContext *ctx,
+                                                                    const pb::SetTenantStateReq *req,
+                                                                    pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx](pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            if (req->state() == pb::Tenant::State::Tenant_State_PENDING_ACTIVATION) {
+                throw server_err{pb::Error::INVALID_REQUEST, "PENDING_ACTIVATION cannot be set via SetTenantState"};
+            }
+
+            string selector_desc;
+            boost::mysql::results res;
+            constexpr string_view tenant_cols =
+                "t.id, t.name, t.kind, t.descr, t.state, t.properties, t.system_tenant";
+
+            switch (req->what_case()) {
+            case pb::SetTenantStateReq::WhatCase::kUuid:
+                selector_desc = req->uuid().uuid();
+                res = co_await rctx.dbh->exec(
+                    format("SELECT {} FROM tenant t WHERE t.id = ?", tenant_cols),
+                    rctx.uctx->dbOptions(),
+                    selector_desc);
+                break;
+            case pb::SetTenantStateReq::WhatCase::kUserEmail:
+                selector_desc = req->useremail();
+                res = co_await rctx.dbh->exec(
+                    format("SELECT {} FROM tenant t JOIN user u ON u.tenant = t.id WHERE u.email = ? LIMIT 1", tenant_cols),
+                    rctx.uctx->dbOptions(),
+                    selector_desc);
+                break;
+            case pb::SetTenantStateReq::WhatCase::WHAT_NOT_SET:
+                throw server_err{pb::Error::INVALID_REQUEST, "Missing tenant selector"};
+            }
+
+            if (res.rows().empty()) {
+                throw server_err{pb::Error::NOT_FOUND, "Tenant not found"};
+            }
+
+            enum Cols { TENANT_ID, TENANT_NAME, TENANT_KIND, TENANT_DESCR, TENANT_STATE, TENANT_PROPERTIES, TENANT_SYSTEM_TENANT };
+            const auto& row = res.rows().front();
+            pb::Tenant tenant;
+            tenant.set_uuid(toStringIfValue(row, TENANT_ID));
+            tenant.set_name(toStringIfValue(row, TENANT_NAME));
+            tenant.set_descr(toStringIfValue(row, TENANT_DESCR));
+            if (auto kv = KeyValueFromBlob(row.at(TENANT_PROPERTIES))) {
+                tenant.mutable_properties()->CopyFrom(*kv);
+            }
+            tenant.set_system_tenant(!row.at(TENANT_SYSTEM_TENANT).is_null() && row.at(TENANT_SYSTEM_TENANT).as_int64() > 0);
+
+            pb::Tenant::Kind kind{};
+            if (pb::Tenant::Kind_Parse(toUpper(toStringIfValue(row, TENANT_KIND)), &kind)) {
+                tenant.set_kind(kind);
+            }
+
+            pb::Tenant::State current_state{};
+            if (!pb::Tenant::State_Parse(toUpper(toStringIfValue(row, TENANT_STATE)), &current_state)) {
+                throw runtime_error{"Failed to parse tenant state from database"};
+            }
+
+            if (current_state == req->state()) {
+                tenant.set_state(current_state);
+                reply->mutable_tenant()->CopyFrom(tenant);
+                co_return;
+            }
+
+            tenant.set_state(req->state());
+            co_await rctx.dbh->exec(
+                "UPDATE tenant SET state = ? WHERE id = ?",
+                rctx.uctx->dbOptions(),
+                toLower(pb::Tenant::State_Name(req->state())),
+                tenant.uuid());
+
+            const bool has_active_sessions = co_await owner_.sessionManager().applyTenantStateAndPublish(tenant.uuid(), tenant);
+
+            if (req->state() == pb::Tenant::State::Tenant_State_SUSPENDED && has_active_sessions) {
+                pb::Notification notification;
+                notification.mutable_uuid()->set_uuid(newUuidStr());
+                notification.mutable_totenant()->set_uuid(tenant.uuid());
+                notification.set_subject("Tenant suspended");
+                notification.set_message("This tenant has been suspended. Existing sessions are now in read-only mode.");
+                notification.set_sendertype(pb::Notification::SenderType::Notification_SenderType_SYSTEM);
+                notification.set_senderid(Server::instance().serverId());
+                notification.set_kind(pb::Notification::Kind::Notification_Kind_WARNING);
+
+                const string sender_type = toLower(pb::Notification::SenderType_Name(notification.sendertype()));
+                const string kind_name = toLower(pb::Notification::Kind_Name(notification.kind()));
+                auto ins = co_await rctx.dbh->exec(R"(INSERT INTO notification
+                    (valid_to, subject, message, sender_type, sender_id, to_tenant, to_user, uuid, kind, data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
+                    rctx.uctx->dbOptions(),
+                    std::optional<std::string>{},
+                    notification.subject(),
+                    notification.message(),
+                    sender_type,
+                    notification.senderid(),
+                    std::optional<string>{tenant.uuid()},
+                    std::optional<string>{},
+                    notification.uuid().uuid(),
+                    kind_name,
+                    notification.data());
+
+                notification.set_id(ins.last_insert_id());
+                enum NotificationCols { UPDATED, CREATED_TIME };
+                auto updated_res = co_await rctx.dbh->exec(
+                    "SELECT updated, created_time FROM notification WHERE id=?",
+                    rctx.uctx->dbOptions(),
+                    notification.id());
+                notification.set_updated(toMsTimestamp(updated_res.rows().front().at(UPDATED).as_datetime(), rctx.uctx->tz()));
+                notification.mutable_createdtime()->set_unixtime(
+                    toTimeT(updated_res.rows().front().at(CREATED_TIME).as_datetime(), rctx.uctx->tz()));
+
+                owner_.setLastNotificationUpdated(notification.updated());
+                co_await owner_.sessionManager().publishNotification(notification);
+            }
+
+            reply->mutable_tenant()->CopyFrom(tenant);
+            co_return;
+        }, __func__, true /* allow new session */, true /* admin only */);
+}
+
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateDevice(::grpc::CallbackServerContext *ctx, const pb::CreateDeviceReq *req, pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,

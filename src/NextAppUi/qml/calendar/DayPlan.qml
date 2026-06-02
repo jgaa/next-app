@@ -318,6 +318,7 @@ Rectangle {
                 }
                 Button {
                     text: qsTr("Save")
+                    enabled: NaCore.canAddLimitedResources
                     onClicked: {
                         root.model.createTimeBox(title.text, category.uuid,
                                                  toMinuteInDay(dragRectangle.y),

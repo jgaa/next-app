@@ -282,6 +282,11 @@ public:
             return *user_;
         }
 
+        const UserContext& user() const noexcept {
+            assert(user_);
+            return *user_;
+        }
+
         auto userPtr() const noexcept {
             return user_;
         }
@@ -505,6 +510,11 @@ public:
         return sessions_;
     }
 
+    bool hasActiveSessions() const noexcept {
+        std::shared_lock lock(mutex_);
+        return !sessions_.empty();
+    }
+
     std::optional<Device> getDevice(boost::uuids::uuid uuid) const {
         std::lock_guard lock(instance_mutex_);
         if (auto it = devices_.find(uuid); it != devices_.end()) {
@@ -552,6 +562,14 @@ public:
     void setTenantPlan(std::shared_ptr<TenantPlan> plan) {
         std::unique_lock lock(mutex_);
         tenant_plan_ = std::move(plan);
+    }
+
+    pb::Tenant::State tenantState() const noexcept {
+        return static_cast<pb::Tenant::State>(tenant_state_.load(std::memory_order_relaxed));
+    }
+
+    void setTenantState(pb::Tenant::State state) noexcept {
+        tenant_state_.store(static_cast<int>(state), std::memory_order_relaxed);
     }
 
     boost::asio::awaitable<void> reloadTenantPlan(jgaa::mysqlpool::Mysqlpool::Handle& dbh);
@@ -616,6 +634,7 @@ private:
     jgaa::mysqlpool::Options db_options_;
     pb::UserGlobalSettings settings_;
     pb::User::Kind kind_{pb::User::Kind::User_Kind_REGULAR};
+    std::atomic<int> tenant_state_{static_cast<int>(pb::Tenant::State::Tenant_State_ACTIVE)};
     std::vector<std::shared_ptr<Session>> sessions_; // NB: Circular reference.
     std::vector<std::weak_ptr<Publisher>> publishers_;
     std::deque<std::shared_ptr<pb::Update>> retained_updates_;
@@ -686,6 +705,9 @@ public:
     boost::asio::awaitable<void> refreshTenantPlansAndPublish(
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         std::string_view tenantUuid);
+    boost::asio::awaitable<bool> applyTenantStateAndPublish(
+        std::string_view tenantUuid,
+        const nextapp::pb::Tenant& tenant);
 
     std::shared_ptr<Plan> getPlan(const std::string_view planName) const;
 

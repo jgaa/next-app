@@ -238,6 +238,26 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillWidth: true
                 Text {
+                    id: readOnlyIcon
+                    visible: !NaCore.canAddLimitedResources
+                    text: "\uf071"
+                    font.family: ce.faSolidName
+                    font.styleName: ce.faSolidStyle
+                    font.pixelSize: 18
+                    color: "#d97706"
+
+                    MouseArea {
+                        id: readOnlyMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                    }
+
+                    ToolTip.visible: readOnlyMouseArea.containsMouse
+                    ToolTip.text: NaCore.sessionAccessMessage
+                    ToolTip.delay: 300
+                    ToolTip.timeout: 5000
+                }
+                Text {
                     id: cloudIcon
                     //height: 32
                     text: "\uf0c2"

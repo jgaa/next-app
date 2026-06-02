@@ -365,6 +365,39 @@ boost::asio::awaitable<void> SessionManager::refreshTenantPlansAndPublish(
     }
 }
 
+boost::asio::awaitable<bool> SessionManager::applyTenantStateAndPublish(
+    std::string_view tenantUuid,
+    const pb::Tenant& tenant)
+{
+    vector<shared_ptr<UserContext>> users;
+    {
+        shared_lock lock{mutex_};
+        users.reserve(users_.size());
+        for (const auto& [_, uctx] : users_) {
+            if (uctx && uctx->tenantUuid() == tenantUuid) {
+                users.emplace_back(uctx);
+            }
+        }
+    }
+
+    bool has_active_sessions = false;
+    for (auto& uctx : users) {
+        uctx->setTenantState(tenant.state());
+        has_active_sessions = has_active_sessions || uctx->hasActiveSessions();
+
+        auto update = make_shared<pb::Update>();
+        update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
+        *update->mutable_tenant() = tenant;
+
+        LOG_INFO_N << "Publishing tenant state " << pb::Tenant::State_Name(tenant.state())
+                   << " to user " << uctx->userUuid()
+                   << " on tenant " << tenantUuid;
+        co_await uctx->publish(update);
+    }
+
+    co_return has_active_sessions;
+}
+
 std::shared_ptr<Plan> SessionManager::getPlan(const std::string_view planName) const
 {
     // read lock to plan_mutex_
@@ -1331,6 +1364,18 @@ void UserContext::Session::setHasPush(bool enabled) {
 
 void UserContext::Session::requireWritableForAdd(string_view resource) const
 {
+    switch (user().tenantState()) {
+    case pb::Tenant::State::Tenant_State_ACTIVE:
+    case pb::Tenant::State::Tenant_State_PENDING_ACTIVATION:
+        break;
+    case pb::Tenant::State::Tenant_State_READ_ONLY:
+        throw server_err{pb::Error::PERMISSION_DENIED,
+                         format("This tenant is currently in read-only mode. Cannot add {}.", resource)};
+    case pb::Tenant::State::Tenant_State_SUSPENDED:
+        throw server_err{pb::Error::TENANT_SUSPENDED,
+                         format("This tenant is suspended. Cannot add {}.", resource)};
+    }
+
     switch (accessMode()) {
     case SessionAccessMode::FULL_ACCESS:
         return;
@@ -1989,6 +2034,7 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
         auto ucx = make_shared<UserContext>(tenant, uid, ukind, tmp_settings, tenant_plan,
                                             publishState.publish_id, publishState.publish_epoch, dataSyncEpoch,
                                             created_at);
+        ucx->setTenantState(tenant_state);
         {
             unique_lock lock{mutex_};
             users_[userUuid] = ucx;

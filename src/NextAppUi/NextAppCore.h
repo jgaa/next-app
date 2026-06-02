@@ -49,6 +49,9 @@ public:
     Q_PROPERTY(bool currentPlanLoading READ currentPlanLoading NOTIFY currentPlanLoadingChanged)
     Q_PROPERTY(bool paymentsPageLoading READ paymentsPageLoading NOTIFY paymentsPageLoadingChanged)
     Q_PROPERTY(QString lastPaymentsUrl READ lastPaymentsUrl NOTIFY lastPaymentsUrlChanged)
+    Q_PROPERTY(SessionAccessMode sessionAccessMode READ sessionAccessMode NOTIFY sessionAccessModeChanged)
+    Q_PROPERTY(bool canAddLimitedResources READ canAddLimitedResources NOTIFY sessionAccessModeChanged)
+    Q_PROPERTY(QString sessionAccessMessage READ sessionAccessMessage NOTIFY sessionAccessModeChanged)
 
     enum class ClickInitiator {
         NONE,
@@ -73,6 +76,14 @@ public:
     };
 
     Q_ENUM(State)
+
+    enum class SessionAccessMode {
+        FULL_ACCESS,
+        READ_ONLY_DEVICE_LIMIT,
+        READ_ONLY_MOBILE_ONLY,
+    };
+
+    Q_ENUM(SessionAccessMode)
 
     NextAppCore(QQmlApplicationEngine& engine);
     ~NextAppCore() override;
@@ -246,6 +257,16 @@ public:
         return last_payments_url_;
     }
 
+    SessionAccessMode sessionAccessMode() const noexcept {
+        return session_access_mode_;
+    }
+
+    bool canAddLimitedResources() const noexcept {
+        return session_access_mode_ == SessionAccessMode::FULL_ACCESS;
+    }
+
+    QString sessionAccessMessage() const;
+
 public slots:
     void handlePrepareForSleep(bool sleep);
 
@@ -276,9 +297,11 @@ signals:
     void paymentsPageLoadingChanged();
     void lastPaymentsUrlChanged();
     void paymentsPageOpened(const QString& url);
+    void sessionAccessModeChanged();
 
 private:
     void setState(State state);
+    void setSessionAccessMode(const nextapp::pb::SessionAccess& sessionAccess);
     void resetTomorrowTimer();
     QCoro::Task<void> doDeleteAccount();
     QCoro::Task<void> doFactoryReset();
@@ -319,4 +342,5 @@ private:
     bool current_plan_fetching_{false};
     bool payments_page_loading_{false};
     QString last_payments_url_;
+    SessionAccessMode session_access_mode_{SessionAccessMode::FULL_ACCESS};
 };

@@ -13,16 +13,10 @@ Dialog {
     y: NaCore.isMobile ? 0 : (ApplicationWindow.window.height - height) / 3
     width: Math.min(600, ApplicationWindow.window.width - 10)
     height: Math.min(800, ApplicationWindow.window.height - 10)
-    standardButtons: Dialog.Ok
+    standardButtons: canSaveCategory ? (Dialog.Save | Dialog.Cancel) : Dialog.Cancel
     property NextappPB.actionCategory actionCategory: NaAcModel.get(-1)
-
-    function enableSave(enable) {
-        if (enable) {
-            standardButtons = Dialog.Save | Dialog.Cancel
-        } else {
-            standardButtons = Dialog.Cancel
-        }
-    }
+    readonly property bool creatingCategory: actionCategory.id_proto === ""
+    readonly property bool canSaveCategory: validate() && (!creatingCategory || NaCore.canAddLimitedResources)
 
     function validate() {
         if (nameField.text === "") {
@@ -58,7 +52,7 @@ Dialog {
             id: nameField
             Layout.fillWidth: true
             onChanged: {
-                enableSave(validate())
+                validate()
                 // TODO: Prevent duplicate names
             }
         }

@@ -1782,6 +1782,10 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
     static constexpr auto v30_upgrade = to_array<string_view>({
         "SET FOREIGN_KEY_CHECKS=0",
 
+        R"(ALTER TABLE tenant
+            MODIFY COLUMN state ENUM('pending_activation', 'active', 'suspended', 'read_only')
+            NOT NULL DEFAULT 'pending_activation')",
+
         "ALTER TABLE plan ADD COLUMN IF NOT EXISTS nodes_monthly_growth INT NOT NULL DEFAULT 0",
         "ALTER TABLE plan ADD COLUMN IF NOT EXISTS actions_monthly_growth INT NOT NULL DEFAULT 0",
         "ALTER TABLE plan ADD COLUMN IF NOT EXISTS work_sessions_monthly_growth INT NOT NULL DEFAULT 0",

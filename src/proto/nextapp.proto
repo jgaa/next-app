@@ -151,6 +151,7 @@ message Tenant {
         PENDING_ACTIVATION = 0; // Will be activated the first time a user connects
         ACTIVE = 1;
         SUSPENDED = 2;
+        READ_ONLY = 3;
     }
 
     string uuid = 1;
@@ -988,6 +989,15 @@ message ListTenantsReq {
     optional bool show_plan_info = 1;
 }
 
+message SetTenantStateReq {
+    oneof what {
+        common.Uuid uuid = 1;
+        string userEmail = 2;
+    }
+
+    Tenant.State state = 3;
+}
+
 message GetCertificatesReq {
 }
 
@@ -1220,6 +1230,7 @@ service Nextapp {
     rpc SubscribeToUpdates(UpdatesReq) returns (stream Update) {}
     rpc CreateTenant(CreateTenantReq) returns (Status) {}
     rpc ListTenants(ListTenantsReq) returns (stream Status) {} // admin only
+    rpc SetTenantState(SetTenantStateReq) returns (Status) {} // admin only
     rpc GetCertificates(GetCertificatesReq) returns (Status) {} // admin only
 
     // If called by a super-user, user.uuid can point to any tenant. If unset, the logged-in tenant is used.

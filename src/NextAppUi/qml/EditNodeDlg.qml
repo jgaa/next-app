@@ -27,7 +27,9 @@ Dialog {
     width: Math.min(600, NaCore.width, Screen.width)
     height: Math.min(700, NaCore.height, Screen.height)
 
-    standardButtons: Dialog.Ok | Dialog.Cancel
+    standardButtons: (!root.isNew || NaCore.canAddLimitedResources)
+                     ? (Dialog.Ok | Dialog.Cancel)
+                     : Dialog.Cancel
     title: qsTr("Nodes and lists")
 
     onVisibleChanged: {

@@ -55,6 +55,19 @@ QString formatPlanLimit(quint32 value)
     return value == 0 ? QObject::tr("Unlimited") : QString::number(value);
 }
 
+NextAppCore::SessionAccessMode toSessionAccessMode(const nextapp::pb::SessionAccess& sessionAccess)
+{
+    switch (sessionAccess.mode()) {
+    case nextapp::pb::SessionAccess_QtProtobufNested::Mode::READ_ONLY_DEVICE_LIMIT:
+        return NextAppCore::SessionAccessMode::READ_ONLY_DEVICE_LIMIT;
+    case nextapp::pb::SessionAccess_QtProtobufNested::Mode::READ_ONLY_MOBILE_ONLY:
+        return NextAppCore::SessionAccessMode::READ_ONLY_MOBILE_ONLY;
+    case nextapp::pb::SessionAccess_QtProtobufNested::Mode::FULL_ACCESS:
+    default:
+        return NextAppCore::SessionAccessMode::FULL_ACCESS;
+    }
+}
+
 #ifdef WIN32
 #include <QAbstractNativeEventFilter>
 class PowerEventFilter : public QAbstractNativeEventFilter {
@@ -128,6 +141,11 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
             [this](const nextapp::pb::Subscription& subscription) {
                 current_plan_ = subscription;
                 emit currentPlanChanged();
+            });
+
+    connect(server_comm_.get(), &ServerComm::sessionAccessChanged, this,
+            [this](const nextapp::pb::SessionAccess& sessionAccess) {
+                setSessionAccessMode(sessionAccess);
             });
 
 #ifdef LINUX_BUILD
@@ -805,6 +823,20 @@ QVariantMap NextAppCore::currentPlanView() const
     return view;
 }
 
+QString NextAppCore::sessionAccessMessage() const
+{
+    switch (session_access_mode_) {
+    case SessionAccessMode::FULL_ACCESS:
+        return {};
+    case SessionAccessMode::READ_ONLY_DEVICE_LIMIT:
+        return tr("This device is in read-only mode because your plan only allows full access on a limited number of active devices.");
+    case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
+        return tr("This device is in read-only mode because the current plan only allows full access from mobile devices.");
+    }
+
+    return {};
+}
+
 void NextAppCore::ensureCurrentPlanLoaded(bool forceRefresh)
 {
     if (!plans_enabled_) {
@@ -885,6 +917,17 @@ QCoro::Task<void> NextAppCore::doGetPaymentsUrl()
 
     payments_page_loading_ = false;
     emit paymentsPageLoadingChanged();
+}
+
+void NextAppCore::setSessionAccessMode(const nextapp::pb::SessionAccess& sessionAccess)
+{
+    const auto mode = toSessionAccessMode(sessionAccess);
+    if (session_access_mode_ == mode) {
+        return;
+    }
+
+    session_access_mode_ = mode;
+    emit sessionAccessModeChanged();
 }
 
 void NextAppCore::handlePrepareForSleep(bool sleep)

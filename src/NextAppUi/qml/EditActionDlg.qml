@@ -18,13 +18,18 @@ Dialog {
     property bool assigned: false
     property bool valid: aprx.valid
     property bool dragWasEnabled: false
+    readonly property bool isNewAction: actionsCtl.action && actionsCtl.action.id_proto === ""
 
     x: NaCore.isMobile ? 0 : Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
     y: NaCore.isMobile ? 0 : Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
     width: NaCore.isMobile ? parent.width : Math.min(600, NaCore.width, Screen.width)
     height: NaCore.isMobile ? parent.height : Math.min(700, NaCore.height, Screen.height)
 
-    standardButtons: root.aprx.valid && actionsCtl.valid ? (Dialog.Ok | Dialog.Cancel) : Dialog.Cancel
+    standardButtons: root.aprx.valid
+                     && actionsCtl.valid
+                     && (!root.isNewAction || NaCore.canAddLimitedResources)
+                     ? (Dialog.Ok | Dialog.Cancel)
+                     : Dialog.Cancel
 
     onOpened: {
         assign()
@@ -72,4 +77,3 @@ Dialog {
         close()
     }
 }
-

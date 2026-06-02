@@ -12,12 +12,13 @@ Dialog {
     property var ws: null
     property int controlsPreferredWidth: 200
     property var model: null
+    readonly property bool canSaveWork: validate() && (ws.id_proto !== "" || NaCore.canAddLimitedResources)
 
     x: NaCore.isMobile ? 0 : (parent.width - width) / 3
     y: NaCore.isMobile ? 0 : (parent.height - height) / 3
     implicitWidth: Math.min(parent.width, 800)
     implicitHeight: Math.min(parent.height - 10, 600)
-    standardButtons: Dialog.Cancel
+    standardButtons: canSaveWork ? (Dialog.Save | Dialog.Cancel) : Dialog.Cancel
 
     onOpened: {
         // console.log("Opened. ws.start=", ws.start)
@@ -182,7 +183,7 @@ Dialog {
     }
 
     function somethingChanged() {
-        root.standardButtons = validate() ? Dialog.Save | Dialog.Cancel :  Dialog.Cancel
+        validate()
     }
 
     function validate() {
@@ -233,5 +234,3 @@ Dialog {
         return true
     }
 }
-
-

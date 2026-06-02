@@ -492,6 +492,7 @@ void ServerComm::stop()
         setStatus(Status::OFFLINE);
     }
 
+    emit sessionAccessChanged(nextapp::pb::SessionAccess{});
     emit connectedChanged();
     if (updates_) {
         disconnect(updates_.get(), nullptr, this, nullptr);
@@ -1548,6 +1549,14 @@ void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& 
         emit subscriptionChanged(msg->subscription());
     }
 
+    if (msg->hasSessionAccess()) {
+        const auto& sessionAccess = msg->sessionAccess();
+        if (toQuid(sessionAccess.deviceId().uuid()) == deviceUuid()) {
+            LOG_DEBUG_N << "Received updated session access for current device";
+            emit sessionAccessChanged(sessionAccess);
+        }
+    }
+
     if (msg->hasUserGlobalSettings()) {
         const auto& new_settings = msg->userGlobalSettings();
         if (new_settings.version() > userGlobalSettings_.version()) {
@@ -2003,6 +2012,11 @@ QCoro::Task<void> ServerComm::startNextappSession()
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasHello()) {
             session_id_ = res.hello().sessionId().toLatin1();
+            if (res.hello().hasSessionAccess()) {
+                emit sessionAccessChanged(res.hello().sessionAccess());
+            } else {
+                emit sessionAccessChanged(nextapp::pb::SessionAccess{});
+            }
 
             LOG_DEBUG_N << "Last seen update id: " << last_seen_update_id_
                         << ", server last publish id: " << res.hello().lastPublishId()

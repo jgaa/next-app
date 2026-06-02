@@ -307,6 +307,7 @@ signals:
     void messagesChanged();
     void resynching();
     void subscriptionChanged(const nextapp::pb::Subscription& subscription);
+    void sessionAccessChanged(const nextapp::pb::SessionAccess& sessionAccess);
 
 private slots:
     void onAppWokeFromSleep();
