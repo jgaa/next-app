@@ -1066,12 +1066,19 @@ int64_t getIntValue(const payments::v1::Plan& plan, string_view key,
 {
     if (auto it = plan.values().find(string{key}); it != plan.values().end()) {
         size_t pos = 0;
-        auto value = stoll(it->second, &pos);
-        if (pos != it->second.size()) {
-            throw runtime_error{format("Invalid integer value '{}' for payment plan '{}' field '{}'",
-                                      it->second, plan.plan_id(), key)};
+        try {
+            auto value = stoll(it->second, &pos);
+            if (pos != it->second.size()) {
+                throw runtime_error{format("Invalid integer value '{}' for payment plan '{}' field '{}'",
+                                          it->second, plan.plan_id(), key)};
+            }
+            return value;
+        } catch (const std::exception& ex) {
+            LOG_WARN_N << "Failed to parse integer value for payment plan field. plan_id=" << plan.plan_id()
+                       << " field=" << key
+                       << " value='" << it->second << "'"
+                       << " error=" << ex.what();
         }
-        return value;
     }
 
     if (defaultValue) {
@@ -1112,17 +1119,17 @@ DbPlan toDbPlan(const payments::v1::Plan& plan)
     DbPlan out;
     out.name = plan.plan_id();
     out.active = getBoolValue(plan, "active", true);
-    out.max_users = getIntValue(plan, "max_users");
-    out.max_devices = getIntValue(plan, "max_devices");
-    out.max_nodes = getIntValue(plan, "max_nodes");
+    out.max_users = getIntValue(plan, "max_users", 1);
+    out.max_devices = getIntValue(plan, "max_devices", 0);
+    out.max_nodes = getIntValue(plan, "max_nodes", 0);
     out.nodes_monthly_growth = getIntValue(plan, "nodes_monthly_growth", 0);
-    out.max_actions = getIntValue(plan, "max_actions");
+    out.max_actions = getIntValue(plan, "max_actions", 0);
     out.actions_monthly_growth = getIntValue(plan, "actions_monthly_growth", 0);
     out.max_worksessions = getIntValue(plan, "max_worksessions");
     out.work_sessions_monthly_growth = getIntValue(plan, "work_sessions_monthly_growth", 0);
-    out.max_time_blocks = getIntValue(plan, "max_time_blocks");
+    out.max_time_blocks = getIntValue(plan, "max_time_blocks", 0);
     out.time_blocks_monthly_growth = getIntValue(plan, "time_blocks_monthly_growth", 0);
-    out.mobile_only = getBoolValue(plan, "mobile_only");
+    out.mobile_only = getBoolValue(plan, "mobile_only", false);
     return out;
 }
 

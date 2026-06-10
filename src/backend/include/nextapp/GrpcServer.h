@@ -214,6 +214,7 @@ public:
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetFeedback(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetFeedbackReq *req) override;
         ::grpc::ServerUnaryReactor *GetSubscription(::grpc::CallbackServerContext *ctx, const pb::GetSubscriptionReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetPaymentsPage(::grpc::CallbackServerContext *ctx, const pb::PaymentsPageReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetPlans(::grpc::CallbackServerContext *ctx, const pb::GetPlansReq *req, pb::Status *reply) override;
 
 
     private:

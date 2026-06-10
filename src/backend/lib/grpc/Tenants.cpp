@@ -1034,6 +1034,68 @@ ORDER BY t.id;
         }, __func__);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetPlans(
+    ::grpc::CallbackServerContext *ctx, const pb::GetPlansReq *req, pb::Status *reply)
+{
+    return unaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            auto *plans = reply->mutable_plans();
+            if (!plans) {
+                throw runtime_error{"Could not allocate plans"};
+            }
+
+            auto res = co_await rctx.dbh->exec(
+                "SELECT name, active, createdAt, max_users, max_devices, max_nodes, nodes_monthly_growth, "
+                "max_actions, actions_monthly_growth, max_worksessions, work_sessions_monthly_growth, "
+                "max_time_blocks, time_blocks_monthly_growth, mobile_only "
+                "FROM plan ORDER BY name");
+            enum Cols {
+                NAME,
+                ACTIVE,
+                CREATED_AT,
+                MAX_USERS,
+                MAX_DEVICES,
+                MAX_NODES,
+                NODES_MONTHLY_GROWTH,
+                MAX_ACTIONS,
+                ACTIONS_MONTHLY_GROWTH,
+                MAX_WORKSESSIONS,
+                WORK_SESSIONS_MONTHLY_GROWTH,
+                MAX_TIME_BLOCKS,
+                TIME_BLOCKS_MONTHLY_GROWTH,
+                MOBILE_ONLY
+            };
+
+            for (const auto& row : res.rows()) {
+                auto *plan = plans->add_plans();
+                assert(plan);
+
+                plan->set_name(pb_adapt(row[NAME].as_string()));
+                plan->set_active(row[ACTIVE].as_int64() != 0);
+                plan->mutable_createdat()->set_unixtime(toTimeT(row[CREATED_AT].as_datetime()));
+                plan->set_maxusers(getUint32(row[MAX_USERS]));
+                plan->set_maxdevices(getUint32(row[MAX_DEVICES]));
+                plan->set_maxnodes(getUint32(row[MAX_NODES]));
+                plan->set_nodexmonthlygrowth(getUint32(row[NODES_MONTHLY_GROWTH]));
+                plan->set_maxactions(getUint32(row[MAX_ACTIONS]));
+                plan->set_actionsmonthlygrowth(getUint32(row[ACTIONS_MONTHLY_GROWTH]));
+                plan->set_maxworksessions(getUint32(row[MAX_WORKSESSIONS]));
+                plan->set_worksessionsmonthlygrowth(getUint32(row[WORK_SESSIONS_MONTHLY_GROWTH]));
+                plan->set_maxtimeblocks(getUint32(row[MAX_TIME_BLOCKS]));
+                plan->set_timeblocksmonthlygrowth(getUint32(row[TIME_BLOCKS_MONTHLY_GROWTH]));
+                plan->set_mobileonly(row[MOBILE_ONLY].as_int64() != 0);
+            }
+
+            if (const auto cached = owner_.server().plans() ? owner_.server().plans()->activePlans() : nullptr) {
+                plans->set_trial_days(cached->trial_days);
+                plans->set_defaultforsignup(cached->default_for_signup);
+                plans->set_defaultforfree(cached->default_for_free);
+            }
+
+            co_return;
+        }, __func__, true /* allow new session */, true /* admin only */);
+}
+
 ::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::GetFeedback(::grpc::CallbackServerContext *ctx, const pb::GetFeedbackReq *req)
 {
     return writeStreamHandler(ctx, req,

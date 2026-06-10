@@ -104,6 +104,14 @@ message Plan {
     bool mobileOnly = 10;
 }
 
+message Plans {
+    repeated Plan plans = 1;
+
+    int32 trial_days = 2;
+    string defaultForSignup = 3;
+    string defaultForFree = 4;
+}
+
 // The subscription of a tenant (if plans are enabled)
 // If optional fields are unset, there is no limit for that field, and the subscription is valid until further notice.
 message Subscription {
@@ -1168,6 +1176,9 @@ message PaymentsPage {
     string url = 1;
 }
 
+message GetPlansReq {
+}
+
 message Status {
     Error error = 1;
     string message = 2;
@@ -1213,6 +1224,7 @@ message Status {
         Subscription subscription = 43;
         PaymentsPage paymentsPage = 44;
         Certificates certificates = 45;
+        Plans plans = 46;
     }
 }
 
@@ -1299,4 +1311,5 @@ service Nextapp {
     rpc GetFeedback(GetFeedbackReq) returns (stream Status) {}
     rpc GetSubscription(GetSubscriptionReq) returns (Status) {}
     rpc GetPaymentsPage(PaymentsPageReq) returns (Status) {}
+    rpc GetPlans(GetPlansReq) returns (Status) {}
 }
