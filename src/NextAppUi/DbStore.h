@@ -51,6 +51,17 @@ public:
     // Useful for debugging weird behaviour and performance testing
     static auto constexpr use_worker_thread = true;
 
+    struct TableDataInfo {
+        QString name;
+        QString hash;
+        quint64 count{};
+    };
+
+    struct DbDataInfo {
+        nextapp::pb::UserDataInfo summary;
+        QList<TableDataInfo> tables;
+    };
+
     static constexpr uint latest_version = 3;
     enum Error {
         OK,
@@ -128,7 +139,7 @@ public:
         co_return co_await runQueryInWorker(sql, std::move(params), token);
     }
 
-    QCoro::Task<tl::expected<nextapp::pb::UserDataInfo, Error>> getDbDataInfo();
+    QCoro::Task<tl::expected<DbDataInfo, Error>> getDbDataInfo();
 
     /*! Process a batch of data-records in the database-thread.
      *

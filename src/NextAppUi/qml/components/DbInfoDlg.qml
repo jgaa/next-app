@@ -14,6 +14,7 @@ Dialog {
     height: ApplicationWindow.window !== null ? Math.min(ApplicationWindow.window.height - 10, 650) : 500
     title: qsTr("Database Info")
     property NextappPb.userDataInfo model: NaCore.dbInfo
+    property var tableChecksums: NaCore.dbInfoTables
     standardButtons: Dialog.Close
 
     ColumnLayout {
@@ -111,6 +112,36 @@ Dialog {
                     text: root.model.numTimeBlocks.toString()
                     readOnly: true
                     Layout.fillWidth: true
+                }
+
+                Label {
+                    text: qsTr("Per-Table Checksums")
+                    Layout.columnSpan: grid.columns
+                    font.bold: true
+                    topPadding: 8
+                }
+
+                Repeater {
+                    model: root.tableChecksums
+
+                    delegate: ColumnLayout {
+                        Layout.columnSpan: grid.columns
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Label {
+                            text: modelData.name + " (" + modelData.count + ")"
+                            font.bold: true
+                            Layout.fillWidth: true
+                        }
+
+                        TextArea {
+                            text: modelData.hash
+                            readOnly: true
+                            wrapMode: TextArea.WrapAnywhere
+                            Layout.fillWidth: true
+                        }
+                    }
                 }
             }
         }

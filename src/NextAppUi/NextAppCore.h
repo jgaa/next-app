@@ -40,6 +40,7 @@ public:
     Q_PROPERTY(bool dragEnabled READ dragEnabled WRITE setDragEnabled NOTIFY dragEnabledChanged)
     Q_PROPERTY(bool lookupRelated MEMBER lookupRelated_ WRITE setLookupRelated  NOTIFY lookupRelatedChanged)
     Q_PROPERTY(nextapp::pb::UserDataInfo dbInfo READ getDbInfo NOTIFY dbInfoChanged)
+    Q_PROPERTY(QVariantList dbInfoTables READ getDbInfoTables NOTIFY dbInfoChanged)
     Q_PROPERTY(QModelIndex selectNode MEMBER selectNode_ NOTIFY selectNodeChanged)
     Q_PROPERTY(QString selectAction MEMBER selectAction_ NOTIFY selectActionChanged)
     Q_PROPERTY(bool plansEnabled READ plansEnabled NOTIFY plansEnabledChanged)
@@ -229,6 +230,7 @@ public:
     void setClickInitiator(ClickInitiator initiator);
 
     nextapp::pb::UserDataInfo getDbInfo();
+    QVariantList getDbInfoTables() const;
 
     bool plansEnabled() const noexcept {
         return plans_enabled_;
@@ -333,6 +335,7 @@ private:
     static std::deque<std::function<void()>> pre_instance_callbacks_;
     bool lookupRelated_{true}; // magnet
     nextapp::pb::UserDataInfo db_info_cached_;
+    QVariantList db_info_tables_cached_;
     time_t db_info_last_update_{0};
     QModelIndex selectNode_;
     QString selectAction_;

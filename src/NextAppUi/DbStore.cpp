@@ -28,6 +28,23 @@ using namespace std;
 
 namespace {
 
+struct TableDigestSpec {
+    QStringView db_name;
+    QStringView display_name;
+    QStringView hash_query;
+};
+
+constexpr std::array<TableDigestSpec, 7> kTableDigestSpecs{{
+    {u"node", u"Nodes", u"SELECT * FROM node ORDER BY uuid"},
+    {u"action_category", u"Action Categories", u"SELECT * FROM action_category ORDER BY id"},
+    // For actions, remove fields that are expected to diverge locally.
+    {u"action", u"Actions", u"SELECT id, node, origin, category, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, kind, version, tags FROM action ORDER BY id"},
+    {u"day", u"Days", u"SELECT * FROM day ORDER BY date"},
+    {u"tag", u"Tags", u"SELECT action, name FROM tag ORDER BY action, name"},
+    {u"work_session", u"Work Sessions", u"SELECT * FROM work_session ORDER BY id"},
+    {u"time_block", u"Time Blocks", u"SELECT * FROM time_block ORDER BY id"},
+}};
+
 #include <QCryptographicHash>
 #include <QSqlQuery>
 #include <QSqlRecord>
@@ -157,43 +174,59 @@ DbStore::~DbStore()
     LOG_TRACE_N << "Destroying db store";
 }
 
-QCoro::Task<tl::expected<nextapp::pb::UserDataInfo, DbStore::Error> > DbStore::getDbDataInfo()
+QCoro::Task<tl::expected<DbStore::DbDataInfo, DbStore::Error> > DbStore::getDbDataInfo()
 {
     // wrap to worker-thread
-    co_return co_await runInWorkerThread<tl::expected<nextapp::pb::UserDataInfo, DbStore::Error>>([this]()
-            -> tl::expected<nextapp::pb::UserDataInfo, DbStore::Error> {
-        nextapp::pb::UserDataInfo info;
+    co_return co_await runInWorkerThread<tl::expected<DbDataInfo, DbStore::Error>>([this]()
+            -> tl::expected<DbDataInfo, DbStore::Error> {
+        DbDataInfo info;
         if (const auto& res = getDbDataHash()) {
-            info.setHash(res.value());
+            info.summary.setHash(res.value());
         } else {
             return tl::make_unexpected(res.error());
         }
 
-        auto get_count = [&](const QString& table) {
-            if (auto res = executeQuery(QString{"SELECT COUNT(*) FROM %1"}.arg(table), {})) {
+        auto get_count = [&](QStringView table) {
+            if (auto res = executeQuery(QString{"SELECT COUNT(*) FROM %1"}.arg(table.toString()), {})) {
                 if (!res->rows.empty() && !res->rows.front().empty()) {
                     bool ok = false;
-                    auto count = res->rows.front().front().toUInt(&ok);
+                    auto count = res->rows.front().front().toULongLong(&ok);
                     if (ok) {
                         return count;
                     }
                     throw std::runtime_error("Failed to convert count to uint");
                 } else {
-                    throw std::runtime_error("No rows returned when counting table " + table.toStdString());
+                    throw std::runtime_error("No rows returned when counting table " + table.toString().toStdString());
                 }
             } else {
-                throw std::runtime_error("Failed to count table " + table.toStdString() + ": "
+                throw std::runtime_error("Failed to count table " + table.toString().toStdString() + ": "
                                          + to_string(static_cast<int>(res.error())));
             }
         };
 
+        auto get_hash = [&](const TableDigestSpec& spec) {
+            QCryptographicHash h(QCryptographicHash::Sha1);
+            if (!sha3OfQuery(h, *db_, spec.hash_query.toString())) {
+                throw std::runtime_error("Failed to hash table " + spec.db_name.toString().toStdString());
+            }
+            return QString::fromLatin1(h.result().toHex());
+        };
+
         try {
-            info.setNumActions(get_count("action"));
-            info.setNumActionCategories(get_count("action_category"));
-            info.setNumNodes(get_count("node"));
-            info.setNumDays(get_count("day"));
-            info.setNumWorkSessions(get_count("work_session"));
-            info.setNumTimeBlocks(get_count("time_block"));
+            for (const auto& spec : kTableDigestSpecs) {
+                TableDataInfo table_info;
+                table_info.name = spec.display_name.toString();
+                table_info.count = get_count(spec.db_name);
+                table_info.hash = table_info.count == 0 ? QStringLiteral("empty") : get_hash(spec);
+                info.tables.append(table_info);
+            }
+
+            info.summary.setNumActions(get_count(u"action"));
+            info.summary.setNumActionCategories(get_count(u"action_category"));
+            info.summary.setNumNodes(get_count(u"node"));
+            info.summary.setNumDays(get_count(u"day"));
+            info.summary.setNumWorkSessions(get_count(u"work_session"));
+            info.summary.setNumTimeBlocks(get_count(u"time_block"));
 
         } catch (const std::exception& e) {
             LOG_ERROR << "Exception when getting DB info: " << e.what();
@@ -643,19 +676,9 @@ tl::expected<QString, DbStore::Error> DbStore::getDbDataHash()
 {
     QCryptographicHash h(QCryptographicHash::Sha1); // We don't need cryptographic strength here
 
-    array<pair<QString, QString>, 6> tables = {{
-        {"node", "SELECT * FROM node ORDER BY uuid"},
-        {"action_category", "SELECT * FROM action_category ORDER BY id"},
-        // For actions, we need to remove the dynamic fields we update locally so the hash is reliable between devices.
-        {"action", "SELECT id, node, origin, category, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, kind, version, tags, tags_hash FROM action ORDER BY id"},
-        {"day", "SELECT * FROM day ORDER BY date"},
-        {"work_session", "SELECT * FROM work_session ORDER BY id"},
-        {"time_block", "SELECT * FROM time_block ORDER BY id"},
-    }};
-
-    for(const auto& [table, query] : tables) {
-        if (!sha3OfQuery(h, *db_, query)) {
-            LOG_WARN_N << "Failed to get hash for table: " << table;
+    for (const auto& spec : kTableDigestSpecs) {
+        if (!sha3OfQuery(h, *db_, spec.hash_query.toString())) {
+            LOG_WARN_N << "Failed to get hash for table: " << spec.db_name.toString();
             return tl::make_unexpected(Error::QUERY_FAILED);
         }
     }

@@ -367,9 +367,20 @@ void NextAppCore::emitSettingsChanged() {
 QCoro::Task<void> NextAppCore::refreshDbData()
 {
     if (auto res = co_await db_->getDbDataInfo()) {
-        db_info_cached_ = *res;
+        db_info_cached_ = res->summary;
+        QVariantList tables;
+        tables.reserve(res->tables.size());
+        for (const auto& table : res->tables) {
+            QVariantMap item;
+            item[QStringLiteral("name")] = table.name;
+            item[QStringLiteral("hash")] = table.hash;
+            item[QStringLiteral("count")] = qulonglong{table.count};
+            tables.push_back(item);
+        }
+        db_info_tables_cached_ = tables;
     } else {
         db_info_cached_ = {};
+        db_info_tables_cached_.clear();
     }
 
     emit dbInfoChanged();
@@ -762,6 +773,11 @@ nextapp::pb::UserDataInfo NextAppCore::getDbInfo()
         refreshDbData();
     }
     return db_info_cached_;
+}
+
+QVariantList NextAppCore::getDbInfoTables() const
+{
+    return db_info_tables_cached_;
 }
 
 void NextAppCore::setPlansEnabled(bool enable)

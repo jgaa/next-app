@@ -171,7 +171,7 @@ void mergeObject(QJsonObject& target, const QJsonObject& source);
 
 std::optional<QJsonObject> loadDbInfo(NextAppCore& core)
 {
-    tl::expected<nextapp::pb::UserDataInfo, DbStore::Error> info_result;
+    tl::expected<DbStore::DbDataInfo, DbStore::Error> info_result;
     if (!waitForTask(core.db().getDbDataInfo(), &info_result, 120000) || !info_result) {
         return std::nullopt;
     }
@@ -185,7 +185,7 @@ std::optional<QJsonObject> loadDbInfo(NextAppCore& core)
     }
     const auto num_day_colors = day_color_count.value();
 
-    const auto& info = info_result.value();
+    const auto& info = info_result->summary;
     return QJsonObject{
         {QStringLiteral("hash"), info.hash()},
         {QStringLiteral("numNodes"), static_cast<int>(info.numNodes())},
