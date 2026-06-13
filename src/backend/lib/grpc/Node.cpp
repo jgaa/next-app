@@ -579,7 +579,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodesLegacy(
     nextapp::pb::Status reply;
 
     auto *nodes = reply.mutable_nodes();
-    const bool include_updated_id = false;
+    const bool include_updated_id = true;
     auto num_rows_in_batch = 0u;
     auto total_rows = 0u;
     auto batch_num = 0u;

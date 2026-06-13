@@ -22,6 +22,8 @@ cmake --build /tmp/nextapp-ui-runtime-tests -j4 --target nextappui_acceptance_de
 
 If you want to run the acceptance tests against locally built backend images:
 
+**Note the tags!**
+
 ```bash
 ./building/build-nextapp-image.sh --scripted --tag acceptance-local
 ./building/build-signup-image.sh --scripted --tag acceptance-local
@@ -30,6 +32,8 @@ If you want to run the acceptance tests against locally built backend images:
 This produces:
 - `jgaafromnorth/nextappd:acceptance-local`
 - `jgaafromnorth/signupd:acceptance-local`
+
+Rebuild these images after backend, proto, session, or sync changes. The acceptance harness runs the Docker images, not the binaries from your current build tree.
 
 ## Run
 

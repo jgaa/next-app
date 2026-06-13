@@ -22,6 +22,7 @@ struct CommandResult final {
     int exit_code{-1};
     QProcess::ExitStatus exit_status{QProcess::NormalExit};
     bool timed_out{false};
+    QByteArray result_text;
     QByteArray stdout_text;
     QByteArray stderr_text;
 
@@ -29,6 +30,10 @@ struct CommandResult final {
         return !timed_out
             && exit_status == QProcess::NormalExit
             && exit_code == 0;
+    }
+
+    [[nodiscard]] QByteArray jsonText() const noexcept {
+        return result_text.isEmpty() ? stdout_text : result_text;
     }
 };
 
@@ -98,6 +103,7 @@ private:
     void allocatePorts();
     void ensureStopped() const;
     void pullImagesIfNeeded();
+    void inspectImages() const;
     void bootstrapNextappd();
     void createSignupClientCert();
     void startMariaDb();

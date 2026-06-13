@@ -846,8 +846,31 @@ set_target_properties(NextAppUiLib PROPERTIES
 )
 
 if (NEXTAPP_WITH_TESTS_UI)
-    qt_add_executable(nextappui_acceptance_device
+    add_library(NextAppUiAcceptanceDeviceLib STATIC
+        tests/AcceptanceDeviceRunner.h
         tests/nextappui_acceptance_device.cpp
+    )
+
+    target_include_directories(NextAppUiAcceptanceDeviceLib PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_link_libraries(NextAppUiAcceptanceDeviceLib PRIVATE
+        NextAppUiCoreLib
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Network
+        Qt6::Qml
+        Qt6::Quick
+    )
+
+    set_target_properties(NextAppUiAcceptanceDeviceLib PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    )
+
+    qt_add_executable(nextappui_acceptance_device
+        tests/nextappui_acceptance_device_main.cpp
     )
 
     target_include_directories(nextappui_acceptance_device PRIVATE
@@ -855,11 +878,7 @@ if (NEXTAPP_WITH_TESTS_UI)
     )
 
     target_link_libraries(nextappui_acceptance_device PRIVATE
-        NextAppUiCoreLib
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Qml
-        Qt6::Quick
+        NextAppUiAcceptanceDeviceLib
     )
 
     set_target_properties(nextappui_acceptance_device PROPERTIES

@@ -1,16 +1,25 @@
+
+#include <iostream>
+
+#include "AcceptanceDeviceRunner.h"
+
 #include <QCommandLineOption>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QMetaObject>
+#include <QProtobufSerializer>
 #include <QSettings>
 #include <QTimer>
 #include <QEventLoop>
 #include <QThread>
 #include <optional>
+#include <unistd.h>
 
 #include "ActionsModel.h"
 #include "ActionCategoriesModel.h"
@@ -28,6 +37,9 @@
 #include "logging.h"
 
 namespace {
+
+int g_result_fd = -1;
+constexpr auto kDbInfoProbeTimeoutMs = 5000;
 
 template <typename T>
 bool waitForTask(QCoro::Task<T> task, T* out, int timeout_ms)
@@ -53,7 +65,8 @@ bool waitForTask(QCoro::Task<T> task, T* out, int timeout_ms)
         loop.quit();
     };
 
-    runner();
+    auto runner_task = runner();
+    (void)runner_task;
     timer.start(timeout_ms);
     loop.exec();
     return finished && !timed_out;
@@ -78,7 +91,8 @@ bool waitForTaskVoid(QCoro::Task<void> task, int timeout_ms)
         loop.quit();
     };
 
-    runner();
+    auto runner_task = runner();
+    (void)runner_task;
     timer.start(timeout_ms);
     loop.exec();
     return finished && !timed_out;
@@ -104,6 +118,15 @@ bool waitForCondition(const std::function<bool()>& condition, int timeout_ms)
 void printJson(const QJsonObject& object)
 {
     const auto json = QJsonDocument{object}.toJson(QJsonDocument::Compact);
+    if (g_result_fd >= 0) {
+        if (::write(g_result_fd, json.constData(), static_cast<size_t>(json.size())) == json.size()) {
+            ::close(g_result_fd);
+            g_result_fd = -1;
+            return;
+        }
+        fprintf(stderr, "Failed to write result to result fd\n");
+    }
+
     fwrite(json.constData(), 1, static_cast<size_t>(json.size()), stdout);
     fputc('\n', stdout);
     fflush(stdout);
@@ -129,6 +152,78 @@ QJsonObject baseResult(const QString& command,
         {QStringLiteral("serverStatus"), static_cast<int>(comm.status())},
         {QStringLiteral("hasServerUrl"), !core.settings().value(QStringLiteral("server/url"), QString{}).toString().isEmpty()},
     };
+}
+
+QJsonObject nodeToJson(const nextapp::pb::Node& node)
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("uuid"), node.uuid());
+    object.insert(QStringLiteral("parent"), node.parent());
+    object.insert(QStringLiteral("active"), node.active());
+    object.insert(QStringLiteral("name"), node.name());
+    object.insert(QStringLiteral("kind"), static_cast<int>(node.kind()));
+    object.insert(QStringLiteral("descr"), node.descr());
+    object.insert(QStringLiteral("version"), static_cast<int>(node.version()));
+    object.insert(QStringLiteral("deleted"), node.deleted());
+    object.insert(QStringLiteral("updated"), static_cast<qint64>(node.updated()));
+    object.insert(QStringLiteral("excludeFromWeeklyReview"), node.excludeFromWeeklyReview());
+    object.insert(QStringLiteral("category"), node.category());
+    object.insert(QStringLiteral("updatedId"), static_cast<qint64>(node.updatedId()));
+    return object;
+}
+
+std::optional<QJsonArray> loadNodeSnapshot(NextAppCore& core)
+{
+    static QString last_failure;
+    const auto log_failure_once = [&](const QString& failure) {
+        if (last_failure != failure) {
+            last_failure = failure;
+            LOG_DEBUG_N << "loadNodeSnapshot failure: " << failure;
+        }
+    };
+
+    tl::expected<DbStore::QueryResult, DbStore::Error> query_result;
+    const auto got_rows = waitForTask(
+        core.db().query(QStringLiteral("SELECT data FROM node ORDER BY uuid")),
+        &query_result,
+        kDbInfoProbeTimeoutMs);
+    if (!got_rows) {
+        log_failure_once(QStringLiteral("node snapshot query timed out for %1").arg(core.db().dbPath()));
+        return std::nullopt;
+    }
+    if (!query_result) {
+        log_failure_once(QStringLiteral("node snapshot query failed for %1 error=%2")
+                             .arg(core.db().dbPath())
+                             .arg(static_cast<int>(query_result.error())));
+        return std::nullopt;
+    }
+
+    QProtobufSerializer serializer;
+    QJsonArray snapshot;
+    for (const auto& row : query_result->rows) {
+        if (row.isEmpty()) {
+            log_failure_once(QStringLiteral("node snapshot query returned empty row for %1")
+                                 .arg(core.db().dbPath()));
+            return std::nullopt;
+        }
+
+        const auto data = row.front().toByteArray();
+        nextapp::pb::Node node;
+        if (!node.deserialize(&serializer, data)) {
+            log_failure_once(QStringLiteral("node snapshot deserialize failed for %1")
+                                 .arg(core.db().dbPath()));
+            return std::nullopt;
+        }
+
+        auto node_object = nodeToJson(node);
+        node_object.insert(
+            QStringLiteral("dataSha1"),
+            QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha1).toHex()));
+        snapshot.push_back(node_object);
+    }
+
+    last_failure.clear();
+    return snapshot;
 }
 
 bool allSyncModelsValid()
@@ -167,12 +262,38 @@ const char *signupStatusName(int status)
     }
 }
 
+const char *serverStatusName(ServerCommAccess::Status status)
+{
+    switch (status) {
+    case ServerCommAccess::Status::MANUAL_OFFLINE:
+        return "MANUAL_OFFLINE";
+    case ServerCommAccess::Status::OFFLINE:
+        return "OFFLINE";
+    case ServerCommAccess::Status::READY_TO_CONNECT:
+        return "READY_TO_CONNECT";
+    case ServerCommAccess::Status::CONNECTING:
+        return "CONNECTING";
+    case ServerCommAccess::Status::INITIAL_SYNC:
+        return "INITIAL_SYNC";
+    case ServerCommAccess::Status::ONLINE:
+        return "ONLINE";
+    case ServerCommAccess::Status::ERROR:
+        return "ERROR";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 bool connectToSignupServerWithRetry(ServerComm& comm,
                                     const QString& signup_url,
                                     int attempts,
                                     int wait_per_attempt_ms)
 {
     for (int attempt = 0; attempt < attempts; ++attempt) {
+        LOG_DEBUG_N << "Connecting to signup server attempt "
+                    << (attempt + 1) << "/" << attempts
+                    << " url=" << signup_url
+                    << " wait_ms=" << wait_per_attempt_ms;
         comm.resetSignupStatus();
         comm.setSignupServerAddress(signup_url);
         const auto have_info = waitForCondition([&] {
@@ -180,6 +301,11 @@ bool connectToSignupServerWithRetry(ServerComm& comm,
             return status == ServerComm::SIGNUP_HAVE_INFO
                 || status == ServerComm::SIGNUP_ERROR;
         }, wait_per_attempt_ms);
+        LOG_DEBUG_N << "Signup server attempt "
+                    << (attempt + 1)
+                    << " completed have_info=" << have_info
+                    << " signup_status=" << signupStatusName(signupStatus(comm))
+                    << " messages=" << comm.property("messages").toString();
         if (have_info && signupStatus(comm) == ServerComm::SIGNUP_HAVE_INFO) {
             return true;
         }
@@ -196,22 +322,51 @@ void mergeObject(QJsonObject& target, const QJsonObject& source);
 
 std::optional<QJsonObject> loadDbInfo(NextAppCore& core)
 {
+    static QString last_failure;
+    const auto log_failure_once = [&](const QString& failure) {
+        if (last_failure != failure) {
+            last_failure = failure;
+            LOG_DEBUG_N << "loadDbInfo failure: " << failure;
+        }
+    };
+    const auto clear_failure = [&] {
+        last_failure.clear();
+    };
+
     tl::expected<DbStore::DbDataInfo, DbStore::Error> info_result;
-    if (!waitForTask(core.db().getDbDataInfo(), &info_result, 120000) || !info_result) {
+    const auto got_info = waitForTask(core.db().getDbDataInfo(), &info_result, kDbInfoProbeTimeoutMs);
+    if (!got_info) {
+        log_failure_once(QStringLiteral("getDbDataInfo timed out for %1").arg(core.db().dbPath()));
+        return std::nullopt;
+    }
+    if (!info_result) {
+        log_failure_once(QStringLiteral("getDbDataInfo failed for %1 error=%2")
+                             .arg(core.db().dbPath())
+                             .arg(static_cast<int>(info_result.error())));
         return std::nullopt;
     }
 
-    tl::expected<int, DbStore::Error> day_color_count;
-    if (!waitForTask(core.db().queryOne<int>(QStringLiteral("SELECT COUNT(*) FROM day_colors")),
-                     &day_color_count,
-                     120000)
-        || !day_color_count) {
+    int num_day_colors = -1;
+    for (const auto& table : info_result->tables) {
+        if (table.name == QStringLiteral("Day Colors")) {
+            num_day_colors = static_cast<int>(table.count);
+            break;
+        }
+    }
+    if (num_day_colors < 0) {
+        log_failure_once(QStringLiteral("Day Colors table summary missing for %1")
+                             .arg(core.db().dbPath()));
         return std::nullopt;
     }
-    const auto num_day_colors = day_color_count.value();
 
     const auto& info = info_result->summary;
-    return QJsonObject{
+    QJsonObject table_hashes;
+    for (const auto& table : info_result->tables) {
+        table_hashes.insert(table.name, table.hash);
+    }
+    const auto node_snapshot = loadNodeSnapshot(core);
+    clear_failure();
+    QJsonObject result{
         {QStringLiteral("hash"), info.hash()},
         {QStringLiteral("numNodes"), static_cast<int>(info.numNodes())},
         {QStringLiteral("numActionCategories"), static_cast<int>(info.numActionCategories())},
@@ -220,7 +375,12 @@ std::optional<QJsonObject> loadDbInfo(NextAppCore& core)
         {QStringLiteral("numDayColors"), num_day_colors},
         {QStringLiteral("numWorkSessions"), static_cast<int>(info.numWorkSessions())},
         {QStringLiteral("numTimeBlocks"), static_cast<int>(info.numTimeBlocks())},
+        {QStringLiteral("tableHashes"), table_hashes},
     };
+    if (node_snapshot) {
+        result.insert(QStringLiteral("nodeSnapshot"), *node_snapshot);
+    }
+    return result;
 }
 
 bool tryMergeDbInfo(QJsonObject& target, NextAppCore& core)
@@ -239,24 +399,61 @@ bool tryMergeDbInfo(QJsonObject& target, NextAppCore& core)
     return true;
 }
 
+QJsonObject normalizeDbInfoForStability(QJsonObject value)
+{
+    value.remove(QStringLiteral("nodeSnapshot"));
+    return value;
+}
+
 bool waitForAndMergeDbInfo(QJsonObject& target, NextAppCore& core, int timeout_ms)
 {
     QJsonObject merged;
     QJsonObject stable_candidate;
+    QJsonObject last_logged_candidate;
     QElapsedTimer stable_since;
     constexpr auto stable_window_ms = 750;
 
     const auto have_info = waitForCondition([&] {
         auto current = target;
         if (!tryMergeDbInfo(current, core)) {
+            if (stable_since.isValid()
+                && !stable_candidate.isEmpty()
+                && stable_since.elapsed() >= stable_window_ms) {
+                merged = stable_candidate;
+                LOG_DEBUG_N << "waitForAndMergeDbInfo reusing last stable candidate after DB info retry failure. hash="
+                            << merged.value(QStringLiteral("hash")).toString()
+                            << " nodes=" << merged.value(QStringLiteral("numNodes")).toInt()
+                            << " categories=" << merged.value(QStringLiteral("numActionCategories")).toInt()
+                            << " actions=" << merged.value(QStringLiteral("numActions")).toInt()
+                            << " days=" << merged.value(QStringLiteral("numDays")).toInt()
+                            << " day_colors=" << merged.value(QStringLiteral("numDayColors")).toInt()
+                            << " work_sessions=" << merged.value(QStringLiteral("numWorkSessions")).toInt()
+                            << " time_blocks=" << merged.value(QStringLiteral("numTimeBlocks")).toInt();
+                return true;
+            }
+
             stable_candidate = {};
             stable_since.invalidate();
             return false;
         }
 
-        if (stable_candidate != current) {
+        const auto comparable_current = normalizeDbInfoForStability(current);
+        const auto comparable_stable = normalizeDbInfoForStability(stable_candidate);
+        if (comparable_stable != comparable_current) {
             stable_candidate = current;
             stable_since.restart();
+            if (normalizeDbInfoForStability(last_logged_candidate) != comparable_current) {
+                last_logged_candidate = current;
+                LOG_DEBUG_N << "waitForAndMergeDbInfo candidate hash="
+                            << stable_candidate.value(QStringLiteral("hash")).toString()
+                            << " nodes=" << stable_candidate.value(QStringLiteral("numNodes")).toInt()
+                            << " categories=" << stable_candidate.value(QStringLiteral("numActionCategories")).toInt()
+                            << " actions=" << stable_candidate.value(QStringLiteral("numActions")).toInt()
+                            << " days=" << stable_candidate.value(QStringLiteral("numDays")).toInt()
+                            << " day_colors=" << stable_candidate.value(QStringLiteral("numDayColors")).toInt()
+                            << " work_sessions=" << stable_candidate.value(QStringLiteral("numWorkSessions")).toInt()
+                            << " time_blocks=" << stable_candidate.value(QStringLiteral("numTimeBlocks")).toInt();
+            }
             return false;
         }
 
@@ -269,9 +466,27 @@ bool waitForAndMergeDbInfo(QJsonObject& target, NextAppCore& core, int timeout_m
     }, timeout_ms);
 
     if (!have_info) {
+        LOG_DEBUG_N << "waitForAndMergeDbInfo timed out last_candidate_hash="
+                    << stable_candidate.value(QStringLiteral("hash")).toString()
+                    << " nodes=" << stable_candidate.value(QStringLiteral("numNodes")).toInt()
+                    << " categories=" << stable_candidate.value(QStringLiteral("numActionCategories")).toInt()
+                    << " actions=" << stable_candidate.value(QStringLiteral("numActions")).toInt()
+                    << " days=" << stable_candidate.value(QStringLiteral("numDays")).toInt()
+                    << " day_colors=" << stable_candidate.value(QStringLiteral("numDayColors")).toInt()
+                    << " work_sessions=" << stable_candidate.value(QStringLiteral("numWorkSessions")).toInt()
+                    << " time_blocks=" << stable_candidate.value(QStringLiteral("numTimeBlocks")).toInt();
         return false;
     }
 
+    LOG_DEBUG_N << "waitForAndMergeDbInfo stabilized hash="
+                << merged.value(QStringLiteral("hash")).toString()
+                << " nodes=" << merged.value(QStringLiteral("numNodes")).toInt()
+                << " categories=" << merged.value(QStringLiteral("numActionCategories")).toInt()
+                << " actions=" << merged.value(QStringLiteral("numActions")).toInt()
+                << " days=" << merged.value(QStringLiteral("numDays")).toInt()
+                << " day_colors=" << merged.value(QStringLiteral("numDayColors")).toInt()
+                << " work_sessions=" << merged.value(QStringLiteral("numWorkSessions")).toInt()
+                << " time_blocks=" << merged.value(QStringLiteral("numTimeBlocks")).toInt();
     target = merged;
     return true;
 }
@@ -300,7 +515,7 @@ bool waitForAndMergeDbInfoMatching(QJsonObject& target,
             return false;
         }
 
-        if (stable_candidate != current) {
+        if (normalizeDbInfoForStability(stable_candidate) != normalizeDbInfoForStability(current)) {
             stable_candidate = current;
             stable_since.restart();
             return false;
@@ -435,12 +650,18 @@ nextapp::pb::Action makeAction(const QString& batch_name,
 
 } // namespace
 
-int main(int argc, char** argv)
+int runAcceptanceDevice(int argc, char** argv)
 {
+    logfault::LogManager::Instance().AddHandler(
+        std::make_unique<logfault::StreamHandler>(std::clog, logfault::LogLevel::DEBUGGING));
+
+    LOG_INFO_N << "Starting acceptance device helper with args: " << QStringList{argv + 1, argv + argc}.join(' ');
+
     QString workspace_root;
     QString device_name;
     QString command;
     QString signup_url;
+    int result_fd = -1;
     QString user_name;
     QString user_email;
     QString company;
@@ -463,6 +684,10 @@ int main(int argc, char** argv)
         }
         if (arg == QStringLiteral("--signup-url") && i + 1 < argc) {
             signup_url = QString::fromLocal8Bit(argv[++i]);
+            continue;
+        }
+        if (arg == QStringLiteral("--result-fd") && i + 1 < argc) {
+            result_fd = QString::fromLocal8Bit(argv[++i]).toInt();
             continue;
         }
         if (arg == QStringLiteral("--user-name") && i + 1 < argc) {
@@ -519,6 +744,7 @@ int main(int argc, char** argv)
     QDir{}.mkpath(workspace_root + QStringLiteral("/config"));
     QDir{}.mkpath(workspace_root + QStringLiteral("/data"));
     QDir{}.mkpath(workspace_root + QStringLiteral("/home"));
+    g_result_fd = result_fd;
 
     qputenv("QT_QPA_PLATFORM", qEnvironmentVariable("QT_QPA_PLATFORM", "offscreen").toUtf8());
     qputenv("SDL_AUDIODRIVER", qEnvironmentVariable("SDL_AUDIODRIVER", "dummy").toUtf8());
@@ -550,6 +776,10 @@ int main(int argc, char** argv)
         LOG_INFO_N << "Acceptance helper logging to " << log_path;
     }
 
+    LOG_INFO_N << "Acceptance helper starting command=" << command
+               << " device=" << device_name
+               << " workspace_root=" << workspace_root;
+
     QSettings settings;
     if (!settings.contains(QStringLiteral("client/maxInstances"))) {
         settings.setValue(QStringLiteral("client/maxInstances"), 10);
@@ -571,11 +801,26 @@ int main(int argc, char** argv)
     CalendarCache calendar_cache{core};
     NotificationsModel notifications{core};
     auto& comm = static_cast<ServerComm&>(core.serverComm());
+    QObject::connect(&comm, &ServerComm::signupStatusChanged, &app, [&] {
+        LOG_DEBUG_N << "Signal signupStatusChanged status="
+                    << signupStatusName(signupStatus(comm))
+                    << " messages=" << comm.property("messages").toString();
+    });
+    QObject::connect(&comm, &ServerCommAccess::statusChanged, &app, [&] {
+        LOG_DEBUG_N << "Signal statusChanged status="
+                    << serverStatusName(comm.status())
+                    << " status_code=" << static_cast<int>(comm.status());
+    });
+    QObject::connect(&comm, &ServerComm::messagesChanged, &app, [&] {
+        LOG_DEBUG_N << "Signal messagesChanged messages="
+                    << comm.property("messages").toString();
+    });
 
     if (!waitForTaskVoid(core.modelsAreCreated(), 120000)) {
         fprintf(stderr, "Timed out while initializing NextAppCore models\n");
         return 4;
     }
+    LOG_DEBUG_N << "Acceptance helper models initialized for command=" << command;
 
     if (command == QStringLiteral("prepare")) {
         printJson(baseResult(command, device_name, core, comm));
@@ -589,7 +834,10 @@ int main(int argc, char** argv)
         }
 
         auto result = baseResult(command, device_name, core, comm);
+        LOG_DEBUG_N << "Starting signup server probe for url=" << signup_url;
         const auto connected = connectToSignupServerWithRetry(comm, signup_url, 10, 3000);
+        LOG_DEBUG_N << "Signup server probe completed connected=" << connected
+                    << " signup_status=" << signupStatusName(signupStatus(comm));
         result.insert(QStringLiteral("signupUrl"), signup_url);
         result.insert(QStringLiteral("signupStatus"), signupStatus(comm));
         result.insert(QStringLiteral("connected"), connected);
@@ -604,6 +852,7 @@ int main(int argc, char** argv)
             return 2;
         }
 
+        LOG_DEBUG_N << "signup-first-device: connecting to signup server url=" << signup_url;
         if (!connectToSignupServerWithRetry(comm, signup_url, 20, 15000)) {
             fprintf(stderr,
                     "Failed waiting for signup server info: status=%s messages=%s url=%s\n",
@@ -614,14 +863,25 @@ int main(int argc, char** argv)
         }
 
         const auto device_label = requested_device_name.isEmpty() ? device_name : requested_device_name;
+        LOG_DEBUG_N << "signup-first-device: issuing signup"
+                    << " user_name=" << user_name
+                    << " user_email=" << user_email
+                    << " company=" << company
+                    << " device_label=" << device_label
+                    << " region=" << region;
         comm.signup(user_name, user_email, company, device_label, region);
 
+        LOG_DEBUG_N << "signup-first-device: waiting for signup completion";
         const auto signed_up = waitForCondition([&] {
             const auto status = signupStatus(comm);
             return status == ServerComm::SIGNUP_SUCCESS
                 || status == ServerComm::SIGNUP_OK
                 || status == ServerComm::SIGNUP_ERROR;
         }, 240000);
+        LOG_DEBUG_N << "signup-first-device: signup wait completed"
+                    << " signed_up=" << signed_up
+                    << " signup_status=" << signupStatusName(signupStatus(comm))
+                    << " messages=" << comm.property("messages").toString();
         if (!signed_up || signupStatus(comm) == ServerComm::SIGNUP_ERROR) {
             fprintf(stderr, "Timed out waiting for signup to complete\n");
             return 7;
@@ -647,23 +907,32 @@ int main(int argc, char** argv)
             result.insert(QStringLiteral("templateApplied"), false);
         }
 
+        LOG_DEBUG_N << "signup-first-device: calling signupDone()";
         comm.signupDone();
 
+        LOG_DEBUG_N << "signup-first-device: waiting for ONLINE state";
         const auto online = waitForCondition([&] {
             return comm.status() == ServerCommAccess::Status::ONLINE;
         }, 240000);
+        LOG_DEBUG_N << "signup-first-device: ONLINE wait completed"
+                    << " online=" << online
+                    << " server_status=" << static_cast<int>(comm.status());
+        LOG_DEBUG_N << "signup-first-device: waiting for sync models";
         const auto synced = online && waitForCondition(allSyncModelsValid, 240000);
+        LOG_DEBUG_N << "signup-first-device: sync wait completed synced=" << synced;
 
         result.insert(QStringLiteral("online"), online);
         result.insert(QStringLiteral("synced"), synced);
         result.insert(QStringLiteral("signupStatus"), signupStatus(comm));
         result.insert(QStringLiteral("signupUrl"), signup_url);
 
+        LOG_DEBUG_N << "signup-first-device: waiting for DB info";
         const auto have_db_info = synced && (template_name.isEmpty()
             ? waitForAndMergeDbInfo(result, core, 120000)
             : waitForAndMergeDbInfoMatching(result, core, 120000, [](const QJsonObject& info) {
                 return info.value(QStringLiteral("numNodes")).toInt() > 0;
             }));
+        LOG_DEBUG_N << "signup-first-device: DB info wait completed have_db_info=" << have_db_info;
         result.insert(QStringLiteral("haveDbInfo"), have_db_info);
         mergeSyncDiagnostics(result, comm);
 
