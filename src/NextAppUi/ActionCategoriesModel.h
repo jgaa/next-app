@@ -65,6 +65,7 @@ public:
 
     QCoro::Task<bool> synch(bool fullSync);
     QCoro::Task<bool> loadFromDb();
+    QCoro::Task<bool> applyLiveUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void setSyncDbOverride(DbStore* db) noexcept { sync_db_override_ = db; }
     void setLoadAfterSync(bool load_after_sync) noexcept { load_after_sync_ = load_after_sync; }
 
@@ -73,9 +74,8 @@ signals:
     void onlineChanged();
 
 private:
-    QCoro::Task<void> onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
-    QCoro::Task<void> applyUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
-    QCoro::Task<void> applyPendingUpdates();
+    QCoro::Task<bool> applyUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
+    QCoro::Task<bool> applyPendingUpdates();
     QCoro::Task<uint64_t> loadLocalVersionFromDb();
     QCoro::Task<bool> storeLocalVersionInDb(uint64_t version);
     QCoro::Task<bool> replaceAllFromServer(const nextapp::pb::ActionCategories& categories);

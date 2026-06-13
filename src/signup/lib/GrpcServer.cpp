@@ -57,10 +57,27 @@ GrpcServer::GrpcServer(Server &server)
         LOG_DEBUG << "Signup request from client at " << ctx->peer();
 
         // Validate the information in the request
+        if (req->email().empty()) {
+            throw Error{nextapp::pb::Error::MISSING_USER_EMAIL, "Email is required"};
+        }
 
         if (!req->has_region() || req->region().uuid().empty()) {
             throw runtime_error{"Region is unset"};
         }
+
+        if (!co_await owner_.server().allowSignupAttempt(ctx->peer(), req->email())) {
+            reply->set_error(signup::pb::Error::GENERIC_ERROR);
+            reply->set_message("Too many signup attempts. Try again later.");
+            co_return;
+        }
+
+        const auto email_hash = owner_.server().getEmailHash(req->email());
+        if (!owner_.server().tryReserveEmailSignup(email_hash)) {
+            throw Error{nextapp::pb::Error::ALREADY_EXIST, "Signup is already in progress for this email"};
+        }
+        ScopedExit release_email_reservation{[&owner = owner_, email_hash] {
+            owner.server().releaseEmailSignup(email_hash);
+        }};
 
         // Get an instance to use
         const auto assigned_instance = co_await owner_.server().assignInstance(toUuid(req->region().uuid()));
@@ -170,9 +187,8 @@ GrpcServer::GrpcServer(Server &server)
         // Add the tenant and user to the database
         auto dbh = co_await owner_.server().db().getConnection();
         auto trx = co_await dbh.transaction();
-        const auto email_hash = owner_.server().getEmailHash(req->email());
         const auto user_id = newTenant.users(0).uuid();
-        const string_view state = "active";
+        const string_view state = "inactive";
         co_await dbh.exec(
             R"(INSERT INTO tenant (id, state, instance, region) VALUES (?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE

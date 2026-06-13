@@ -146,6 +146,12 @@ public:
 
 class UserContext : public std::enable_shared_from_this<UserContext> {
 public:
+    enum class SyncClientMode : uint8_t {
+        Unset = 0,
+        Legacy,
+        Current,
+    };
+
     enum class SessionAccessMode : uint8_t {
         FULL_ACCESS = 0,
         READ_ONLY_DEVICE_LIMIT,
@@ -340,6 +346,14 @@ public:
             access_mode_.store(static_cast<uint8_t>(mode), std::memory_order_relaxed);
         }
 
+        SyncClientMode syncClientMode() const noexcept {
+            return static_cast<SyncClientMode>(sync_client_mode_.load(std::memory_order_relaxed));
+        }
+
+        void setSyncClientMode(SyncClientMode mode) noexcept {
+            sync_client_mode_.store(static_cast<uint8_t>(mode), std::memory_order_relaxed);
+        }
+
         void requireWritableForAdd(std::string_view resource) const;
 
         /*! Indicates if the session has push notifications enabled.
@@ -371,8 +385,44 @@ public:
         std::atomic<std::chrono::steady_clock::time_point> last_access_{std::chrono::steady_clock::now()};
         std::chrono::steady_clock::time_point created_{std::chrono::steady_clock::now()};
         std::atomic<uint8_t> access_mode_{static_cast<uint8_t>(SessionAccessMode::FULL_ACCESS)};
+        std::atomic<uint8_t> sync_client_mode_{static_cast<uint8_t>(SyncClientMode::Unset)};
         bool has_push_{false}; // Indicates if the session has push enabled.
         std::weak_ptr<Publisher> publisher_; // The publisher for this session, if any.
+    };
+
+    class WriteAccessGuard {
+    public:
+        WriteAccessGuard() = default;
+        explicit WriteAccessGuard(UserContext* owner) noexcept
+            : owner_{owner} {}
+
+        WriteAccessGuard(const WriteAccessGuard&) = delete;
+        WriteAccessGuard& operator=(const WriteAccessGuard&) = delete;
+
+        WriteAccessGuard(WriteAccessGuard&& other) noexcept
+            : owner_{std::exchange(other.owner_, nullptr)} {}
+
+        WriteAccessGuard& operator=(WriteAccessGuard&& other) noexcept {
+            if (this != &other) {
+                release();
+                owner_ = std::exchange(other.owner_, nullptr);
+            }
+            return *this;
+        }
+
+        ~WriteAccessGuard() {
+            release();
+        }
+
+    private:
+        void release() noexcept {
+            if (owner_) {
+                owner_->releaseWriteAccess();
+                owner_ = nullptr;
+            }
+        }
+
+        UserContext* owner_{};
     };
 
 
@@ -482,12 +532,13 @@ public:
         publishSessionAccessChanges(std::move(changed));
     }
 
-    bool hasNoSessions() const {
+        bool hasNoSessions() const {
         std::shared_lock lock(mutex_);
         return sessions_.empty();
     }
 
     void setSettings(pb::UserGlobalSettings settings) {
+        std::unique_lock lock(mutex_);
         settings_ = std::move(settings);
     }
 
@@ -564,6 +615,27 @@ public:
         tenant_plan_ = std::move(plan);
     }
 
+    [[nodiscard]] boost::asio::awaitable<WriteAccessGuard> acquireWriteAccess() {
+        auto executor = co_await boost::asio::this_coro::executor;
+        std::shared_ptr<boost::asio::steady_timer> waiter;
+
+        {
+            std::lock_guard lock(write_access_mutex_);
+            if (!write_access_in_progress_) {
+                write_access_in_progress_ = true;
+                co_return WriteAccessGuard{this};
+            }
+
+            waiter = std::make_shared<boost::asio::steady_timer>(
+                executor, boost::asio::steady_timer::time_point::max());
+            write_access_waiters_.push_back(waiter);
+        }
+
+        boost::system::error_code ec;
+        co_await waiter->async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+        co_return WriteAccessGuard{this};
+    }
+
     pb::Tenant::State tenantState() const noexcept {
         return static_cast<pb::Tenant::State>(tenant_state_.load(std::memory_order_relaxed));
     }
@@ -623,6 +695,20 @@ private:
     // Requires mutex_ to be held exclusively.
     void purgeExpiredPublishers();
     void retainPublishedUpdate(const std::shared_ptr<pb::Update>& update);
+    void releaseWriteAccess() noexcept {
+        std::shared_ptr<boost::asio::steady_timer> next;
+        {
+            std::lock_guard lock(write_access_mutex_);
+            if (write_access_waiters_.empty()) {
+                write_access_in_progress_ = false;
+                return;
+            }
+            next = std::move(write_access_waiters_.front());
+            write_access_waiters_.pop_front();
+        }
+
+        next->expires_at(std::chrono::steady_clock::now());
+    }
 
     std::string user_uuid_;
     std::string tenant_uuid_;
@@ -643,11 +729,14 @@ private:
     mutable PaddedMutex<std::shared_mutex> mutex_;
     mutable PaddedMutex<std::mutex> instance_mutex_;
     mutable PaddedMutex<std::mutex> plan_usage_mutex_;
+    mutable PaddedMutex<std::mutex> write_access_mutex_;
     std::atomic_bool valid_{true}; // Indicates if the user context is still valid.
     std::shared_ptr<TenantPlan> tenant_plan_;
     PlanUsageState plan_usage_;
     std::optional<boost::asio::steady_timer> plan_usage_timer_;
     uint64_t plan_refresh_generation_{0};
+    bool write_access_in_progress_{false};
+    std::deque<std::shared_ptr<boost::asio::steady_timer>> write_access_waiters_;
 };
 
 class Publisher {
@@ -675,6 +764,12 @@ private:
 
 class SessionManager {
 public:
+    struct PendingPublishStateSave {
+        boost::uuids::uuid user_uuid;
+        std::string user_uuid_str;
+        UserPublishState state;
+    };
+
     SessionManager(Server& server);
 
     ~SessionManager() = default;
@@ -708,6 +803,7 @@ public:
     boost::asio::awaitable<bool> applyTenantStateAndPublish(
         std::string_view tenantUuid,
         const nextapp::pb::Tenant& tenant);
+    boost::asio::awaitable<void> persistPublishState(const std::shared_ptr<UserContext>& user);
 
     std::shared_ptr<Plan> getPlan(const std::string_view planName) const;
 
@@ -715,7 +811,8 @@ private:
     [[nodiscard]] std::shared_ptr<std::mutex> getUserCreationMutex_(const boost::uuids::uuid& userUuid);
     [[nodiscard]] boost::asio::awaitable<UserPublishState> loadPublishState_(const boost::uuids::uuid& userUuid, std::string_view userUuidStr);
     [[nodiscard]] boost::asio::awaitable<void> savePublishState_(const boost::uuids::uuid& userUuid, std::string_view userUuidStr, UserPublishState state);
-    void removeSession_(const boost::uuids::uuid& sessionId);
+    [[nodiscard]] std::optional<PendingPublishStateSave> removeSession_(const boost::uuids::uuid& sessionId);
+    void persistPublishStateSync_(const PendingPublishStateSave& state);
     void startNextTimer();
     void onTimer();
     static boost::asio::io_context& ioContext() noexcept ;

@@ -88,13 +88,24 @@ struct ToWorkSession {
     }
 };
 
+boost::asio::awaitable<void> refreshAndQueueCommittedWorkSession(
+    GrpcServer& owner,
+    pb::WorkSession& work,
+    RequestCtx& rctx,
+    pb::Update::Operation op)
+{
+    work = co_await owner.fetchWorkSession(work.id(), rctx);
+    auto& update = rctx.publishLater(op);
+    *update.mutable_work() = work;
+}
+
 } // anon ns
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateWorkSession(::grpc::CallbackServerContext *ctx,
                                                                        const pb::CreateWorkReq *req,
                                                                        pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             auto dbopts = rctx.uctx->dbOptions();
@@ -179,7 +190,7 @@ struct ToWorkSession {
                                                                   const pb::AddWorkEventReq *req,
                                                                   pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             rctx.session().requireWritableForAdd("work session");
@@ -225,9 +236,8 @@ struct ToWorkSession {
                         auto ne = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH);
                         work.add_events()->Swap(&ne);
                         co_await owner_.saveWorkSession(work, rctx);
-                        rctx.dbh.reset();
-                        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
-                        *update.mutable_work() = work;
+                        co_await refreshAndQueueCommittedWorkSession(
+                            owner_, work, rctx, pb::Update::Operation::Update_Operation_UPDATED);
                     } break;
                 case pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION: {
                     auto ne = createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_CORRECTION);
@@ -255,9 +265,8 @@ struct ToWorkSession {
                     work.add_events()->Swap(&ne);
                     updateOutcome(work, *rctx.uctx);
                     co_await owner_.saveWorkSession(work, rctx, false);
-                    rctx.dbh.reset();
-                    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
-                    *update.mutable_work() = work;
+                    co_await refreshAndQueueCommittedWorkSession(
+                        owner_, work, rctx, pb::Update::Operation::Update_Operation_UPDATED);
                 } break;
                 default:
                     assert(false);
@@ -277,7 +286,7 @@ struct ToWorkSession {
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::ListCurrentWorkSessions(::grpc::CallbackServerContext *ctx,
                                                                              const pb::Empty *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
@@ -299,7 +308,7 @@ struct ToWorkSession {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetWorkSummary(::grpc::CallbackServerContext *ctx, const pb::WorkSummaryRequest *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
@@ -331,7 +340,7 @@ struct ToWorkSession {
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteWorkSession(::grpc::CallbackServerContext *ctx,
                                                                        const pb::DeleteWorkReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, ctx, req] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             co_await owner_.deleteWorkSession(req->worksessionid(), rctx);
             co_return;
@@ -340,7 +349,7 @@ struct ToWorkSession {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetWorkSessions(::grpc::CallbackServerContext *ctx, const pb::GetWorkSessionsReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, ctx, req] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
@@ -489,7 +498,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::AddWork(::grpc::CallbackServerContext *ctx,
                                                              const pb::AddWorkReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
@@ -528,6 +537,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
 
             // Save the work session again to get all the columns saved.
             co_await owner_.saveWorkSession(work, rctx);
+            work = co_await owner_.fetchWorkSession(id, rctx);
 
             co_await trx.commit();
             reservation.commit();
@@ -542,7 +552,7 @@ boost::asio::awaitable<boost::mysql::results> GrpcServer::insertWork(const pb::W
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetDetailedWorkSummary(::grpc::CallbackServerContext *ctx, const pb::DetailedWorkSummaryRequest *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             const auto &dbopts = rctx.uctx->dbOptions();
@@ -733,9 +743,7 @@ boost::asio::awaitable<void> GrpcServer::stopWorkSession(pb::WorkSession &work,
     assert(work.state() == pb::WorkSession_State::WorkSession_State_DONE);
 
     co_await saveWorkSession(work, rctx);
-
-    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
-    *update.mutable_work() = work;
+    co_await refreshAndQueueCommittedWorkSession(*this, work, rctx, pb::Update::Operation::Update_Operation_UPDATED);
 
     if (!work.action().empty()) {
         co_await updateTimeSpentInAction(work.action(), rctx);
@@ -775,17 +783,14 @@ boost::asio::awaitable<void> GrpcServer::pauseWorkSession(pb::WorkSession &work,
     assert(work.state() == pb::WorkSession_State::WorkSession_State_PAUSED);
 
     co_await saveWorkSession(work, rctx);
-
-    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
-    *update.mutable_work() = work;
+    co_await refreshAndQueueCommittedWorkSession(*this, work, rctx, pb::Update::Operation::Update_Operation_UPDATED);
 }
 
 boost::asio::awaitable<void> GrpcServer::touchWorkSession(pb::WorkSession &work, RequestCtx&  rctx)
 {
     work.mutable_events()->Add(createWorkEvent(pb::WorkEvent::Kind::WorkEvent_Kind_TOUCH));
     co_await saveWorkSession(work, rctx);
-    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
-    *update.mutable_work() = work;
+    co_await refreshAndQueueCommittedWorkSession(*this, work, rctx, pb::Update::Operation::Update_Operation_UPDATED);
 }
 
 boost::asio::awaitable<void> GrpcServer::resumeWorkSession(pb::WorkSession &work, RequestCtx&  rctx, bool makeUpdate)
@@ -816,8 +821,7 @@ boost::asio::awaitable<void> GrpcServer::resumeWorkSession(pb::WorkSession &work
     co_await saveWorkSession(work, rctx);
 
     if (makeUpdate) {
-        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
-        *update.mutable_work() = work;
+        co_await refreshAndQueueCommittedWorkSession(*this, work, rctx, pb::Update::Operation::Update_Operation_UPDATED);
     }
 
     co_return;
@@ -969,9 +973,7 @@ boost::asio::awaitable<void> GrpcServer::activateNextWorkSession(RequestCtx& rct
 
     updateOutcome(work, *rctx.uctx);
     co_await saveWorkSession(work, rctx);
-
-    auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
-    *update.mutable_work() = work;
+    co_await refreshAndQueueCommittedWorkSession(*this, work, rctx, pb::Update::Operation::Update_Operation_UPDATED);
 }
 
 boost::asio::awaitable<void> GrpcServer::pauseWork(RequestCtx&  rctx)
@@ -1041,41 +1043,46 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportWork(
     const export_flush_fn_t& flush_fn,
     RequestCtx& rctx,
     bool removeDeleted) {
+    switch (rctx.session().syncClientMode()) {
+    case UserContext::SyncClientMode::Current:
+        co_return co_await exportWorkCurrent(req, dbh, flush_fn, rctx, removeDeleted);
+    case UserContext::SyncClientMode::Legacy:
+    case UserContext::SyncClientMode::Unset:
+        co_return co_await exportWorkLegacy(req, dbh, flush_fn, rctx, removeDeleted);
+    }
 
+    co_return co_await exportWorkLegacy(req, dbh, flush_fn, rctx, removeDeleted);
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportWorkLegacy(
+    const pb::GetNewReq& req,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx,
+    bool removeDeleted) {
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
-    const auto cursor = getIncrementalSyncCursor(req);
+    const auto cursor = getLegacySyncCursor(req);
     const auto batch_size = std::min<size_t>(server().config().options.stream_batch_size, 100);
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
-    const auto where_clause = fetch_all ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto where_clause = "updated > ?";
     const auto tombstone_filter = (removeDeleted || cursor.full_sync)
         ? "AND state != 'deleted' AND action is NOT NULL"
         : "AND (action is NOT NULL OR state = 'deleted')";
-    const auto sql = format("SELECT {} from work_session WHERE user=? AND {} {} ORDER BY {}",
+    const auto sql = format("SELECT {} from work_session WHERE user=? AND {} {} ORDER BY updated, action, start_time, id",
                             ToWorkSession::selectCols,
                             where_clause,
-                            tombstone_filter,
-                            cursor.use_updated_id
-                                ? "updated_id"
-                                // Remove after the legacy client migration is complete.
-                                : "updated, action, start_time, id");
-    if (fetch_all) {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
-    } else if (cursor.use_updated_id) {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
-    } else {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
-    }
+                            tombstone_filter);
+    co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
 
     nextapp::pb::Status reply;
 
     auto *ws = reply.mutable_worksessions();
-    const bool include_updated_id = cursor.use_updated_id;
+    const bool include_updated_id = false;
     auto num_rows_in_batch = 0u;
     auto total_rows = 0u;
     auto batch_num = 0u;
@@ -1114,6 +1121,73 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportWork(
         }
 
     } // read more from db loop
+
+    co_await flush();
+    co_return total_rows;
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportWorkCurrent(
+    const pb::GetNewReq& req,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx,
+    bool removeDeleted) {
+
+    const auto uctx = rctx.uctx;
+    const auto& cuser = uctx->userUuid();
+    const auto cursor = getCurrentSyncCursor(req);
+    const auto batch_size = std::min<size_t>(server().config().options.stream_batch_size, 100);
+
+    assert(rctx.dbh);
+    const auto fetch_all = cursor.since == 0;
+    const auto where_clause = fetch_all ? "TRUE" : "updated_id > ?";
+    const auto tombstone_filter = (removeDeleted || cursor.full_sync)
+        ? "AND state != 'deleted' AND action is NOT NULL"
+        : "AND (action is NOT NULL OR state = 'deleted')";
+    const auto sql = format("SELECT {} from work_session WHERE user=? AND {} {} ORDER BY updated_id",
+                            ToWorkSession::selectCols,
+                            where_clause,
+                            tombstone_filter);
+    if (fetch_all) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
+    } else {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
+    }
+
+    nextapp::pb::Status reply;
+    auto *ws = reply.mutable_worksessions();
+    auto num_rows_in_batch = 0u;
+    auto total_rows = 0u;
+    auto batch_num = 0u;
+
+    auto flush = [&]() -> boost::asio::awaitable<void> {
+        reply.set_error(::nextapp::pb::Error::OK);
+        assert(reply.has_worksessions());
+        ++batch_num;
+        reply.set_message(format("Fetched {} work-sessions in batch {}", reply.worksessions().sessions_size(), batch_num));
+        co_await flush_fn(reply);
+        reply.Clear();
+        ws = reply.mutable_worksessions();
+        num_rows_in_batch = {};
+    };
+
+    bool read_more = true;
+    for (auto rows = co_await rctx.dbh->readSome(); read_more; rows = co_await rctx.dbh->readSome()) {
+        read_more = rctx.dbh->shouldReadMore();
+        if (rows.empty()) {
+            LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+            break;
+        }
+
+        for (const auto& row : rows) {
+            auto *session = ws->add_sessions();
+            ToWorkSession::assign(row, *session, *rctx.uctx, true);
+            ++total_rows;
+            if (++num_rows_in_batch >= batch_size) {
+                co_await flush();
+            }
+        }
+    }
 
     co_await flush();
     co_return total_rows;

@@ -118,6 +118,7 @@ public:
 
     void fetchMonth(int year, int month);
     void fetchDay(int year, int month, int day);
+    QCoro::Task<bool> applyLiveUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
     void fetchColors();
 
     bool valid() const noexcept {
@@ -153,7 +154,7 @@ public slots:
     void onUpdate(const std::shared_ptr<nextapp::pb::Update>& update);
 
 private:
-    QCoro::Task<void> onUpdatedDay(nextapp::pb::CompleteDay completeDay);
+    QCoro::Task<bool> onUpdatedDay(nextapp::pb::CompleteDay completeDay);
     QCoro::Task<void> onOnline();
     void refetchAllMonths();
     void setState(State state) noexcept;
@@ -185,5 +186,3 @@ private:
     RuntimeServices& runtime_;
     static GreenDaysModel *instance_;
 };
-
-

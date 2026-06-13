@@ -33,7 +33,7 @@ public:
     virtual ~ServerSynchedCahce() = default;
 
     // Interface
-    virtual QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) = 0;
+    virtual QCoro::Task<bool> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) = 0;
     virtual QCoro::Task<bool> save(const QProtobufMessage& item) = 0;
     virtual QCoro::Task<bool> saveBatch(const QList<T>& items) {co_return false;}
     virtual bool haveBatch() const noexcept { return false; }
@@ -51,7 +51,11 @@ public:
         if (isRelevant(*update)) {
             if (valid()) {
                 pocessUpdate(update).then(
-                    [] {},
+                    [this](bool ok) {
+                        if (!ok) {
+                            LOG_ERROR_N << "Failed to apply live update for " << itemName();
+                        }
+                    },
                     [this, update](const std::exception &e) {
                         LOG_ERROR_N << "Failed to apply live update for " << itemName()
                                     << ": " << e.what();
@@ -126,7 +130,9 @@ public:
             do {
                 auto pending = std::move(pending_updates_);
                 for (const auto& update : pending) {
-                    co_await pocessUpdate(update);
+                    if (!co_await pocessUpdate(update)) {
+                        co_return false;
+                    }
                 }
 
             } while(!pending_updates_.empty());

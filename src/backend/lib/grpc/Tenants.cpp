@@ -93,7 +93,7 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
 
     LOG_DEBUG_N << "Request to create tenant " << req->tenant().name();
 
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             const auto uctx = rctx.uctx;
@@ -288,7 +288,7 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
                                                                     const pb::SetTenantStateReq *req,
                                                                     pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx](pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             if (req->state() == pb::Tenant::State::Tenant_State_PENDING_ACTIVATION) {
                 throw server_err{pb::Error::INVALID_REQUEST, "PENDING_ACTIVATION cannot be set via SetTenantState"};
@@ -406,7 +406,7 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateDevice(::grpc::CallbackServerContext *ctx, const pb::CreateDeviceReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             // NB: This is the userid for the admin-account that is creating the device
@@ -571,7 +571,7 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetUserGlobalSettings(::grpc::CallbackServerContext *ctx,
                                                                            const pb::Empty *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             // const auto& cuser = rctx.uctx->userUuid();
 
@@ -586,7 +586,7 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
                                                                            const pb::UserGlobalSettings *req,
                                                                            pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
@@ -643,7 +643,7 @@ boost::asio::awaitable<bool> GrpcServer::saveUserGlobalSettings(
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetOtpForNewDevice(
     ::grpc::CallbackServerContext *ctx, const pb::OtpRequest *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
@@ -897,7 +897,7 @@ ORDER BY t.id;
                                                                    const pb::Empty *req,
                                                                    pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
@@ -941,7 +941,7 @@ ORDER BY t.id;
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::SetPushNotificationConfig(
     ::grpc::CallbackServerContext *ctx, const pb::PushNotificationConfig *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             LOG_DEBUG_EX(rctx) << "Setting push notification kind to " << static_cast<int>(req->kind());
             co_await rctx.session().processPushState(*req);
@@ -955,7 +955,7 @@ ORDER BY t.id;
                                                                   const pb::Feedback *req,
                                                                   pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             LOG_DEBUG_EX(rctx) << "Storing feedback.";
 
@@ -982,7 +982,7 @@ ORDER BY t.id;
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetSubscription(
     ::grpc::CallbackServerContext *ctx, const pb::GetSubscriptionReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
@@ -1002,7 +1002,7 @@ ORDER BY t.id;
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetPaymentsPage(
     ::grpc::CallbackServerContext *ctx, const pb::PaymentsPageReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
         const auto& pconf = owner_.server().config().payment;
             if (!pconf.enable_plan) {
@@ -1037,7 +1037,7 @@ ORDER BY t.id;
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetPlans(
     ::grpc::CallbackServerContext *ctx, const pb::GetPlansReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             auto *plans = reply->mutable_plans();
             if (!plans) {
@@ -1186,7 +1186,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
 ::grpc::ServerReadReactor<pb::ImportDataMsg> *GrpcServer::NextappImpl::ImportData(
     ::grpc::CallbackServerContext *ctx, pb::Status *reply)
 {
-    return readStreamHandler<pb::ImportDataMsg>(ctx, reply,
+    return mutatingReadStreamHandler<pb::ImportDataMsg>(ctx, reply,
     [this, reply, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
         LOG_INFO_EX(rctx) << "Starting data import";

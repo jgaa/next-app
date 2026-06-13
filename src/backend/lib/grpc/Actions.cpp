@@ -446,7 +446,7 @@ void sanitize(pb::Action& action) {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetActions(::grpc::CallbackServerContext *ctx, const pb::GetActionsReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
@@ -569,7 +569,7 @@ void sanitize(pb::Action& action) {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetAction(::grpc::CallbackServerContext *ctx, const pb::GetActionReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
@@ -676,7 +676,7 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             pb::Action new_action{*req};
@@ -692,7 +692,7 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateAction(::grpc::CallbackServerContext *ctx, const pb::Action *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             const auto& uuid = validatedUuid(req->id());
@@ -748,7 +748,7 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateActions(::grpc::CallbackServerContext *ctx, const pb::UpdateActionsReq *req, pb::Status *reply) {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             if (req->actions().size() > owner_.server().config().options.max_batch_updates) {
@@ -880,7 +880,7 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteAction(::grpc::CallbackServerContext *ctx, const pb::DeleteActionReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
@@ -954,7 +954,7 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MarkActionAsDone(::grpc::CallbackServerContext *ctx, const pb::ActionDoneReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             const auto& uuid = validatedUuid(req->uuid());
@@ -991,7 +991,7 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
                                                                           const pb::ActionFavoriteReq *req,
                                                                           pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
@@ -1019,14 +1019,18 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetFavoriteActions(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, ctx] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
 
             auto res = co_await owner_.server().db().exec(
-                "SELECT a.id, a.name, n.id, n.name, a.version FROM action as a LEFT JOIN node as n ON n.id = a.node ORDER BY a.name, n.name WHERE a.user = ? AND a.favorite = 1 AND a.status != 'done'",
+                "SELECT a.id, a.name, n.id, n.name, a.version "
+                "FROM action AS a "
+                "LEFT JOIN node AS n ON n.id = a.node "
+                "WHERE a.user = ? AND a.favorite = 1 AND a.status != 'done' "
+                "ORDER BY a.name, n.name",
                 cuser);
 
             enum Cols {
@@ -1060,7 +1064,7 @@ boost::asio::awaitable<void> GrpcServer::validateAction(const std::string &actio
 boost::asio::awaitable<void> GrpcServer::validateAction(jgaa::mysqlpool::Mysqlpool::Handle &handle, const std::string &actionId, const std::string &userUuid, std::string *name)
 {
     auto res = co_await handle.exec("SELECT id, name FROM action where id=? and user=?", actionId, userUuid);
-    if (!res.has_value() && !res.rows().empty()) {
+    if (!res.has_value() || res.rows().empty()) {
         throw server_err{pb::Error::INVALID_ACTION, "Action not found for the current user"};
     }
 
@@ -1561,7 +1565,7 @@ boost::asio::awaitable<void> GrpcServer::handleActionActive(const pb::Action &or
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MoveAction(::grpc::CallbackServerContext *ctx, const pb::MoveActionReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             const auto& action_uuid = validatedUuid(req->actionid());
@@ -1612,7 +1616,7 @@ boost::asio::awaitable<void> GrpcServer::fetchActionsForCalendar(pb::CalendarEve
 
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateActionCategory(::grpc::CallbackServerContext *ctx, const pb::ActionCategory *req, pb::Status *reply) {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             const auto& cuser = rctx.uctx->userUuid();
@@ -1680,7 +1684,7 @@ boost::asio::awaitable<void> GrpcServer::saveActionCategories(jgaa::mysqlpool::M
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateActionCategory(::grpc::CallbackServerContext *ctx, const pb::ActionCategory *req, pb::Status *reply) {
 
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             const auto& dbopts = rctx.uctx->dbOptions();
@@ -1707,7 +1711,7 @@ boost::asio::awaitable<void> GrpcServer::saveActionCategories(jgaa::mysqlpool::M
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteActionCategory(::grpc::CallbackServerContext *ctx, const pb::DeleteActionCategoryReq *req, pb::Status *reply) {
 
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
@@ -1781,21 +1785,91 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
                                                            const export_flush_fn_t& flush_fn,
                                                            RequestCtx& rctx,
     bool removeDeleted) {
+    switch (rctx.session().syncClientMode()) {
+    case UserContext::SyncClientMode::Current:
+        co_return co_await exportActionsCurrent(req, dbh, flush_fn, rctx, removeDeleted);
+    case UserContext::SyncClientMode::Legacy:
+    case UserContext::SyncClientMode::Unset:
+        co_return co_await exportActionsLegacy(req, dbh, flush_fn, rctx, removeDeleted);
+    }
 
+    co_return co_await exportActionsLegacy(req, dbh, flush_fn, rctx, removeDeleted);
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportActionsLegacy(const pb::GetNewReq& req,
+                                                                 jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+                                                                 const export_flush_fn_t& flush_fn,
+                                                                 RequestCtx& rctx,
+    bool removeDeleted) {
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
-    const auto cursor = getIncrementalSyncCursor(req);
+    const auto cursor = getLegacySyncCursor(req);
     const auto batch_size = std::min<size_t>(server().config().options.stream_batch_size, 100);
-    static const auto prefixed_cols = prefixNames(ToAction::allSelectCols(), "a.");
-    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
-    const auto where_clause = fetch_all ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
     const auto tombstone_filter = (removeDeleted || cursor.full_sync)
         ? "AND status != 'deleted'"
         : "AND (node IS NOT NULL OR status = 'deleted')";
-    const auto order_clause = cursor.use_updated_id
-        ? "updated_id"
-        // Remove after the legacy client migration is complete.
-        : "updated, node, origin, start_time, due_by_time, id";
+    const auto sql = format("SELECT {} from action WHERE user=? AND updated > ? {} ORDER BY updated, node, origin, start_time, due_by_time, id",
+                            ToAction::allSelectCols(),
+                            tombstone_filter);
+
+    co_await dbh.start_exec(
+        sql,
+        uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
+
+    nextapp::pb::Status reply;
+    auto *actions = reply.mutable_completeactions();
+    auto num_rows_in_batch = 0u;
+    auto total_rows = 0u;
+    auto batch_num = 0u;
+
+    auto flush = [&]() -> boost::asio::awaitable<void> {
+        reply.set_error(::nextapp::pb::Error::OK);
+        assert(reply.has_completeactions());
+        ++batch_num;
+        reply.set_message(format("Fetched {} actions in batch {}", reply.completeactions().actions_size(), batch_num));
+        co_await flush_fn(reply);
+        reply.Clear();
+        actions = reply.mutable_completeactions();
+        num_rows_in_batch = {};
+    };
+
+    bool read_more = true;
+    for (auto rows = co_await dbh.readSome(); read_more; rows = co_await dbh.readSome()) {
+        read_more = dbh.shouldReadMore();
+        if (rows.empty()) {
+            break;
+        }
+
+        for (const auto& row : rows) {
+            auto *action = actions->add_actions();
+            ToAction::assign(row, *action, *uctx, false);
+            ++total_rows;
+            if (++num_rows_in_batch >= batch_size) {
+                co_await flush();
+            }
+        }
+    }
+
+    co_await flush();
+    co_return total_rows;
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportActionsCurrent(const pb::GetNewReq& req,
+                                                                  jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+                                                                  const export_flush_fn_t& flush_fn,
+                                                                  RequestCtx& rctx,
+    bool removeDeleted) {
+
+    const auto uctx = rctx.uctx;
+    const auto& cuser = uctx->userUuid();
+    const auto cursor = getCurrentSyncCursor(req);
+    const auto batch_size = std::min<size_t>(server().config().options.stream_batch_size, 100);
+    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
+    const auto where_clause = fetch_all ? "TRUE" : "updated_id > ?";
+    const auto tombstone_filter = (removeDeleted || cursor.full_sync)
+        ? "AND status != 'deleted'"
+        : "AND (node IS NOT NULL OR status = 'deleted')";
+    const auto order_clause = "updated_id";
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
@@ -1835,20 +1909,16 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportActions(const pb::GetNewReq& 
         co_await dbh.start_exec(
             sql,
             uctx->dbOptions(), cuser);
-    } else if (cursor.use_updated_id) {
-        co_await dbh.start_exec(
-            sql,
-            uctx->dbOptions(), cuser, cursor.since);
     } else {
         co_await dbh.start_exec(
             sql,
-            uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
+            uctx->dbOptions(), cuser, cursor.since);
     }
 
     nextapp::pb::Status reply;
 
     auto *actions = reply.mutable_completeactions();
-    const bool include_updated_id = cursor.use_updated_id;
+    const bool include_updated_id = true;
     auto num_rows_in_batch = 0u;
     auto total_rows = 0u;
     auto batch_num = 0u;

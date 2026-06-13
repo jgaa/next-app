@@ -44,6 +44,7 @@ public:
 
     static CalendarCache *instance() noexcept;
     [[nodiscard]] QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent>>> getCalendarEvents(QDate start, QDate end);
+    QCoro::Task<bool> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
 
     std::shared_ptr<nextapp::pb::CalendarEvent> getFromCache(const QUuid& id) const noexcept {
         if (auto it = events_.find(id); it != events_.end()) {
@@ -62,7 +63,6 @@ signals:
 private:
     bool haveBatch() const noexcept override { return true; }
     QCoro::Task<bool> saveBatch(const QList<nextapp::pb::TimeBlock>& items) override;
-    QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override;
     QCoro::Task<bool> save(const QProtobufMessage& item) override;
     QCoro::Task<bool> save_(const nextapp::pb::TimeBlock& block);
     QCoro::Task<bool> finalizeSyncPersistence() override;

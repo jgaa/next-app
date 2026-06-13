@@ -52,7 +52,8 @@ static const QString insert_query = R"(INSERT INTO node
         updated=excluded.updated,
         updated_id=excluded.updated_id,
         exclude_from_wr=excluded.exclude_from_wr,
-        data=excluded.data)";
+        data=excluded.data
+        WHERE excluded.updated_id >= COALESCE(node.updated_id, 0))";
 
 void dumpLevel(unsigned level, MainTreeModel::TreeNode::node_list_t list) {
     for(auto &node : list) {
@@ -130,11 +131,6 @@ MainTreeModel::MainTreeModel(RuntimeServices& runtime, QObject *parent)
     , runtime_{runtime}
 {
     instance_ = this;
-
-    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate,
-            this, [this] (const std::shared_ptr<nextapp::pb::Update>& update) {
-                onUpdate(update);
-            });
 
     connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::connectedChanged,
             this, &MainTreeModel::onOnline);
@@ -438,7 +434,7 @@ int MainTreeModel::getInsertRow(const TreeNode *parent, const nextapp::pb::Node 
 
 // We are a coroutine and may outlive the caller. So we use a smart pointer for the update,
 // not just a reference to the data.
-QCoro::Task<void> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
+QCoro::Task<bool> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
 {
     using nextapp::pb::Update;
     using nextapp::pb::Node;
@@ -446,10 +442,10 @@ QCoro::Task<void> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb:
 
     if (!update->hasNode()) {
         QTimer::singleShot(0, this, [this] {
-            LOG_ERROR_N << "Received tree update without node payload. Requesting resync.";
-            runtime_.serverComm().resync();
+            LOG_ERROR_N << "Received tree update without node payload. Requesting incremental repair.";
+            runtime_.serverComm().requestIncrementalRepair();
         });
-        co_return;
+        co_return false;
     }
     const Node& node = update->node();
 
@@ -459,10 +455,10 @@ QCoro::Task<void> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb:
     }
     if (node.uuid().isEmpty()) {
         QTimer::singleShot(0, this, [this] {
-            LOG_ERROR_N << "Received tree update without node uuid. Requesting resync.";
-            runtime_.serverComm().resync();
+            LOG_ERROR_N << "Received tree update without node uuid. Requesting incremental repair.";
+            runtime_.serverComm().requestIncrementalRepair();
         });
-        co_return;
+        co_return false;
     }
 
     TreeNode* current = lookupTreeNode(QUuid{node.uuid()});
@@ -472,14 +468,14 @@ QCoro::Task<void> MainTreeModel::pocessUpdate(const std::shared_ptr<nextapp::pb:
     if (op != Update::Operation::DELETED) {
         if (current && current->node().version() > node.version()) {
             LOG_DEBUG << "Received updated/added/moved node " << node.uuid() <<" with version less than the existing node. Ignoring.";
-            co_return;
+            co_return true;
         }
     }
 
     const auto resyncOnFailure = [this, id = node.uuid()] {
         QTimer::singleShot(0, this, [this, id] {
-            LOG_ERROR_N << "Node apply failed for " << id << ". Requesting resync.";
-            runtime_.serverComm().resync();
+            LOG_ERROR_N << "Node apply failed for " << id << ". Requesting incremental repair.";
+            runtime_.serverComm().requestIncrementalRepair();
         });
     };
 
@@ -491,20 +487,22 @@ added:
                        << ". Rebuilding tree from cache.";
             if (!co_await save(node) || !co_await doLoadLocally()) {
                 resyncOnFailure();
+                co_return false;
             }
-            co_return;
+            co_return true;
         }
         if (!co_await save(node)) {
             resyncOnFailure();
-            co_return;
+            co_return false;
         }
         if (!parent) {
             LOG_WARN_N << "Deferring node " << node.uuid() << " because parent "
                        << node.parent() << " is not loaded yet.";
             if (!co_await doLoadLocally()) {
                 resyncOnFailure();
+                co_return false;
             }
-            co_return;
+            co_return true;
         }
         addNode(parent, node);
         break;
@@ -513,15 +511,16 @@ added:
             LOG_WARN_N << "Updated node " << node.uuid() << " is not loaded. Rebuilding tree from cache.";
             if (!co_await save(node) || !co_await doLoadLocally()) {
                 resyncOnFailure();
+                co_return false;
             }
-            co_return;
+            co_return true;
         }
         {
             auto cix = getIndex(current);
             current->node() = node;
             if (!co_await save(node)) {
                 resyncOnFailure();
-                co_return;
+                co_return false;
             }
             emit dataChanged(cix, cix);
         }
@@ -530,15 +529,16 @@ added:
         if (current) {
             if (!co_await save(node)) {
                 resyncOnFailure();
-                co_return;
+                co_return false;
             }
             if (!parent) {
                 LOG_WARN_N << "Deferred moved node " << node.uuid() << " because parent "
                            << node.parent() << " is not loaded yet.";
                 if (!co_await doLoadLocally()) {
                     resyncOnFailure();
+                    co_return false;
                 }
-                co_return;
+                co_return true;
             }
             if (parent == current->parent()) {
                 LOG_WARN_N << "Received move for node " << node.uuid()
@@ -546,7 +546,7 @@ added:
                 auto cix = getIndex(current);
                 current->node() = node;
                 emit dataChanged(cix, cix);
-                co_return;
+                co_return true;
             }
             moveNode(parent, current, node);
         } else {
@@ -555,14 +555,12 @@ added:
         }
         break;
     case Update::Operation::DELETED:
+        if (current == &root_) {
+            LOG_WARN << "Cannot delete root node!";
+            co_return false;
+        }
         if (current) {
-            if (current == &root_) {
-                LOG_WARN << "Cannot delete root node!";
-                co_return;
-            }
             assert(parent);
-            auto cix = getIndex(current);
-            auto parent_ix = getIndex(parent);
 
             if (auto *sel = lookupTreeNode(QUuid{selected()})) {
                 if (sel == current || isDescent(sel->uuid(), current->uuid())) {
@@ -570,15 +568,18 @@ added:
                     setSelected({});
                 }
             }
+        }
 
-            if (!co_await save(node) || !co_await doLoadLocally()) {
-                resyncOnFailure();
-                co_return;
-            }
+        if (!co_await save(node) || !co_await doLoadLocally()) {
+            resyncOnFailure();
+            co_return false;
+        }
+        if (current) {
             emit nodeDeleted();
         }
         break;
     }
+    co_return true;
 }
 
 MainTreeModel::TreeNode *MainTreeModel::lookupTreeNode(const QUuid &uuid, bool emptyIsRoot)
@@ -856,9 +857,10 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
         if (!rval) {
             LOG_WARN_N << "Failed to delete node " << node.uuid() << " " << node.name()
                         << " err=" << rval.error();
+            co_return false;
         }
         pending_parent_repairs_.erase(node.uuid());
-        co_return true; // TODO: Add proper error handling. Probably a full resynch if the node is in the db.
+        co_return true;
     }
 
     auto stored_node = node;

@@ -140,6 +140,7 @@ public:
             : owner_{owner} {}
 
         ::grpc::ServerUnaryReactor *Hello(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *HelloEx(::grpc::CallbackServerContext *ctx, const pb::HelloReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *Ping(::grpc::CallbackServerContext *ctx, const pb::PingReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetServerInfo(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
         ::grpc::ServerUnaryReactor *GetDayColorDefinitions(::grpc::CallbackServerContext *, const pb::Empty *, pb::DayColorDefinitions *) override;
@@ -223,16 +224,18 @@ public:
         ::grpc::ServerUnaryReactor*
         unaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn, std::string_view name = {},
                      bool allowNewSession = false,
-                     bool restrictedToAdmin = false) noexcept {
+                     bool restrictedToAdmin = false,
+                     bool requireWriteAccess = false) noexcept {
             assert(ctx);
             assert(reply);
 
             auto* reactor = ctx->DefaultReactor();
 
             boost::asio::co_spawn(owner_.server().ctx(),
-                                  [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name, restrictedToAdmin]
+                                  [this, ctx, req, reply, reactor, allowNewSession, fn=std::move(fn), name, restrictedToAdmin, requireWriteAccess]
                                   () mutable -> boost::asio::awaitable<void> {
                     std::optional<RequestCtx> rctx;
+                    std::optional<UserContext::WriteAccessGuard> write_access;
                     try {
                         // Start measuring latency for this request
                         const auto latency = owner_.server().metrics().grpc_request_latency().scoped();
@@ -271,6 +274,10 @@ public:
                             }
                         }
 
+                        if (requireWriteAccess) {
+                            write_access.emplace(co_await rctx->uctx->acquireWriteAccess());
+                        }
+
                         if constexpr (UnaryFnWithoutContext<FnT, ReplyT>) {
                             co_await fn(reply);
                         } else if constexpr (UnaryFnWithContext<FnT, ReplyT>) {
@@ -286,7 +293,7 @@ public:
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
                             LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
                             if (rctx) {
-                                owner_.publishUpdatesAfterFailure(*rctx);
+                                owner_.publishUpdatesAfterFailure(*rctx, true);
                             }
                             reply->Clear();
                             reply->set_error(ex.error());
@@ -295,7 +302,7 @@ public:
                         } else {
                             LOG_WARN << "Request [" << name << "] Caught server_err exception while handling grpc request coro: " << ex.what();
                             if (rctx) {
-                                owner_.publishUpdatesAfterFailure(*rctx);
+                                owner_.publishUpdatesAfterFailure(*rctx, true);
                             }
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
@@ -303,7 +310,7 @@ public:
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
                             LOG_DEBUG << "Request [" << name << "] Caught exception while handling grpc request: " << ex.what();
                             if (rctx) {
-                                owner_.publishUpdatesAfterFailure(*rctx);
+                                owner_.publishUpdatesAfterFailure(*rctx, true);
                             }
                             reply->Clear();
                             reply->set_error(nextapp::pb::Error::GENERIC_ERROR);
@@ -312,7 +319,7 @@ public:
                         } else {
                             LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
                             if (rctx) {
-                                owner_.publishUpdatesAfterFailure(*rctx);
+                                owner_.publishUpdatesAfterFailure(*rctx, true);
                             }
                             reactor->Finish(::grpc::Status::CANCELLED);
                         }
@@ -323,6 +330,15 @@ public:
                 }, boost::asio::detached);
 
             return reactor;
+        }
+
+        template <typename ReqT, typename ReplyT, typename FnT>
+        ::grpc::ServerUnaryReactor*
+        mutatingUnaryHandler(::grpc::CallbackServerContext *ctx, const ReqT * req, ReplyT *reply, FnT fn,
+                             std::string_view name = {},
+                             bool allowNewSession = false,
+                             bool restrictedToAdmin = false) noexcept {
+            return unaryHandler(ctx, req, reply, std::move(fn), name, allowNewSession, restrictedToAdmin, true);
         }
 
         template <typename ReqT, typename FnT, typename ReplyT=::nextapp::pb::Status>
@@ -365,7 +381,7 @@ public:
                   } catch (const server_err& ex) {
                       LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
                       if (rctx) {
-                          owner_.publishUpdatesAfterFailure(*rctx);
+                          owner_.publishUpdatesAfterFailure(*rctx, true);
                       }
                       err_reply.set_error(ex.error());
                       err_reply.set_message(ex.what());
@@ -394,22 +410,27 @@ public:
 
         template <typename ReqT, typename FnT, typename ReplyT=::nextapp::pb::Status>
         ::grpc::ServerReadReactor<ReqT> *
-        readStreamHandler(::grpc::CallbackServerContext *ctx, ReplyT* reply, FnT &&fn, std::string_view name = {}) noexcept {
+        readStreamHandler(::grpc::CallbackServerContext *ctx, ReplyT* reply, FnT &&fn, std::string_view name = {},
+                          bool requireWriteAccess = false) noexcept {
             assert(ctx);
             assert(reply);
 
             auto stream = make_client_streamer<ReqT>(ctx, owner_.server().ctx(), owner_);
             stream->start();
             boost::asio::co_spawn(owner_.server().ctx(),
-              [this, reply, ctx, stream, fn=std::move(fn), name]
+              [this, reply, ctx, stream, fn=std::move(fn), name, requireWriteAccess]
               () mutable -> boost::asio::awaitable<void> {
                   ::grpc::Status finish_status;
                   std::optional<RequestCtx> rctx;
+                  std::optional<UserContext::WriteAccessGuard> write_access;
                   try {
                       LOG_TRACE << "Request [" << name << "]";
 
                       rctx.emplace(co_await owner_.sessionManager().getSession(ctx));
                       rctx->session().touch();
+                      if (requireWriteAccess) {
+                          write_access.emplace(co_await rctx->uctx->acquireWriteAccess());
+                      }
                       rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
                       co_await fn(stream, *rctx);
                       co_await stream->finish();
@@ -419,7 +440,7 @@ public:
                   } catch (const server_err& ex) {
                       LOG_DEBUG << "Request [" << name << "] Caught server_err exception while handling grpc request: " << ex.what();
                       if (rctx) {
-                          owner_.publishUpdatesAfterFailure(*rctx);
+                          owner_.publishUpdatesAfterFailure(*rctx, true);
                       }
                       reply->Clear();
                       reply->set_error(ex.error());
@@ -428,7 +449,7 @@ public:
                   } catch (const std::exception& ex) {
                       LOG_WARN << "Request [" << name << "] Caught exception while handling grpc request coro: " << ex.what();
                       if (rctx) {
-                          owner_.publishUpdatesAfterFailure(*rctx);
+                          owner_.publishUpdatesAfterFailure(*rctx, true);
                       }
                       reply->Clear();
                       reply->set_error(nextapp::pb::Error::GENERIC_ERROR);
@@ -444,6 +465,13 @@ public:
               }, boost::asio::detached);
 
             return stream.get();
+        }
+
+        template <typename ReqT, typename FnT, typename ReplyT=::nextapp::pb::Status>
+        ::grpc::ServerReadReactor<ReqT> *
+        mutatingReadStreamHandler(::grpc::CallbackServerContext *ctx, ReplyT* reply, FnT &&fn,
+                                  std::string_view name = {}) noexcept {
+            return readStreamHandler<ReqT>(ctx, reply, std::move(fn), name, true);
         }
 
         GrpcServer& owner_;
@@ -556,14 +584,48 @@ public:
         const export_flush_fn_t& flush_fn,
         RequestCtx& rctx,
         bool removeDeleted = false);
+    boost::asio::awaitable<uint64_t> exportActionsLegacy(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx,
+        bool removeDeleted = false);
+    boost::asio::awaitable<uint64_t> exportActionsCurrent(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx,
+        bool removeDeleted = false);
 
     boost::asio::awaitable<uint64_t> exportDays(
         const pb::GetNewReq& req,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
         RequestCtx& rctx);
+    boost::asio::awaitable<uint64_t> exportDaysLegacy(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx);
+    boost::asio::awaitable<uint64_t> exportDaysCurrent(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx);
 
     boost::asio::awaitable<uint64_t> exportNodes(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx,
+        bool removeDeleted = false);
+    boost::asio::awaitable<uint64_t> exportNodesLegacy(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx,
+        bool removeDeleted = false);
+    boost::asio::awaitable<uint64_t> exportNodesCurrent(
         const pb::GetNewReq& req,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,
@@ -576,8 +638,32 @@ public:
         const export_flush_fn_t& flush_fn,
         RequestCtx& rctx,
         bool removeDeleted = false);
+    boost::asio::awaitable<uint64_t> exportWorkLegacy(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx,
+        bool removeDeleted = false);
+    boost::asio::awaitable<uint64_t> exportWorkCurrent(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx,
+        bool removeDeleted = false);
 
     boost::asio::awaitable<uint64_t> exportTimeBlocks(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx,
+        bool removeDeleted = false);
+    boost::asio::awaitable<uint64_t> exportTimeBlocksLegacy(
+        const pb::GetNewReq& req,
+        jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+        const export_flush_fn_t& flush_fn,
+        RequestCtx& rctx,
+        bool removeDeleted = false);
+    boost::asio::awaitable<uint64_t> exportTimeBlocksCurrent(
         const pb::GetNewReq& req,
         jgaa::mysqlpool::Mysqlpool::Handle& dbh,
         const export_flush_fn_t& flush_fn,

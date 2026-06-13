@@ -21,7 +21,8 @@ namespace {
             notes=excluded.notes,
             report=excluded.report,
             updated=excluded.updated,
-            updated_id=excluded.updated_id)";
+            updated_id=excluded.updated_id
+        WHERE excluded.updated_id >= COALESCE(day.updated_id, 0))";
 
     QList<QVariant> getParams(const nextapp::pb::CompleteDay& fullDay) {
         QList<QVariant> params;
@@ -49,11 +50,6 @@ GreenDaysModel::GreenDaysModel(RuntimeServices& runtime)
 {
     instance_ = this;
     years_to_cache_.emplace(QDate::currentDate().year());
-
-    connect(std::addressof(runtime_.serverComm()),
-            &ServerCommAccess::onUpdate,
-            this,
-            &GreenDaysModel::onUpdate);
 
     connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::connectedChanged, this, [this] {
         if (runtime_.serverComm().connected()) {
@@ -198,22 +194,33 @@ const pb::DayColorDefinitions GreenDaysModel::getAsDayColorDefinitions() const
 void GreenDaysModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
 {
     if (update->hasDay()) {
-        onUpdatedDay(update->day());
+        onUpdatedDay(update->day()).then(
+            [] (bool) {},
+            [] (const std::exception& e) {
+                LOG_ERROR_N << "Failed to apply green-day update: " << e.what();
+            });
     }
 }
 
+QCoro::Task<bool> GreenDaysModel::applyLiveUpdate(const std::shared_ptr<nextapp::pb::Update>& update)
+{
+    if (!update->hasDay()) {
+        co_return true;
+    }
+    co_return co_await onUpdatedDay(update->day());
+}
 
-QCoro::Task<void> GreenDaysModel::onUpdatedDay(nextapp::pb::CompleteDay completeDay)
+QCoro::Task<bool> GreenDaysModel::onUpdatedDay(nextapp::pb::CompleteDay completeDay)
 {
     const auto date = completeDay.day().date();
 
     if (!co_await storeDay(completeDay)) {
-        LOG_ERROR_N << "Failed to persist updated day locally. Requesting resync.";
-        runtime_.serverComm().resync();
-        co_return;
+        LOG_ERROR_N << "Failed to persist updated day locally. Requesting incremental repair.";
+        runtime_.serverComm().requestIncrementalRepair();
+        co_return false;
     }
     if (!load_after_sync_) {
-        co_return;
+        co_return true;
     }
     auto *di = lookup(date.year(), date.month() + 1, date.mday());
     if (di) {
@@ -221,6 +228,7 @@ QCoro::Task<void> GreenDaysModel::onUpdatedDay(nextapp::pb::CompleteDay complete
         emit updatedMonth(date.year(), date.month() + 1);
         emit updatedDay(date.year(), date.month() + 1, date.mday());
     }
+    co_return true;
 }
 
 QCoro::Task<void> GreenDaysModel::onOnline()
@@ -312,7 +320,8 @@ QCoro::Task<bool> GreenDaysModel::synchColorsFromServer()
                         score=excluded.score,
                         name=excluded.name,
                         updated=excluded.updated,
-                        updated_id=excluded.updated_id)";
+                        updated_id=excluded.updated_id
+                    WHERE excluded.updated_id >= COALESCE(day_colors.updated_id, 0))";
 
                 const qlonglong updated = cdd.updated();
                 const int score = cdd.score();
@@ -577,6 +586,7 @@ QCoro::Task<bool> GreenDaysModel::storeDay(const nextapp::pb::CompleteDay& fullD
                         << fullDay.day().date().month() << '-'
                         << fullDay.day().date().mday()
                         << " err=" << rval.error();
+            co_return false;
         }
         co_return true;
     }

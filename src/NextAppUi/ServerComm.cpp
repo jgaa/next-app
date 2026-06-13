@@ -1530,14 +1530,42 @@ void ServerComm::onGrpcReady()
     runtime_.setOnline(true);
 }
 
+QJsonObject ServerComm::syncDiagnostics() const
+{
+    return {
+        {QStringLiteral("initialSyncEntered"), sync_diagnostics_.initial_sync_entered},
+        {QStringLiteral("usedFullSync"), sync_diagnostics_.used_full_sync},
+        {QStringLiteral("usedDurableSync"), sync_diagnostics_.used_durable_sync},
+        {QStringLiteral("requestedLiveReplay"), sync_diagnostics_.requested_live_replay},
+        {QStringLiteral("replayUnavailableFallback"), sync_diagnostics_.replay_unavailable_fallback},
+        {QStringLiteral("serverInstanceChanged"), sync_diagnostics_.server_instance_changed},
+        {QStringLiteral("serverResyncRequested"), sync_diagnostics_.server_resync_requested},
+        {QStringLiteral("incrementalRepairRequested"), sync_diagnostics_.incremental_repair_requested},
+        {QStringLiteral("completed"), sync_diagnostics_.completed},
+        {QStringLiteral("helloLastPublishId"), static_cast<int>(sync_diagnostics_.hello_last_publish_id)},
+        {QStringLiteral("helloOldestRetainedPublishId"), static_cast<int>(sync_diagnostics_.hello_oldest_retained_publish_id)},
+        {QStringLiteral("startLastSeenUpdateId"), static_cast<int>(sync_diagnostics_.start_last_seen_update_id)},
+        {QStringLiteral("completedLastSeenUpdateId"), static_cast<int>(sync_diagnostics_.completed_last_seen_update_id)},
+    };
+}
+
 bool ServerComm::shouldDeferUpdateUntilInitialSyncComplete() const noexcept
 {
     return status_ == Status::INITIAL_SYNC;
 }
 
+bool ServerComm::needIncrementalRepairSync() const noexcept
+{
+    return settings().value("sync/incremental_repair", false).toBool();
+}
+
 uint ServerComm::effectiveLastSeenUpdateId() const noexcept
 {
-    return deferred_update_id_ > last_seen_update_id_ ? deferred_update_id_ : last_seen_update_id_;
+    auto effective = deferred_update_id_ > last_seen_update_id_ ? deferred_update_id_ : last_seen_update_id_;
+    if (queued_update_id_ > effective) {
+        effective = queued_update_id_;
+    }
+    return effective;
 }
 
 void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& msg)
@@ -1613,16 +1641,96 @@ void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& 
 
     if (msg->hasResync() && msg->resync()) {
         LOG_INFO_N << "Received resync request from server";
+        sync_diagnostics_.server_resync_requested = true;
         if (import_data_in_progress_) {
             import_data_resync_received_ = true;
             return;
         }
         QTimer::singleShot(500ms, [this]() {
-            resync();
+            requestIncrementalRepair();
         });
     }
 
+}
+
+QCoro::Task<bool> ServerComm::applyDurableModels(const std::shared_ptr<nextapp::pb::Update>& msg)
+{
+    if (msg->hasDay() && !co_await GreenDaysModel::instance()->applyLiveUpdate(msg)) {
+        co_return false;
+    }
+    if (msg->hasNode() && !co_await MainTreeModel::instance()->pocessUpdate(msg)) {
+        co_return false;
+    }
+    if (msg->hasActionCategory() && !co_await ActionCategoriesModel::instance().applyLiveUpdate(msg)) {
+        co_return false;
+    }
+    if (msg->hasAction() && !co_await ActionInfoCache::instance()->pocessUpdate(msg)) {
+        co_return false;
+    }
+    if ((msg->hasWork() || msg->hasAction()) && !co_await WorkCache::instance()->pocessUpdate(msg)) {
+        co_return false;
+    }
+    if ((msg->hasCalendarEvents() || msg->hasAction()) && !co_await CalendarCache::instance()->pocessUpdate(msg)) {
+        co_return false;
+    }
+    if ((msg->hasNotifications() || msg->hasLastReadNotificationId())
+        && !co_await NotificationsModel::instance()->pocessUpdate(msg)) {
+        co_return false;
+    }
+    co_return true;
+}
+
+QCoro::Task<bool> ServerComm::applyUpdateDurably(const std::shared_ptr<nextapp::pb::Update>& msg)
+{
+    applyUpdateMessage(msg);
+    if (!co_await applyDurableModels(msg)) {
+        co_return false;
+    }
+
+    last_seen_update_id_ = msg->messageId();
+    saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
+                     last_seen_user_publish_epoch_, "applied update");
     emit onUpdate(msg);
+    co_return true;
+}
+
+void ServerComm::enqueueLiveUpdateForApply(const std::shared_ptr<nextapp::pb::Update>& msg)
+{
+    assert(msg);
+    live_update_apply_queue_.push_back(msg);
+    queued_update_id_ = std::max<uint>(queued_update_id_, msg->messageId());
+    if (draining_live_updates_) {
+        return;
+    }
+
+    draining_live_updates_ = true;
+    drainLiveUpdateQueue().then(
+        [] {},
+        [this](const std::exception& e) {
+            LOG_ERROR_N << "Failed while draining live update queue: " << e.what();
+            queued_update_id_ = 0;
+            live_update_apply_queue_.clear();
+            draining_live_updates_ = false;
+            requestIncrementalRepair();
+        });
+}
+
+QCoro::Task<void> ServerComm::drainLiveUpdateQueue()
+{
+    while (!live_update_apply_queue_.empty()) {
+        auto msg = live_update_apply_queue_.front();
+        live_update_apply_queue_.pop_front();
+        if (!co_await applyUpdateDurably(msg)) {
+            queued_update_id_ = 0;
+            live_update_apply_queue_.clear();
+            draining_live_updates_ = false;
+            requestIncrementalRepair();
+            co_return;
+        }
+    }
+
+    queued_update_id_ = 0;
+    draining_live_updates_ = false;
 }
 
 QCoro::Task<void> ServerComm::replayDeferredUpdates()
@@ -1640,11 +1748,12 @@ QCoro::Task<void> ServerComm::replayDeferredUpdates()
     while (!deferred_updates_.empty()) {
         auto msg = deferred_updates_.front();
         deferred_updates_.pop_front();
-        applyUpdateMessage(msg);
-
-        last_seen_update_id_ = msg->messageId();
-        saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
-                         last_seen_user_publish_epoch_, "replayed deferred update");
+        if (!co_await applyUpdateDurably(msg)) {
+            deferred_updates_.clear();
+            deferred_update_id_ = 0;
+            requestIncrementalRepair();
+            co_return;
+        }
     }
 
     deferred_update_id_ = 0;
@@ -1673,6 +1782,21 @@ void ServerComm::onUpdateMessage()
                 return;
             }
 
+            if (shouldDeferUpdateUntilInitialSyncComplete()) {
+                if (msgid > deferred_update_id_) {
+                    deferred_update_id_ = msgid;
+                    deferred_updates_.push_back(msg);
+                    LOG_INFO_N << "Deferring update #" << msgid
+                               << " while initial sync is running. deferred_updates="
+                               << deferred_updates_.size();
+                } else {
+                    LOG_INFO_N << "Ignoring stale deferred update #" << msgid
+                               << " while initial sync is running. deferred_update_id_="
+                               << deferred_update_id_;
+                }
+                return;
+            }
+
             const auto effective_last_seen = effectiveLastSeenUpdateId();
             if (msgid <= effective_last_seen) {
                 LOG_WARN_N << "Ignoring duplicate or stale update #" << msgid
@@ -1691,21 +1815,7 @@ void ServerComm::onUpdateMessage()
                 return;
             };
 
-            if (shouldDeferUpdateUntilInitialSyncComplete()) {
-                deferred_update_id_ = msgid;
-                deferred_updates_.push_back(msg);
-                LOG_INFO_N << "Deferring update #" << msgid
-                           << " while initial sync is running. deferred_updates="
-                           << deferred_updates_.size();
-                return;
-            }
-
-            last_seen_update_id_ = msgid;
-            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
-                             last_seen_user_publish_epoch_, "normal update");
-            applyUpdateMessage(msg);
-            saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
-                             last_seen_user_publish_epoch_, "applied update");
+            enqueueLiveUpdateForApply(msg);
         }
     } catch (const exception& ex) {
         LOG_WARN << "Failed to read proto message: " << ex.what();
@@ -1714,17 +1824,9 @@ void ServerComm::onUpdateMessage()
 
 void ServerComm::requestResyncAfterStreamGap(uint64_t received_message_id)
 {
-    LOG_INFO_N << "Requesting full sync after stream gap at update #" << received_message_id << '.';
+    LOG_INFO_N << "Requesting incremental repair after stream gap at update #" << received_message_id << '.';
     setStatus(Status::ERROR);
-
-    // Persist the intent before reconnecting so startup cannot skip the
-    // mandatory full sync if the stream broke during onboarding or replay.
-    settings().setValue("sync/resync", true);
-    settings().sync();
-
-    QTimer::singleShot(0, this, [this] {
-        resync();
-    });
+    requestIncrementalRepair();
 }
 
 void ServerComm::setDefaulValuesInUserSettings()
@@ -1972,9 +2074,14 @@ QCoro::Task<void> ServerComm::startNextappSession()
     session_id_.clear();
     deferred_updates_.clear();
     deferred_update_id_ = 0;
+    queued_update_id_ = 0;
+    live_update_apply_queue_.clear();
+    draining_live_updates_ = false;
     updated_id_sync_initialized_ = settings().value("sync/updatedIdInitialized", false).toBool();
     server_supports_updated_id_ = false;
     bootstrapping_updated_id_sync_ = false;
+    sync_diagnostics_ = {};
+    sync_diagnostics_.start_last_seen_update_id = last_seen_update_id_;
 
     {
         auto prev_version = settings().value("client/version", "").toString();
@@ -1986,6 +2093,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
     }
 
     bool full_sync = co_await needFullResync();
+    const bool incremental_repair = needIncrementalRepairSync();
     if (full_sync) {
         // Clear stale in-memory calendar references before the cache is rebuilt.
         ActionsOnCurrentCalendar::instance()->clear();
@@ -2002,12 +2110,14 @@ QCoro::Task<void> ServerComm::startNextappSession()
         options.qopts.setMetadata(std::move(metadata));
     };
 
-    bool needs_sync = false;
+    bool needs_sync = incremental_repair;
     bool server_reset_detected = false;
     uint64_t notification_sync_target{0};
     uint64_t hello_last_notification{0};
-    auto res = co_await rpc(nextapp::pb::Empty{},
-                            &nextapp::pb::Nextapp::Client::Hello,
+    nextapp::pb::HelloReq hello_req;
+    hello_req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
+    auto res = co_await rpc(hello_req,
+                            &nextapp::pb::Nextapp::Client::HelloEx,
                             options);
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasHello()) {
@@ -2039,6 +2149,9 @@ QCoro::Task<void> ServerComm::startNextappSession()
             session_user_data_epoch_ = res.hello().userDataEpoch();
             hello_last_notification = res.hello().lastNotification();
             server_supports_updated_id_ = res.hello().supportsUpdatedId();
+            sync_diagnostics_.hello_last_publish_id = session_start_publish_id_;
+            sync_diagnostics_.hello_oldest_retained_publish_id =
+                res.hello().hasOldestRetainedPublishId() ? res.hello().oldestRetainedPublishId() : 0;
             if (auto local_epoch = co_await runtime_.db().queryOne<qulonglong>(
                     "SELECT value FROM sync_state WHERE key = ?",
                     QStringLiteral("user_data_epoch"))) {
@@ -2049,6 +2162,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
             if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
                 needs_sync = true;
                 server_reset_detected = true;
+                sync_diagnostics_.server_instance_changed = true;
                 last_seen_server_instance_ = res.hello().serverInstanceTag();
                 last_seen_user_publish_epoch_ = session_user_publish_epoch_;
                 last_seen_update_id_ = 0;
@@ -2076,11 +2190,13 @@ QCoro::Task<void> ServerComm::startNextappSession()
                     && next_needed_publish_id >= res.hello().oldestRetainedPublishId();
                 if (res.hello().supportsUpdatedId() && !replay_available) {
                     needs_sync = true;
+                    sync_diagnostics_.replay_unavailable_fallback = true;
                     LOG_INFO_N << "Server has " << (res.hello().lastPublishId() - last_seen_update_id_)
                                << " unapplied live updates, but replay from message id "
                                << last_seen_update_id_
                                << " is unavailable. Will run durable incremental sync using updated_id.";
                 } else {
+                    sync_diagnostics_.requested_live_replay = true;
                     LOG_INFO_N << "Server has " << (res.hello().lastPublishId() - last_seen_update_id_)
                                << " unapplied updates. Will request replay from message id "
                                << last_seen_update_id_;
@@ -2144,6 +2260,9 @@ failed:
     }
 
     setStatus(Status::INITIAL_SYNC);
+    sync_diagnostics_.initial_sync_entered = true;
+    sync_diagnostics_.used_full_sync = full_sync;
+    sync_diagnostics_.used_durable_sync = needs_sync || full_sync;
 
     res = co_await rpc(nextapp::pb::Empty{}, &nextapp::pb::Nextapp::Client::GetServerInfo);
 
@@ -2175,7 +2294,6 @@ failed:
 
     if (fcm_requested_) {
         LOG_DEBUG_N << "Sending Android FCM token: " << ureq.withPush().token().left(8) << "...";
-        LOG_TRACE_N << "Full token: " << ureq.withPush().token();
     }
 #endif
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
@@ -2452,7 +2570,8 @@ failed:
                 << std::fixed << std::setprecision(2)
                 << std::chrono::duration<double>(std::chrono::steady_clock::now() - sync_start_time).count()
                 << " seconds. full_sync=" << full_sync
-                << ", needs_sync=" << needs_sync;
+                << ", needs_sync=" << needs_sync
+                << ", incremental_repair=" << incremental_repair;
 
     if ((needs_sync || full_sync)
         && (server_reset_detected || last_seen_update_id_ < session_start_publish_id_)) {
@@ -2476,6 +2595,7 @@ failed:
 
     // If we re-run this later, we don't need to do a full sync again.
     runtime_.db().clearDbInitializedFlag();
+    settings().setValue("sync/incremental_repair", false);
     if (full_sync) {
         settings().setValue("sync/resync", "false");
         if (server_supports_updated_id_) {
@@ -2486,6 +2606,8 @@ failed:
     }
 
     // execute later
+    sync_diagnostics_.completed = true;
+    sync_diagnostics_.completed_last_seen_update_id = last_seen_update_id_;
     QTimer::singleShot(0, [this] {
         LOG_TRACE_N << "Emitting dataUpdated";
         emit dataUpdated();
@@ -3110,10 +3232,56 @@ QCoro::Task<bool> ServerComm::needFullResync()
     co_return true;
 }
 
+void ServerComm::requestIncrementalRepair()
+{
+    if (settings().value("sync/resync", false).toBool()) {
+        LOG_DEBUG_N << "Full resync is already pending. Ignoring incremental repair request.";
+        return;
+    }
+
+    sync_diagnostics_.incremental_repair_requested = true;
+    queued_update_id_ = 0;
+    live_update_apply_queue_.clear();
+    draining_live_updates_ = false;
+
+    settings().setValue("sync/incremental_repair", true);
+    settings().sync();
+
+    if (resync_scheduled_) {
+        LOG_DEBUG_N << "Reconnect is already scheduled. Incremental repair flag persisted.";
+        return;
+    }
+
+    resync_scheduled_ = true;
+    clearMessages();
+    addMessage(tr("Initiating incremental repair synch with the server"));
+    emit resynching();
+    stop();
+    setStatus(Status::OFFLINE);
+
+    QTimer::singleShot(1000, this, [this]() {
+        resync_scheduled_ = false;
+        if (closed_) {
+            return;
+        }
+
+        if (status_ != Status::OFFLINE && status_ != Status::ERROR) {
+            LOG_DEBUG_N << "Skipping scheduled incremental repair start because status is " << status_;
+            return;
+        }
+
+        LOG_DEBUG_N << "Starting incremental repair sync with the server.";
+        start();
+    });
+}
+
 void ServerComm::resync()
 {
     LOG_INFO_N << tr("Resynching with the server.");
     settings().setValue("sync/resync", "true");
+    queued_update_id_ = 0;
+    live_update_apply_queue_.clear();
+    draining_live_updates_ = false;
 
     if (resync_scheduled_) {
         LOG_DEBUG_N << "Full resync is already scheduled. Ignoring duplicate request.";

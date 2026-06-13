@@ -49,6 +49,7 @@ public:
     const nextapp::pb::DataVersionsInfo& getServerDataVersions() const noexcept override { return data_versions_; }
     void setLocalActionCategoryVersion(uint64_t version) override { local_action_category_version_ = version; }
     bool shouldUseUpdatedIdSync() const noexcept override { return should_use_updated_id_sync_; }
+    void requestIncrementalRepair() override { ++incremental_repair_calls_; }
     void resync() override { ++resync_calls_; }
     void fetchDay(int year, int month, int day) override { last_fetch_day_ = QDate{year, month, day}; }
     void getDayColorDefinitions() override { ++get_day_color_definitions_calls_; }
@@ -212,6 +213,7 @@ public:
     Status status_{READY_TO_CONNECT};
     bool should_use_updated_id_sync_{false};
     uint64_t local_action_category_version_{0};
+    int incremental_repair_calls_{0};
     int resync_calls_{0};
     int get_day_color_definitions_calls_{0};
     int request_otp_calls_{0};

@@ -20,7 +20,6 @@ auto createCalendarEventUpdate(const pb::TimeBlock& tb, pb::Update::Operation op
     return update;
 }
 
-
 namespace {
 
 struct ToTimeBlock {
@@ -70,6 +69,29 @@ struct ToTimeBlock {
     }
 };
 
+boost::asio::awaitable<pb::TimeBlock> fetchCommittedTimeBlock(RequestCtx& rctx, const std::string& id)
+{
+    const auto res = co_await rctx.dbh->exec(
+        format("SELECT {} FROM time_block WHERE id=? AND user=?", ToTimeBlock::columns),
+        id, rctx.uctx->userUuid());
+    if (!res.has_value() || res.rows().size() != 1) {
+        throw server_err{pb::Error::NOT_FOUND, format("Time block {} not found", id)};
+    }
+
+    pb::TimeBlock tb;
+    ToTimeBlock::assign(res.rows().front(), tb, *rctx.uctx);
+    co_return tb;
+}
+
+boost::asio::awaitable<void> queueCommittedTimeBlockUpdate(
+    RequestCtx& rctx,
+    const std::string& id,
+    pb::Update::Operation op)
+{
+    auto tb = co_await fetchCommittedTimeBlock(rctx, id);
+    rctx.publishLater(createCalendarEventUpdate(tb, op));
+}
+
 
 void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 {
@@ -97,7 +119,7 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateTimeblock(::grpc::CallbackServerContext *ctx, const pb::TimeBlock *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             rctx.session().requireWritableForAdd("time block");
@@ -163,7 +185,7 @@ boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpo
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateTimeblock(::grpc::CallbackServerContext *ctx, const pb::TimeBlock *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             const auto& id = req->id();
@@ -202,7 +224,7 @@ boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpo
             assert(!res.empty());
 
             if (!res.empty()) [[likely]] {
-                rctx.publishLater(createCalendarEventUpdate(*req, pb::Update::Operation::Update_Operation_UPDATED));
+                co_await queueCommittedTimeBlockUpdate(rctx, id, pb::Update::Operation::Update_Operation_UPDATED);
             }
 
             co_return;
@@ -211,7 +233,7 @@ boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpo
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteTimeblock(::grpc::CallbackServerContext *ctx, const pb::DeleteTimeblockReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             const auto& id = req->id();
@@ -229,10 +251,7 @@ boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpo
             // Remove all data. We don't actually delete the row, but mark it as deleted
             if (!res.empty() && res.affected_rows() > 0) [[likely]] {
                 rctx.uctx->onDeleted(UserContext::PlanResource::TIME_BLOCK);
-                pb::TimeBlock tb;
-                tb.set_id(id);
-                tb.set_kind(pb::TimeBlock::Kind::TimeBlock_Kind_DELETED);
-                rctx.publishLater(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_DELETED));
+                co_await queueCommittedTimeBlockUpdate(rctx, id, pb::Update::Operation::Update_Operation_DELETED);
             }
 
             co_return;
@@ -295,8 +314,8 @@ boost::asio::awaitable<void> GrpcServer::saveTimeBlocks(jgaa::mysqlpool::Mysqlpo
 
 boost::asio::awaitable<void> GrpcServer::validateTimeBlock(jgaa::mysqlpool::Mysqlpool::Handle &handle, const std::string &timeBlockId, const std::string &userUuid)
 {
-    auto res = co_await handle.exec("SELECT COUNT(*), name FROM time_block where id=? and user=?", timeBlockId, userUuid);
-    if (!res.has_value()) {
+    auto res = co_await handle.exec("SELECT id FROM time_block where id=? and user=?", timeBlockId, userUuid);
+    if (!res.has_value() || res.rows().empty()) {
         throw server_err{pb::Error::INVALID_ACTION, "TimeBlock not found for the current user"};
     }
 
@@ -329,41 +348,46 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
     const export_flush_fn_t& flush_fn,
     RequestCtx& rctx,
     bool removeDeleted) {
+    switch (rctx.session().syncClientMode()) {
+    case UserContext::SyncClientMode::Current:
+        co_return co_await exportTimeBlocksCurrent(req, dbh, flush_fn, rctx, removeDeleted);
+    case UserContext::SyncClientMode::Legacy:
+    case UserContext::SyncClientMode::Unset:
+        co_return co_await exportTimeBlocksLegacy(req, dbh, flush_fn, rctx, removeDeleted);
+    }
 
+    co_return co_await exportTimeBlocksLegacy(req, dbh, flush_fn, rctx, removeDeleted);
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocksLegacy(
+    const pb::GetNewReq& req,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx,
+    bool removeDeleted) {
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
-    const auto cursor = getIncrementalSyncCursor(req);
+    const auto cursor = getLegacySyncCursor(req);
     const auto batch_size = std::min<size_t>(server().config().options.stream_batch_size, 100);
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
-    const auto where_clause = fetch_all ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
+    const auto where_clause = "updated > ?";
     const auto tombstone_filter = (removeDeleted || cursor.full_sync)
         ? "AND kind != 'deleted'"
         : "AND ((start_time IS NOT NULL AND end_time IS NOT NULL) OR kind = 'deleted')";
-    const auto sql = format("SELECT {} from time_block WHERE user=? AND {} {} ORDER BY {}",
+    const auto sql = format("SELECT {} from time_block WHERE user=? AND {} {} ORDER BY updated, start_time, end_time, id",
                             ToTimeBlock::columns,
                             where_clause,
-                            tombstone_filter,
-                            cursor.use_updated_id
-                                ? "updated_id"
-                                // Remove after the legacy client migration is complete.
-                                : "updated, start_time, end_time, id");
-    if (fetch_all) {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
-    } else if (cursor.use_updated_id) {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
-    } else {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
-    }
+                            tombstone_filter);
+    co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz()));
 
     nextapp::pb::Status reply;
 
     auto *tb = reply.mutable_timeblocks();
-    const bool include_updated_id = cursor.use_updated_id;
+    const bool include_updated_id = false;
     auto num_rows_in_batch = 0u;
     auto total_rows = 0u;
     auto batch_num = 0u;
@@ -402,6 +426,73 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocks(
         }
 
     } // read more from db loop
+
+    co_await flush();
+    co_return total_rows;
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportTimeBlocksCurrent(
+    const pb::GetNewReq& req,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx,
+    bool removeDeleted) {
+
+    const auto uctx = rctx.uctx;
+    const auto& cuser = uctx->userUuid();
+    const auto cursor = getCurrentSyncCursor(req);
+    const auto batch_size = std::min<size_t>(server().config().options.stream_batch_size, 100);
+
+    assert(rctx.dbh);
+    const auto fetch_all = cursor.since == 0;
+    const auto where_clause = fetch_all ? "TRUE" : "updated_id > ?";
+    const auto tombstone_filter = (removeDeleted || cursor.full_sync)
+        ? "AND kind != 'deleted'"
+        : "AND ((start_time IS NOT NULL AND end_time IS NOT NULL) OR kind = 'deleted')";
+    const auto sql = format("SELECT {} from time_block WHERE user=? AND {} {} ORDER BY updated_id",
+                            ToTimeBlock::columns,
+                            where_clause,
+                            tombstone_filter);
+    if (fetch_all) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser);
+    } else {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
+    }
+
+    nextapp::pb::Status reply;
+    auto *tb = reply.mutable_timeblocks();
+    auto num_rows_in_batch = 0u;
+    auto total_rows = 0u;
+    auto batch_num = 0u;
+
+    auto flush = [&]() -> boost::asio::awaitable<void> {
+        reply.set_error(::nextapp::pb::Error::OK);
+        assert(reply.has_timeblocks());
+        ++batch_num;
+        reply.set_message(format("Fetched {} time-blocks in batch {}", reply.timeblocks().blocks().size(), batch_num));
+        co_await flush_fn(reply);
+        reply.Clear();
+        tb = reply.mutable_timeblocks();
+        num_rows_in_batch = {};
+    };
+
+    bool read_more = true;
+    for (auto rows = co_await rctx.dbh->readSome(); read_more; rows = co_await rctx.dbh->readSome()) {
+        read_more = rctx.dbh->shouldReadMore();
+        if (rows.empty()) {
+            LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+            break;
+        }
+
+        for (const auto& row : rows) {
+            auto *b = tb->add_blocks();
+            ToTimeBlock::assign(row, *b, *rctx.uctx, true);
+            ++total_rows;
+            if (++num_rows_in_batch >= batch_size) {
+                co_await flush();
+            }
+        }
+    }
 
     co_await flush();
     co_return total_rows;

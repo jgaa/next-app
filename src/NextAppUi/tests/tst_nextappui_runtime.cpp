@@ -529,6 +529,23 @@ nextapp::pb::TimeBlock readStoredTimeBlock(DbStore& db, const QString& id)
     return tb;
 }
 
+nextapp::pb::Action readStoredAction(DbStore& db, const QString& id)
+{
+    QList<QVariant> params;
+    params << id;
+    const auto rows = waitForTask(db.legacyQuery("SELECT data FROM action WHERE id = ?", &params));
+    if (!rows.has_value() || rows->isEmpty() || rows->front().isEmpty()) {
+        qFatal("Failed to read stored action for id=%s", qPrintable(id));
+    }
+
+    QProtobufSerializer serializer;
+    nextapp::pb::Action action;
+    if (!action.deserialize(&serializer, rows->front().front().toByteArray())) {
+        qFatal("Failed to deserialize stored action for id=%s", qPrintable(id));
+    }
+    return action;
+}
+
 class TestSyncedNodeCache final
     : public QObject
     , public ServerSynchedCahce<nextapp::pb::Node, TestSyncedNodeCache>
@@ -542,10 +559,10 @@ public:
         setState(State::LOCAL);
     }
 
-    QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override
+    QCoro::Task<bool> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override
     {
         processed_ids_.append(update->node().uuid());
-        co_return;
+        co_return true;
     }
 
     QCoro::Task<bool> save(const QProtobufMessage&) override
@@ -609,10 +626,10 @@ public:
         setState(State::LOCAL);
     }
 
-    QCoro::Task<void> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override
+    QCoro::Task<bool> pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update) override
     {
         processed_update_names_.append(update->node().name());
-        co_return;
+        co_return true;
     }
 
     QCoro::Task<bool> save(const QProtobufMessage&) override
@@ -765,6 +782,7 @@ private slots:
     void workCacheLoadsPersistedSessionsAndFiltersByAction();
     void workCacheRejectsDanglingActionReferences();
     void workCacheProcessesActionMoveAndDeleteUpdates();
+    void workCacheSaveIgnoresStaleUpdatedId();
     void actionCategoriesModelSyncsVersionsAppliesPendingUpdatesAndRoutesCommands();
     void devicesModelUsesInjectedServerCommForFetchEnableAndDelete();
     void devicesModelHandlesOfflineAndRpcFailures();
@@ -775,6 +793,7 @@ private slots:
     void actionInfoCacheComputesStableScores();
     void actionInfoCacheRepairsOriginsPersistsTagsAndReloads();
     void actionInfoCacheUpdateReloadsMissingOriginsAndInvalidDeletesRequestResync();
+    void actionInfoCacheSaveIgnoresStaleUpdatedId();
     void actionsModelAddsTodayActionFromLiveUpdate();
     void mainTreeModelReloadsFromCacheWhenUpdateTargetsMissingNode();
     void mainTreeModelDeleteUpdateClearsSelectionAndEmitsNodeDeleted();
@@ -1163,14 +1182,14 @@ void tst_NextAppUiRuntime::serverCommOutOfOrderUpdateRequestsFullResync()
 
     comm.requestResyncAfterStreamGap(2);
 
-    QCOMPARE(runtime.settings_.value("sync/resync").toBool(), true);
+    QCOMPARE(runtime.settings_.value("sync/incremental_repair").toBool(), true);
     QCOMPARE(runtime.settings_.sync_calls_, 1);
     QCOMPARE(comm.status(), ServerComm::ERROR);
 
     QCoreApplication::processEvents(QEventLoop::AllEvents);
 
     QCOMPARE(comm.status(), ServerComm::OFFLINE);
-    QVERIFY(comm.messages_.contains("Initiating full resynch with the server"));
+    QVERIFY(comm.messages_.contains("Initiating incremental repair synch with the server"));
 
     db->close();
 }
@@ -1421,7 +1440,7 @@ void tst_NextAppUiRuntime::calendarCacheInvalidCalendarDeleteUpdateRequestsResyn
 
     waitForTask(cache.pocessUpdate(update));
 
-    QCOMPARE(runtime.server_comm_.resync_calls_, 1);
+    QCOMPARE(runtime.server_comm_.incremental_repair_calls_, 1);
 
     db->close();
 }
@@ -1582,6 +1601,46 @@ void tst_NextAppUiRuntime::workCacheProcessesActionMoveAndDeleteUpdates()
     QCOMPARE(deleted_spy.count(), 1);
     QVERIFY(cache.getActive().empty());
     QCOMPARE(active_spy.count(), 0);
+
+    db->close();
+}
+
+void tst_NextAppUiRuntime::workCacheSaveIgnoresStaleUpdatedId()
+{
+    auto db = makeInitializedDb(QStringLiteral("work-cache-stale-updated-id.sqlite"));
+    insertMinimalAction(*db, QStringLiteral("action-1"), QStringLiteral("node-1"), QStringLiteral("Action One"));
+
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+
+    WorkCache cache(runtime);
+    const auto newer = makeWorkSession(
+        QStringLiteral("aaaaaaaa-1111-1111-1111-111111111111"),
+        QStringLiteral("action-1"),
+        QStringLiteral("Newer"),
+        {makeWorkEvent(nextapp::pb::WorkEvent_QtProtobufNested::Kind::START, quint64{100})},
+        nextapp::pb::WorkSession::State::ACTIVE,
+        200,
+        20);
+    auto older = newer;
+    older.setName(QStringLiteral("Older"));
+    older.setUpdated(190);
+    older.setUpdatedId(19);
+
+    QVERIFY(waitForTask(cache.save(newer)));
+    QVERIFY(waitForTask(cache.save(older)));
+
+    QList<QVariant> params;
+    params << QStringLiteral("aaaaaaaa-1111-1111-1111-111111111111");
+    const auto rows = waitForTask(db->legacyQuery("SELECT data, updated_id FROM work_session WHERE id = ?", &params));
+    QVERIFY(rows.has_value());
+    QCOMPARE(rows->size(), 1);
+
+    QProtobufSerializer serializer;
+    nextapp::pb::WorkSession stored;
+    QVERIFY(stored.deserialize(&serializer, rows->front().at(0).toByteArray()));
+    QCOMPARE(stored.name(), QStringLiteral("Newer"));
+    QCOMPARE(rows->front().at(1).toULongLong(), 20ULL);
 
     db->close();
 }
@@ -2131,7 +2190,50 @@ void tst_NextAppUiRuntime::actionInfoCacheUpdateReloadsMissingOriginsAndInvalidD
         waitForTask(cache.pocessUpdate(std::make_shared<nextapp::pb::Update>(
             makeActionUpdate(nextapp::pb::Update::Operation::DELETED, invalid_deleted))));
 
-        QTRY_COMPARE(runtime.server_comm_.resync_calls_, 1);
+        QTRY_COMPARE(runtime.server_comm_.incremental_repair_calls_, 1);
+    }
+
+    ActionInfoCache::instance_ = nullptr;
+    db->close();
+}
+
+void tst_NextAppUiRuntime::actionInfoCacheSaveIgnoresStaleUpdatedId()
+{
+    auto db = makeInitializedDb(QStringLiteral("action-info-stale-updated-id.sqlite"));
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+
+    {
+        ActionInfoCache cache(runtime);
+        const auto newer = makeAction(
+            QStringLiteral("eeeeeeee-5555-5555-5555-555555555555"),
+            QStringLiteral("node-1"),
+            QStringLiteral("Newest"),
+            2,
+            300,
+            30,
+            std::nullopt,
+            {QStringLiteral("alpha"), QStringLiteral("beta")});
+        auto older = newer;
+        older.setName(QStringLiteral("Older"));
+        older.setUpdated(290);
+        older.setUpdatedId(29);
+        older.setTags({QStringLiteral("stale")});
+
+        QVERIFY(waitForTask(cache.save(newer)));
+        QVERIFY(waitForTask(cache.save(older)));
+
+        const auto stored = readStoredAction(*db, newer.id_proto());
+        QCOMPARE(stored.name(), QStringLiteral("Newest"));
+        QCOMPARE(stored.updatedId(), 30ULL);
+
+        QList<QVariant> params;
+        params << newer.id_proto();
+        const auto tag_rows = waitForTask(db->legacyQuery("SELECT tag FROM tag WHERE action = ? ORDER BY tag", &params));
+        QVERIFY(tag_rows.has_value());
+        QCOMPARE(tag_rows->size(), 2);
+        QCOMPARE(tag_rows->at(0).at(0).toString(), QStringLiteral("alpha"));
+        QCOMPARE(tag_rows->at(1).at(0).toString(), QStringLiteral("beta"));
     }
 
     ActionInfoCache::instance_ = nullptr;

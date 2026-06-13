@@ -3,9 +3,9 @@
 #include "tl/expected.hpp"
 
 #include <atomic>
-#include <mutex>
 #include <optional>
 #include <exception>
+#include <semaphore>
 #include <QObject>
 #include <QVariant>
 #include <QThread>
@@ -228,7 +228,10 @@ private:
                         if (isDeleted(row)) {
                             QList<QVariant> params;
                             params << getId(row);
-                            (void) queryImpl_(deleteQuery, &params);
+                            const auto delete_result = queryImpl_(deleteQuery, &params);
+                            if (!delete_result) {
+                                success = false;
+                            }
                             continue;
                         };
 
@@ -372,7 +375,7 @@ private:
     QString connection_name_;
     bool clear_pending_{false};
     bool db_was_initialized_{false};
-    std::mutex mutex_;
+    std::binary_semaphore start_signal_{0};
     std::mutex transaction_mutex_;
     std::optional<transaction_token_t> active_transaction_token_;
     transaction_token_t next_transaction_token_{1};

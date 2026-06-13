@@ -87,6 +87,7 @@ public:
     [[nodiscard]] bool dockerAvailable() const;
     void start();
     void stop();
+    void restartNextappd();
 
     [[nodiscard]] bool isRunning() const noexcept;
     [[nodiscard]] QString runId() const noexcept;
@@ -103,6 +104,7 @@ private:
     void startNextappd();
     void bootstrapSignupd();
     void startSignupd();
+    void waitForSignupdReady() const;
     void waitForMariaDbReady();
     void waitForTcpPort(int port, const char *service_name) const;
     CommandResult runDocker(const QStringList& arguments,

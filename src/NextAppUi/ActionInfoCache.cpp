@@ -32,7 +32,7 @@ QByteArray computeTagsHash(QStringView tags) {
 QString tagsToString(const QList<QString>& tags) {
     QString rval;
     for (const auto& tag : tags) {
-        if (!tags.isEmpty()) {
+        if (!rval.isEmpty()) {
             rval += ' ';
         }
         rval += tag;
@@ -86,6 +86,7 @@ static const QString insert_query = R"(INSERT INTO action
         score = EXCLUDED.score,
         tags = EXCLUDED.tags,
         tags_hash = EXCLUDED.tags_hash
+        WHERE EXCLUDED.updated_id >= COALESCE(action.updated_id, 0)
         )";
 
 
@@ -327,11 +328,6 @@ ActionInfoCache::ActionInfoCache(RuntimeServices& runtime, QObject *parent)
 {
     assert(!instance_);
     instance_ = this;
-
-    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate, this,
-            [this](const std::shared_ptr<nextapp::pb::Update>& update) {
-        onUpdate(update);
-    });
 
     connect(MainTreeModel::instance(), &MainTreeModel::nodeDeleted, [this]() {
         ([this]() -> QCoro::Task<void> {
@@ -731,7 +727,7 @@ QCoro::Task<std::shared_ptr<pb::Action> > ActionInfoCache::getAction(const QUuid
     co_return {};
 }
 
-QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
+QCoro::Task<bool> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
 {
     const bool deleted = update->op() == nextapp::pb::Update::Operation::DELETED;
 
@@ -741,8 +737,8 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
         const auto resyncOnFailure = [id = action.id_proto()] {
             auto& server_comm = ActionInfoCache::instance()->runtime_.serverComm();
             QTimer::singleShot(0, &server_comm, [id] {
-                LOG_ERROR_N << "Action apply failed for " << id << ". Requesting resync.";
-                ActionInfoCache::instance()->runtime_.serverComm().resync();
+                LOG_ERROR_N << "Action apply failed for " << id << ". Requesting incremental repair.";
+                ActionInfoCache::instance()->runtime_.serverComm().requestIncrementalRepair();
             });
         };
         const auto origin = action.hasOrigin() ? action.origin() : QString{};
@@ -755,33 +751,35 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
                 LOG_ERROR_N << "Received deleted action update with non-deleted status for "
                             << action.id_proto() << ". Requesting resync.";
                 resyncOnFailure();
-                co_return;
+                co_return false;
             }
             if (!co_await save(action)) {
                 resyncOnFailure();
-                co_return;
+                co_return false;
             }
             hot_cache_.erase(uuid);
             emit actionDeleted(uuid);
             if (needs_reference_reload && !co_await reloadCacheFromStorage()) {
                 resyncOnFailure();
+                co_return false;
             }
         } else {
             if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
                 LOG_ERROR_N << "Received non-deleted action update with deleted status for "
                             << action.id_proto() << ". Requesting resync.";
                 resyncOnFailure();
-                co_return;
+                co_return false;
             }
             if (!co_await save(action)) {
                 resyncOnFailure();
-                co_return;
+                co_return false;
             }
             if (needs_reference_reload) {
                 if (!co_await reloadCacheFromStorage()) {
                     resyncOnFailure();
+                    co_return false;
                 }
-                co_return;
+                co_return true;
             }
             const auto changed = add(hot_cache_, action);
             if (update->op() == nextapp::pb::Update::Operation::ADDED) {
@@ -792,6 +790,7 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
                     LOG_ERROR_N << "Added action " << action.id_proto()
                                 << " was not available in hot cache after apply. Requesting resync.";
                     resyncOnFailure();
+                    co_return false;
                 }
             } else if (changed) {
                 LOG_TRACE_N << "Action " << action.id_proto() << ' ' << action.name() << " changed.";
@@ -799,6 +798,7 @@ QCoro::Task<void> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
             }
         }
     }
+    co_return true;
 }
 
 QCoro::Task<bool> ActionInfoCache::finalizeSyncPersistence()
@@ -871,18 +871,24 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED) {
         LOG_TRACE_N << "Deleting action " << action.id_proto() << " " << action.name();
 
-        const auto _ = token
+        const auto tag_delete = token
             ? co_await db.queryInTransaction(*token, "DELETE FROM tag WHERE action=?", action.id_proto())
             : co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+        if (!tag_delete) {
+            LOG_WARN_N << "Failed to delete tags for action " << action.id_proto() << " " << action.name()
+                       << " err=" << tag_delete.error();
+            co_return false;
+        }
         const auto rval = token
             ? co_await db.queryInTransaction(*token, "DELETE FROM action WHERE id = ?", action.id_proto())
             : co_await db.query("DELETE FROM action WHERE id = ?", action.id_proto());
         if (!rval) {
             LOG_WARN_N << "Failed to delete action " << action.id_proto() << " " << action.name()
-            << " err=" << rval.error();
+                        << " err=" << rval.error();
+            co_return false;
         }
         pending_origin_repairs_.erase(action.id_proto());
-        co_return true; // TODO: Add proper error handling. Probably a full resynch if the action is in the db.
+        co_return true;
     }
 
     bool need_tags_update = true;
@@ -899,6 +905,11 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
                 const auto _ = token
                     ? co_await db.queryInTransaction(*token, "DELETE FROM tag WHERE action=?", action.id_proto())
                     : co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+                if (!_) {
+                    LOG_ERROR_N << "Failed to delete stale tags for action " << action.id_proto()
+                                << " " << action.name() << " err=" << _.error();
+                    co_return false;
+                }
             }
         } else {
             need_tags_update = !action.tags().isEmpty();
@@ -913,18 +924,23 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
 
     params = getParams(stored_action);
     const auto rval = token
-        ? co_await db.legacyQueryInTransaction(*token, insert_query, &params)
-        : co_await db.legacyQuery(insert_query, &params);
+        ? co_await db.queryInTransaction(*token, insert_query, params)
+        : co_await db.query(insert_query, params);
     if (!rval) {
         LOG_ERROR_N << "Failed to update action: " << action.id_proto() << " " << action.name()
         << " err=" << rval.error();
         co_return false; // TODO: Add proper error handling. Probably a full resynch.
     }
+    const bool applied = rval->affected_rows.has_value();
 
-    if (need_tags_update) {
+    if (applied && need_tags_update) {
         if (!co_await updateTags(action)) {
             co_return false;
         }
+    }
+
+    if (!applied) {
+        co_return true;
     }
 
     if (shouldStageOriginRepair() && !staged_origin.isEmpty()) {

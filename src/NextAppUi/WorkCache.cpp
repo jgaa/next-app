@@ -25,6 +25,7 @@ static const QString insert_query = R"(INSERT INTO work_session (
         data = EXCLUDED.data,
         updated = EXCLUDED.updated,
         updated_id = EXCLUDED.updated_id
+    WHERE EXCLUDED.updated_id >= COALESCE(work_session.updated_id, 0)
     )";
 
     QList<QVariant> getParams(const nextapp::pb::WorkSession& work) {
@@ -97,20 +98,17 @@ WorkCache::WorkCache(RuntimeServices& runtime, QObject *parent)
     connect(timer_, &QTimer::timeout, this, &WorkCache::onTimer);
     timer_->start(5000);
 
-    connect(std::addressof(runtime_.serverComm()), &ServerCommAccess::onUpdate,
-    [this](const std::shared_ptr<nextapp::pb::Update>& update) {
-        onUpdate(update);
-    });
 }
 
-QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
+QCoro::Task<bool> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
 {
     const auto op = update->op();
     if (update->hasWork()) {
-        auto work = update->work();
+        const auto persisted = update->work();
+        auto work = persisted;
         updateOutcome(work);
-        const auto id_str = work.id_proto();
-        const QUuid id{work.id_proto()};
+        const auto id_str = persisted.id_proto();
+        const QUuid id{persisted.id_proto()};
         bool active_changed = false;
         bool exist_in_active = false;
 
@@ -131,9 +129,17 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
         }
 
         if (work.state() == nextapp::pb::WorkSession::State::DELETED) {
+            if (!co_await remove(id)) {
+                QTimer::singleShot(0, &runtime_.serverComm(), [this, id] {
+                    LOG_ERROR_N << "Failed to delete work session "
+                                << id.toString(QUuid::WithoutBraces)
+                                << ". Requesting incremental repair.";
+                    runtime_.serverComm().requestIncrementalRepair();
+                });
+                co_return false;
+            }
             emit WorkSessionDeleted(id);
             items_.erase(id);
-            co_await remove(id);
         } else {
             std::shared_ptr<nextapp::pb::WorkSession> wsp;
             if (auto it = items_.find(id); it != items_.end()) {
@@ -143,12 +149,13 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
                 wsp = std::make_shared<nextapp::pb::WorkSession>(work);
                 items_.emplace(id, wsp);
             }
-            if (!co_await save(*wsp)) {
+            if (!co_await save(persisted)) {
                 QTimer::singleShot(0, &runtime_.serverComm(), [this, id] {
-                    LOG_ERROR_N << "Failed to persist work session " << id.toString() << ". Requesting resync.";
-                    runtime_.serverComm().resync();
+                    LOG_ERROR_N << "Failed to persist work session " << id.toString()
+                                << ". Requesting incremental repair.";
+                    runtime_.serverComm().requestIncrementalRepair();
                 });
-                co_return;
+                co_return false;
             }
 
             if (wsp->state() == nextapp::pb::WorkSession::State::ACTIVE
@@ -206,6 +213,7 @@ QCoro::Task<void> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
             }
         }
     }
+    co_return true;
 }
 
 QCoro::Task<bool> WorkCache::saveBatch(const QList<nextapp::pb::WorkSession> &items)
@@ -230,8 +238,7 @@ QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
 {
     const auto& work = static_cast<const nextapp::pb::WorkSession&>(item);
     if (work.state() == nextapp::pb::WorkSession::State::DELETED) {
-        co_await remove(QUuid{work.id_proto()});
-        co_return true;
+        co_return co_await remove(QUuid{work.id_proto()});
     }
 
     auto& db = syncDb();
@@ -485,16 +492,17 @@ void WorkCache::updateSessionsDurations()
     }
 }
 
-QCoro::Task<void> WorkCache::remove(const QUuid &id)
+QCoro::Task<bool> WorkCache::remove(const QUuid &id)
 {
     auto& db = syncDb();
     auto res = co_await db.query("DELETE FROM work_session WHERE id = ?",
                                  id.toString(QUuid::WithoutBraces));
     if (!res || !res->affected_rows.has_value() || res->affected_rows.value() != 1) {
         LOG_DEBUG_N << "Failed to delete work session: " << res.error();
+        co_return false;
     }
     known_durations_.erase(id.toString(QUuid::WithoutBraces));
-    co_return;
+    co_return true;
 }
 
 WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)

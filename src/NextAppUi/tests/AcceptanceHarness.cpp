@@ -51,6 +51,13 @@ QString artifactPath(const AcceptancePaths& paths, const QString& name, const QS
         .arg(paths.artifacts_root, name, suffix);
 }
 
+QString acceptanceHelperExecutablePath()
+{
+    return QFileInfo{QCoreApplication::applicationFilePath()}
+        .dir()
+        .filePath(QStringLiteral("nextappui_acceptance_device"));
+}
+
 } // namespace
 
 AcceptancePaths AcceptancePaths::create()
@@ -247,6 +254,7 @@ void BackendFixture::start()
     bootstrapSignupd();
     startSignupd();
     waitForTcpPort(signup_port_, "signupd");
+    waitForSignupdReady();
     running_ = true;
 }
 
@@ -260,6 +268,18 @@ void BackendFixture::stop()
     collectLogs();
     ensureStopped();
     running_ = false;
+}
+
+void BackendFixture::restartNextappd()
+{
+    QVERIFY2(running_, "Cannot restart nextappd before the backend fixture is running");
+    collectLogs();
+    QVERIFY2(runDocker({QStringLiteral("rm"), QStringLiteral("-f"), nextappd_container_},
+                       QStringLiteral("restart-rm-nextappd"),
+                       options_.startup_timeout_ms).ok(),
+             "Failed to stop nextappd container for restart");
+    startNextappd();
+    waitForTcpPort(nextapp_port_, "nextappd");
 }
 
 bool BackendFixture::isRunning() const noexcept
@@ -504,6 +524,47 @@ void BackendFixture::waitForMariaDbReady()
     }
 
     QFAIL("MariaDB did not become ready in time");
+}
+
+void BackendFixture::waitForSignupdReady() const
+{
+    const auto probe_root = QStringLiteral("%1/_probe-signupd").arg(paths_.devices_root);
+    QDir{}.mkpath(probe_root + QStringLiteral("/config"));
+    QDir{}.mkpath(probe_root + QStringLiteral("/data"));
+    QDir{}.mkpath(probe_root + QStringLiteral("/home"));
+
+    QProcessEnvironment env;
+    env.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+    env.insert(QStringLiteral("SDL_AUDIODRIVER"), QStringLiteral("dummy"));
+    env.insert(QStringLiteral("XDG_CONFIG_HOME"), probe_root + QStringLiteral("/config"));
+    env.insert(QStringLiteral("XDG_DATA_HOME"), probe_root + QStringLiteral("/data"));
+    env.insert(QStringLiteral("HOME"), probe_root + QStringLiteral("/home"));
+    env.insert(QStringLiteral("NEXTAPP_ORG"), QStringLiteral("NextAppAcceptance"));
+    env.insert(QStringLiteral("NEXTAPP_NAME"), QStringLiteral("nextapp-acceptance-probe"));
+
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < options_.startup_timeout_ms) {
+        const auto result = ProcessRunner::run(
+            acceptanceHelperExecutablePath(),
+            {
+                QStringLiteral("--workspace-root"), probe_root,
+                QStringLiteral("--device-name"), QStringLiteral("probe"),
+                QStringLiteral("probe-signup-server"),
+                QStringLiteral("--signup-url"), signupPublicUrl(),
+            },
+            env,
+            {},
+            30000);
+
+        if (result.ok()) {
+            return;
+        }
+
+        QTest::qWait(500);
+    }
+
+    QFAIL("signupd did not become ready in time");
 }
 
 void BackendFixture::waitForTcpPort(int port, const char *service_name) const

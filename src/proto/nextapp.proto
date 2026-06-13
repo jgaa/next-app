@@ -1034,6 +1034,10 @@ message ResetPlaybackReq {
     uint32 instanceId = 2; // starts at 1
 }
 
+message HelloReq {
+    optional ProtopcolVersion protocolVersion = 1;
+}
+
 message Hello {
     string sessionId = 1;
     string serverId = 2;
@@ -1230,6 +1234,7 @@ message Status {
 
 service Nextapp {
     rpc Hello(Empty) returns (Status) {}
+    rpc HelloEx(HelloReq) returns (Status) {}
     rpc Ping(PingReq) returns (Status) {}
     rpc GetServerInfo(Empty) returns (Status) {}
     rpc GetNodes(GetNodesReq) returns (NodeTree) {}

@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <charconv>
 #include <format>
 #include <span>
 #include <ranges>
@@ -25,6 +26,36 @@ using nextapp::logging::LogEvent;
 namespace asio = boost::asio;
 
 namespace nextapp {
+namespace {
+constexpr std::string_view kSignupRateLimitIpBurstKey = "signup_rate_limit_ip_burst";
+constexpr std::string_view kSignupRateLimitIpRefillPerMinuteKey = "signup_rate_limit_ip_refill_per_minute";
+constexpr std::string_view kSignupRateLimitEmailBurstKey = "signup_rate_limit_email_burst";
+constexpr std::string_view kSignupRateLimitEmailRefillPerHourKey = "signup_rate_limit_email_refill_per_hour";
+
+std::optional<size_t> parseSizeT(std::string_view value) noexcept
+{
+    size_t parsed{};
+    const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), parsed);
+    if (ec != std::errc{} || ptr != value.data() + value.size()) {
+        return std::nullopt;
+    }
+    return parsed;
+}
+
+std::optional<double> parseDouble(std::string_view value) noexcept
+{
+    try {
+        size_t pos = 0;
+        const auto parsed = std::stod(std::string{value}, &pos);
+        if (pos != value.size()) {
+            return std::nullopt;
+        }
+        return parsed;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+} // namespace
 
 Server::Server(const Config& config)
     : config_(config), metrics_(*this)
@@ -1017,6 +1048,196 @@ string Server::getEmailHash(std::string_view email) const
     return  sha256(format("{}:{}", toLower(email), salt_), true);
 }
 
+boost::asio::awaitable<Server::SignupRateLimitConfig> Server::loadSignupRateLimitConfig_()
+{
+    SignupRateLimitConfig config;
+    auto conn = co_await db().getConnection();
+    auto res = co_await conn.exec(
+        "SELECT name, value FROM config WHERE name IN (?, ?, ?, ?)",
+        kSignupRateLimitIpBurstKey,
+        kSignupRateLimitIpRefillPerMinuteKey,
+        kSignupRateLimitEmailBurstKey,
+        kSignupRateLimitEmailRefillPerHourKey);
+
+    std::unordered_map<std::string, std::string> values;
+    values.reserve(res.rows().size());
+    for (const auto& row : res.rows()) {
+        values.emplace(std::string{row.at(0).as_string()}, std::string{row.at(1).as_string()});
+    }
+
+    auto upsert_default = [&](std::string_view key, std::string value) -> boost::asio::awaitable<void> {
+        co_await conn.exec(
+            "INSERT INTO config (name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = value",
+            key,
+            value);
+    };
+
+    if (auto it = values.find(std::string{kSignupRateLimitIpBurstKey}); it != values.end()) {
+        if (const auto parsed = parseSizeT(it->second)) {
+            config.ip_burst = *parsed;
+        } else {
+            LOG_WARN_N << "Invalid value for " << kSignupRateLimitIpBurstKey << ": " << it->second;
+        }
+    } else {
+        co_await upsert_default(kSignupRateLimitIpBurstKey, std::to_string(config.ip_burst));
+    }
+
+    if (auto it = values.find(std::string{kSignupRateLimitIpRefillPerMinuteKey}); it != values.end()) {
+        if (const auto parsed = parseDouble(it->second)) {
+            config.ip_refill_per_second = std::max(*parsed, 0.0) / 60.0;
+        } else {
+            LOG_WARN_N << "Invalid value for " << kSignupRateLimitIpRefillPerMinuteKey << ": " << it->second;
+        }
+    } else {
+        co_await upsert_default(kSignupRateLimitIpRefillPerMinuteKey, "10");
+    }
+
+    if (auto it = values.find(std::string{kSignupRateLimitEmailBurstKey}); it != values.end()) {
+        if (const auto parsed = parseSizeT(it->second)) {
+            config.email_burst = *parsed;
+        } else {
+            LOG_WARN_N << "Invalid value for " << kSignupRateLimitEmailBurstKey << ": " << it->second;
+        }
+    } else {
+        co_await upsert_default(kSignupRateLimitEmailBurstKey, std::to_string(config.email_burst));
+    }
+
+    if (auto it = values.find(std::string{kSignupRateLimitEmailRefillPerHourKey}); it != values.end()) {
+        if (const auto parsed = parseDouble(it->second)) {
+            config.email_refill_per_second = std::max(*parsed, 0.0) / 3600.0;
+        } else {
+            LOG_WARN_N << "Invalid value for " << kSignupRateLimitEmailRefillPerHourKey << ": " << it->second;
+        }
+    } else {
+        co_await upsert_default(kSignupRateLimitEmailRefillPerHourKey, "1");
+    }
+
+    {
+        std::unique_lock lock{signup_rate_limit_config_mutex_};
+        signup_rate_limit_config_ = config;
+    }
+    signup_rate_limit_config_dirty_.store(false, std::memory_order_release);
+    co_return config;
+}
+
+boost::asio::awaitable<bool> Server::allowSignupAttempt(std::string_view peer, std::string_view email)
+{
+    SignupRateLimitConfig config;
+    if (signup_rate_limit_config_dirty_.load(std::memory_order_acquire)) {
+        config = co_await loadSignupRateLimitConfig_();
+    } else {
+        std::shared_lock lock{signup_rate_limit_config_mutex_};
+        config = signup_rate_limit_config_;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+
+    co_return allowSignupAttemptLocal_(peer, email, config, now);
+}
+
+bool Server::allowSignupAttemptLocal_(std::string_view peer,
+                                      std::string_view email,
+                                      const SignupRateLimitConfig& config,
+                                      std::chrono::steady_clock::time_point now)
+{
+    const auto email_hash = getEmailHash(email);
+    const auto peer_key = peerKey_(peer);
+    std::lock_guard lock{signup_rate_limit_mutex_};
+    const auto ip_allowed = consumeRateLimitToken_(signup_ip_buckets_, peer_key, config.ip_burst, config.ip_refill_per_second, now);
+    const auto email_allowed = consumeRateLimitToken_(signup_email_buckets_, email_hash, config.email_burst, config.email_refill_per_second, now);
+    return ip_allowed && email_allowed;
+}
+
+boost::asio::awaitable<bool> Server::emailSignupExists(std::string_view email_hash)
+{
+    auto conn = co_await db().getConnection();
+    auto res = co_await conn.exec("SELECT id FROM user WHERE email_hash = ?", email_hash);
+    co_return !res.rows().empty();
+}
+
+bool Server::tryReserveEmailSignup(std::string_view email_hash)
+{
+    std::lock_guard lock{signup_rate_limit_mutex_};
+    return signup_email_inflight_.emplace(email_hash).second;
+}
+
+void Server::releaseEmailSignup(std::string_view email_hash)
+{
+    std::lock_guard lock{signup_rate_limit_mutex_};
+    signup_email_inflight_.erase(std::string{email_hash});
+}
+
+void Server::markSignupRateLimitConfigDirty() noexcept
+{
+    signup_rate_limit_config_dirty_.store(true, std::memory_order_release);
+}
+
+#ifdef NEXTAPP_WITH_TESTS
+void Server::testSetSignupRateLimitConfig(SignupRateLimitConfig config) noexcept
+{
+    {
+        std::unique_lock lock{signup_rate_limit_config_mutex_};
+        signup_rate_limit_config_ = config;
+    }
+    signup_rate_limit_config_dirty_.store(false, std::memory_order_release);
+}
+
+bool Server::testAllowSignupAttemptLocal(std::string_view peer, std::string_view email)
+{
+    std::shared_lock lock{signup_rate_limit_config_mutex_};
+    return allowSignupAttemptLocal_(peer, email, signup_rate_limit_config_, std::chrono::steady_clock::now());
+}
+#endif
+
+bool Server::consumeRateLimitToken_(std::unordered_map<std::string, RateLimitBucket>& buckets,
+                                    std::string_view key,
+                                    size_t burst,
+                                    double refill_per_second,
+                                    std::chrono::steady_clock::time_point now)
+{
+    if (burst == 0) {
+        return false;
+    }
+
+    auto& bucket = buckets[std::string{key}];
+    if (bucket.updated_at == std::chrono::steady_clock::time_point{}) {
+        bucket.tokens = static_cast<double>(burst);
+        bucket.updated_at = now;
+    } else {
+        const auto elapsed = std::chrono::duration<double>(now - bucket.updated_at).count();
+        bucket.tokens = std::min<double>(static_cast<double>(burst), bucket.tokens + elapsed * refill_per_second);
+        bucket.updated_at = now;
+    }
+
+    if (bucket.tokens < 1.0) {
+        return false;
+    }
+
+    bucket.tokens -= 1.0;
+    return true;
+}
+
+std::string Server::peerKey_(std::string_view peer)
+{
+    if (peer.starts_with("ipv4:")) {
+        auto host = peer.substr(5);
+        if (const auto pos = host.rfind(':'); pos != std::string_view::npos) {
+            host = host.substr(0, pos);
+        }
+        return std::string{host};
+    }
+
+    if (peer.starts_with("ipv6:[")) {
+        auto host = peer.substr(6);
+        if (const auto pos = host.find(']'); pos != std::string_view::npos) {
+            host = host.substr(0, pos);
+        }
+        return std::string{host};
+    }
+
+    return std::string{peer};
+}
+
 
 } // ns
 
@@ -1075,4 +1296,3 @@ boost::asio::awaitable<void> nextapp::Server::resetMetricsPassword(jgaa::mysqlpo
         LOG_ERROR << "Failed to write metrics password to " << path;
     }
 }
-

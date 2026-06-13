@@ -58,7 +58,7 @@ struct ToNode {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::CreateNode(::grpc::CallbackServerContext *ctx, const pb::CreateNodeReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             const auto uctx = rctx.uctx;
@@ -191,7 +191,7 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
                                                                              const pb::NodeTemplate *req,
                                                                              pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
@@ -214,7 +214,7 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
                                                                 const pb::ResetNodesReq *req,
                                                                 pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
             auto trx = co_await rctx.dbh->transaction();
@@ -255,7 +255,7 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateNode(::grpc::CallbackServerContext *ctx, const pb::Node *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             // Get the existing node
 
@@ -332,7 +332,7 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::MoveNode(::grpc::CallbackServerContext *ctx, const pb::MoveNodeReq *req, pb::Status *reply)
 {
-       return unaryHandler(ctx, req, reply,
+       return mutatingUnaryHandler(ctx, req, reply,
                         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             // Get the existing node
 
@@ -358,6 +358,24 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
 
                 optional<string> parent;
                 if (!req->parentuuid().empty()) {
+                    auto cycle_res = co_await rctx.dbh->exec(R"(
+                        WITH RECURSIVE descendants AS (
+                            SELECT id FROM node WHERE id=? AND user=?
+                            UNION ALL
+                            SELECT n.id
+                            FROM node n
+                            JOIN descendants d ON n.parent = d.id
+                            WHERE n.user=?
+                        )
+                        SELECT 1 FROM descendants WHERE id=? LIMIT 1)",
+                        req->uuid(), cuser, cuser, req->parentuuid());
+                    if (!cycle_res.rows().empty()) {
+                        reply->set_error(pb::Error::CONSTRAINT_FAILED);
+                        reply->set_message("A node cannot be moved under its own descendant.");
+                        LOG_DEBUG_N << "Rejecting move of node " << req->uuid()
+                                    << " under descendant " << req->parentuuid();
+                        co_return;
+                    }
                     co_await owner_.validateNode(req->parentuuid(), cuser);
                     parent = req->parentuuid();
                 }
@@ -403,7 +421,7 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::DeleteNode(::grpc::CallbackServerContext *ctx, const pb::DeleteNodeReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             co_await owner_.deleteNode(req->uuid(), rctx);
             co_return;
@@ -501,6 +519,23 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
     const export_flush_fn_t& flush_fn,
     RequestCtx& rctx,
     bool removeDeleted) {
+    switch (rctx.session().syncClientMode()) {
+    case UserContext::SyncClientMode::Current:
+        co_return co_await exportNodesCurrent(req, dbh, flush_fn, rctx, removeDeleted);
+    case UserContext::SyncClientMode::Legacy:
+    case UserContext::SyncClientMode::Unset:
+        co_return co_await exportNodesLegacy(req, dbh, flush_fn, rctx, removeDeleted);
+    }
+
+    co_return co_await exportNodesLegacy(req, dbh, flush_fn, rctx, removeDeleted);
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportNodesLegacy(
+    const pb::GetNewReq& req,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx,
+    bool removeDeleted) {
 
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
@@ -511,10 +546,9 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    const auto cursor = getIncrementalSyncCursor(req);
-    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
-    const auto where_clause = fetch_all ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
-    const auto order_clause = cursor.use_updated_id ? "updated_id, sort_path, id" : "updated, sort_path, id";
+    const auto cursor = getLegacySyncCursor(req);
+    const auto where_clause = "updated > ?";
+    const auto order_clause = "updated, sort_path, id";
     const auto sql = format(R"(
         WITH RECURSIVE node_tree AS (
             SELECT
@@ -539,21 +573,13 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
         where_clause,
         (removeDeleted || cursor.full_sync) ? "AND deleted=0" : "",
         order_clause);
-    if (fetch_all) {
-        co_await rctx.dbh->start_exec(sql,
-            uctx->dbOptions(), cuser, cuser);
-    } else if (cursor.use_updated_id) {
-        co_await rctx.dbh->start_exec(sql,
-            uctx->dbOptions(), cuser, cuser, cursor.since);
-    } else {
-        co_await rctx.dbh->start_exec(sql,
-            uctx->dbOptions(), cuser, cuser, toMsDateTime(cursor.since, uctx->tz()));
-    }
+    co_await rctx.dbh->start_exec(sql,
+        uctx->dbOptions(), cuser, cuser, toMsDateTime(cursor.since, uctx->tz()));
 
     nextapp::pb::Status reply;
 
     auto *nodes = reply.mutable_nodes();
-    const bool include_updated_id = cursor.use_updated_id;
+    const bool include_updated_id = false;
     auto num_rows_in_batch = 0u;
     auto total_rows = 0u;
     auto batch_num = 0u;
@@ -598,6 +624,93 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportNodes(
     co_return total_rows;
 }
 
+boost::asio::awaitable<uint64_t> GrpcServer::exportNodesCurrent(
+    const pb::GetNewReq& req,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx,
+    bool removeDeleted) {
+
+    const auto uctx = rctx.uctx;
+    const auto& cuser = uctx->userUuid();
+    const auto batch_size = server().config().options.stream_batch_size;
+    static const auto prefixed_cols = prefixNames(ToNode::selectCols, "n.");
+
+    assert(rctx.dbh);
+    const auto cursor = getCurrentSyncCursor(req);
+    const auto fetch_all = cursor.since == 0;
+    const auto where_clause = fetch_all ? "TRUE" : "updated_id > ?";
+    const auto order_clause = "updated_id, sort_path, id";
+    const auto sql = format(R"(
+        WITH RECURSIVE node_tree AS (
+            SELECT
+                {0},
+                CAST(id AS CHAR(1024)) AS sort_path
+            FROM node
+            WHERE user=? AND parent IS NULL
+            UNION ALL
+            SELECT
+                {1},
+                CONCAT(node_tree.sort_path, '/', n.id) AS sort_path
+            FROM node AS n
+            INNER JOIN node_tree ON n.parent = node_tree.id
+            WHERE n.user=?
+        )
+        SELECT {0}
+        FROM node_tree
+        WHERE {2} {3}
+        ORDER BY {4})",
+        ToNode::selectCols,
+        prefixed_cols,
+        where_clause,
+        (removeDeleted || cursor.full_sync) ? "AND deleted=0" : "",
+        order_clause);
+    if (fetch_all) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cuser);
+    } else {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cuser, cursor.since);
+    }
+
+    nextapp::pb::Status reply;
+    auto *nodes = reply.mutable_nodes();
+    auto num_rows_in_batch = 0u;
+    auto total_rows = 0u;
+    auto batch_num = 0u;
+
+    auto flush = [&]() -> boost::asio::awaitable<void> {
+        reply.set_error(::nextapp::pb::Error::OK);
+        assert(reply.has_nodes());
+        ++batch_num;
+        reply.set_message(format("Fetched {} nodes in batch {}", reply.nodes().nodes_size(), batch_num));
+        co_await flush_fn(reply);
+        reply.Clear();
+        nodes = reply.mutable_nodes();
+        num_rows_in_batch = {};
+    };
+
+    bool read_more = true;
+    for (auto rows = co_await rctx.dbh->readSome(); read_more; rows = co_await rctx.dbh->readSome()) {
+        read_more = rctx.dbh->shouldReadMore();
+        if (rows.empty()) {
+            LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+            break;
+        }
+
+        for (const auto& row : rows) {
+            auto *node = nodes->add_nodes();
+            ToNode::assign(row, *node, rctx, true);
+            ++total_rows;
+            if (++num_rows_in_batch >= batch_size) {
+                co_await flush();
+            }
+        }
+    }
+
+    co_await flush();
+
+    co_return total_rows;
+}
+
 boost::asio::awaitable<pb::Node> GrpcServer::fetcNode(const std::string &uuid, const std::string &userUuid, RequestCtx& rctx)
 {
     auto res = co_await rctx.dbh->exec(format("SELECT {} from node where id=? and user=?", ToNode::selectCols),
@@ -620,7 +733,7 @@ boost::asio::awaitable<void> GrpcServer::validateNode(const std::string &parentU
 boost::asio::awaitable<void> GrpcServer::validateNode(jgaa::mysqlpool::Mysqlpool::Handle& handle, const std::string &parentUuid, const std::string &userUuid)
 {
     auto res = co_await handle.exec("SELECT id FROM node where id=? and user=?", parentUuid, userUuid);
-    if (!res.has_value()) {
+    if (!res.has_value() || res.rows().empty()) {
         throw server_err{pb::Error::INVALID_PARENT, "Node id must exist and be owned by the user"};
     }
     co_return;
@@ -650,18 +763,20 @@ boost::asio::awaitable<void> GrpcServer::deleteNode(const std::string& uuid, Req
                              UserContext::PlanResource::ACTION,
                              UserContext::PlanResource::WORK_SESSION,
                              UserContext::PlanResource::TIME_BLOCK});
-
-    co_await rctx.dbh->exec("INSERT INTO node (id, user, active, deleted) VALUES (?, ?, 0, 1)", dbopts, uuid, cuser);
-
-    auto res = co_await rctx.dbh->exec(format("SELECT {} from node where id=? and user=?",
-                                              ToNode::selectCols),
-                                       uuid, cuser);
-    if (!res.rows().empty()) {
-        auto& update = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
-        ToNode::assign(res.rows().front(), *update.mutable_node(), rctx);
+    // This delete can fan out across many dependent rows via hard-delete cascades.
+    // Force a full sync instead of publishing an incremental tombstone stream that
+    // may leave other clients with inconsistent local constraints.
+    co_await rctx.dbh->exec("UPDATE `user` SET data_sync_epoch = data_sync_epoch + 1 WHERE id = ?", cuser);
+    const auto epoch_res = co_await rctx.dbh->exec("SELECT data_sync_epoch FROM `user` WHERE id = ?", cuser);
+    if (epoch_res.rows().empty()) {
+        throw server_err{pb::Error::GENERIC_ERROR, "Failed to load updated data sync epoch"};
     }
+    const auto data_sync_epoch = epoch_res.rows().front().at(0).as_uint64();
 
     co_await trx.commit();
+
+    rctx.updates.clear();
+    co_await rctx.uctx->publishFullResync(data_sync_epoch);
 }
 
 } // ns

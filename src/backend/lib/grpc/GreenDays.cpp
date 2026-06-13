@@ -91,7 +91,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
                                 const pb::Date *req,
                                 pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             if (auto full_day = co_await owner_.fetchDay(*req, rctx)) {
@@ -111,7 +111,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetMonth(::grpc::CallbackServerContext *ctx, const pb::MonthReq *req, pb::Month *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Month *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             const auto uctx = rctx.uctx;
@@ -217,7 +217,7 @@ GrpcServer::NextappImpl::GetDay(::grpc::CallbackServerContext *ctx,
 
             auto res = co_await owner_.server().db().exec(
                 R"(INSERT INTO day (date, user, color, notes, report) VALUES (?, ?, ?, ?, ?)
-                   ON DUPLICATE KEY UPDATE color=?, notes=?, report=?)", uctx->dbOptions(),
+                   ON DUPLICATE KEY UPDATE color=?, notes=?, report=?, deleted=0)", uctx->dbOptions(),
                 // insert
                 toAnsiDate(req->day().date()),
                 cuser,
@@ -299,35 +299,34 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     jgaa::mysqlpool::Mysqlpool::Handle& dbh,
     const export_flush_fn_t& flush_fn,
     RequestCtx& rctx) {
+    switch (rctx.session().syncClientMode()) {
+    case UserContext::SyncClientMode::Current:
+        co_return co_await exportDaysCurrent(req, dbh, flush_fn, rctx);
+    case UserContext::SyncClientMode::Legacy:
+    case UserContext::SyncClientMode::Unset:
+        co_return co_await exportDaysLegacy(req, dbh, flush_fn, rctx);
+    }
 
+    co_return co_await exportDaysLegacy(req, dbh, flush_fn, rctx);
+}
+
+boost::asio::awaitable<uint64_t> GrpcServer::exportDaysLegacy(
+    const pb::GetNewReq& req,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx) {
     const auto uctx = rctx.uctx;
     const auto& cuser = uctx->userUuid();
-    const auto cursor = getIncrementalSyncCursor(req);
+    const auto cursor = getLegacySyncCursor(req);
     const auto batch_size = server().config().options.stream_batch_size;
 
     // Use batched reading from the database, so that we can get all the data, but
     // without running out of memory.
     // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
     assert(rctx.dbh);
-    const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
-    const auto sql = fetch_all
-        ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
-                   WHERE user=? AND (?=0 OR deleted=0)
-                   ORDER BY updated_id, date)"
-        : cursor.use_updated_id
-            ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
-                       WHERE user=? AND updated_id > ?
-                       ORDER BY updated_id, date)"
-            // Remove after the legacy client migration is complete.
-            : R"(SELECT deleted, updated, CAST(0 AS UNSIGNED), date, color, notes, report FROM day
+    const auto sql = R"(SELECT deleted, updated, CAST(0 AS UNSIGNED), date, color, notes, report FROM day
                        WHERE user=? AND updated > ?)";
-    if (fetch_all) {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.full_sync ? 1 : 0);
-    } else if (cursor.use_updated_id) {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
-    } else {
-        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz(), true));
-    }
+    co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, toMsDateTime(cursor.since, uctx->tz(), true));
 
     enum Cols {
         DELETED, UPDATED, UPDATED_ID, DATE, COLOR, NOTES, REPORT
@@ -371,9 +370,6 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
             assert(row.at(DELETED).is_int64());
             d->set_deleted(row.at(DELETED).as_int64() == 1);
             d->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
-            if (cursor.use_updated_id) {
-                d->set_updatedid(row.at(UPDATED_ID).as_uint64());
-            }
             const auto date_val = row.at(DATE).as_date();
             if (!date_val.valid()) {
                 LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
@@ -410,37 +406,140 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
     co_return total_rows;
 }
 
+boost::asio::awaitable<uint64_t> GrpcServer::exportDaysCurrent(
+    const pb::GetNewReq& req,
+    jgaa::mysqlpool::Mysqlpool::Handle& dbh,
+    const export_flush_fn_t& flush_fn,
+    RequestCtx& rctx) {
+
+    const auto uctx = rctx.uctx;
+    const auto& cuser = uctx->userUuid();
+    const auto cursor = getCurrentSyncCursor(req);
+    const auto batch_size = server().config().options.stream_batch_size;
+
+    assert(rctx.dbh);
+    const auto fetch_all = cursor.since == 0;
+    const auto sql = fetch_all
+        ? R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
+                   WHERE user=? AND (?=0 OR deleted=0)
+                   ORDER BY updated_id, date)"
+        : R"(SELECT deleted, updated, updated_id, date, color, notes, report FROM day
+                   WHERE user=? AND updated_id > ?
+                   ORDER BY updated_id, date)";
+    if (fetch_all) {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.full_sync ? 1 : 0);
+    } else {
+        co_await rctx.dbh->start_exec(sql, uctx->dbOptions(), cuser, cursor.since);
+    }
+
+    enum Cols {
+        DELETED, UPDATED, UPDATED_ID, DATE, COLOR, NOTES, REPORT
+    };
+
+    nextapp::pb::Status reply;
+    auto *days = reply.mutable_days();
+    auto num_rows_in_batch = 0u;
+    auto total_rows = 0u;
+    auto batch_num = 0u;
+
+    auto flush = [&]() -> boost::asio::awaitable<void> {
+        reply.set_error(::nextapp::pb::Error::OK);
+        assert(reply.has_days());
+        assert(reply.days().days_size() == num_rows_in_batch);
+        ++batch_num;
+        reply.set_message(format("Fetched {} days in batch {}", reply.days().days_size(), batch_num));
+        co_await flush_fn(reply);
+        reply.Clear();
+        days = reply.mutable_days();
+        num_rows_in_batch = {};
+    };
+
+    bool read_more = true;
+    for (auto rows = co_await rctx.dbh->readSome(); read_more; rows = co_await rctx.dbh->readSome()) {
+        read_more = rctx.dbh->shouldReadMore();
+        if (rows.empty()) {
+            LOG_TRACE_N << "Out of rows to iterate... num_rows_in_batch=" << num_rows_in_batch;
+            break;
+        }
+
+        for (const auto& row : rows) {
+            auto current_day = days->add_days();
+            auto *d = current_day->mutable_day();
+            assert(row.at(DELETED).is_int64());
+            d->set_deleted(row.at(DELETED).as_int64() == 1);
+            d->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
+            d->set_updatedid(row.at(UPDATED_ID).as_uint64());
+            const auto date_val = row.at(DATE).as_date();
+            if (!date_val.valid()) {
+                LOG_ERROR_N << "Invalid date in database.day for user " << cuser;
+                continue;
+            }
+            *d->mutable_date() = toDate(date_val);
+
+            if (!d->deleted()) {
+                if (row.at(COLOR).is_string()) {
+                    d->set_color(pb_adapt(row.at(COLOR).as_string()));
+                }
+                if (row.at(NOTES).is_string()) {
+                    d->set_hasnotes(true);
+                    current_day->set_notes(pb_adapt(row.at(NOTES).as_string()));
+                }
+                if (row.at(REPORT).is_string()) {
+                    d->set_hasreport(true);
+                    current_day->set_report(pb_adapt(row.at(REPORT).as_string()));
+                }
+            }
+
+            ++total_rows;
+            if (++num_rows_in_batch >= batch_size) {
+                co_await flush();
+            }
+        }
+    }
+
+    co_await flush();
+    co_return total_rows;
+}
+
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetNewDayColorDefinitions(::grpc::CallbackServerContext *ctx,
                                                                                const pb::GetNewReq *req,
                                                                                pb::Status *reply)
 {
     return unaryHandler(ctx, req, reply,
     [this, req] (auto *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-
-        const auto cursor = getIncrementalSyncCursor(*req);
-        const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
         boost::mysql::results res;
-        if (fetch_all) {
-            res = co_await rctx.dbh->exec(
-                "SELECT id, name, color, score, updated, updated_id "
-                "FROM day_colors "
-                "WHERE tenant IS NULL "
-                "ORDER BY updated_id, id",
-                rctx.uctx->dbOptions());
-        } else if (cursor.use_updated_id) {
-            res = co_await rctx.dbh->exec(
-                "SELECT id, name, color, score, updated, updated_id "
-                "FROM day_colors "
-                "WHERE tenant IS NULL AND updated_id > ? "
-                "ORDER BY updated_id, id",
-                rctx.uctx->dbOptions(), cursor.since);
-        } else {
-            // Remove after the legacy client migration is complete.
+        bool include_updated_id = false;
+        switch (rctx.session().syncClientMode()) {
+        case UserContext::SyncClientMode::Current: {
+            const auto cursor = getCurrentSyncCursor(*req);
+            include_updated_id = true;
+            if (cursor.since == 0) {
+                res = co_await rctx.dbh->exec(
+                    "SELECT id, name, color, score, updated, updated_id "
+                    "FROM day_colors "
+                    "WHERE tenant IS NULL "
+                    "ORDER BY updated_id, id",
+                    rctx.uctx->dbOptions());
+            } else {
+                res = co_await rctx.dbh->exec(
+                    "SELECT id, name, color, score, updated, updated_id "
+                    "FROM day_colors "
+                    "WHERE tenant IS NULL AND updated_id > ? "
+                    "ORDER BY updated_id, id",
+                    rctx.uctx->dbOptions(), cursor.since);
+            }
+            break;
+        }
+        case UserContext::SyncClientMode::Legacy:
+        case UserContext::SyncClientMode::Unset: {
+            const auto cursor = getLegacySyncCursor(*req);
             res = co_await rctx.dbh->exec(
                 "SELECT id, name, color, score, updated, CAST(0 AS UNSIGNED) "
                 "FROM day_colors "
                 "WHERE tenant IS NULL AND updated > ?",
-                rctx.uctx->dbOptions(), toMsDateTime(req->since(), rctx.uctx->tz()));
+                rctx.uctx->dbOptions(), toMsDateTime(cursor.since, rctx.uctx->tz()));
+            break;
+        }
         }
 
         enum Cols {
@@ -455,7 +554,7 @@ boost::asio::awaitable<uint64_t> GrpcServer::exportDays(
                 dc->set_name(pb_adapt(row.at(NAME).as_string()));
                 dc->set_score(static_cast<int32_t>(row.at(SCORE).as_int64()));
                 dc->set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
-                if (cursor.use_updated_id) {
+                if (include_updated_id) {
                     dc->set_updatedid(row.at(UPDATED_ID).as_uint64());
                 }
             }

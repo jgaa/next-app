@@ -3,6 +3,10 @@
 #include <thread>
 #include <optional>
 #include <atomic>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
+#include <shared_mutex>
 
 #include <boost/asio.hpp>
 
@@ -118,6 +122,13 @@ public:
         std::string pub_url;
     };
 
+    struct SignupRateLimitConfig {
+        size_t ip_burst = 20;
+        double ip_refill_per_second = 10.0 / 60.0;
+        size_t email_burst = 5;
+        double email_refill_per_second = 1.0 / 3600.0;
+    };
+
     boost::asio::awaitable<AssignedInstance> assignInstance(const boost::uuids::uuid& region);
 
     std::string getEmailHash(std::string_view email) const;
@@ -137,8 +148,22 @@ public:
 
     boost::asio::awaitable<bool> loadCluster(bool checkClusterWhenLoaded = true);
     std::string hashPasswd(std::string_view passwd);
+    boost::asio::awaitable<bool> allowSignupAttempt(std::string_view peer, std::string_view email);
+    boost::asio::awaitable<bool> emailSignupExists(std::string_view email_hash);
+    bool tryReserveEmailSignup(std::string_view email_hash);
+    void releaseEmailSignup(std::string_view email_hash);
+    void markSignupRateLimitConfigDirty() noexcept;
+#ifdef NEXTAPP_WITH_TESTS
+    void testSetSignupRateLimitConfig(SignupRateLimitConfig config) noexcept;
+    bool testAllowSignupAttemptLocal(std::string_view peer, std::string_view email);
+#endif
 
 private:
+    struct RateLimitBucket {
+        double tokens = 0.0;
+        std::chrono::steady_clock::time_point updated_at{};
+    };
+
     void handleSignals();
     void initCtx(size_t numThreads);
     void runIoThread(size_t id);
@@ -159,6 +184,17 @@ private:
     boost::asio::awaitable<bool> loadCluster_();
     boost::asio::awaitable<void> prepareMetricsAuth();
     boost::asio::awaitable<void> resetMetricsPassword(jgaa::mysqlpool::Mysqlpool::Handle& handle);
+    boost::asio::awaitable<SignupRateLimitConfig> loadSignupRateLimitConfig_();
+    static bool consumeRateLimitToken_(std::unordered_map<std::string, RateLimitBucket>& buckets,
+                                       std::string_view key,
+                                       size_t burst,
+                                       double refill_per_second,
+                                       std::chrono::steady_clock::time_point now);
+    bool allowSignupAttemptLocal_(std::string_view peer,
+                                  std::string_view email,
+                                  const SignupRateLimitConfig& config,
+                                  std::chrono::steady_clock::time_point now);
+    static std::string peerKey_(std::string_view peer);
 
     Metrics metrics_;
     boost::asio::io_context ctx_;
@@ -178,6 +214,13 @@ private:
     boost::asio::strand<boost::asio::io_context::executor_type> cluster_strand_{ctx_.get_executor()};
     boost::asio::steady_timer cluster_timer_{ctx_};
     std::string metrics_auth_hash_;
+    SignupRateLimitConfig signup_rate_limit_config_;
+    std::atomic_bool signup_rate_limit_config_dirty_{true};
+    mutable std::shared_mutex signup_rate_limit_config_mutex_;
+    mutable std::mutex signup_rate_limit_mutex_;
+    std::unordered_map<std::string, RateLimitBucket> signup_ip_buckets_;
+    std::unordered_map<std::string, RateLimitBucket> signup_email_buckets_;
+    std::unordered_set<std::string> signup_email_inflight_;
 };
 
 

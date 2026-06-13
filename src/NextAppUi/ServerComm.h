@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QFuture>
 #include <QNetworkInformation>
+#include <QJsonObject>
 #include <QProtobufSerializer>
 #include <QSettings>
 #include <QFile>
@@ -284,6 +285,10 @@ public:
             && (updated_id_sync_initialized_ || bootstrapping_updated_id_sync_);
     }
 
+    [[nodiscard]] QJsonObject syncDiagnostics() const;
+
+    void requestIncrementalRepair() override;
+
     static bool isTemporaryError(nextapp::pb::ErrorGadget::Error error);
 
     void resetSignupStatus();
@@ -322,7 +327,12 @@ private:
     void onGrpcReady();
     void onUpdateMessage();
     void applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& msg);
+    void enqueueLiveUpdateForApply(const std::shared_ptr<nextapp::pb::Update>& msg);
+    QCoro::Task<void> drainLiveUpdateQueue();
+    QCoro::Task<bool> applyUpdateDurably(const std::shared_ptr<nextapp::pb::Update>& msg);
+    QCoro::Task<bool> applyDurableModels(const std::shared_ptr<nextapp::pb::Update>& msg);
     bool shouldDeferUpdateUntilInitialSyncComplete() const noexcept;
+    bool needIncrementalRepairSync() const noexcept;
     uint effectiveLastSeenUpdateId() const noexcept;
     QCoro::Task<void> replayDeferredUpdates();
     void requestResyncAfterStreamGap(uint64_t received_message_id);
@@ -687,6 +697,7 @@ private:
     bool retrying_requests_{false};
     uint last_seen_update_id_{0};
     uint deferred_update_id_{0};
+    uint queued_update_id_{0};
     uint session_start_publish_id_{0};
     uint64_t last_seen_server_instance_{};
     uint64_t last_seen_user_publish_epoch_{};
@@ -700,7 +711,24 @@ private:
     bool import_data_in_progress_{false};
     bool import_data_resync_received_{false};
     bool closed_{false};
+    struct SyncDiagnostics final {
+        bool initial_sync_entered{false};
+        bool used_full_sync{false};
+        bool used_durable_sync{false};
+        bool requested_live_replay{false};
+        bool replay_unavailable_fallback{false};
+        bool server_instance_changed{false};
+        bool server_resync_requested{false};
+        bool incremental_repair_requested{false};
+        bool completed{false};
+        uint hello_last_publish_id{0};
+        uint hello_oldest_retained_publish_id{0};
+        uint start_last_seen_update_id{0};
+        uint completed_last_seen_update_id{0};
+    } sync_diagnostics_;
     std::deque<std::shared_ptr<nextapp::pb::Update>> deferred_updates_;
+    std::deque<std::shared_ptr<nextapp::pb::Update>> live_update_apply_queue_;
+    bool draining_live_updates_{false};
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
     bool fcm_requested_{false};
 #endif

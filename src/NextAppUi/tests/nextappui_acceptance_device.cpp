@@ -167,6 +167,31 @@ const char *signupStatusName(int status)
     }
 }
 
+bool connectToSignupServerWithRetry(ServerComm& comm,
+                                    const QString& signup_url,
+                                    int attempts,
+                                    int wait_per_attempt_ms)
+{
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        comm.resetSignupStatus();
+        comm.setSignupServerAddress(signup_url);
+        const auto have_info = waitForCondition([&] {
+            const auto status = signupStatus(comm);
+            return status == ServerComm::SIGNUP_HAVE_INFO
+                || status == ServerComm::SIGNUP_ERROR;
+        }, wait_per_attempt_ms);
+        if (have_info && signupStatus(comm) == ServerComm::SIGNUP_HAVE_INFO) {
+            return true;
+        }
+
+        if (attempt + 1 < attempts) {
+            QThread::msleep(250);
+        }
+    }
+
+    return false;
+}
+
 void mergeObject(QJsonObject& target, const QJsonObject& source);
 
 std::optional<QJsonObject> loadDbInfo(NextAppCore& core)
@@ -310,6 +335,11 @@ std::optional<int> loadPendingRequestCount(NextAppCore& core)
     return request_count.value();
 }
 
+void mergeSyncDiagnostics(QJsonObject& target, const ServerComm& comm)
+{
+    mergeObject(target, comm.syncDiagnostics());
+}
+
 void mergeObject(QJsonObject& target, const QJsonObject& source)
 {
     for (auto it = source.begin(); it != source.end(); ++it) {
@@ -350,6 +380,16 @@ nextapp::pb::Node makeNode(const QString& batch_name, const QString& device_name
     node.setKind(nextapp::pb::Node::Kind::PROJECT);
     node.setParent(QString{});
     node.setActive(true);
+    return node;
+}
+
+nextapp::pb::Node makeChildNode(const QString& batch_name,
+                                const QString& device_name,
+                                const QString& parent_uuid)
+{
+    auto node = makeNode(batch_name, device_name);
+    node.setParent(parent_uuid);
+    node.setName(QStringLiteral("Acceptance child %1 %2").arg(batch_name, device_name));
     return node;
 }
 
@@ -408,6 +448,7 @@ int main(int argc, char** argv)
     QString otp_value;
     QString batch_name;
     QString template_name;
+    int batch_count = 1;
     int region = 0;
 
     for (int i = 1; i < argc; ++i) {
@@ -452,12 +493,16 @@ int main(int argc, char** argv)
             batch_name = QString::fromLocal8Bit(argv[++i]);
             continue;
         }
+        if (arg == QStringLiteral("--count") && i + 1 < argc) {
+            batch_count = QString::fromLocal8Bit(argv[++i]).toInt();
+            continue;
+        }
         if (arg == QStringLiteral("--template-name") && i + 1 < argc) {
             template_name = QString::fromLocal8Bit(argv[++i]);
             continue;
         }
         if (arg == QStringLiteral("--help")) {
-            fprintf(stdout, "Usage: nextappui_acceptance_device --workspace-root PATH --device-name NAME [--otp OTP] [--batch NAME] [--template-name NAME] <prepare|wait-ready|signup-first-device|request-otp|add-device-with-otp|disconnect|reconnect|force-full-sync|apply-scripted-batch>\n");
+            fprintf(stdout, "Usage: nextappui_acceptance_device --workspace-root PATH --device-name NAME [--otp OTP] [--batch NAME] [--count N] [--template-name NAME] <prepare|probe-signup-server|wait-ready|signup-first-device|request-otp|add-device-with-otp|disconnect|reconnect|force-full-sync|apply-scripted-batch|apply-scripted-batches|apply-structural-node-delete>\n");
             return 0;
         }
         if (command.isEmpty()) {
@@ -537,19 +582,29 @@ int main(int argc, char** argv)
         fastExit(0);
     }
 
+    if (command == QStringLiteral("probe-signup-server")) {
+        if (signup_url.isEmpty()) {
+            fprintf(stderr, "probe-signup-server requires --signup-url\n");
+            return 2;
+        }
+
+        auto result = baseResult(command, device_name, core, comm);
+        const auto connected = connectToSignupServerWithRetry(comm, signup_url, 10, 3000);
+        result.insert(QStringLiteral("signupUrl"), signup_url);
+        result.insert(QStringLiteral("signupStatus"), signupStatus(comm));
+        result.insert(QStringLiteral("connected"), connected);
+        mergeSyncDiagnostics(result, comm);
+        printJson(result);
+        fastExit(connected ? 0 : 24);
+    }
+
     if (command == QStringLiteral("signup-first-device")) {
         if (signup_url.isEmpty() || user_name.isEmpty() || user_email.isEmpty()) {
             fprintf(stderr, "signup-first-device requires --signup-url, --user-name and --user-email\n");
             return 2;
         }
 
-        comm.setSignupServerAddress(signup_url);
-        const auto have_info = waitForCondition([&] {
-            const auto status = signupStatus(comm);
-            return status == ServerComm::SIGNUP_HAVE_INFO
-                || status == ServerComm::SIGNUP_ERROR;
-        }, 120000);
-        if (!have_info || signupStatus(comm) == ServerComm::SIGNUP_ERROR) {
+        if (!connectToSignupServerWithRetry(comm, signup_url, 20, 15000)) {
             fprintf(stderr,
                     "Failed waiting for signup server info: status=%s messages=%s url=%s\n",
                     signupStatusName(signupStatus(comm)),
@@ -610,6 +665,7 @@ int main(int argc, char** argv)
                 return info.value(QStringLiteral("numNodes")).toInt() > 0;
             }));
         result.insert(QStringLiteral("haveDbInfo"), have_db_info);
+        mergeSyncDiagnostics(result, comm);
 
         printJson(result);
         fastExit(synced && have_db_info ? 0 : 8);
@@ -664,6 +720,7 @@ int main(int argc, char** argv)
         result.insert(QStringLiteral("email"), email);
         result.insert(QStringLiteral("error"), error);
         result.insert(QStringLiteral("otpReady"), !otp.isEmpty());
+        mergeSyncDiagnostics(result, comm);
 
         printJson(result);
         fastExit(!otp.isEmpty() && !email.isEmpty() ? 0 : 10);
@@ -675,13 +732,7 @@ int main(int argc, char** argv)
             return 2;
         }
 
-        comm.setSignupServerAddress(signup_url);
-        const auto have_info = waitForCondition([&] {
-            const auto status = signupStatus(comm);
-            return status == ServerComm::SIGNUP_HAVE_INFO
-                || status == ServerComm::SIGNUP_ERROR;
-        }, 120000);
-        if (!have_info || signupStatus(comm) == ServerComm::SIGNUP_ERROR) {
+        if (!connectToSignupServerWithRetry(comm, signup_url, 20, 15000)) {
             fprintf(stderr,
                     "Failed waiting for signup server info: status=%s messages=%s url=%s\n",
                     signupStatusName(signupStatus(comm)),
@@ -724,6 +775,7 @@ int main(int argc, char** argv)
 
         const auto have_db_info = synced && waitForAndMergeDbInfo(result, core, 120000);
         result.insert(QStringLiteral("haveDbInfo"), have_db_info);
+        mergeSyncDiagnostics(result, comm);
 
         printJson(result);
         fastExit(synced && have_db_info ? 0 : 13);
@@ -748,6 +800,7 @@ int main(int argc, char** argv)
 
         const auto have_info = synced && waitForAndMergeDbInfo(result, core, 120000);
         result.insert(QStringLiteral("haveDbInfo"), have_info);
+        mergeSyncDiagnostics(result, comm);
 
         printJson(result);
         fastExit(synced && have_info ? 0 : 5);
@@ -770,6 +823,7 @@ int main(int argc, char** argv)
         }, 60000);
         result.insert(QStringLiteral("disconnected"), disconnected);
         result.insert(QStringLiteral("serverStatus"), static_cast<int>(comm.status()));
+        mergeSyncDiagnostics(result, comm);
         printJson(result);
         fastExit(disconnected ? 0 : 14);
     }
@@ -791,6 +845,7 @@ int main(int argc, char** argv)
         result.insert(QStringLiteral("serverStatus"), static_cast<int>(comm.status()));
         const auto have_info = synced && waitForAndMergeDbInfo(result, core, 120000);
         result.insert(QStringLiteral("haveDbInfo"), have_info);
+        mergeSyncDiagnostics(result, comm);
         printJson(result);
         fastExit(synced && have_info ? 0 : 15);
     }
@@ -849,15 +904,20 @@ int main(int argc, char** argv)
         result.insert(QStringLiteral("sawDataUpdated"), saw_data_updated);
         const auto have_info = synced && waitForAndMergeDbInfo(result, core, 120000);
         result.insert(QStringLiteral("haveDbInfo"), have_info);
+        mergeSyncDiagnostics(result, comm);
 
         printJson(result);
         fastExit(synced && have_info ? 0 : 20);
     }
 
-    if (command == QStringLiteral("apply-scripted-batch")) {
+    if (command == QStringLiteral("apply-scripted-batch")
+        || command == QStringLiteral("apply-scripted-batches")) {
         if (batch_name.isEmpty()) {
-            fprintf(stderr, "apply-scripted-batch requires --batch\n");
+            fprintf(stderr, "%s requires --batch\n", command.toUtf8().constData());
             return 2;
+        }
+        if (batch_count <= 0) {
+            batch_count = 1;
         }
 
         auto result = baseResult(command, device_name, core, comm);
@@ -878,31 +938,50 @@ int main(int argc, char** argv)
             std::_Exit(17);
         }
 
-        const auto category = makeCategory(device_name, batch_name);
-        const auto node = makeNode(batch_name, device_name);
-        action_categories.createCategory(category);
+        QString last_category_id;
+        QString last_node_id;
+        QString last_action_id;
+        bool category_persisted = true;
+        bool node_persisted = true;
+        bool action_submitted = true;
+        for (int batch_index = 0; batch_index < batch_count; ++batch_index) {
+            const auto effective_batch = batch_count == 1
+                ? batch_name
+                : QStringLiteral("%1-%2").arg(batch_name).arg(batch_index + 1);
+            const auto category = makeCategory(device_name, effective_batch);
+            const auto node = makeNode(effective_batch, device_name);
+            action_categories.createCategory(category);
 
-        QString persisted_category_id;
-        const auto category_persisted = waitForCondition([&] {
-            persisted_category_id = findCategoryIdByName(action_categories, category.name());
-            return !persisted_category_id.isEmpty();
-        }, 120000);
+            QString persisted_category_id;
+            const auto category_ready = waitForCondition([&] {
+                persisted_category_id = findCategoryIdByName(action_categories, category.name());
+                return !persisted_category_id.isEmpty();
+            }, 120000);
+            category_persisted = category_persisted && category_ready;
 
-        comm.addNode(node);
-        const auto node_persisted = waitForCondition([&] {
-            const auto current = loadDbInfo(core);
-            if (!current) {
-                return false;
+            comm.addNode(node);
+            const auto node_ready = waitForCondition([&] {
+                const auto current = loadDbInfo(core);
+                if (!current) {
+                    return false;
+                }
+
+                return current->value(QStringLiteral("numNodes")).toInt()
+                    >= baseline_info->value(QStringLiteral("numNodes")).toInt() + batch_index + 1;
+            }, 120000);
+            node_persisted = node_persisted && node_ready;
+
+            auto action = makeAction(effective_batch, device_name, node, category);
+            action.setCategory(persisted_category_id);
+            if (category_ready && node_ready) {
+                comm.addAction(action);
+            } else {
+                action_submitted = false;
             }
 
-            return current->value(QStringLiteral("numNodes")).toInt()
-                >= baseline_info->value(QStringLiteral("numNodes")).toInt() + 1;
-        }, 120000);
-
-        auto action = makeAction(batch_name, device_name, node, category);
-        action.setCategory(persisted_category_id);
-        if (category_persisted && node_persisted) {
-            comm.addAction(action);
+            last_category_id = persisted_category_id;
+            last_node_id = node.uuid();
+            last_action_id = action.id_proto();
         }
 
         const auto persisted = waitForCondition([&] {
@@ -912,9 +991,9 @@ int main(int argc, char** argv)
             }
 
             return current->value(QStringLiteral("numActionCategories")).toInt()
-                    >= baseline_info->value(QStringLiteral("numActionCategories")).toInt() + 1
+                    >= baseline_info->value(QStringLiteral("numActionCategories")).toInt() + batch_count
                 && current->value(QStringLiteral("numNodes")).toInt()
-                    >= baseline_info->value(QStringLiteral("numNodes")).toInt() + 1;
+                    >= baseline_info->value(QStringLiteral("numNodes")).toInt() + batch_count;
         }, 240000);
 
         const auto action_persisted = waitForCondition([&] {
@@ -924,8 +1003,8 @@ int main(int argc, char** argv)
             }
 
             return current->value(QStringLiteral("numActions")).toInt()
-                >= baseline_info->value(QStringLiteral("numActions")).toInt() + 1;
-        }, 240000);
+                >= baseline_info->value(QStringLiteral("numActions")).toInt() + batch_count;
+        }, batch_count > 1 ? 600000 : 240000);
 
         const auto queue_drained = waitForCondition([&] {
             const auto current = loadPendingRequestCount(core);
@@ -933,24 +1012,112 @@ int main(int argc, char** argv)
         }, 120000);
 
         result.insert(QStringLiteral("batch"), batch_name);
+        result.insert(QStringLiteral("batchCount"), batch_count);
         result.insert(QStringLiteral("categoryPersisted"), category_persisted);
         result.insert(QStringLiteral("nodePersisted"), node_persisted);
         result.insert(QStringLiteral("persisted"), persisted);
         result.insert(QStringLiteral("actionPersisted"), action_persisted);
-        result.insert(QStringLiteral("actionSubmitted"), category_persisted && node_persisted);
+        result.insert(QStringLiteral("actionSubmitted"), action_submitted);
         result.insert(QStringLiteral("queueDrained"), queue_drained);
-        result.insert(QStringLiteral("categoryId"), persisted_category_id);
-        result.insert(QStringLiteral("nodeId"), node.uuid());
-        result.insert(QStringLiteral("actionId"), action.id_proto());
+        result.insert(QStringLiteral("categoryId"), last_category_id);
+        result.insert(QStringLiteral("nodeId"), last_node_id);
+        result.insert(QStringLiteral("actionId"), last_action_id);
         if (const auto pending_requests = loadPendingRequestCount(core); pending_requests) {
             result.insert(QStringLiteral("pendingRequests"), *pending_requests);
         }
 
         const auto have_db_info = tryMergeDbInfo(result, core);
         result.insert(QStringLiteral("haveDbInfo"), have_db_info);
+        mergeSyncDiagnostics(result, comm);
 
         printJson(result);
-        fastExit(category_persisted && node_persisted ? 0 : 18);
+        fastExit(category_persisted && node_persisted && action_submitted ? 0 : 18);
+    }
+
+    if (command == QStringLiteral("apply-structural-node-delete")) {
+        if (batch_name.isEmpty()) {
+            fprintf(stderr, "apply-structural-node-delete requires --batch\n");
+            return 2;
+        }
+
+        auto result = baseResult(command, device_name, core, comm);
+        const auto online = waitForCondition([&] {
+            return comm.status() == ServerCommAccess::Status::ONLINE;
+        }, 240000);
+        const auto synced = online && waitForCondition(allSyncModelsValid, 240000);
+        result.insert(QStringLiteral("online"), online);
+        result.insert(QStringLiteral("syncedBeforeWrite"), synced);
+        if (!synced) {
+            mergeSyncDiagnostics(result, comm);
+            printJson(result);
+            std::_Exit(22);
+        }
+
+        const auto category = makeCategory(device_name, batch_name);
+        const auto parent = makeNode(batch_name, device_name);
+        const auto child = makeChildNode(batch_name, device_name, parent.uuid());
+        action_categories.createCategory(category);
+
+        QString persisted_category_id;
+        const auto category_persisted = waitForCondition([&] {
+            persisted_category_id = findCategoryIdByName(action_categories, category.name());
+            return !persisted_category_id.isEmpty();
+        }, 120000);
+
+        comm.addNode(parent);
+        const auto parent_persisted = waitForCondition([&] {
+            return MainTreeModel::instance()->nodeFromUuid(parent.uuid()) != nullptr;
+        }, 120000);
+
+        comm.addNode(child);
+        const auto child_persisted = waitForCondition([&] {
+            return MainTreeModel::instance()->nodeFromUuid(child.uuid()) != nullptr;
+        }, 120000);
+
+        auto action = makeAction(batch_name, device_name, child, category);
+        action.setCategory(persisted_category_id);
+        if (category_persisted && parent_persisted && child_persisted) {
+            comm.addAction(action);
+        }
+
+        const auto action_persisted = waitForCondition([&] {
+            const auto current = loadDbInfo(core);
+            return current
+                && current->value(QStringLiteral("numActions")).toInt() > 0
+                && current->value(QStringLiteral("numNodes")).toInt() > 1;
+        }, 240000);
+
+        bool saw_server_resync = false;
+        auto update_conn = QObject::connect(&comm, &ServerCommAccess::onUpdate, &app,
+                                            [&](const std::shared_ptr<nextapp::pb::Update>& update) {
+            if (update && update->hasResync() && update->resync()) {
+                saw_server_resync = true;
+            }
+        });
+
+        comm.deleteNode(QUuid{parent.uuid()});
+        const auto resync_requested = waitForCondition([&] {
+            return saw_server_resync
+                || core.settings().value(QStringLiteral("sync/incremental_repair"), false).toBool()
+                || comm.status() == ServerCommAccess::Status::OFFLINE
+                || comm.status() == ServerCommAccess::Status::ERROR;
+        }, 240000);
+        QObject::disconnect(update_conn);
+
+        result.insert(QStringLiteral("categoryPersisted"), category_persisted);
+        result.insert(QStringLiteral("parentPersisted"), parent_persisted);
+        result.insert(QStringLiteral("childPersisted"), child_persisted);
+        result.insert(QStringLiteral("actionPersisted"), action_persisted);
+        result.insert(QStringLiteral("serverResyncObserved"), saw_server_resync);
+        result.insert(QStringLiteral("resyncRequested"), resync_requested);
+        result.insert(QStringLiteral("parentNodeId"), parent.uuid());
+        result.insert(QStringLiteral("childNodeId"), child.uuid());
+        result.insert(QStringLiteral("actionId"), action.id_proto());
+        result.insert(QStringLiteral("incrementalRepairPending"),
+                      core.settings().value(QStringLiteral("sync/incremental_repair"), false).toBool());
+        mergeSyncDiagnostics(result, comm);
+        printJson(result);
+        fastExit(category_persisted && parent_persisted && child_persisted && action_persisted && resync_requested ? 0 : 23);
     }
 
     fprintf(stderr, "Unknown command: %s\n", command.toUtf8().constData());

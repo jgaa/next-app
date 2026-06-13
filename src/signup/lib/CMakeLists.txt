@@ -28,6 +28,10 @@ message("PROTO_GENERATED_INCLUDE_PATH: ${PROTO_GENERATED_INCLUDE_PATH}")
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
+if (NEXTAPP_WITH_TESTS)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC NEXTAPP_WITH_TESTS)
+endif()
+
 add_dependencies(${PROJECT_NAME} yahat mysqlpool logfault common proto ${GRPC_LIBS})
 
 target_link_libraries(${PROJECT_NAME}

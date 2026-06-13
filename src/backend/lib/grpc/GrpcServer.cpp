@@ -2,6 +2,8 @@
 #include "shared_grpc_server.h"
 #include "nextapp/util.h"
 
+#include <charconv>
+
 using namespace std;
 using namespace std::literals;
 using namespace std::chrono_literals;
@@ -44,6 +46,49 @@ std::pair<bool /* json */, std::string /* content or json */> toLog(const nextap
 
 namespace nextapp::grpc {
 namespace {
+std::optional<uint64_t> parseMetadataUint(::grpc::string_ref ref) noexcept
+{
+    uint64_t value{};
+    const auto* begin = ref.data();
+    const auto* end = begin + ref.size();
+    const auto [ptr, ec] = std::from_chars(begin, end, value);
+    if (ec != std::errc{} || ptr != end) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+boost::asio::awaitable<void> helloCommon(GrpcServer& owner,
+                                         ::grpc::CallbackServerContext *ctx,
+                                         pb::Status *reply,
+                                         RequestCtx& rctx,
+                                         UserContext::SyncClientMode sync_mode)
+{
+    rctx.session().setSyncClientMode(sync_mode);
+
+    LOG_DEBUG << (sync_mode == UserContext::SyncClientMode::Current ? "HelloEx" : "Hello")
+              << " from session " << rctx.session().sessionId()
+              << " for user " << rctx.uctx->userUuid() << " at " << ctx->peer();
+    if (auto hello = reply->mutable_hello()) {
+        const auto& server = owner.server();
+        hello->set_sessionid(to_string(rctx.session().sessionId()));
+        hello->set_serverid(server.serverId());
+        hello->set_serverinstancetag(server.instanceTag());
+        hello->set_lastpublishid(rctx.uctx->currentPublishId());
+        hello->set_userpublishepoch(rctx.uctx->currentPublishEpoch());
+        hello->set_userdataepoch(rctx.uctx->dataSyncEpoch());
+        hello->set_lastnotification(owner.getLastNotificationUpdated());
+        hello->set_plansenabled(server.config().payment.enable_plan);
+        hello->set_supportsupdatedid(true);
+        hello->mutable_sessionaccess()->CopyFrom(rctx.uctx->currentSessionAccess(rctx.session().deviceId()));
+        if (auto oldest = rctx.uctx->oldestRetainedPublishId()) {
+            hello->set_oldestretainedpublishid(*oldest);
+        }
+    }
+
+    co_return;
+}
+
 struct ToDevice {
     enum Cols { ID, USER, NAME, CREATED, HOSTNAME, OS, OSVERSION, APPVERSION, PRODUCTTYPE, PRODUCTVERSION,
                 ARCH, PRETTYNAME, LASTSEEN, ENABLED, NUM_SESSIONS };
@@ -115,33 +160,26 @@ struct ToDevice {
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::Hello(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-        LOG_DEBUG << "Hello from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid() << " at " << ctx->peer();
-        if (auto hello = reply->mutable_hello()) {
-            const auto& server = owner_.server();
-            hello->set_sessionid(to_string(rctx.session().sessionId()));
-            hello->set_serverid(server.serverId());
-            hello->set_serverinstancetag(server.instanceTag());
-            hello->set_lastpublishid(rctx.uctx->currentPublishId());
-            hello->set_userpublishepoch(rctx.uctx->currentPublishEpoch());
-            hello->set_userdataepoch(rctx.uctx->dataSyncEpoch());
-            hello->set_lastnotification(owner_.getLastNotificationUpdated());
-            hello->set_plansenabled(server.config().payment.enable_plan);
-            hello->set_supportsupdatedid(true);
-            hello->mutable_sessionaccess()->CopyFrom(rctx.uctx->currentSessionAccess(rctx.session().deviceId()));
-            if (auto oldest = rctx.uctx->oldestRetainedPublishId()) {
-                hello->set_oldestretainedpublishid(*oldest);
-            }
-        };
+        co_return co_await helloCommon(owner_, ctx, reply, rctx, UserContext::SyncClientMode::Legacy);
+    }, __func__, true /* allow new session */);
+}
 
-        co_return;
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::HelloEx(::grpc::CallbackServerContext *ctx,
+                                                             const pb::HelloReq *req,
+                                                             pb::Status *reply)
+{
+    return mutatingUnaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        (void)req;
+        co_return co_await helloCommon(owner_, ctx, reply, rctx, UserContext::SyncClientMode::Current);
     }, __func__, true /* allow new session */);
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::Ping(::grpc::CallbackServerContext *ctx, const pb::PingReq *req, pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
     [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
         LOG_DEBUG << "Ping from session " << rctx.session().sessionId() << " for user "  << rctx.uctx->userUuid() << " at " << ctx->peer();
         co_return;
@@ -156,7 +194,7 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
     assert(ctx);
     assert(reply);
 
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
         auto *si = reply->mutable_serverinfo();
@@ -177,8 +215,19 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                                                                                     const pb::UpdatesReq *request)
 {
     if (!owner_.active()) {
+        class FinishedReactor final : public ::grpc::ServerWriteReactor<pb::Update> {
+        public:
+            FinishedReactor() {
+                Finish(::grpc::Status{::grpc::StatusCode::UNAVAILABLE, "Server shutting down"});
+            }
+
+            void OnDone() override {
+                delete this;
+            }
+        };
+
         LOG_WARN << "Rejecting subscription. We are shutting down.";
-        return {};
+        return new FinishedReactor{};
     }
 
     class ServerWriteReactorImpl
@@ -369,6 +418,9 @@ failed:
             auto update = std::make_shared<pb::Update>();
             update->set_op(pb::Update::Operation::Update_Operation_UPDATED);
             update->set_resync(true);
+            if (auto session = session_.lock()) {
+                update->set_messageid(session->user().currentPublishId());
+            }
             publish(update);
             requestCloseAfterDrain();
         }
@@ -504,7 +556,7 @@ failed:
     assert(ctx);
     assert(reply);
 
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
     [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
     auto res = co_await rctx.dbh->exec(
@@ -528,7 +580,7 @@ failed:
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::UpdateDevice(::grpc::CallbackServerContext *ctx,
                                                                   const pb::DeviceUpdateReq *req,
                                                                   pb::Status *reply) {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
     [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
         // Check if the device exists. Get id, name and enabled.
@@ -571,7 +623,7 @@ failed:
                                                                   const common::Uuid *req,
                                                                   pb::Status *reply) {
 
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
     [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
         const auto &uuid = toUuid(req->uuid());
@@ -607,7 +659,7 @@ failed:
                                                                    const pb::ResetPlaybackReq *req,
                                                                    pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
         const auto& device_id = rctx.session().deviceId();
@@ -622,7 +674,7 @@ failed:
                                                                          const pb::Empty *req,
                                                                          pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             auto sessions = co_await owner_.sessionManager().listSessions();
 
@@ -655,7 +707,7 @@ failed:
                                                                      const pb::GetCertificatesReq *req,
                                                                      pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             enum Cols {
                 ID,
@@ -725,7 +777,7 @@ failed:
                                                                         const pb::DeleteNotificationReq *req,
                                                                         pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
             assert(req);
@@ -770,7 +822,7 @@ failed:
                                                                              pb::Empty *req,
                                                                              pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             if (auto lrn = rctx.uctx->getLastReadNotification()) {
                 reply->set_lastreadnotificationid(*lrn);
@@ -798,7 +850,7 @@ failed:
                                                                              const pb::SetReadNotificationReq *req,
                                                                              pb::Status *reply)
 {
-    return unaryHandler(ctx, req, reply,
+    return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             // TODO: Cache the last read notification in the user context
 
@@ -830,34 +882,48 @@ failed:
         // without running out of memory.
         // TODO: Set a timeout or constraints on how many db-connections we can keep open for batches.
         assert(rctx.dbh);
-        const auto cursor = getIncrementalSyncCursor(*req);
-        const auto fetch_all = cursor.use_updated_id && cursor.since == 0;
-        const auto where_clause = fetch_all ? "TRUE" : cursor.use_updated_id ? "updated_id > ?" : "updated > ?";
-        const auto tombstone_filter = cursor.full_sync ? "AND kind != 'deleted'" : "";
-        const auto sql = format(R"(SELECT {}
-            FROM notification WHERE {}
-            AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
-            AND (valid_to IS NULL OR valid_to > NOW())
-            {}
-            ORDER BY {}, id)", ToNotification::fields,
-            where_clause,
-            tombstone_filter,
-            cursor.use_updated_id ? "updated_id" : "updated");
-        if (fetch_all) {
-            co_await  rctx.dbh->start_exec(sql,
-              uctx->dbOptions(), cuser, rctx.uctx->tenantUuid());
-        } else if (cursor.use_updated_id) {
-            co_await  rctx.dbh->start_exec(sql,
-              uctx->dbOptions(), cursor.since, cuser, rctx.uctx->tenantUuid());
-        } else {
+        bool include_updated_id = false;
+        switch (rctx.session().syncClientMode()) {
+        case UserContext::SyncClientMode::Current: {
+            const auto cursor = getCurrentSyncCursor(*req);
+            include_updated_id = true;
+            const auto fetch_all = cursor.since == 0;
+            const auto tombstone_filter = cursor.full_sync ? "AND kind != 'deleted'" : "";
+            const auto sql = format(R"(SELECT {}
+                FROM notification WHERE {}
+                AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
+                {}
+                ORDER BY updated_id, id)", ToNotification::fields,
+                fetch_all ? "TRUE" : "updated_id > ?",
+                tombstone_filter);
+            if (fetch_all) {
+                co_await  rctx.dbh->start_exec(sql,
+                  uctx->dbOptions(), cuser, rctx.uctx->tenantUuid());
+            } else {
+                co_await  rctx.dbh->start_exec(sql,
+                  uctx->dbOptions(), cursor.since, cuser, rctx.uctx->tenantUuid());
+            }
+            break;
+        }
+        case UserContext::SyncClientMode::Legacy:
+        case UserContext::SyncClientMode::Unset: {
+            const auto cursor = getLegacySyncCursor(*req);
+            const auto tombstone_filter = cursor.full_sync ? "AND kind != 'deleted'" : "";
+            const auto sql = format(R"(SELECT {}
+                FROM notification WHERE updated > ?
+                AND (to_user=? || (to_tenant=? && to_user IS NULL) || (to_user IS NULL && to_tenant IS NULL))
+                {}
+                ORDER BY updated, id)", ToNotification::fields,
+                tombstone_filter);
             co_await  rctx.dbh->start_exec(sql,
               uctx->dbOptions(), toMsDateTime(req->since(), uctx->tz()), cuser, rctx.uctx->tenantUuid());
+            break;
+        }
         }
 
         nextapp::pb::Status reply;
 
         auto *notifications = reply.mutable_notifications();
-        const bool include_updated_id = cursor.use_updated_id;
         auto num_rows_in_batch = 0u;
         auto total_rows = 0u;
         auto batch_num = 0u;
@@ -1123,15 +1189,15 @@ boost::asio::awaitable<bool> GrpcServer::isReplay(::grpc::CallbackServerContext 
 {
     // Check if the request is protected against replay
     if (const auto it = ctx->client_metadata().find("req_id"); it != ctx->client_metadata().end()) {
-        if (const uint req_id = stoul(it->second.data()); req_id > 0) {
+        if (const auto req_id = parseMetadataUint(it->second); req_id && *req_id > 0) {
             // Validate
 
             const auto instance_id = getInstanceId(ctx);
-            LOG_TRACE_N << "Checking replay for instance " << instance_id << " and req " << req_id
+            LOG_TRACE_N << "Checking replay for instance " << instance_id << " and req " << *req_id
                         << " from session " << rctx.session().sessionId() << " for user " << rctx.uctx->userUuid();
 
             const auto& device_id = rctx.session().deviceId();
-            co_return co_await rctx.uctx->checkForReplay(device_id, instance_id, req_id);
+            co_return co_await rctx.uctx->checkForReplay(device_id, instance_id, *req_id);
         }
     }
 
@@ -1142,7 +1208,9 @@ uint GrpcServer::getInstanceId(::grpc::CallbackServerContext *ctx)
 {
     // The client only sends instance_id if the instance_id is > 1.
     if (const auto iit = ctx->client_metadata().find("instance_id"); iit != ctx->client_metadata().end()) {
-        return stoul(iit->second.data());
+        if (const auto instance_id = parseMetadataUint(iit->second); instance_id && *instance_id > 0) {
+            return static_cast<uint>(*instance_id);
+        }
     }
     return 1;
 }

@@ -11,10 +11,14 @@
 #include <QList>
 #include <QVariant>
 #include <QDir>
+#include <QDate>
+#include <QDateTime>
+#include <QtEndian>
 #include "qcorofuture.h"
 #include <QSqlError>
 #include <QSqlRecord>
 #include <QUuid>
+#include <QProtobufSerializer>
 #include "qcorosignal.h"
 #include "qcorotimer.h"
 
@@ -29,100 +33,152 @@ using namespace std;
 namespace {
 
 struct TableDigestSpec {
+    enum class Kind {
+        Node,
+        ActionCategory,
+        Action,
+        Day,
+        DayColor,
+        Tag,
+        WorkSession,
+        TimeBlock,
+        Notification,
+    };
+
     QStringView db_name;
     QStringView display_name;
-    QStringView hash_query;
+    Kind kind;
 };
 
-constexpr std::array<TableDigestSpec, 7> kTableDigestSpecs{{
-    {u"node", u"Nodes", u"SELECT * FROM node ORDER BY uuid"},
-    {u"action_category", u"Action Categories", u"SELECT * FROM action_category ORDER BY id"},
-    // For actions, remove fields that are expected to diverge locally.
-    {u"action", u"Actions", u"SELECT id, node, origin, category, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date, due_kind, start_time, due_by_time, due_timezone, completed_time, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, repeat_after, kind, version, tags FROM action ORDER BY id"},
-    {u"day", u"Days", u"SELECT * FROM day ORDER BY date"},
-    {u"tag", u"Tags", u"SELECT action, name FROM tag ORDER BY action, name"},
-    {u"work_session", u"Work Sessions", u"SELECT * FROM work_session ORDER BY id"},
-    {u"time_block", u"Time Blocks", u"SELECT * FROM time_block ORDER BY id"},
+constexpr std::array<TableDigestSpec, 9> kTableDigestSpecs{{
+    {u"node", u"Nodes", TableDigestSpec::Kind::Node},
+    {u"action_category", u"Action Categories", TableDigestSpec::Kind::ActionCategory},
+    {u"action", u"Actions", TableDigestSpec::Kind::Action},
+    {u"day", u"Days", TableDigestSpec::Kind::Day},
+    {u"day_colors", u"Day Colors", TableDigestSpec::Kind::DayColor},
+    {u"tag", u"Tags", TableDigestSpec::Kind::Tag},
+    {u"work_session", u"Work Sessions", TableDigestSpec::Kind::WorkSession},
+    {u"time_block", u"Time Blocks", TableDigestSpec::Kind::TimeBlock},
+    {u"notification", u"Notifications", TableDigestSpec::Kind::Notification},
 }};
 
 #include <QCryptographicHash>
 #include <QSqlQuery>
 #include <QSqlRecord>
 
-void putVarUint(QByteArray& out, quint64 x) {
-    while (x >= 0x80) { out.append(char((x & 0x7F) | 0x80)); x >>= 7; }
-    out.append(char(x));
+void putByte(QByteArray& out, quint8 value) {
+    out.append(char(value));
 }
 
-void putI64(QByteArray& out, qint64 v) {
-    for (int i = 0; i < 8; ++i) out.append(char((quint64(v) >> (8*i)) & 0xFF));
-}
-
-void putF64(QByteArray& out, double d) {
-    quint64 bits; static_assert(sizeof(double) == 8, "double must be 8 bytes");
-    memcpy(&bits, &d, 8);
-    for (int i = 0; i < 8; ++i) out.append(char((bits >> (8*i)) & 0xFF));
-}
-
-QByteArray serializeRow(const QSqlQuery& q) {
-    QByteArray out;
-    out.append(char(0x7E));                 // row marker
-    const int n = q.record().count();
-    for (int i = 0; i < n; ++i) {
-        if (q.isNull(i)) { out.append(char(0x00)); continue; }         // NULL
-        const QVariant v = q.value(i);
-        switch (v.metaType().id()) {
-        case QMetaType::Int:
-        case QMetaType::LongLong:
-        case QMetaType::UInt:
-        case QMetaType::ULongLong:
-        case QMetaType::Short:
-        case QMetaType::Long:
-            out.append(char(0x01));                                  // int tag
-            putI64(out, v.toLongLong());
-            break;
-        case QMetaType::Double:
-        case QMetaType::Float:
-            out.append(char(0x02));                                  // float tag
-            putF64(out, v.toDouble());
-            break;
-        case QMetaType::QByteArray: {
-            out.append(char(0x04));                                  // blob tag
-            QByteArray b = v.toByteArray();
-            putVarUint(out, quint64(b.size()));
-            out.append(b);
-            break;
-        }
-        default: {                                                   // text tag
-            out.append(char(0x03));
-            QByteArray b = v.toString().toUtf8();
-            putVarUint(out, quint64(b.size()));
-            out.append(b);
-            break;
-        }
-        }
+void putVarUint(QByteArray& out, quint64 value) {
+    while (value >= 0x80) {
+        out.append(char((value & 0x7F) | 0x80));
+        value >>= 7;
     }
-    return out;
+    out.append(char(value));
 }
 
-QByteArray blobFromQuery(QSqlDatabase db, const QString& sql)
+void putU64(QByteArray& out, quint64 value) {
+    for (int i = 0; i < 8; ++i) {
+        out.append(char((value >> (8 * i)) & 0xFF));
+    }
+}
+
+void putI64(QByteArray& out, qint64 value) {
+    for (int i = 0; i < 8; ++i) {
+        out.append(char((quint64(value) >> (8 * i)) & 0xFF));
+    }
+}
+
+void putF64(QByteArray& out, double value) {
+    quint64 bits;
+    static_assert(sizeof(double) == 8, "double must be 8 bytes");
+    memcpy(&bits, &value, 8);
+    for (int i = 0; i < 8; ++i) {
+        out.append(char((bits >> (8 * i)) & 0xFF));
+    }
+}
+
+void putNull(QByteArray& out) {
+    putByte(out, 0x00);
+}
+
+void putBool(QByteArray& out, bool value) {
+    putByte(out, 0x01);
+    putByte(out, value ? 1 : 0);
+}
+
+void putString(QByteArray& out, QStringView value) {
+    putByte(out, 0x02);
+    const auto bytes = value.toUtf8();
+    putVarUint(out, quint64(bytes.size()));
+    out.append(bytes);
+}
+
+void putSigned(QByteArray& out, qint64 value) {
+    putByte(out, 0x03);
+    putI64(out, value);
+}
+
+void putUnsigned(QByteArray& out, quint64 value) {
+    putByte(out, 0x04);
+    putU64(out, value);
+}
+
+void putDate(QByteArray& out, const QDate& value) {
+    if (!value.isValid()) {
+        putNull(out);
+        return;
+    }
+
+    putByte(out, 0x05);
+    putSigned(out, value.year());
+    putSigned(out, value.month());
+    putSigned(out, value.day());
+}
+
+void putDateTimeSeconds(QByteArray& out, const QDateTime& value) {
+    if (!value.isValid()) {
+        putNull(out);
+        return;
+    }
+
+    putByte(out, 0x06);
+    putSigned(out, value.toSecsSinceEpoch());
+}
+
+template <typename T>
+void putOptionalString(QByteArray& out, const T& value) {
+    if (value.isEmpty()) {
+        putNull(out);
+        return;
+    }
+
+    putString(out, value);
+}
+
+template <typename T>
+void putStringList(QByteArray& out, const T& items) {
+    putByte(out, 0x07);
+    putVarUint(out, quint64(items.size()));
+    for (const auto& item : items) {
+        putString(out, item);
+    }
+}
+
+template <typename Message>
+bool deserializeMessage(const QByteArray& data, Message& message)
 {
-    QSqlQuery q(db);
-    q.setForwardOnly(true);
-    if (!q.exec(sql)) return QByteArray();
-
-    QByteArray all;
-    // Optional: include column count so schema changes alter the blob
-    quint32 cols = q.record().count();
-    all.append(char(0x55)); all.append(char(0xAA));
-    all.append(char(cols & 0xFF));
-    all.append(char((cols >> 8) & 0xFF));
-    while (q.next())
-        all += serializeRow(q);
-    return all;
+    QProtobufSerializer serializer;
+    return message.deserialize(&serializer, data);
 }
 
-bool sha3OfQuery(QCryptographicHash& h, QSqlDatabase db, const QString& sql)
+template <typename RowEncoder>
+bool hashRows(QCryptographicHash& h,
+              QSqlDatabase db,
+              QStringView table_name,
+              const QString& sql,
+              RowEncoder&& encode_row)
 {
     QSqlQuery q(db);
     q.setForwardOnly(true);
@@ -133,19 +189,380 @@ bool sha3OfQuery(QCryptographicHash& h, QSqlDatabase db, const QString& sql)
         return false;
     }
 
-    // Include column count (force a defined byte order)
-    quint32 cols = q.record().count();
-    const quint32 colsLE = qToLittleEndian(cols);
-    h.addData(QByteArrayView(reinterpret_cast<const char*>(&colsLE),
-                             qsizetype(sizeof colsLE)));
+    QByteArray table_header;
+    putString(table_header, table_name);
+    h.addData(QByteArrayView(table_header));
 
     while (q.next()) {
-        const QByteArray row = serializeRow(q);     // your existing serializer
-        // Either of these is fine; both are non-deprecated:
-        // h.addData(row);
+        QByteArray row;
+        putByte(row, 0x7E);
+        if (!encode_row(q, row)) {
+            return false;
+        }
         h.addData(QByteArrayView(row));
     }
+
     return true;
+}
+
+bool hashNodeTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"node", QStringLiteral("SELECT data FROM node ORDER BY uuid"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            nextapp::pb::Node node;
+            if (!deserializeMessage(q.value(0).toByteArray(), node)) {
+                LOG_WARN_N << "Failed to deserialize cached node for checksum";
+                return false;
+            }
+
+            putString(row, node.uuid());
+            putOptionalString(row, node.parent());
+            putBool(row, node.active());
+            putString(row, node.name());
+            putSigned(row, static_cast<qint64>(node.kind()));
+            putOptionalString(row, node.descr());
+            putSigned(row, node.version());
+            putBool(row, node.deleted());
+            putSigned(row, node.updated());
+            putBool(row, node.excludeFromWeeklyReview());
+            putOptionalString(row, node.category());
+            putUnsigned(row, node.updatedId());
+            return true;
+        });
+}
+
+bool hashActionCategoryTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"action_category",
+        QStringLiteral("SELECT data FROM action_category ORDER BY id"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            nextapp::pb::ActionCategory category;
+            if (!deserializeMessage(q.value(0).toByteArray(), category)) {
+                LOG_WARN_N << "Failed to deserialize cached action category for checksum";
+                return false;
+            }
+
+            putString(row, category.id_proto());
+            putString(row, category.name());
+            putOptionalString(row, category.descr());
+            putOptionalString(row, category.color());
+            putSigned(row, category.version());
+            putOptionalString(row, category.icon());
+            putBool(row, category.deleted());
+            putSigned(row, category.updated());
+            return true;
+        });
+}
+
+bool hashActionTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"action", QStringLiteral(
+        "SELECT id, node, origin, priority, dyn_importance, dyn_urgency, status, favorite, "
+        "name, descr, created_date, due_kind, start_time, due_by_time, due_timezone, "
+        "completed_time, time_estimate, difficulty, repeat_kind, repeat_unit, repeat_when, "
+        "repeat_after, kind, version, category, time_spent, updated, updated_id "
+        "FROM action ORDER BY id"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            putString(row, q.value(0).toString());
+            putString(row, q.value(1).toString());
+            putOptionalString(row, q.value(2).toString());
+
+            if (q.isNull(3)) {
+                putNull(row);
+            } else {
+                putSigned(row, q.value(3).toLongLong());
+            }
+
+            if (q.isNull(4) || q.isNull(5)) {
+                putNull(row);
+            } else {
+                putSigned(row, q.value(4).toLongLong());
+                putSigned(row, q.value(5).toLongLong());
+            }
+
+            putSigned(row, q.value(6).toLongLong());
+            putBool(row, q.value(7).toBool());
+            putString(row, q.value(8).toString());
+            putBool(row, !q.isNull(9));
+            if (q.isNull(9)) {
+                putNull(row);
+            } else {
+                putString(row, q.value(9).toString());
+            }
+            putDate(row, q.value(10).toDate());
+            putSigned(row, q.value(11).toLongLong());
+            putDateTimeSeconds(row, q.value(12).toDateTime());
+            putDateTimeSeconds(row, q.value(13).toDateTime());
+            putOptionalString(row, q.value(14).toString());
+            putDateTimeSeconds(row, q.value(15).toDateTime());
+
+            if (q.isNull(16)) {
+                putNull(row);
+            } else {
+                putUnsigned(row, q.value(16).toULongLong());
+            }
+
+            if (q.isNull(17)) {
+                putNull(row);
+            } else {
+                putSigned(row, q.value(17).toLongLong());
+            }
+
+            if (q.isNull(18)) {
+                putNull(row);
+            } else {
+                putSigned(row, q.value(18).toLongLong());
+            }
+
+            if (q.isNull(19)) {
+                putNull(row);
+            } else {
+                putSigned(row, q.value(19).toLongLong());
+            }
+
+            if (q.isNull(20)) {
+                putNull(row);
+            } else {
+                putSigned(row, q.value(20).toLongLong());
+            }
+
+            if (q.isNull(21)) {
+                putNull(row);
+            } else {
+                putSigned(row, q.value(21).toLongLong());
+            }
+
+            putSigned(row, q.value(22).toLongLong());
+            putSigned(row, q.value(23).toLongLong());
+            putOptionalString(row, q.value(24).toString());
+
+            if (q.isNull(25)) {
+                putNull(row);
+            } else {
+                putSigned(row, q.value(25).toLongLong());
+            }
+
+            putSigned(row, q.value(26).toLongLong());
+            putUnsigned(row, q.value(27).toULongLong());
+            return true;
+        });
+}
+
+bool hashDayTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"day",
+        QStringLiteral("SELECT date, color, notes, report, updated, updated_id FROM day ORDER BY date"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            putDate(row, q.value(0).toDate());
+            putOptionalString(row, q.value(1).toString());
+            putOptionalString(row, q.value(2).toString());
+            putOptionalString(row, q.value(3).toString());
+            putSigned(row, q.value(4).toLongLong());
+            putUnsigned(row, q.value(5).toULongLong());
+            return true;
+        });
+}
+
+bool hashDayColorTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"day_colors",
+        QStringLiteral("SELECT id, score, color, name, updated, updated_id FROM day_colors ORDER BY id"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            putString(row, q.value(0).toString());
+            putSigned(row, q.value(1).toLongLong());
+            putString(row, q.value(2).toString());
+            putString(row, q.value(3).toString());
+            putSigned(row, q.value(4).toLongLong());
+            putUnsigned(row, q.value(5).toULongLong());
+            return true;
+        });
+}
+
+bool hashTagTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"tag",
+        QStringLiteral("SELECT action, name FROM tag ORDER BY action, name"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            putString(row, q.value(0).toString());
+            putString(row, q.value(1).toString());
+            return true;
+        });
+}
+
+bool hashWorkSessionTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"work_session",
+        QStringLiteral("SELECT data FROM work_session ORDER BY id"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            nextapp::pb::WorkSession work;
+            if (!deserializeMessage(q.value(0).toByteArray(), work)) {
+                LOG_WARN_N << "Failed to deserialize cached work session for checksum";
+                return false;
+            }
+
+            const bool has_live_local_counters =
+                work.state() == nextapp::pb::WorkSession::State::ACTIVE
+                || work.state() == nextapp::pb::WorkSession::State::PAUSED;
+
+            putString(row, work.id_proto());
+            putString(row, work.action());
+            putUnsigned(row, work.start());
+            if (work.hasEnd()) {
+                putUnsigned(row, work.end());
+            } else {
+                putNull(row);
+            }
+            if (has_live_local_counters) {
+                putNull(row);
+                putNull(row);
+            } else {
+                putUnsigned(row, work.duration());
+                putUnsigned(row, work.paused());
+            }
+            putSigned(row, static_cast<qint64>(work.state()));
+            putSigned(row, work.version());
+            putUnsigned(row, work.touched());
+            putString(row, work.name());
+            putString(row, work.notes());
+            putUnsigned(row, work.updated());
+            putUnsigned(row, work.updatedId());
+            putVarUint(row, quint64(work.events().size()));
+            for (const auto& event : work.events()) {
+                putSigned(row, static_cast<qint64>(event.kind()));
+                putUnsigned(row, event.time());
+                if (event.hasStart()) {
+                    putUnsigned(row, event.start());
+                } else {
+                    putNull(row);
+                }
+                if (event.hasEnd()) {
+                    putUnsigned(row, event.end());
+                } else {
+                    putNull(row);
+                }
+                if (event.hasDuration()) {
+                    putUnsigned(row, event.duration());
+                } else {
+                    putNull(row);
+                }
+                if (event.hasPaused()) {
+                    putUnsigned(row, event.paused());
+                } else {
+                    putNull(row);
+                }
+                if (event.hasName()) {
+                    putString(row, event.name());
+                } else {
+                    putNull(row);
+                }
+                if (event.hasNotes()) {
+                    putString(row, event.notes());
+                } else {
+                    putNull(row);
+                }
+            }
+            return true;
+        });
+}
+
+bool hashTimeBlockTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"time_block",
+        QStringLiteral("SELECT data FROM time_block ORDER BY id"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            nextapp::pb::TimeBlock block;
+            if (!deserializeMessage(q.value(0).toByteArray(), block)) {
+                LOG_WARN_N << "Failed to deserialize cached time block for checksum";
+                return false;
+            }
+
+            putString(row, block.id_proto());
+            putUnsigned(row, block.timeSpan().start());
+            putUnsigned(row, block.timeSpan().end());
+            putString(row, block.name());
+            putSigned(row, static_cast<qint64>(block.kind()));
+            putOptionalString(row, block.category());
+
+            QStringList actions;
+            actions.reserve(block.actions().list().size());
+            for (const auto& action_id : block.actions().list()) {
+                actions.append(action_id);
+            }
+            std::sort(actions.begin(), actions.end());
+            putStringList(row, actions);
+
+            putSigned(row, block.version());
+            putUnsigned(row, block.updated());
+            putUnsigned(row, block.updatedId());
+            return true;
+        });
+}
+
+bool hashNotificationTable(QCryptographicHash& h, QSqlDatabase db)
+{
+    return hashRows(h, db, u"notification",
+        QStringLiteral("SELECT data FROM notification ORDER BY id"),
+        [](const QSqlQuery& q, QByteArray& row) {
+            nextapp::pb::Notification notification;
+            if (!deserializeMessage(q.value(0).toByteArray(), notification)) {
+                LOG_WARN_N << "Failed to deserialize cached notification for checksum";
+                return false;
+            }
+
+            putUnsigned(row, notification.id_proto());
+            putUnsigned(row, notification.createdTime().unixTime());
+            if (notification.hasValidTo()) {
+                putUnsigned(row, notification.validTo().unixTime());
+            } else {
+                putNull(row);
+            }
+            putString(row, notification.subject());
+            putString(row, notification.message());
+            putSigned(row, static_cast<qint64>(notification.senderType()));
+            putOptionalString(row, notification.senderId());
+            if (notification.hasToUser()) {
+                putString(row, notification.toUser().uuid());
+            } else {
+                putNull(row);
+            }
+            if (notification.hasToTenant()) {
+                putString(row, notification.toTenant().uuid());
+            } else {
+                putNull(row);
+            }
+            putString(row, notification.uuid().uuid());
+            putSigned(row, static_cast<qint64>(notification.kind()));
+            putOptionalString(row, notification.data());
+            putUnsigned(row, notification.updated());
+            putUnsigned(row, notification.updatedId());
+            return true;
+        });
+}
+
+bool hashTable(QCryptographicHash& h, QSqlDatabase db, const TableDigestSpec& spec)
+{
+    switch (spec.kind) {
+    case TableDigestSpec::Kind::Node:
+        return hashNodeTable(h, db);
+    case TableDigestSpec::Kind::ActionCategory:
+        return hashActionCategoryTable(h, db);
+    case TableDigestSpec::Kind::Action:
+        return hashActionTable(h, db);
+    case TableDigestSpec::Kind::Day:
+        return hashDayTable(h, db);
+    case TableDigestSpec::Kind::DayColor:
+        return hashDayColorTable(h, db);
+    case TableDigestSpec::Kind::Tag:
+        return hashTagTable(h, db);
+    case TableDigestSpec::Kind::WorkSession:
+        return hashWorkSessionTable(h, db);
+    case TableDigestSpec::Kind::TimeBlock:
+        return hashTimeBlockTable(h, db);
+    case TableDigestSpec::Kind::Notification:
+        return hashNotificationTable(h, db);
+    }
+
+    return false;
 }
 
 
@@ -156,7 +573,6 @@ DbStore::DbStore(const QString& db_file_name, QObject *parent)
       db_file_name_{db_file_name},
       connection_name_{QUuid::createUuid().toString(QUuid::WithoutBraces)}
 {
-    mutex_.lock();
     if constexpr (use_worker_thread) {
         QObject::connect(thread_, &QThread::started, this, &DbStore::start);
         QObject::connect(thread_, &QThread::finished, this, []() {
@@ -206,7 +622,7 @@ QCoro::Task<tl::expected<DbStore::DbDataInfo, DbStore::Error> > DbStore::getDbDa
 
         auto get_hash = [&](const TableDigestSpec& spec) {
             QCryptographicHash h(QCryptographicHash::Sha1);
-            if (!sha3OfQuery(h, *db_, spec.hash_query.toString())) {
+            if (!hashTable(h, *db_, spec)) {
                 throw std::runtime_error("Failed to hash table " + spec.db_name.toString().toStdString());
             }
             return QString::fromLatin1(h.result().toHex());
@@ -241,11 +657,7 @@ void DbStore::start() {
 
     if constexpr (use_worker_thread) {
         LOG_TRACE_N << "Now running in worker thread";
-
-        {
-            // Wait for init() to be called
-            lock_guard lock{mutex_};
-        }
+        start_signal_.acquire();
     }
 
     try {
@@ -529,7 +941,7 @@ QCoro::Task<bool> DbStore::init() {
             finish(false);
         }, Qt::QueuedConnection);
 
-        mutex_.unlock();
+        start_signal_.release();
         QFutureWatcher<bool> watcher;
         watcher.setFuture(future);
         co_await watcher.future();
@@ -677,7 +1089,7 @@ tl::expected<QString, DbStore::Error> DbStore::getDbDataHash()
     QCryptographicHash h(QCryptographicHash::Sha1); // We don't need cryptographic strength here
 
     for (const auto& spec : kTableDigestSpecs) {
-        if (!sha3OfQuery(h, *db_, spec.hash_query.toString())) {
+        if (!hashTable(h, *db_, spec)) {
             LOG_WARN_N << "Failed to get hash for table: " << spec.db_name.toString();
             return tl::make_unexpected(Error::QUERY_FAILED);
         }

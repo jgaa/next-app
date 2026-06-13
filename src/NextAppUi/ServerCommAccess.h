@@ -60,6 +60,7 @@ public:
     virtual const nextapp::pb::DataVersionsInfo& getServerDataVersions() const noexcept = 0;
     virtual void setLocalActionCategoryVersion(uint64_t version) = 0;
     virtual bool shouldUseUpdatedIdSync() const noexcept = 0;
+    virtual void requestIncrementalRepair() = 0;
     virtual void resync() = 0;
     virtual void fetchDay(int year, int month, int day) = 0;
     virtual void getDayColorDefinitions() = 0;

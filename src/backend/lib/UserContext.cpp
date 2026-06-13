@@ -156,6 +156,20 @@ boost::asio::awaitable<void> SessionManager::savePublishState_(const boost::uuid
         state.publish_epoch);
 }
 
+boost::asio::awaitable<void> SessionManager::persistPublishState(const std::shared_ptr<UserContext>& user)
+{
+    co_await savePublishState_(toUuid(user->userUuid()), user->userUuid(), user->currentPublishState());
+}
+
+void SessionManager::persistPublishStateSync_(const PendingPublishStateSave& state)
+{
+    auto save = boost::asio::co_spawn(
+        ioContext(),
+        savePublishState_(state.user_uuid, state.user_uuid_str, state.state),
+        boost::asio::use_future);
+    save.get();
+}
+
 boost::asio::awaitable<void> SessionManager::loadPlans()
 {
     LOG_DEBUG_N << "Loading plans from database...";
@@ -1020,7 +1034,7 @@ void UserContext::removePublisher(const boost::uuids::uuid &uuid)
 {
     LOG_TRACE_N << "Removing publisher " << uuid << " from user context for user " << userUuid();
     unique_lock lock{mutex_};
-    (void)ranges::remove_if(publishers_, [uuid](const auto& p) {
+    std::erase_if(publishers_, [uuid](const auto& p) {
         if (auto pub = p.lock()) {
             return pub->uuid() == uuid;
         } else {
@@ -1385,6 +1399,10 @@ void UserContext::Session::requireWritableForAdd(string_view resource) const
     case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
         throw server_err{pb::Error::LIMIT_EXCEEDED,
                          format("This device is currently in read-only mode because the active plan only allows mobile devices full access. Cannot add {}.", resource)};
+    default:
+        assert(false && "Unhandled session access mode");
+        throw server_err{pb::Error::GENERIC_ERROR,
+                         "Unhandled session access mode"};
     }
 }
 
@@ -1486,7 +1504,7 @@ boost::asio::awaitable<void> UserContext::reloadPushers() {
                 device.push_notifications_ = make_shared<PushNotifications>(toUuid(userUuid()), deviceId, token, pusher);
             } else {
                 LOG_WARN_N << "No pusher found for device " << deviceId
-                            << " with type " << type << " and token " << token;
+                           << " with type " << type << " and token " << token.substr(0, 8) << "...";
             }
         }
     }
@@ -1494,8 +1512,8 @@ boost::asio::awaitable<void> UserContext::reloadPushers() {
 
 void UserContext::Session::handlePushState(const pb::PushNotificationConfig &wp)
 {
-    boost::asio::co_spawn(Server::instance().ctx(), [&]() -> boost::asio::awaitable<void> {
-        co_await processPushState(wp);
+    boost::asio::co_spawn(Server::instance().ctx(), [self = shared_from_this(), wp]() -> boost::asio::awaitable<void> {
+        co_await self->processPushState(wp);
     }, boost::asio::detached);
 }
 
@@ -1642,8 +1660,13 @@ initial_auth_ok:
             if (!session.user().valid()) {
                 LOG_DEBUG_N << "Session " << sid << " for device " << device_uuid
                             << " is not valid because the user context is not valid. Removing it.";
-                // User context is not valid, remove the session.
-                removeSession_(sid);
+                lock.unlock();
+                unique_lock write_lock{mutex_};
+                auto pending_save = removeSession_(sid);
+                write_lock.unlock();
+                if (pending_save) {
+                    persistPublishStateSync_(*pending_save);
+                }
                 throw server_err{pb::Error::AUTH_FAILED, "User context is no longer valid. Did you delete your user account?"};
             }
             if (session.deviceId() == device_uuid) [[likely]] {
@@ -1733,10 +1756,14 @@ initial_auth_ok:
 void SessionManager::removeSession(const boost::uuids::uuid &sessionId)
 {
     unique_lock lock{mutex_};
-    removeSession_(sessionId);
+    auto pending_save = removeSession_(sessionId);
+    lock.unlock();
+    if (pending_save) {
+        persistPublishStateSync_(*pending_save);
+    }
 }
 
-void SessionManager::removeSession_(const boost::uuids::uuid &sessionId)
+std::optional<SessionManager::PendingPublishStateSave> SessionManager::removeSession_(const boost::uuids::uuid &sessionId)
 {
     LOG_TRACE_N << "Removing session " << sessionId;
     if (auto it = sessions_.find(sessionId); it != sessions_.end()) {
@@ -1757,20 +1784,15 @@ void SessionManager::removeSession_(const boost::uuids::uuid &sessionId)
             if (session->user().hasNoSessions()) {
                 const auto publishState = session->user().currentPublishState();
                 const auto userUuidStr = session->user().userUuid();
-                {
-                    std::lock_guard lock{publish_states_mutex_};
-                    publish_states_[userUuid] = publishState;
-                }
                 LOG_DEBUG_N << "Removing UserContext for user " << userUuid << " as it has no more sessions";
                 users_.erase(userUuid);
-                boost::asio::co_spawn(ioContext(), [this, userUuid, userUuidStr, publishState]() -> boost::asio::awaitable<void> {
-                    co_await savePublishState_(userUuid, userUuidStr, publishState);
-                }, boost::asio::detached);
+                return PendingPublishStateSave{userUuid, userUuidStr, publishState};
             }
         }
     } else {
         LOG_WARN_N << "Session " << sessionId << " not found.";
     }
+    return std::nullopt;
 }
 
 void UserContext::Session::cleanup() {
@@ -1801,6 +1823,7 @@ void SessionManager::shutdown()
 
     timer_.cancel();
     std::vector<std::shared_ptr<UserContext::Session>> to_clean;
+    std::vector<PendingPublishStateSave> pending_saves;
     bool has_more = false;
 
     do {
@@ -1810,9 +1833,16 @@ void SessionManager::shutdown()
                 LOG_DEBUG_N << "Removing session " << sessions_.begin()->first << " due to shutdown.";
                 auto session = sessions_.begin()->second;
                 to_clean.push_back(session->shared_from_this());
-                removeSession_(session->sessionId());
+                if (auto pending_save = removeSession_(session->sessionId())) {
+                    pending_saves.push_back(std::move(*pending_save));
+                }
             }
         }
+
+        for (const auto& pending_save : pending_saves) {
+            persistPublishStateSync_(pending_save);
+        }
+        pending_saves.clear();
 
         while(!to_clean.empty()) {
             auto session = to_clean.back();
@@ -1852,6 +1882,7 @@ void SessionManager::onTimer()
     const auto now = chrono::steady_clock::now();
 
     std::vector<std::shared_ptr<UserContext::Session>> to_clean;
+    std::vector<PendingPublishStateSave> pending_saves;
 
     {
         unique_lock lock{mutex_};
@@ -1868,9 +1899,15 @@ void SessionManager::onTimer()
             if (expieres < now) {
                 to_clean.push_back(session->shared_from_this());
                 LOG_DEBUG_N << "Session " << session->sessionId() << " expired.";
-                removeSession_(session->sessionId());
+                if (auto pending_save = removeSession_(session->sessionId())) {
+                    pending_saves.push_back(std::move(*pending_save));
+                }
             }
         }
+    }
+
+    for (const auto& pending_save : pending_saves) {
+        persistPublishStateSync_(pending_save);
     }
 
     while(!to_clean.empty()) {

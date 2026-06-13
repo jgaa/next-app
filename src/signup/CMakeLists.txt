@@ -27,8 +27,8 @@ set_property(TARGET boost PROPERTY
 add_subdirectory(lib)
 add_subdirectory(server)
 
-# if (SIGNUP_WITH_TESTS)
-#     find_package(GTest REQUIRED)
-#     enable_testing()
-#     add_subdirectory(tests)
-# endif()
+if (NEXTAPP_WITH_TESTS)
+    find_package(GTest REQUIRED)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

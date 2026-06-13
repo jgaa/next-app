@@ -1,3 +1,5 @@
+
+#include <iostream>
 #include <QCoreApplication>
 #include <QDir>
 #include <QJsonDocument>
@@ -9,6 +11,7 @@
 #include <QtTest>
 
 #include "AcceptanceHarness.h"
+#include "logging.h"
 
 namespace {
 
@@ -41,14 +44,24 @@ int matrixDeviceCount()
 
 QJsonObject requireJsonObject(const CommandResult& result)
 {
-    if (!result.ok()) {
-        QTest::qFail(result.stderr_text.constData(), __FILE__, __LINE__);
+    const auto failWithOutput = [&](const char *reason) -> QJsonObject {
+        const auto message = QStringLiteral("%1\nstdout:\n%2\nstderr:\n%3")
+                                 .arg(QString::fromUtf8(reason),
+                                      QString::fromUtf8(result.stdout_text),
+                                      QString::fromUtf8(result.stderr_text));
+        QTest::qFail(message.toUtf8().constData(), __FILE__, __LINE__);
         return {};
-    }
+    };
+
     const auto json = QJsonDocument::fromJson(result.stdout_text);
+    if (!result.ok()) {
+        if (json.isObject()) {
+            return json.object();
+        }
+        return failWithOutput("Helper command failed");
+    }
     if (!json.isObject()) {
-        QTest::qFail("Helper output was not a JSON object", __FILE__, __LINE__);
-        return {};
+        return failWithOutput("Helper output was not a JSON object");
     }
     return json.object();
 }
@@ -78,6 +91,26 @@ void compareReplicaState(const QJsonObject& expected, const QJsonObject& actual)
              actual.value(QStringLiteral("numWorkSessions")).toInt());
     QCOMPARE(expected.value(QStringLiteral("numTimeBlocks")).toInt(),
              actual.value(QStringLiteral("numTimeBlocks")).toInt());
+}
+
+void requireReplayReconnect(const QJsonObject& reconnect_object)
+{
+    QVERIFY(reconnect_object.value(QStringLiteral("requestedLiveReplay")).toBool());
+    QVERIFY(!reconnect_object.value(QStringLiteral("usedDurableSync")).toBool());
+    QVERIFY(!reconnect_object.value(QStringLiteral("usedFullSync")).toBool());
+    QVERIFY(!reconnect_object.value(QStringLiteral("serverInstanceChanged")).toBool());
+}
+
+void requireNormalSyncReconnect(const QJsonObject& reconnect_object)
+{
+    QVERIFY(!reconnect_object.value(QStringLiteral("usedFullSync")).toBool());
+    QVERIFY(reconnect_object.value(QStringLiteral("usedDurableSync")).toBool());
+}
+
+void requireFullSyncReconnect(const QJsonObject& reconnect_object)
+{
+    QVERIFY(reconnect_object.value(QStringLiteral("usedFullSync")).toBool());
+    QVERIFY(reconnect_object.value(QStringLiteral("usedDurableSync")).toBool());
 }
 
 QString tenantName(int tenant_index)
@@ -281,6 +314,9 @@ private slots:
     void backendFixtureSignsUpFirstDeviceWhenEnabled();
     void backendFixtureAddsSecondDeviceWithOtpWhenEnabled();
     void backendFixtureReplicatesScriptedBatchAcrossReconnectWhenEnabled();
+    void backendFixtureFallsBackToNormalSyncWhenReplayUnavailableWhenEnabled();
+    void backendFixtureReconnectsAfterServerRestartWithNormalSyncWhenEnabled();
+    void backendFixtureServerEnforcedFullSyncConvergesLaggingDeviceWhenEnabled();
     void backendFixtureForcedFullSyncConvergesLaggingDeviceWhenEnabled();
     void backendFixtureReplicatesAcrossTenantMatrixWhenEnabled();
     void backendFixtureStartsRealBackendWhenEnabled();
@@ -550,6 +586,7 @@ void tst_NextAppUiAcceptance::backendFixtureReplicatesScriptedBatchAcrossReconne
     QVERIFY(reconnect_json.isObject());
     const auto reconnect_object = reconnect_json.object();
     QVERIFY(reconnect_object.value(QStringLiteral("synced")).toBool());
+    requireReplayReconnect(reconnect_object);
 
     QCOMPARE(wait_writer_b_object.value(QStringLiteral("hash")).toString(),
              reconnect_object.value(QStringLiteral("hash")).toString());
@@ -567,6 +604,127 @@ void tst_NextAppUiAcceptance::backendFixtureReplicatesScriptedBatchAcrossReconne
              reconnect_object.value(QStringLiteral("numWorkSessions")).toInt());
     QCOMPARE(wait_writer_b_object.value(QStringLiteral("numTimeBlocks")).toInt(),
              reconnect_object.value(QStringLiteral("numTimeBlocks")).toInt());
+}
+
+void tst_NextAppUiAcceptance::backendFixtureFallsBackToNormalSyncWhenReplayUnavailableWhenEnabled()
+{
+    if (!qEnvironmentVariableIsSet("NEXTAPP_ACCEPTANCE_RUN_BACKEND")) {
+        QSKIP("Set NEXTAPP_ACCEPTANCE_RUN_BACKEND=1 to enable real-container acceptance smoke tests.");
+    }
+
+    const auto paths = AcceptancePaths::create();
+    BackendFixture fixture{paths, backendOptionsFromEnv()};
+    if (!fixture.dockerAvailable()) {
+        QSKIP("Docker is not available for the acceptance backend fixture.");
+    }
+
+    fixture.start();
+
+    AcceptanceDevice device1{paths, QStringLiteral("tenant-a"), QStringLiteral("device-1")};
+    AcceptanceDevice device2{paths, QStringLiteral("tenant-a"), QStringLiteral("device-2")};
+
+    signUpFirstDevice(device1, fixture, 0);
+    addSecondaryDevice(device1, device2, fixture);
+    compareReplicaState(waitReady(device1), waitReady(device2));
+
+    const auto disconnected = runHelperJson(device2, {QStringLiteral("disconnect")}, 120000);
+    QVERIFY(disconnected.value(QStringLiteral("disconnected")).toBool());
+
+    const auto large_batch = runHelperJson(device1, {
+        QStringLiteral("apply-scripted-batches"),
+        QStringLiteral("--batch"), QStringLiteral("ReplayMiss"),
+        QStringLiteral("--count"), QStringLiteral("400"),
+    }, 600000);
+    QVERIFY(large_batch.value(QStringLiteral("actionSubmitted")).toBool());
+    QCOMPARE(large_batch.value(QStringLiteral("batchCount")).toInt(), 400);
+
+    const auto reconnect = runHelperJson(device2, {QStringLiteral("reconnect")}, 600000);
+    QVERIFY(reconnect.value(QStringLiteral("synced")).toBool());
+    QVERIFY(reconnect.value(QStringLiteral("replayUnavailableFallback")).toBool());
+    QVERIFY(!reconnect.value(QStringLiteral("requestedLiveReplay")).toBool());
+    QVERIFY(!reconnect.value(QStringLiteral("serverInstanceChanged")).toBool());
+    requireNormalSyncReconnect(reconnect);
+
+    compareReplicaState(waitReady(device1), reconnect);
+}
+
+void tst_NextAppUiAcceptance::backendFixtureReconnectsAfterServerRestartWithNormalSyncWhenEnabled()
+{
+    if (!qEnvironmentVariableIsSet("NEXTAPP_ACCEPTANCE_RUN_BACKEND")) {
+        QSKIP("Set NEXTAPP_ACCEPTANCE_RUN_BACKEND=1 to enable real-container acceptance smoke tests.");
+    }
+
+    const auto paths = AcceptancePaths::create();
+    BackendFixture fixture{paths, backendOptionsFromEnv()};
+    if (!fixture.dockerAvailable()) {
+        QSKIP("Docker is not available for the acceptance backend fixture.");
+    }
+
+    fixture.start();
+
+    AcceptanceDevice device1{paths, QStringLiteral("tenant-a"), QStringLiteral("device-1")};
+    AcceptanceDevice device2{paths, QStringLiteral("tenant-a"), QStringLiteral("device-2")};
+
+    signUpFirstDevice(device1, fixture, 0);
+    addSecondaryDevice(device1, device2, fixture);
+    compareReplicaState(waitReady(device1), waitReady(device2));
+
+    const auto disconnected = runHelperJson(device2, {QStringLiteral("disconnect")}, 120000);
+    QVERIFY(disconnected.value(QStringLiteral("disconnected")).toBool());
+
+    const auto batch = runHelperJson(device1, {
+        QStringLiteral("apply-scripted-batch"),
+        QStringLiteral("--batch"), QStringLiteral("RestartA"),
+    }, 240000);
+    QVERIFY(batch.value(QStringLiteral("actionSubmitted")).toBool());
+
+    fixture.restartNextappd();
+
+    const auto reconnect = runHelperJson(device2, {QStringLiteral("reconnect")}, 600000);
+    QVERIFY(reconnect.value(QStringLiteral("synced")).toBool());
+    QVERIFY(reconnect.value(QStringLiteral("serverInstanceChanged")).toBool());
+    QVERIFY(!reconnect.value(QStringLiteral("usedFullSync")).toBool());
+    QVERIFY(!reconnect.value(QStringLiteral("requestedLiveReplay")).toBool());
+    requireNormalSyncReconnect(reconnect);
+
+    compareReplicaState(waitReady(device1), reconnect);
+}
+
+void tst_NextAppUiAcceptance::backendFixtureServerEnforcedFullSyncConvergesLaggingDeviceWhenEnabled()
+{
+    if (!qEnvironmentVariableIsSet("NEXTAPP_ACCEPTANCE_RUN_BACKEND")) {
+        QSKIP("Set NEXTAPP_ACCEPTANCE_RUN_BACKEND=1 to enable real-container acceptance smoke tests.");
+    }
+
+    const auto paths = AcceptancePaths::create();
+    BackendFixture fixture{paths, backendOptionsFromEnv()};
+    if (!fixture.dockerAvailable()) {
+        QSKIP("Docker is not available for the acceptance backend fixture.");
+    }
+
+    fixture.start();
+
+    AcceptanceDevice device1{paths, QStringLiteral("tenant-a"), QStringLiteral("device-1")};
+    AcceptanceDevice device2{paths, QStringLiteral("tenant-a"), QStringLiteral("device-2")};
+
+    signUpFirstDevice(device1, fixture, 0);
+    addSecondaryDevice(device1, device2, fixture);
+    compareReplicaState(waitReady(device1), waitReady(device2));
+
+    const auto disconnected = runHelperJson(device2, {QStringLiteral("disconnect")}, 120000);
+    QVERIFY(disconnected.value(QStringLiteral("disconnected")).toBool());
+
+    const auto structural_delete = runHelperJson(device1, {
+        QStringLiteral("apply-structural-node-delete"),
+        QStringLiteral("--batch"), QStringLiteral("ResyncDelete"),
+    }, 600000);
+    QVERIFY(structural_delete.value(QStringLiteral("resyncRequested")).toBool());
+
+    const auto reconnect = runHelperJson(device2, {QStringLiteral("reconnect")}, 600000);
+    QVERIFY(reconnect.value(QStringLiteral("synced")).toBool());
+    requireFullSyncReconnect(reconnect);
+
+    compareReplicaState(waitReady(device1), reconnect);
 }
 
 void tst_NextAppUiAcceptance::backendFixtureForcedFullSyncConvergesLaggingDeviceWhenEnabled()
@@ -654,6 +812,7 @@ void tst_NextAppUiAcceptance::backendFixtureForcedFullSyncConvergesLaggingDevice
     const auto full_sync_object = full_sync_json.object();
     QVERIFY(full_sync_object.value(QStringLiteral("fullResyncRequested")).toBool());
     QVERIFY(full_sync_object.value(QStringLiteral("synced")).toBool());
+    requireFullSyncReconnect(full_sync_object);
 
     QCOMPARE(wait_writer_b_object.value(QStringLiteral("hash")).toString(),
              full_sync_object.value(QStringLiteral("hash")).toString());
@@ -702,6 +861,7 @@ void tst_NextAppUiAcceptance::backendFixtureStartsRealBackendWhenEnabled()
 {
     if (!qEnvironmentVariableIsSet("NEXTAPP_ACCEPTANCE_RUN_BACKEND")) {
         QSKIP("Set NEXTAPP_ACCEPTANCE_RUN_BACKEND=1 to enable real-container acceptance smoke tests.");
+        LOG_WARN_N << "Skipping backend fixture real backend smoke test. Set NEXTAPP_ACCEPTANCE_RUN_BACKEND=1 to enable.";
     }
 
     BackendFixture fixture{AcceptancePaths::create(), backendOptionsFromEnv()};
@@ -709,18 +869,29 @@ void tst_NextAppUiAcceptance::backendFixtureStartsRealBackendWhenEnabled()
         QSKIP("Docker is not available for the acceptance backend fixture.");
     }
 
+    LOG_DEBUG_N << "Starting backend fixture real backend smoke test.";
     fixture.start();
+    LOG_DEBUG_N << "Backend fixture started.";
     QVERIFY(fixture.isRunning());
+    LOG_DEBUG_N << "Backend fixture is running.";
     QVERIFY(!fixture.runId().isEmpty());
+    LOG_DEBUG_N << "Backend fixture run ID: " << fixture.runId();
     QVERIFY(fixture.nextappPublicUrl().startsWith(QStringLiteral("https://")));
     QVERIFY(fixture.signupPublicUrl().startsWith(QStringLiteral("http://")));
 
+    LOG_DEBUG_N  << "Stopping backend fixture.";
     fixture.stop();
+    LOG_DEBUG_N  << "Backend fixture stopped.";
     QVERIFY(!fixture.isRunning());
 }
 
 int main(int argc, char** argv)
 {
+    logfault::LogManager::Instance().AddHandler(
+        make_unique<logfault::StreamHandler>(std::clog, logfault::LogLevel::TRACE));
+
+    LOG_INFO_N << "Starting NextApp UI acceptance tests.";
+
     if (!qEnvironmentVariableIsSet("QTEST_FUNCTION_TIMEOUT")) {
         qputenv("QTEST_FUNCTION_TIMEOUT", QByteArrayLiteral("1200000"));
     }

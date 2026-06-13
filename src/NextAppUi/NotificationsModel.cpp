@@ -19,6 +19,7 @@ namespace {
             updated = excluded.updated,
             updated_id = excluded.updated_id,
             data = excluded.data
+        WHERE excluded.updated_id >= COALESCE(notification.updated_id, 0)
     )";
 
     QList<QVariant> getParams(const nextapp::pb::Notification &notification)
@@ -59,14 +60,14 @@ QCoro::Task<bool> NotificationsModel::saveBatch(const QList<nextapp::pb::Notific
     co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
 }
 
-QCoro::Task<void> NotificationsModel::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
+QCoro::Task<bool> NotificationsModel::pocessUpdate(const std::shared_ptr<nextapp::pb::Update> update)
 {
     assert(update);
     if (update->hasNotifications()) {
         auto notifications = update->notifications();
         const auto& items = notifications.notifications();
         if (items.empty()) {
-            co_return;
+            co_return true;
         }
 
         auto& db = syncDb();
@@ -78,8 +79,12 @@ QCoro::Task<void> NotificationsModel::pocessUpdate(const std::shared_ptr<nextapp
             return static_cast<quint32>(work.id_proto());
         };
 
-        co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
-        loadFromCache();
+        if (!co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId)) {
+            co_return false;
+        }
+        if (!co_await loadFromCache()) {
+            co_return false;
+        }
 
         const auto& last_update = std::ranges::max_element(items, [](const auto& lhs, const auto& rhs) {
             return lhs.updated() < rhs.updated();
@@ -92,7 +97,7 @@ QCoro::Task<void> NotificationsModel::pocessUpdate(const std::shared_ptr<nextapp
         SetLastReadValue(update->lastReadNotificationId());
     }
 
-    co_return;
+    co_return true;
 }
 
 QCoro::Task<bool> NotificationsModel::save(const QProtobufMessage &item)
@@ -110,7 +115,7 @@ QCoro::Task<bool> NotificationsModel::save(const QProtobufMessage &item)
     auto params = getParams(notification);
     const auto rval = co_await db.query(insert_query, params);
     if (rval) {
-        co_return rval.value().affected_rows.value() > 0;
+        co_return true;
     }
 
     LOG_WARN_N << "Failed to save notification #" << notification.id_proto() << ": " << rval.error();
@@ -303,11 +308,6 @@ NotificationsModel::NotificationsModel()
 NotificationsModel::NotificationsModel(RuntimeServices& runtime)
     : ServerSynchedCahce(runtime)
 {
-    connect(&runtime.serverComm(), &ServerCommAccess::onUpdate, this,
-            [this](const std::shared_ptr<nextapp::pb::Update>& update) {
-                onUpdate(update);
-            });
-
     last_read_ = runtime.settings().value("notificatins/last_read", 0).toUInt();
     last_update_seen_ = runtime.settings().value("notificatins/last_seen", 0).toULongLong();
 }
