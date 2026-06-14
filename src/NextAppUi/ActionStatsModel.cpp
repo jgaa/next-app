@@ -96,9 +96,10 @@ ORDER BY session_date;
     workInDays_.reserve(rows.size());
     for(const auto& row : rows) {
         WorkInDay day;
-        day.date = row.at(SESSION_DATE).toDateTime();;
+        const auto sessionDate = QDate::fromString(row.at(SESSION_DATE).toString(), Qt::ISODate);
+        day.date = sessionDate.isValid() ? QDateTime{sessionDate.startOfDay()} : QDateTime{};
         day.minutes = row.at(TOTAL_DURATION).toInt() / 60;
-        day.sessions = row.at(SESSION_COUNT).toInt() / 60;
+        day.sessions = row.at(SESSION_COUNT).toInt();
 
         totalMinutes_ += day.minutes;
         totalSessions_ += day.sessions;

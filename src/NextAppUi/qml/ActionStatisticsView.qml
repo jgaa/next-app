@@ -11,11 +11,13 @@ import Nextapp.Models
 ColumnLayout {
     id: root
     property ActionStatsModelPtr model: null
+    property bool graphReady: false
 
     Connections {
         target: model
         function onValidChanged() {
             if (!model || !model.valid) {
+                root.graphReady = false;
                 return
             }
             updateGraph();
@@ -84,7 +86,7 @@ ColumnLayout {
         id: graph
         Layout.fillWidth: true
         Layout.fillHeight: true
-        visible: model?.valid === true && model.model.daysCount > 1
+        visible: model?.valid === true && root.graphReady
 
         ScatterSeries {
             id: data
@@ -112,28 +114,46 @@ ColumnLayout {
     function updateGraph() {
         console.log("updateGraph()");
         data.clear();
+        root.graphReady = false;
 
-        if (!model || !model.model || model.model.workInDays < 2)
+        if (!model || !model.model)
             return;
 
         const days = model.model.workInDays;
+        if (!days || days.length < 2)
+            return;
+
         console.log("days=", days, " num days=", days.length);
 
         let maxY = 0;
+        let minX = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let points = 0;
 
         for (let i = 0; i < days.length; ++i) {
             const entry = days[i];
-            if (!entry || !entry.date || !entry.minutes)
+            if (!entry || !entry.date)
                 continue;
 
-            // X = date (timestamp in ms), Y = minutes
-            const x = entry.date;
-            const y = entry.minutes / 60.0;
+            const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
+            const x = date.getTime();
+            if (!Number.isFinite(x))
+                continue;
+
+            const y = Number(entry.minutes || 0) / 60.0;
 
             data.append(x, y);
+            ++points;
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
 
             if (y > maxY)
                 maxY = y;
+        }
+
+        if (points < 2 || !Number.isFinite(minX) || !Number.isFinite(maxX) || minX >= maxX) {
+            data.clear();
+            return;
         }
 
         // Adjust axis if present
@@ -142,12 +162,12 @@ ColumnLayout {
             graph.axisY.max = Math.max(maxY * 1.1, 8); // give some headroom
         }
 
-        // Set the X axix to the date from start to end
-        if (graph.axisX && graph.axisX instanceof DateTimeAxis) {
-            const startDate = days[0].date;
-            const endDate = days[days.length - 1].date;
-            graph.axisX.min = startDate;
-            graph.axisX.max = endDate;
+        // Set the X axis to the first and last valid dates.
+        if (graph.axisX) {
+            graph.axisX.min = new Date(minX);
+            graph.axisX.max = new Date(maxX);
         }
+
+        root.graphReady = true;
     }
 }
