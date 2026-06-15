@@ -155,7 +155,8 @@ public:
     enum class SessionAccessMode : uint8_t {
         FULL_ACCESS = 0,
         READ_ONLY_DEVICE_LIMIT,
-        READ_ONLY_MOBILE_ONLY
+        READ_ONLY_MOBILE_ONLY,
+        READ_ONLY_TENANT
     };
 
     enum class PlanResource : uint8_t {

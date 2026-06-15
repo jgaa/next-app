@@ -1251,7 +1251,7 @@ QVariant ActionsModel::data(const QModelIndex &index, int role) const
     case SectionKindRole:
         return static_cast<uint>(toKind(action));
     case SectionNameRole:
-        if (sort_ == SORT_CATEGORY_NAME) {
+        if (sort_ == SORT_CATEGORY_NAME || sort_ == SORT_CATEGORY_PRIORITY) {
             return ActionCategoriesModel::instance().getName(action.category());
         }
         return toName(toKind(action));
@@ -1415,6 +1415,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
         "a.start_time, a.name",
         "a.due_by_time, a.name",
         "acat.name, a.name",
+        "acat.name, a.score DESC, a.name",
         "a.name",
         "a.created_date",
         "a.created_date DESC",
@@ -1428,7 +1429,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     static constexpr string_view join_tags= " JOIN tag t ON t.action = a.id ";
 
     auto join_action_name_if = [&] {
-        if (sort_ == SORT_CATEGORY_NAME) {
+        if (sort_ == SORT_CATEGORY_NAME || sort_ == SORT_CATEGORY_PRIORITY) {
             return join_action_name;
         }
         return std::string_view{};
@@ -1500,7 +1501,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 
     bool add_completed = false;
     auto completed_if = [&]() -> string_view {
-        if (sort_ != SORT_CATEGORY_NAME) {
+        if (sort_ != SORT_CATEGORY_NAME && sort_ != SORT_CATEGORY_PRIORITY) {
             add_completed = true;
             return " OR (a.completed_time >= ? AND a.completed_time < ?) ";
         }

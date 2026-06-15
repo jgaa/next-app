@@ -397,6 +397,7 @@ boost::asio::awaitable<bool> SessionManager::applyTenantStateAndPublish(
     bool has_active_sessions = false;
     for (auto& uctx : users) {
         uctx->setTenantState(tenant.state());
+        uctx->refreshSessionAccess();
         has_active_sessions = has_active_sessions || uctx->hasActiveSessions();
 
         auto update = make_shared<pb::Update>();
@@ -522,6 +523,8 @@ string_view UserContext::sessionAccessReason(SessionAccessMode mode) noexcept
         return "read-only because the device limit is reached";
     case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
         return "read-only because this plan only allows mobile devices full access";
+    case SessionAccessMode::READ_ONLY_TENANT:
+        return "read-only because the tenant is in read-only mode";
     }
     return "read-only";
 }
@@ -861,6 +864,9 @@ pb::SessionAccess UserContext::currentSessionAccess(const boost::uuids::uuid& de
     case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
         access.set_mode(pb::SessionAccess::READ_ONLY_MOBILE_ONLY);
         break;
+    case SessionAccessMode::READ_ONLY_TENANT:
+        access.set_mode(pb::SessionAccess::READ_ONLY_TENANT);
+        break;
     }
     return access;
 }
@@ -890,6 +896,11 @@ void UserContext::refreshSessionAccessLocked_(vector<pair<boost::uuids::uuid, Se
     SessionAccessMode default_mode = SessionAccessMode::FULL_ACCESS;
     uint32_t max_devices = 0;
     bool mobile_only = false;
+    const auto tenant_state = tenantState();
+    if (tenant_state == pb::Tenant::State::Tenant_State_READ_ONLY) {
+        default_mode = SessionAccessMode::READ_ONLY_TENANT;
+    }
+
     if (Server::instance().config().payment.enable_plan && tenant_plan_ && tenant_plan_->plan) {
         max_devices = tenant_plan_->plan->max_devices;
         mobile_only = tenant_plan_->plan->mobile_only;
@@ -913,13 +924,15 @@ void UserContext::refreshSessionAccessLocked_(vector<pair<boost::uuids::uuid, Se
     uint32_t granted = 0;
     for (auto* state : ranked) {
         auto mode = default_mode;
-        const bool eligible = !mobile_only || state->is_mobile;
-        if (!eligible) {
-            mode = SessionAccessMode::READ_ONLY_MOBILE_ONLY;
-        } else if (max_devices != 0 && granted >= max_devices) {
-            mode = SessionAccessMode::READ_ONLY_DEVICE_LIMIT;
-        } else {
-            ++granted;
+        if (mode == SessionAccessMode::FULL_ACCESS) {
+            const bool eligible = !mobile_only || state->is_mobile;
+            if (!eligible) {
+                mode = SessionAccessMode::READ_ONLY_MOBILE_ONLY;
+            } else if (max_devices != 0 && granted >= max_devices) {
+                mode = SessionAccessMode::READ_ONLY_DEVICE_LIMIT;
+            } else {
+                ++granted;
+            }
         }
 
         for (auto& session : state->sessions) {
@@ -964,6 +977,9 @@ void UserContext::publishSessionAccessChanges(vector<pair<boost::uuids::uuid, Se
             break;
         case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
             access->set_mode(pb::SessionAccess::READ_ONLY_MOBILE_ONLY);
+            break;
+        case SessionAccessMode::READ_ONLY_TENANT:
+            access->set_mode(pb::SessionAccess::READ_ONLY_TENANT);
             break;
         }
         boost::asio::co_spawn(Server::instance().ctx(),
@@ -1399,6 +1415,9 @@ void UserContext::Session::requireWritableForAdd(string_view resource) const
     case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
         throw server_err{pb::Error::LIMIT_EXCEEDED,
                          format("This device is currently in read-only mode because the active plan only allows mobile devices full access. Cannot add {}.", resource)};
+    case SessionAccessMode::READ_ONLY_TENANT:
+        throw server_err{pb::Error::PERMISSION_DENIED,
+                         format("This tenant is currently in read-only mode. Cannot add {}.", resource)};
     default:
         assert(false && "Unhandled session access mode");
         throw server_err{pb::Error::GENERIC_ERROR,

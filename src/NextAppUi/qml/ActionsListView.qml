@@ -114,6 +114,7 @@ Rectangle {
                         ListElement { text: qsTr("Start Date, Name") }
                         ListElement { text: qsTr("Due Date, Name") }
                         ListElement { text: qsTr("Category, Name") }
+                        ListElement { text: qsTr("Category, Priority") }
                         ListElement { text: qsTr("Name") }
                         ListElement { text: qsTr("Created Date") }
                         ListElement { text: qsTr("Created Date Desc") }

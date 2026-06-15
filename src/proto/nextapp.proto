@@ -142,6 +142,7 @@ message SessionAccess {
         FULL_ACCESS = 0;
         READ_ONLY_DEVICE_LIMIT = 1;
         READ_ONLY_MOBILE_ONLY = 2;
+        READ_ONLY_TENANT = 3;
     }
 
     common.Uuid deviceId = 1;

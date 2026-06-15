@@ -175,10 +175,21 @@ ServerComm::ServerComm(RuntimeServices& runtime)
     nextapp::pb::Nextapp::Client xx;
     instance_ = this;
 
-    device_uuid_ = QUuid{settings().value("device/uuid", QString()).toString()};
+    const auto configured_device_uuid = QUuid{settings().value("device/uuid", QString()).toString()};
+    const auto legacy_device_uuid = QUuid{settings().value("deviceUuid", QString()).toString()};
+    if (!legacy_device_uuid.isNull()
+        && (configured_device_uuid.isNull() || configured_device_uuid != legacy_device_uuid)) {
+        device_uuid_ = legacy_device_uuid;
+        settings().setValue("device/uuid", device_uuid_.toString(QUuid::WithoutBraces));
+        LOG_INFO_N << "Migrated device UUID from legacy settings key: "
+                   << device_uuid_.toString(QUuid::WithoutBraces);
+    } else {
+        device_uuid_ = configured_device_uuid;
+    }
+
     if (device_uuid_.isNull()) {
         device_uuid_ = QUuid::createUuid();
-        settings().setValue("device/uuid", device_uuid_.toString());
+        settings().setValue("device/uuid", device_uuid_.toString(QUuid::WithoutBraces));
         LOG_INFO << "Created new device-uuid for this device: " << device_uuid_.toString();
     }
 
@@ -1330,7 +1341,8 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
     {
         device_uuid_ = QUuid::createUuid();
         LOG_INFO_N << "Generated new device UUID: " << device_uuid_.toString(QUuid::WithoutBraces);
-        settings().setValue("deviceUuid", device_uuid_.toString(QUuid::WithoutBraces));
+        settings().setValue("device/uuid", device_uuid_.toString(QUuid::WithoutBraces));
+        settings().remove("deviceUuid");
     }
 
     // Create CSR

@@ -82,6 +82,7 @@ public:
         FULL_ACCESS,
         READ_ONLY_DEVICE_LIMIT,
         READ_ONLY_MOBILE_ONLY,
+        READ_ONLY_TENANT,
     };
 
     Q_ENUM(SessionAccessMode)

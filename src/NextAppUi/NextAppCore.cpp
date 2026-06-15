@@ -62,6 +62,8 @@ NextAppCore::SessionAccessMode toSessionAccessMode(const nextapp::pb::SessionAcc
         return NextAppCore::SessionAccessMode::READ_ONLY_DEVICE_LIMIT;
     case nextapp::pb::SessionAccess_QtProtobufNested::Mode::READ_ONLY_MOBILE_ONLY:
         return NextAppCore::SessionAccessMode::READ_ONLY_MOBILE_ONLY;
+    case nextapp::pb::SessionAccess_QtProtobufNested::Mode::READ_ONLY_TENANT:
+        return NextAppCore::SessionAccessMode::READ_ONLY_TENANT;
     case nextapp::pb::SessionAccess_QtProtobufNested::Mode::FULL_ACCESS:
     default:
         return NextAppCore::SessionAccessMode::FULL_ACCESS;
@@ -848,6 +850,8 @@ QString NextAppCore::sessionAccessMessage() const
         return tr("This device is in read-only mode because your plan only allows full access on a limited number of active devices.");
     case SessionAccessMode::READ_ONLY_MOBILE_ONLY:
         return tr("This device is in read-only mode because the current plan only allows full access from mobile devices.");
+    case SessionAccessMode::READ_ONLY_TENANT:
+        return tr("This tenant is in read-only mode.");
     }
 
     return {};
