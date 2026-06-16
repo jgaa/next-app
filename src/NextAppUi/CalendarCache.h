@@ -65,9 +65,7 @@ private:
     QCoro::Task<bool> saveBatch(const QList<nextapp::pb::TimeBlock>& items) override;
     QCoro::Task<bool> save(const QProtobufMessage& item) override;
     QCoro::Task<bool> save_(const nextapp::pb::TimeBlock& block);
-    QCoro::Task<bool> finalizeSyncPersistence() override;
     QCoro::Task<bool> loadFromCache() override;
-    QCoro::Task<bool> repairStoredTimeBlocks();
     void requestAudioTimerUpdate();
     QCoro::Task<void> setAudioTimers();
     void onAudioEvent();

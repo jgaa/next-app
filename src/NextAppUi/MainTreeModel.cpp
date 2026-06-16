@@ -644,9 +644,12 @@ QCoro::Task<void> MainTreeModel::onOnline()
 
 QCoro::Task<bool> MainTreeModel::loadFromCache()
 {
+    LOG_DEBUG_N << "MainTreeModel::loadFromCache() starting";
     if (!co_await validateStoredNodes()) {
+        LOG_WARN_N << "MainTreeModel::loadFromCache() validation failed";
         co_return false;
     }
+    LOG_DEBUG_N << "MainTreeModel::loadFromCache() validation passed";
 
     auto& db = syncDb();
 
@@ -663,8 +666,10 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
     };
 
     QList<nextapp::pb::Node> pending;
+    LOG_DEBUG_N << "MainTreeModel::loadFromCache() querying cached nodes";
     auto rval = co_await db.legacyQuery(query);
     if (rval) {
+        LOG_DEBUG_N << "MainTreeModel::loadFromCache() fetched " << rval.value().size() << " cached node rows";
         for (const auto& row : rval.value()) {
             QProtobufSerializer serializer;
             nextapp::pb::Node node;
@@ -678,6 +683,7 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
             pending.push_back(std::move(node));
         }
     } else {
+        LOG_WARN_N << "MainTreeModel::loadFromCache() node query failed";
         co_return false;
     }
 
@@ -706,9 +712,11 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
                         << " parent=" << node.parent()
                         << " name=" << node.name();
         }
+        LOG_WARN_N << "MainTreeModel::loadFromCache() unresolved pending nodes=" << pending.size();
         co_return false;
     }
 
+    LOG_DEBUG_N << "MainTreeModel::loadFromCache() completed successfully";
     co_return true;
 }
 
@@ -719,6 +727,7 @@ QCoro::Task<bool> MainTreeModel::finalizeSyncPersistence()
 
 QCoro::Task<bool> MainTreeModel::validateStoredNodes()
 {
+    LOG_DEBUG_N << "MainTreeModel::validateStoredNodes() starting";
     auto& db = syncDb();
     const auto token = syncTransactionToken();
     const auto unresolved = token
@@ -741,6 +750,7 @@ QCoro::Task<bool> MainTreeModel::validateStoredNodes()
         LOG_ERROR_N << "Failed to validate node parent references: " << unresolved.error();
         co_return false;
     }
+    LOG_DEBUG_N << "MainTreeModel::validateStoredNodes() unresolved rows=" << unresolved->rows.size();
 
     for (const auto& row : unresolved->rows) {
         const auto node_id = row.at(0).toString();
@@ -811,6 +821,7 @@ QCoro::Task<bool> MainTreeModel::validateStoredNodes()
         }
     }
 
+    LOG_DEBUG_N << "MainTreeModel::validateStoredNodes() completed";
     co_return true;
 }
 
@@ -840,6 +851,7 @@ QCoro::Task<bool> MainTreeModel::doSynch(bool fullSync)
 
 QCoro::Task<bool> MainTreeModel::doLoadLocally()
 {
+    LOG_DEBUG_N << "MainTreeModel::doLoadLocally() starting";
     beginResetModel();
     endResetModel();
     suspend_model_notifications_ = true;
@@ -851,7 +863,9 @@ QCoro::Task<bool> MainTreeModel::doLoadLocally()
         }
     }};
 
-    co_return co_await loadLocally();
+    const auto ok = co_await loadLocally();
+    LOG_DEBUG_N << "MainTreeModel::doLoadLocally() finished ok=" << ok;
+    co_return ok;
 }
 
 QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)

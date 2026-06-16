@@ -501,15 +501,17 @@ int main(int argc, char *argv[])
 
         {
             auto level = settings.value("logging/level", 0).toInt();
+            bool prune = settings.value("logging/prune", "").toString() == "true";
 #ifdef _DEBUG
             if (!level) {
                 level = static_cast<int>(logfault::LogLevel::TRACE);
+                prune = true;
+                LOG_INFO_N << "Setting log level to TRACE and enabling pruning for debug builds.";
             }
 #endif
 
             if (level > 0) {
                 if (auto path = settings.value("logging/path", "").toString().toStdString(); !path.empty()) {
-                    const bool prune = settings.value("logging/prune", "").toString() == "true";
                     logfault::LogManager::Instance().AddHandler(
                         make_unique<logfault::StreamHandler>(path, static_cast<logfault::LogLevel>(level), prune));
 

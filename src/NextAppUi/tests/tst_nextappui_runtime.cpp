@@ -776,8 +776,8 @@ private slots:
     void serverSynchedCacheCommitsTransactionAndLoadsPersistedState();
     void serverSynchedCacheRollsBackTransactionOnSyncFailure();
     void serverSynchedCacheCanSkipReloadAfterSuccessfulSync();
-    void calendarCacheSaveBatchSanitizesActionRefsAndPersistsRelations();
-    void calendarCacheRepairStoredTimeBlocksRemovesDanglingActionRefs();
+    void calendarCacheSaveBatchKeepsSerializedActionsAndPersistsValidRelations();
+    void calendarCacheLoadDoesNotRepairMissingActionRefs();
     void calendarCacheInvalidCalendarDeleteUpdateRequestsResync();
     void workCacheLoadsPersistedSessionsAndFiltersByAction();
     void workCacheRejectsDanglingActionReferences();
@@ -1343,7 +1343,7 @@ void tst_NextAppUiRuntime::serverSynchedCacheCanSkipReloadAfterSuccessfulSync()
     db->close();
 }
 
-void tst_NextAppUiRuntime::calendarCacheSaveBatchSanitizesActionRefsAndPersistsRelations()
+void tst_NextAppUiRuntime::calendarCacheSaveBatchKeepsSerializedActionsAndPersistsValidRelations()
 {
     auto db = makeInitializedDb(QStringLiteral("calendar-cache-save-batch.sqlite"));
     insertMinimalAction(*db, QStringLiteral("action-1"), QStringLiteral("Action One"));
@@ -1365,7 +1365,11 @@ void tst_NextAppUiRuntime::calendarCacheSaveBatchSanitizesActionRefsAndPersistsR
     QVERIFY(waitForTask(cache.saveBatch({tb})));
 
     const auto stored = readStoredTimeBlock(*db, QStringLiteral("tb-1"));
-    QCOMPARE(stored.actions().list(), QStringList({QStringLiteral("action-1"), QStringLiteral("action-2")}));
+    QCOMPARE(stored.actions().list(), QStringList({
+        QStringLiteral("action-1"),
+        QStringLiteral("missing-action"),
+        QStringLiteral("action-1"),
+        QStringLiteral("action-2")}));
 
     const auto refs = waitForTask(db->legacyQuery(
         "SELECT action FROM time_block_actions WHERE time_block = 'tb-1' ORDER BY action"));
@@ -1373,13 +1377,16 @@ void tst_NextAppUiRuntime::calendarCacheSaveBatchSanitizesActionRefsAndPersistsR
     QCOMPARE(refs->size(), 2);
     QCOMPARE(refs->at(0).at(0).toString(), QStringLiteral("action-1"));
     QCOMPARE(refs->at(1).at(0).toString(), QStringLiteral("action-2"));
+    QCOMPARE(runtime.server_comm_.recorded_sync_issues_.size(), 1);
+    QCOMPARE(runtime.server_comm_.recorded_sync_issues_.front().key().objectId(), QStringLiteral("tb-1"));
+    QCOMPARE(runtime.server_comm_.recorded_sync_issues_.front().key().referencedId(), QStringLiteral("missing-action"));
 
     db->close();
 }
 
-void tst_NextAppUiRuntime::calendarCacheRepairStoredTimeBlocksRemovesDanglingActionRefs()
+void tst_NextAppUiRuntime::calendarCacheLoadDoesNotRepairMissingActionRefs()
 {
-    auto db = makeInitializedDb(QStringLiteral("calendar-cache-repair.sqlite"));
+    auto db = makeInitializedDb(QStringLiteral("calendar-cache-load.sqlite"));
     insertMinimalAction(*db, QStringLiteral("action-1"), QStringLiteral("Action One"));
     insertMinimalAction(*db, QStringLiteral("action-2"), QStringLiteral("Action Two"));
 
@@ -1403,17 +1410,14 @@ void tst_NextAppUiRuntime::calendarCacheRepairStoredTimeBlocksRemovesDanglingAct
 
     QVERIFY(waitForTask(db->query("DELETE FROM action WHERE id = ?", QStringLiteral("action-2"))));
 
-    QSignalSpy updated_spy(&cache, &CalendarCache::eventUpdated);
-    QVERIFY(waitForTask(cache.repairStoredTimeBlocks()));
-
-    QCOMPARE(updated_spy.count(), 1);
+    QVERIFY(waitForTask(cache.loadLocally()));
 
     const auto stored = readStoredTimeBlock(*db, QStringLiteral("tb-2"));
-    QCOMPARE(stored.actions().list(), QStringList({QStringLiteral("action-1")}));
+    QCOMPARE(stored.actions().list(), QStringList({QStringLiteral("action-1"), QStringLiteral("action-2")}));
 
     const auto repaired_events = waitForTask(cache.getCalendarEvents(QDate(2026, 3, 26), QDate(2026, 3, 27)));
     QCOMPARE(repaired_events.size(), 1);
-    QCOMPARE(repaired_events.front()->timeBlock().actions().list(), QStringList({QStringLiteral("action-1")}));
+    QCOMPARE(repaired_events.front()->timeBlock().actions().list(), QStringList({QStringLiteral("action-1"), QStringLiteral("action-2")}));
 
     db->close();
 }

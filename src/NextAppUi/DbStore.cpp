@@ -791,14 +791,30 @@ QCoro::Task<DbStore::rval_t> DbStore::legacyQueryInTransaction(const transaction
 QCoro::Task<void> DbStore::waitForTransactionAccess(
     const std::optional<transaction_token_t>& transaction_token)
 {
+    qint64 wait_iterations = 0;
     while (true) {
         {
             lock_guard lock{transaction_mutex_};
             if (!active_transaction_token_ || active_transaction_token_ == transaction_token) {
+                if (wait_iterations > 0) {
+                    LOG_DEBUG_N << "Transaction access granted after waiting. requested_token="
+                                << (transaction_token ? QString::number(*transaction_token) : QStringLiteral("none"))
+                                << ", active_token="
+                                << (active_transaction_token_ ? QString::number(*active_transaction_token_) : QStringLiteral("none"))
+                                << ", wait_iterations=" << wait_iterations;
+                }
                 co_return;
+            }
+            if (wait_iterations == 0 || (wait_iterations % 5000) == 0) {
+                LOG_WARN_N << "Waiting for transaction access. requested_token="
+                           << (transaction_token ? QString::number(*transaction_token) : QStringLiteral("none"))
+                           << ", active_token="
+                           << QString::number(*active_transaction_token_)
+                           << ", wait_iterations=" << wait_iterations;
             }
         }
 
+        ++wait_iterations;
         co_await QCoro::sleepFor(1ms);
     }
 }

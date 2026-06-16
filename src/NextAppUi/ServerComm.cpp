@@ -2178,12 +2178,15 @@ QCoro::Task<void> ServerComm::startNextappSession()
             sync_diagnostics_.hello_last_publish_id = session_start_publish_id_;
             sync_diagnostics_.hello_oldest_retained_publish_id =
                 res.hello().hasOldestRetainedPublishId() ? res.hello().oldestRetainedPublishId() : 0;
+            LOG_DEBUG_N << "Reading local user_data_epoch from sync_state after server hello";
             if (auto local_epoch = co_await runtime_.db().queryOne<qulonglong>(
                     "SELECT value FROM sync_state WHERE key = ?",
                     QStringLiteral("user_data_epoch"))) {
                 last_seen_user_data_epoch_ = local_epoch.value();
+                LOG_DEBUG_N << "Loaded local user_data_epoch=" << last_seen_user_data_epoch_;
             } else {
                 last_seen_user_data_epoch_ = 0;
+                LOG_DEBUG_N << "Local user_data_epoch missing; defaulting to 0";
             }
             if (res.hello().serverInstanceTag() != last_seen_server_instance_) {
                 needs_sync = true;
@@ -2236,6 +2239,7 @@ QCoro::Task<void> ServerComm::startNextappSession()
                            << last_seen_user_data_epoch_ << " to " << session_user_data_epoch_;
             }
 
+            LOG_DEBUG_N << "Persisting durable hello state to svrreqid.dat";
             saveValuesToFile(runtime_, last_seen_update_id_, last_seen_server_instance_,
                              last_seen_user_publish_epoch_, "server hello");
 
@@ -2486,6 +2490,7 @@ failed:
             std::max(NotificationsModel::instance()->lastUpdateSeen(), hello_last_notification));
 
         if (full_sync) {
+            addMessage(tr("Swithing to new data..."));
             if (!co_await staged_db->legacyQuery("COMMIT")) {
                 LOG_WARN_N << "Failed to commit staged full sync transaction.";
                 co_await abort_staged_full_sync();
@@ -2503,6 +2508,8 @@ failed:
 
             staged_db.reset();
             configure_sync_targets(nullptr, true);
+
+            addMessage(tr("Reloading data from new database to cache..."));
 
             if (!co_await GreenDaysModel::instance()->loadFromCache()) {
                 LOG_WARN_N << "Failed to load green days from swapped full-sync database.";
@@ -2591,6 +2598,8 @@ failed:
             }
         }
     }
+
+    addMessage(tr("Syncing with the server completed."));
 
     LOG_DEBUG_N << "Server sync phase completed in "
                 << std::fixed << std::setprecision(2)

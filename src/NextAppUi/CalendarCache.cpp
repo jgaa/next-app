@@ -61,38 +61,6 @@ namespace {
         co_return existing;
     }
 
-    nextapp::pb::TimeBlock sanitizeTimeBlockActions(const nextapp::pb::TimeBlock& tb,
-                                                    const QSet<QString>& existing_actions,
-                                                    bool *changed = nullptr)
-    {
-        nextapp::pb::TimeBlock sanitized{tb};
-        QStringList repaired;
-        QSet<QString> seen;
-        bool modified = false;
-
-        for (const auto& action_id : tb.actions().list()) {
-            if (!existing_actions.contains(action_id) || seen.contains(action_id)) {
-                modified = true;
-                continue;
-            }
-
-            seen.insert(action_id);
-            repaired.append(action_id);
-        }
-
-        if (modified) {
-            nextapp::pb::StringList actions;
-            actions.setList(std::move(repaired));
-            sanitized.setActions(actions);
-        }
-
-        if (changed) {
-            *changed = modified;
-        }
-
-        return sanitized;
-    }
-
     QByteArray canonicalSyncIssueKeyBytes(const nextapp::pb::SyncIssueKey& key)
     {
         QByteArray bytes;
@@ -142,7 +110,7 @@ namespace {
         }
     }
 
-    std::deque<std::pair<QString, QString>> getVisibleActionRefs(
+    std::deque<std::pair<QString, QString>> getActionRefs(
         const QList<nextapp::pb::TimeBlock>& items,
         const QSet<QString>& existing_actions)
     {
@@ -152,8 +120,15 @@ namespace {
                 continue;
             }
 
-            const auto visible = sanitizeTimeBlockActions(tb, existing_actions);
-            for (const auto& aid : visible.actions().list()) {
+            QSet<QString> seen;
+            for (const auto& aid : tb.actions().list()) {
+                if (seen.contains(aid)) {
+                    continue;
+                }
+                seen.insert(aid);
+                if (!existing_actions.contains(aid)) {
+                    continue;
+                }
                 refs.emplace_back(tb.id_proto(), aid);
             }
         }
@@ -229,17 +204,11 @@ QCoro::Task<bool> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
                            << " without time block. Ignoring.";
                 continue;
             }
-            auto sanitized_event = ce;
-            nextapp::pb::TimeBlock tb;
-            if (ce.hasTimeBlock()) {
-                bool changed = false;
-                tb = sanitizeTimeBlockActions(ce.timeBlock(), *existing_actions, &changed);
-                if (changed) {
-                    recordMissingTimeBlockActionIssues(runtime_.serverComm(), ce.timeBlock(), *existing_actions);
-                    sanitized_event.setTimeBlock(tb);
-                    sanitized_event.setTimeSpan(tb.timeSpan());
-                }
-            }
+            const auto& tb = ce.timeBlock();
+            runtime_.serverComm().clearSyncIssuesForObject(
+                nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK,
+                tb.id_proto());
+            recordMissingTimeBlockActionIssues(runtime_.serverComm(), tb, *existing_actions);
 
             const bool is_relevant_for_audio =
                 todays_date == QDateTime::fromSecsSinceEpoch(ce.timeBlock().timeSpan().start()).date()
@@ -284,9 +253,9 @@ QCoro::Task<bool> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
                 }
 
                 if (auto it = events_.find(id); it != events_.end()) {
-                    *it->second = sanitized_event;
+                    *it->second = ce;
                 } else {
-                    events_[id] = std::make_shared<nextapp::pb::CalendarEvent>(sanitized_event);
+                    events_[id] = std::make_shared<nextapp::pb::CalendarEvent>(ce);
                 }
 
                 if (op == ::nextapp::pb::Update::Operation::UPDATED) {
@@ -305,10 +274,6 @@ QCoro::Task<bool> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
             } // if timeblock
         }
     } else if (update->hasAction() && op == ::nextapp::pb::Update::Operation::DELETED) {
-        if (!co_await repairStoredTimeBlocks()) {
-            runtime_.serverComm().requestIncrementalRepair();
-            co_return false;
-        }
         need_to_update_actions_on_calendar = true;
     }
 
@@ -378,32 +343,27 @@ QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &
         success = false;
     }
 
-    // And add the references in the actions/timeblock table
-    auto refs = getVisibleActionRefs(items, *existing_actions);
-
-    const auto inserted_refs = token
-        ? co_await db.queryBatchInTransaction(*token, "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", "", refs,
-        /* getArgs */ [](const auto& ref) {
-            return QList<QString>{ref.first, ref.second};
-        },
-        /* isDeleted */ [](const auto&) {return false;},
-        /* getId */ [](const auto&){assert(false); return "";})
-        : co_await db.queryBatch("INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", "", refs,
-        /* getArgs */ [](const auto& ref) {
-            return QList<QString>{ref.first, ref.second};
-        },
-        /* isDeleted */ [](const auto&) {return false;},
-        /* getId */ [](const auto&){assert(false); return "";}
-    );
-    if (!inserted_refs) {
-        success = false;
+    for (const auto& tb : items) {
+        runtime_.serverComm().clearSyncIssuesForObject(
+            nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK,
+            tb.id_proto());
+        if (tb.kind() != nextapp::pb::TimeBlock::Kind::DELETED) {
+            recordMissingTimeBlockActionIssues(runtime_.serverComm(), tb, *existing_actions);
+        }
     }
 
-    if (success) {
-        for (const auto& tb : items) {
-            runtime_.serverComm().clearSyncIssuesForObject(
-                nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK,
-                tb.id_proto());
+    // Rebuild refs best-effort and let SQLite reject missing dependencies.
+    for (const auto& ref : getActionRefs(items, *existing_actions)) {
+        QList<QVariant> params;
+        params << ref.first << ref.second;
+        const auto inserted_ref = token
+            ? co_await db.legacyQueryInTransaction(
+                *token, "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", &params)
+            : co_await db.legacyQuery(
+                "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", &params);
+        if (!inserted_ref) {
+            LOG_DEBUG_N << "Ignoring failed time block/action reference insert for time_block="
+                        << ref.first << " action=" << ref.second << " err=" << inserted_ref.error();
         }
     }
 
@@ -418,7 +378,12 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
     if (!existing_actions) {
         co_return false;
     }
-    const auto visible = sanitizeTimeBlockActions(tblock, *existing_actions);
+    runtime_.serverComm().clearSyncIssuesForObject(
+        nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK,
+        tblock.id_proto());
+    if (tblock.kind() != nextapp::pb::TimeBlock::Kind::DELETED) {
+        recordMissingTimeBlockActionIssues(runtime_.serverComm(), tblock, *existing_actions);
+    }
 
     // Remove all old references
     {
@@ -460,8 +425,16 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
     // Add current refrerences
     if (tblock.kind() != nextapp::pb::TimeBlock::Kind::DELETED) {
         QList<QVariant> params;
-        const auto& al = visible.actions();
-        for(const auto aid : al.list()) {
+        QSet<QString> seen;
+        const auto& al = tblock.actions();
+        for (const auto& aid : al.list()) {
+            if (seen.contains(aid)) {
+                continue;
+            }
+            seen.insert(aid);
+            if (!existing_actions->contains(aid)) {
+                continue;
+            }
             const QString sql = "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)";
             params.clear();
             params << tblock.id_proto();
@@ -470,105 +443,18 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
                 ? co_await db.legacyQueryInTransaction(*token, sql, &params)
                 : co_await db.legacyQuery(sql, &params);
             if (!rval) {
-                LOG_WARN_N << "Failed to insert time block reference: " << tblock.id_proto() << " err=" << rval.error();
-                co_return false;
+                LOG_DEBUG_N << "Ignoring failed time block reference insert for " << tblock.id_proto()
+                            << " action=" << aid << " err=" << rval.error();
             }
         }
     }
-
-    runtime_.serverComm().clearSyncIssuesForObject(
-        nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK,
-        tblock.id_proto());
 
     co_return true;
 }
 
 QCoro::Task<bool> CalendarCache::loadFromCache()
 {
-    if (!co_await repairStoredTimeBlocks()) {
-        co_return false;
-    }
     co_await updateActionsOnCalendarCache();
-    co_return true;
-}
-
-QCoro::Task<bool> CalendarCache::finalizeSyncPersistence()
-{
-    co_return co_await repairStoredTimeBlocks();
-}
-
-QCoro::Task<bool> CalendarCache::repairStoredTimeBlocks()
-{
-    auto& db = syncDb();
-    const auto token = syncTransactionToken();
-    const auto existing_actions = co_await loadExistingActionIds(db, token);
-    if (!existing_actions) {
-        co_return false;
-    }
-    const auto res = token
-        ? co_await db.legacyQueryInTransaction(*token, "SELECT data FROM time_block")
-        : co_await db.legacyQuery("SELECT data FROM time_block");
-    if (!res) {
-        LOG_ERROR_N << "Failed to load time blocks for repair: " << res.error();
-        co_return false;
-    }
-
-    QList<QUuid> changed_events;
-
-    const auto deleted_refs = token
-        ? co_await db.legacyQueryInTransaction(*token, "DELETE FROM time_block_actions")
-        : co_await db.legacyQuery("DELETE FROM time_block_actions");
-    if (!deleted_refs) {
-        LOG_ERROR_N << "Failed to clear time block refs during repair: " << deleted_refs.error();
-        co_return false;
-    }
-
-    for (const auto& row : *res) {
-        if (row.empty()) {
-            LOG_ERROR_N << "Encountered empty cached time_block row during repair";
-            co_return false;
-        }
-        QProtobufSerializer serializer;
-        nextapp::pb::TimeBlock tb;
-        if (!tb.deserialize(&serializer, row.at(0).toByteArray())) {
-            LOG_ERROR_N << "Failed to deserialize cached time block during repair";
-            co_return false;
-        }
-
-        bool changed = false;
-        auto sanitized = sanitizeTimeBlockActions(tb, *existing_actions, &changed);
-        if (changed) {
-            recordMissingTimeBlockActionIssues(runtime_.serverComm(), tb, *existing_actions);
-        }
-        for (const auto& aid : sanitized.actions().list()) {
-            QList<QVariant> params;
-            params << tb.id_proto();
-            params << aid;
-            const auto inserted_ref = token
-                ? co_await db.legacyQueryInTransaction(
-                    *token, "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", &params)
-                : co_await db.legacyQuery(
-                    "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", &params);
-            if (!inserted_ref) {
-                LOG_ERROR_N << "Failed to rebuild time block ref for " << tb.id_proto()
-                            << ": " << inserted_ref.error();
-                co_return false;
-            }
-        }
-
-        if (changed) {
-            changed_events.append(QUuid{sanitized.id_proto()});
-        }
-        if (auto it = events_.find(QUuid{sanitized.id_proto()}); it != events_.end()) {
-            it->second->setTimeBlock(sanitized);
-            it->second->setTimeSpan(sanitized.timeSpan());
-        }
-    }
-
-    for (const auto& id : changed_events) {
-        emit eventUpdated(id);
-    }
-
     co_return true;
 }
 
@@ -799,11 +685,6 @@ QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent> > > CalendarCache:
     QList<std::shared_ptr<nextapp::pb::CalendarEvent>> events;
 
     auto& db = syncDb();
-    const auto existing_actions = co_await loadExistingActionIds(db);
-    if (!existing_actions) {
-        LOG_ERROR_N << "Failed to load action ids while loading calendar events";
-        co_return events;
-    }
     QList<QVariant> params;
 
     QString sql = "SELECT id, data FROM time_block WHERE start_time >= ? AND end_time < ? ORDER BY start_time";
@@ -832,11 +713,9 @@ QCoro::Task<QList<std::shared_ptr<nextapp::pb::CalendarEvent> > > CalendarCache:
                 LOG_ERROR_N << "Failed to deserialize time block: " << id.toString();
                 continue;
             }
-            bool changed = false;
-            auto visible = sanitizeTimeBlockActions(tb, *existing_actions, &changed);
             auto ce = std::make_shared<nextapp::pb::CalendarEvent>();
             ce->setId_proto(tb.id_proto());
-            ce->setTimeBlock(changed ? visible : tb);
+            ce->setTimeBlock(tb);
             ce->setTimeSpan(tb.timeSpan());
             events_[id] = ce;
             events << ce;
