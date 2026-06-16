@@ -127,8 +127,6 @@ private:
 
     // Fetches from db and adds to cache. Returns the item from the cache.
     QCoro::Task<bool> fetchFromDb(QUuid action_uuid);
-    bool shouldStageOriginRepair() const noexcept;
-    QCoro::Task<bool> repairStoredOrigins();
     QCoro::Task<bool> reloadCacheFromStorage();
     QCoro::Task<bool> validateStoredOrigins();
     QCoro::Task<bool> updateTags(const nextapp::pb::Action& action);
@@ -140,6 +138,5 @@ private:
      * and one cold with the most recent items organized as a LRU cache.
      */
     std::map<QUuid, std::shared_ptr<nextapp::pb::ActionInfo>> hot_cache_;
-    std::map<QString, QString> pending_origin_repairs_;
     std::atomic_bool updating_scores_{false};
 };

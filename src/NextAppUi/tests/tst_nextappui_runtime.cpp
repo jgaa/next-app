@@ -791,7 +791,7 @@ private slots:
     void importExportModelDispatchesExportAndImportThroughInjectedComms();
     void importExportModelRejectsInvalidInputsWithoutCallingImport();
     void actionInfoCacheComputesStableScores();
-    void actionInfoCacheRepairsOriginsPersistsTagsAndReloads();
+    void actionInfoCacheClearsMissingOriginsReportsIssueAndPersistsTags();
     void actionInfoCacheUpdateReloadsMissingOriginsAndInvalidDeletesRequestResync();
     void actionInfoCacheSaveIgnoresStaleUpdatedId();
     void actionsModelAddsTodayActionFromLiveUpdate();
@@ -2065,7 +2065,7 @@ void tst_NextAppUiRuntime::actionInfoCacheComputesStableScores()
     QVERIFY(color.isValid());
 }
 
-void tst_NextAppUiRuntime::actionInfoCacheRepairsOriginsPersistsTagsAndReloads()
+void tst_NextAppUiRuntime::actionInfoCacheClearsMissingOriginsReportsIssueAndPersistsTags()
 {
     ActionInfoCache::instance_ = nullptr;
 
@@ -2084,17 +2084,6 @@ void tst_NextAppUiRuntime::actionInfoCacheRepairsOriginsPersistsTagsAndReloads()
 
     {
         ActionInfoCache cache(runtime);
-        cache.setState(ActionInfoCache::State::SYNCHING);
-
-        const auto parent = makeAction(
-            QStringLiteral("aaaaaaaa-1111-1111-1111-111111111111"),
-            node_id,
-            QStringLiteral("Parent"),
-            1,
-            100,
-            10,
-            std::nullopt,
-            {QStringLiteral("focus"), QStringLiteral("home")});
         const auto child = makeAction(
             QStringLiteral("bbbbbbbb-2222-2222-2222-222222222222"),
             node_id,
@@ -2106,7 +2095,6 @@ void tst_NextAppUiRuntime::actionInfoCacheRepairsOriginsPersistsTagsAndReloads()
             {QStringLiteral("child")});
 
         QVERIFY(waitForTask(cache.save(child)));
-        QVERIFY(waitForTask(cache.save(parent)));
         QVERIFY(waitForTask(cache.finalizeSyncPersistence()));
         QVERIFY(waitForTask(cache.loadLocally()));
 
@@ -2114,21 +2102,32 @@ void tst_NextAppUiRuntime::actionInfoCacheRepairsOriginsPersistsTagsAndReloads()
             QUuid(QStringLiteral("bbbbbbbb-2222-2222-2222-222222222222")),
             false));
         QVERIFY(loaded_child);
-        QCOMPARE(loaded_child->origin(), QStringLiteral("aaaaaaaa-1111-1111-1111-111111111111"));
+        QCOMPARE(loaded_child->origin(), QString{});
         QVERIFY(loaded_child->tags().contains(QStringLiteral("child")));
 
         const auto stored_origin = waitForTask(db->queryOne<QString>(
             "SELECT origin FROM action WHERE id = ?",
             QStringLiteral("bbbbbbbb-2222-2222-2222-222222222222")));
         QVERIFY(stored_origin);
-        QCOMPARE(stored_origin.value(), QStringLiteral("aaaaaaaa-1111-1111-1111-111111111111"));
+        QCOMPARE(stored_origin.value(), QString{});
+
+        QCOMPARE(runtime.server_comm_.recorded_sync_issues_.size(), 1);
+        const auto& issue = runtime.server_comm_.recorded_sync_issues_.front();
+        QCOMPARE(issue.key().objectType(),
+                 nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION);
+        QCOMPARE(issue.key().objectId(), QStringLiteral("bbbbbbbb-2222-2222-2222-222222222222"));
+        QCOMPARE(issue.key().problem(),
+                 nextapp::pb::SyncFaultKindGadget::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE);
+        QCOMPARE(issue.key().referencedType(),
+                 nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION);
+        QCOMPARE(issue.key().referencedId(), QStringLiteral("aaaaaaaa-1111-1111-1111-111111111111"));
+        QVERIFY(!issue.issueId().isEmpty());
 
         const auto tags = waitForTask(db->legacyQuery(
-            "SELECT name FROM tag WHERE action = 'aaaaaaaa-1111-1111-1111-111111111111' ORDER BY name"));
+            "SELECT name FROM tag WHERE action = 'bbbbbbbb-2222-2222-2222-222222222222' ORDER BY name"));
         QVERIFY(tags.has_value());
-        QCOMPARE(tags->size(), 2);
-        QCOMPARE(tags->at(0).at(0).toString(), QStringLiteral("focus"));
-        QCOMPARE(tags->at(1).at(0).toString(), QStringLiteral("home"));
+        QCOMPARE(tags->size(), 1);
+        QCOMPARE(tags->at(0).at(0).toString(), QStringLiteral("child"));
     }
 
     ActionInfoCache::instance_ = nullptr;

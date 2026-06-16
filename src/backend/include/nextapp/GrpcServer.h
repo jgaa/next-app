@@ -143,6 +143,7 @@ public:
         ::grpc::ServerUnaryReactor *HelloEx(::grpc::CallbackServerContext *ctx, const pb::HelloReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *Ping(::grpc::CallbackServerContext *ctx, const pb::PingReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetServerInfo(::grpc::CallbackServerContext *, const pb::Empty *, pb::Status *) override;
+        ::grpc::ServerUnaryReactor *ReportSyncIssues(::grpc::CallbackServerContext *ctx, const pb::ReportSyncIssuesReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetDayColorDefinitions(::grpc::CallbackServerContext *, const pb::Empty *, pb::DayColorDefinitions *) override;
         ::grpc::ServerUnaryReactor *GetDay(::grpc::CallbackServerContext *ctx, const pb::Date *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetMonth(::grpc::CallbackServerContext *ctx, const pb::MonthReq *req, pb::Month *reply) override;

@@ -780,6 +780,37 @@ message DataVersionsInfo {
     uint64 lastKnownNotification = 2;
 }
 
+enum SyncObjectType {
+    SYNC_OBJECT_TYPE_UNSPECIFIED = 0;
+    SYNC_OBJECT_TYPE_ACTION = 1;
+    SYNC_OBJECT_TYPE_NODE = 2;
+    SYNC_OBJECT_TYPE_WORK_SESSION = 3;
+    SYNC_OBJECT_TYPE_TIME_BLOCK = 4;
+}
+
+enum SyncFaultKind {
+    SYNC_FAULT_KIND_UNSPECIFIED = 0;
+    SYNC_FAULT_KIND_MISSING_REFERENCE = 1;
+    SYNC_FAULT_KIND_REFERENCE_TO_DELETED = 2;
+}
+
+message SyncIssueKey {
+    SyncObjectType objectType = 1;
+    string objectId = 2;
+    SyncFaultKind problem = 3;
+    SyncObjectType referencedType = 4;
+    string referencedId = 5;
+}
+
+message SyncIssue {
+    bytes issueId = 1;
+    SyncIssueKey key = 2;
+}
+
+message ReportSyncIssuesReq {
+    repeated SyncIssue issues = 1;
+}
+
 message Update {
     Timestamp when = 1;
 
@@ -818,6 +849,8 @@ message Update {
         Subscription subscription = 28; // The subscription info has been updated
         SessionAccess sessionAccess = 29; // Access mode for a specific device/session changed
     }
+
+    repeated bytes fixesIssueIds = 30;
 }
 
 message PushNotificationConfig {
@@ -1246,6 +1279,7 @@ service Nextapp {
     rpc SetColorOnDay(SetColorReq) returns (Status) {}
     rpc SetDay(CompleteDay) returns (Status) {}
     rpc SubscribeToUpdates(UpdatesReq) returns (stream Update) {}
+    rpc ReportSyncIssues(ReportSyncIssuesReq) returns (Status) {}
     rpc CreateTenant(CreateTenantReq) returns (Status) {}
     rpc ListTenants(ListTenantsReq) returns (stream Status) {} // admin only
     rpc SetTenantState(SetTenantStateReq) returns (Status) {} // admin only

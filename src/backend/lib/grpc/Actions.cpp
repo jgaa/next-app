@@ -2,6 +2,7 @@
 #include "shared_grpc_server.h"
 #include "nextapp/UserContext.h"
 #include <boost/multi_array.hpp>
+#include <set>
 
 namespace nextapp::grpc {
 
@@ -442,6 +443,463 @@ void sanitize(pb::Action& action) {
     }
 }
 
+std::string canonicalSyncIssueKeyBytes(const pb::SyncIssueKey& key)
+{
+    return format(
+        "object_type={}\nobject_id={}\nproblem={}\nreferenced_type={}\nreferenced_id={}\n",
+        static_cast<int>(key.objecttype()),
+        key.objectid(),
+        static_cast<int>(key.problem()),
+        static_cast<int>(key.referencedtype()),
+        key.referencedid());
+}
+
+bool isValidSyncIssueId(const pb::SyncIssue& issue)
+{
+    if (!issue.has_key() || issue.issueid().empty()) {
+        return false;
+    }
+
+    const auto canonical = canonicalSyncIssueKeyBytes(issue.key());
+    return sha256(span_t{canonical.data(), canonical.size()}, false) == issue.issueid();
+}
+
+bool isMissingActionOriginIssue(const pb::SyncIssue& issue)
+{
+    if (!issue.has_key()) {
+        return false;
+    }
+
+    const auto& key = issue.key();
+    return key.objecttype() == pb::SyncObjectType::SYNC_OBJECT_TYPE_ACTION
+        && key.problem() == pb::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE
+        && key.referencedtype() == pb::SyncObjectType::SYNC_OBJECT_TYPE_ACTION
+        && !key.objectid().empty()
+        && !key.referencedid().empty();
+}
+
+bool isMissingNodeParentIssue(const pb::SyncIssue& issue)
+{
+    if (!issue.has_key()) {
+        return false;
+    }
+
+    const auto& key = issue.key();
+    return key.objecttype() == pb::SyncObjectType::SYNC_OBJECT_TYPE_NODE
+        && key.problem() == pb::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE
+        && key.referencedtype() == pb::SyncObjectType::SYNC_OBJECT_TYPE_NODE
+        && !key.objectid().empty()
+        && !key.referencedid().empty();
+}
+
+bool isMissingWorkSessionActionIssue(const pb::SyncIssue& issue)
+{
+    if (!issue.has_key()) {
+        return false;
+    }
+
+    const auto& key = issue.key();
+    return key.objecttype() == pb::SyncObjectType::SYNC_OBJECT_TYPE_WORK_SESSION
+        && key.problem() == pb::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE
+        && key.referencedtype() == pb::SyncObjectType::SYNC_OBJECT_TYPE_ACTION
+        && !key.objectid().empty()
+        && !key.referencedid().empty();
+}
+
+bool isMissingTimeBlockActionIssue(const pb::SyncIssue& issue)
+{
+    if (!issue.has_key()) {
+        return false;
+    }
+
+    const auto& key = issue.key();
+    return key.objecttype() == pb::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK
+        && key.problem() == pb::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE
+        && key.referencedtype() == pb::SyncObjectType::SYNC_OBJECT_TYPE_ACTION
+        && !key.objectid().empty()
+        && !key.referencedid().empty();
+}
+
+auto createSyncIssueCalendarEventUpdate(const pb::TimeBlock& tb)
+{
+    auto update = newUpdate(pb::Update::Operation::Update_Operation_UPDATED);
+    auto *event = update->mutable_calendarevents()->add_events();
+    event->mutable_timeblock()->CopyFrom(tb);
+    if (tb.has_timespan()) {
+        event->mutable_timespan()->CopyFrom(tb.timespan());
+    }
+    event->set_id(tb.id());
+    event->set_user(tb.user());
+    return update;
+}
+
+boost::asio::awaitable<std::optional<pb::TimeBlock>> fetchTimeBlockForSyncIssue(
+    RequestCtx& rctx,
+    const std::string& id)
+{
+    enum Cols {
+        ID, USER, NAME, START_TIME, END_TIME, KIND, CATEGORY, ACTIONS, VERSION, UPDATED, UPDATED_ID
+    };
+
+    const auto res = co_await rctx.dbh->exec(
+        "SELECT id, user, name, start_time, end_time, kind, category, actions, version, updated, updated_id "
+        "FROM time_block WHERE id=? AND user=?",
+        id,
+        rctx.uctx->userUuid());
+    if (!res.has_value() || res.rows().empty()) {
+        co_return std::nullopt;
+    }
+
+    const auto& row = res.rows().front();
+    pb::TimeBlock tb;
+    tb.set_id(pb_adapt(row.at(ID).as_string()));
+    tb.set_user(pb_adapt(row.at(USER).as_string()));
+    if (row.at(NAME).is_string()) {
+        tb.set_name(pb_adapt(row.at(NAME).as_string()));
+    }
+    if (row.at(START_TIME).is_datetime()) {
+        tb.mutable_timespan()->set_start(toTimeT(row.at(START_TIME).as_datetime()));
+    }
+    if (row.at(END_TIME).is_datetime()) {
+        tb.mutable_timespan()->set_end(toTimeT(row.at(END_TIME).as_datetime()));
+    }
+
+    pb::TimeBlock::Kind kind;
+    if (pb::TimeBlock_Kind_Parse(toUpper(row.at(KIND).as_string()), &kind)) {
+        tb.set_kind(kind);
+    }
+    if (row.at(CATEGORY).is_string()) {
+        tb.set_category(pb_adapt(row.at(CATEGORY).as_string()));
+    }
+    if (row.at(ACTIONS).is_blob()) {
+        const auto blob = row.at(ACTIONS).as_blob();
+        if (!tb.mutable_actions()->ParseFromArray(blob.data(), blob.size())) {
+            throw server_err(pb::Error::GENERIC_ERROR, "Failed to parse time_block.actions from saved protobuf message");
+        }
+    }
+    tb.set_version(static_cast<int32_t>(row.at(VERSION).as_int64()));
+    tb.set_updated(toMsTimestamp(row.at(UPDATED).as_datetime(), rctx.uctx->tz()));
+    tb.set_updatedid(row.at(UPDATED_ID).as_uint64());
+    co_return tb;
+}
+
+boost::asio::awaitable<void> repairMissingActionOriginIssue(
+    GrpcServer& owner,
+    const pb::SyncIssue& issue,
+    RequestCtx& rctx)
+{
+    const auto& key = issue.key();
+    const auto& cuser = rctx.uctx->userUuid();
+    const auto dbopts = rctx.uctx->dbOptions();
+
+    const auto action_res = co_await rctx.dbh->exec(
+        "SELECT origin, status FROM action WHERE id=? AND user=?",
+        dbopts,
+        key.objectid(),
+        cuser);
+    if (!action_res.has_value() || action_res.rows().empty()) {
+        co_return;
+    }
+
+    const auto& action_row = action_res.rows().front();
+    const auto current_origin = action_row.at(0).is_null()
+        ? std::string{}
+        : std::string(action_row.at(0).as_string());
+    const auto current_status = std::string(action_row.at(1).as_string());
+    if (current_status == "deleted" || current_origin != key.referencedid()) {
+        co_return;
+    }
+
+    const auto referenced_res = co_await rctx.dbh->exec(
+        "SELECT status FROM action WHERE id=? AND user=?",
+        dbopts,
+        key.referencedid(),
+        cuser);
+    if (referenced_res.has_value() && !referenced_res.rows().empty()) {
+        const auto referenced_status = std::string(referenced_res.rows().front().at(0).as_string());
+        if (referenced_status != "deleted") {
+            co_return;
+        }
+    }
+
+    const auto updated = co_await rctx.dbh->exec(
+        "UPDATE action SET origin=NULL WHERE id=? AND user=? AND origin=?",
+        dbopts,
+        key.objectid(),
+        cuser,
+        key.referencedid());
+    if (!updated.has_value() || updated.affected_rows() == 0) {
+        co_return;
+    }
+
+    auto& publish = rctx.publishLater(pb::Update::Operation::Update_Operation_UPDATED);
+    publish.add_fixesissueids(issue.issueid());
+    co_await owner.getAction(*publish.mutable_action(), key.objectid(), rctx);
+}
+
+boost::asio::awaitable<bool> repairMissingNodeParentIssue(
+    GrpcServer& owner,
+    const pb::SyncIssue& issue,
+    RequestCtx& rctx)
+{
+    const auto& key = issue.key();
+    const auto& cuser = rctx.uctx->userUuid();
+    const auto dbopts = rctx.uctx->dbOptions();
+
+    const auto node_res = co_await rctx.dbh->exec(
+        "SELECT parent, name, deleted FROM node WHERE id=? AND user=?",
+        dbopts,
+        key.objectid(),
+        cuser);
+    if (!node_res.has_value() || node_res.rows().empty()) {
+        co_return false;
+    }
+
+    const auto& node_row = node_res.rows().front();
+    const auto current_parent = node_row.at(0).is_null()
+        ? std::string{}
+        : std::string(node_row.at(0).as_string());
+    const auto current_name = node_row.at(1).is_string()
+        ? std::string(node_row.at(1).as_string())
+        : std::string{};
+    const auto deleted = node_row.at(2).as_int64() != 0;
+    if (deleted || current_parent != key.referencedid()) {
+        co_return false;
+    }
+
+    const auto parent_res = co_await rctx.dbh->exec(
+        "SELECT deleted FROM node WHERE id=? AND user=?",
+        dbopts,
+        key.referencedid(),
+        cuser);
+    if (parent_res.has_value() && !parent_res.rows().empty()
+        && parent_res.rows().front().at(0).as_int64() == 0) {
+        co_return false;
+    }
+
+    const auto usage_res = co_await rctx.dbh->exec(
+        R"(WITH RECURSIVE subtree(id) AS (
+               SELECT id FROM node WHERE id=? AND user=?
+               UNION ALL
+               SELECT n.id
+               FROM node AS n
+               INNER JOIN subtree AS s ON n.parent = s.id
+               WHERE n.user=?
+           )
+           SELECT COUNT(*)
+           FROM action
+           WHERE user=?
+             AND status != 'deleted'
+             AND node IN (SELECT id FROM subtree))",
+        dbopts,
+        key.objectid(),
+        cuser,
+        cuser,
+        cuser);
+    const auto active_actions = usage_res.has_value() && !usage_res.rows().empty()
+        ? usage_res.rows().front().at(0).as_int64()
+        : 0;
+
+    if (active_actions > 0) {
+        const auto repaired_name = current_name.rfind("__", 0) == 0
+            ? current_name
+            : "__" + current_name;
+        LOG_WARN_EX(rctx) << "Repairing missing node parent by re-rooting node "
+                          << key.objectid() << " and forcing full resync."
+                          << " Missing parent=" << key.referencedid()
+                          << " active_actions_in_subtree=" << active_actions;
+
+        const auto updated = co_await rctx.dbh->exec(
+            "UPDATE node SET parent=NULL, name=? WHERE id=? AND user=? AND parent=?",
+            dbopts,
+            repaired_name,
+            key.objectid(),
+            cuser,
+            key.referencedid());
+        if (!updated.has_value() || updated.affected_rows() == 0) {
+            co_return false;
+        }
+
+        co_await rctx.dbh->exec(
+            "UPDATE `user` SET data_sync_epoch = data_sync_epoch + 1 WHERE id = ?",
+            cuser);
+        const auto epoch_res = co_await rctx.dbh->exec(
+            "SELECT data_sync_epoch FROM `user` WHERE id = ?",
+            cuser);
+        if (!epoch_res.has_value() || epoch_res.rows().empty()) {
+            throw server_err{pb::Error::GENERIC_ERROR, "Failed to load updated data sync epoch"};
+        }
+
+        co_await rctx.uctx->publishFullResync(epoch_res.rows().front().at(0).as_uint64());
+        co_return true;
+    }
+
+    const auto subtree_res = co_await rctx.dbh->exec(
+        R"(WITH RECURSIVE subtree(id, depth) AS (
+               SELECT id, 0 FROM node WHERE id=? AND user=?
+               UNION ALL
+               SELECT n.id, subtree.depth + 1
+               FROM node AS n
+               INNER JOIN subtree ON n.parent = subtree.id
+               WHERE n.user=?
+           )
+           SELECT n.id, subtree.depth
+           FROM subtree
+           INNER JOIN node AS n ON n.id = subtree.id AND n.user=?
+           WHERE n.deleted = 0
+           ORDER BY subtree.depth DESC, n.id)",
+        dbopts,
+        key.objectid(),
+        cuser,
+        cuser,
+        cuser);
+    if (!subtree_res.has_value()) {
+        throw server_err{pb::Error::DATABASE_UPDATE_FAILED, "Failed to load node subtree for repair"};
+    }
+
+    for (const auto& row : subtree_res.rows()) {
+        const auto node_id = std::string(row.at(0).as_string());
+        const auto updated = co_await rctx.dbh->exec(
+            "UPDATE node SET deleted=1, active=0 WHERE id=? AND user=? AND deleted=0",
+            dbopts,
+            node_id,
+            cuser);
+        if (!updated.has_value() || updated.affected_rows() == 0) {
+            continue;
+        }
+
+        auto node = co_await owner.fetcNode(node_id, cuser, rctx);
+        auto& publish = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+        publish.add_fixesissueids(issue.issueid());
+        *publish.mutable_node() = std::move(node);
+    }
+
+    co_return false;
+}
+
+boost::asio::awaitable<void> repairMissingWorkSessionActionIssue(
+    GrpcServer& owner,
+    const pb::SyncIssue& issue,
+    RequestCtx& rctx)
+{
+    const auto& key = issue.key();
+    const auto& cuser = rctx.uctx->userUuid();
+    const auto dbopts = rctx.uctx->dbOptions();
+
+    const auto ws_res = co_await rctx.dbh->exec(
+        "SELECT action, state FROM work_session WHERE id=? AND user=?",
+        dbopts,
+        key.objectid(),
+        cuser);
+    if (!ws_res.has_value() || ws_res.rows().empty()) {
+        co_return;
+    }
+
+    const auto& ws_row = ws_res.rows().front();
+    const auto current_action = ws_row.at(0).is_null()
+        ? std::string{}
+        : std::string(ws_row.at(0).as_string());
+    const auto current_state = std::string(ws_row.at(1).as_string());
+    if (current_state == "deleted" || current_action != key.referencedid()) {
+        co_return;
+    }
+
+    const auto action_res = co_await rctx.dbh->exec(
+        "SELECT status FROM action WHERE id=? AND user=?",
+        dbopts,
+        key.referencedid(),
+        cuser);
+    if (action_res.has_value() && !action_res.rows().empty()) {
+        const auto status = std::string(action_res.rows().front().at(0).as_string());
+        if (status != "deleted") {
+            co_return;
+        }
+    }
+
+    const auto updated = co_await rctx.dbh->exec(
+        R"(UPDATE work_session SET
+               action=NULL,
+               state='deleted',
+               start_time=NULL,
+               end_time=NULL,
+               duration=0,
+               paused=0,
+               name=NULL,
+               note=NULL,
+               events=NULL
+           WHERE id=? AND user=? AND action=?)",
+        dbopts,
+        key.objectid(),
+        cuser,
+        key.referencedid());
+    if (!updated.has_value() || updated.affected_rows() == 0) {
+        co_return;
+    }
+
+    rctx.uctx->onDeleted(UserContext::PlanResource::WORK_SESSION);
+    auto work = co_await owner.fetchWorkSession(key.objectid(), rctx);
+    auto& publish = rctx.publishLater(pb::Update::Operation::Update_Operation_DELETED);
+    publish.add_fixesissueids(issue.issueid());
+    *publish.mutable_work() = std::move(work);
+}
+
+boost::asio::awaitable<void> repairMissingTimeBlockActionIssue(
+    const pb::SyncIssue& issue,
+    RequestCtx& rctx)
+{
+    const auto& key = issue.key();
+    const auto& cuser = rctx.uctx->userUuid();
+    const auto dbopts = rctx.uctx->dbOptions();
+
+    auto current_tb = co_await fetchTimeBlockForSyncIssue(rctx, key.objectid());
+    if (!current_tb.has_value() || current_tb->kind() == pb::TimeBlock::Kind::TimeBlock_Kind_DELETED) {
+        co_return;
+    }
+
+    auto *actions = current_tb->mutable_actions()->mutable_list();
+    if (std::ranges::find(*actions, key.referencedid()) == actions->end()) {
+        co_return;
+    }
+
+    const auto action_res = co_await rctx.dbh->exec(
+        "SELECT status FROM action WHERE id=? AND user=?",
+        dbopts,
+        key.referencedid(),
+        cuser);
+    if (action_res.has_value() && !action_res.rows().empty()) {
+        const auto status = std::string(action_res.rows().front().at(0).as_string());
+        if (status != "deleted") {
+            co_return;
+        }
+    }
+
+    actions->erase(std::remove(actions->begin(), actions->end(), key.referencedid()), actions->end());
+    const auto updated = co_await rctx.dbh->exec(
+        "UPDATE time_block SET actions=? WHERE id=? AND user=?",
+        dbopts,
+        toBlob(current_tb->actions()),
+        key.objectid(),
+        cuser);
+    if (!updated.has_value() || updated.affected_rows() == 0) {
+        co_return;
+    }
+
+    co_await rctx.dbh->exec(
+        "DELETE FROM time_block_actions WHERE time_block=? AND action=?",
+        dbopts,
+        key.objectid(),
+        key.referencedid());
+
+    current_tb = co_await fetchTimeBlockForSyncIssue(rctx, key.objectid());
+    if (!current_tb.has_value()) {
+        co_return;
+    }
+
+    auto update = createSyncIssueCalendarEventUpdate(*current_tb);
+    update->add_fixesissueids(issue.issueid());
+    rctx.publishLater(std::move(update));
+}
+
 } // anon ns
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetActions(::grpc::CallbackServerContext *ctx, const pb::GetActionsReq *req, pb::Status *reply)
@@ -590,6 +1048,46 @@ void sanitize(pb::Action& action) {
                 reply->set_message(format("Action with id={} not found for the current user.", uuid));
             }
 
+            co_return;
+        }, __func__);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::ReportSyncIssues(
+    ::grpc::CallbackServerContext *ctx,
+    const pb::ReportSyncIssuesReq *req,
+    pb::Status *reply)
+{
+    return mutatingUnaryHandler(ctx, req, reply,
+        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            (void)ctx;
+            std::set<std::string> seen_issue_ids;
+            for (const auto& issue : req->issues()) {
+                if (!isValidSyncIssueId(issue)) {
+                    LOG_WARN_EX(rctx) << "Ignoring sync issue with invalid issue id.";
+                    continue;
+                }
+                if (!seen_issue_ids.insert(issue.issueid()).second) {
+                    continue;
+                }
+                if (!isMissingActionOriginIssue(issue)) {
+                    if (isMissingNodeParentIssue(issue)) {
+                        if (co_await repairMissingNodeParentIssue(owner_, issue, rctx)) {
+                            break;
+                        }
+                        continue;
+                    }
+                    if (isMissingWorkSessionActionIssue(issue)) {
+                        co_await repairMissingWorkSessionActionIssue(owner_, issue, rctx);
+                        continue;
+                    }
+                    if (isMissingTimeBlockActionIssue(issue)) {
+                        co_await repairMissingTimeBlockActionIssue(issue, rctx);
+                    }
+                    continue;
+                }
+
+                co_await repairMissingActionOriginIssue(owner_, issue, rctx);
+            }
             co_return;
         }, __func__);
 }

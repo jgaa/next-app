@@ -62,6 +62,10 @@ public:
     virtual bool shouldUseUpdatedIdSync() const noexcept = 0;
     virtual void requestIncrementalRepair() = 0;
     virtual void resync() = 0;
+    virtual void recordSyncIssue(const nextapp::pb::SyncIssue& issue) = 0;
+    virtual void clearSyncIssuesForObject(
+        nextapp::pb::SyncObjectTypeGadget::SyncObjectType object_type,
+        const QString& object_id) = 0;
     virtual void fetchDay(int year, int month, int day) = 0;
     virtual void getDayColorDefinitions() = 0;
     virtual void setDay(const nextapp::pb::CompleteDay& day) = 0;

@@ -48,6 +48,34 @@ QByteArray computeTagsHash(const QList<QString>& tags) {
     return computeTagsHash(str);
 }
 
+QByteArray canonicalSyncIssueKeyBytes(const nextapp::pb::SyncIssueKey& key)
+{
+    QByteArray bytes;
+    bytes += "object_type=" + QByteArray::number(static_cast<int>(key.objectType())) + '\n';
+    bytes += "object_id=" + key.objectId().toUtf8() + '\n';
+    bytes += "problem=" + QByteArray::number(static_cast<int>(key.problem())) + '\n';
+    bytes += "referenced_type=" + QByteArray::number(static_cast<int>(key.referencedType())) + '\n';
+    bytes += "referenced_id=" + key.referencedId().toUtf8() + '\n';
+    return bytes;
+}
+
+nextapp::pb::SyncIssue makeMissingActionOriginIssue(const QString& action_id, const QString& origin_id)
+{
+    nextapp::pb::SyncIssueKey key;
+    key.setObjectType(nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION);
+    key.setObjectId(action_id);
+    key.setProblem(nextapp::pb::SyncFaultKindGadget::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE);
+    key.setReferencedType(nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION);
+    key.setReferencedId(origin_id);
+
+    nextapp::pb::SyncIssue issue;
+    issue.setKey(key);
+    issue.setIssueId(QCryptographicHash::hash(
+        canonicalSyncIssueKeyBytes(issue.key()),
+        QCryptographicHash::Sha256));
+    return issue;
+}
+
 static const QString insert_query = R"(INSERT INTO action
         (id, node, origin, priority, dyn_importance, dyn_urgency, dyn_score, status, favorite, name, descr, created_date,
         due_kind, start_time, due_by_time, due_timezone, completed_time,
@@ -310,11 +338,6 @@ bool add(C& container, const T& action, ActionInfoCache *cache = {}) {
 } // anon ns
 
 ActionInfoCache *ActionInfoCache::instance_;
-
-bool ActionInfoCache::shouldStageOriginRepair() const noexcept
-{
-    return state() == State::SYNCHING;
-}
 
 ActionInfoCache::ActionInfoCache(QObject *parent)
 : ActionInfoCache(*NextAppCore::instance(), parent)
@@ -803,9 +826,6 @@ QCoro::Task<bool> ActionInfoCache::pocessUpdate(const std::shared_ptr<nextapp::p
 
 QCoro::Task<bool> ActionInfoCache::finalizeSyncPersistence()
 {
-    if (!co_await repairStoredOrigins()) {
-        co_return false;
-    }
     co_return co_await validateStoredOrigins();
 }
 
@@ -814,25 +834,6 @@ QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &i
     auto& db = syncDb();
     const auto token = syncTransactionToken();
     static const QString delete_query = "DELETE FROM action WHERE id = ?";
-    QList<nextapp::pb::Action> stored_items;
-    stored_items.reserve(items.size());
-    std::map<QString, QString> repairs;
-    std::set<QString> cleared_repairs;
-    for (const auto& action : items) {
-        if (action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED
-            || !action.hasOrigin()
-            || action.origin().isEmpty()
-            || !shouldStageOriginRepair()) {
-            cleared_repairs.insert(action.id_proto());
-            stored_items.push_back(action);
-            continue;
-        }
-
-        auto staged = action;
-        staged.setOrigin(QString{});
-        stored_items.push_back(std::move(staged));
-        repairs[action.id_proto()] = action.origin();
-    }
     auto isDeleted = [](const auto& action) -> bool {
         return action.status() == nextapp::pb::ActionStatusGadget::ActionStatus::DELETED;
     };
@@ -844,17 +845,16 @@ QCoro::Task<bool> ActionInfoCache::saveBatch(const QList<nextapp::pb::Action> &i
     };
 
     const auto ok = token
-        ? co_await db.queryBatchInTransaction(*token, insert_query, delete_query, stored_items, getParams, isDeleted, getId, perRowfn)
-        : co_await db.queryBatch(insert_query, delete_query, stored_items, getParams, isDeleted, getId, perRowfn);
+        ? co_await db.queryBatchInTransaction(*token, insert_query, delete_query, items, getParams, isDeleted, getId, perRowfn)
+        : co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId, perRowfn);
     if (!ok) {
         co_return false;
     }
 
-    for (const auto& id : cleared_repairs) {
-        pending_origin_repairs_.erase(id);
-    }
-    for (const auto& [child_id, origin_id] : repairs) {
-        pending_origin_repairs_[child_id] = origin_id;
+    for (const auto& action : items) {
+        runtime_.serverComm().clearSyncIssuesForObject(
+            nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION,
+            action.id_proto());
     }
 
     co_return true;
@@ -887,7 +887,9 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
                         << " err=" << rval.error();
             co_return false;
         }
-        pending_origin_repairs_.erase(action.id_proto());
+        runtime_.serverComm().clearSyncIssuesForObject(
+            nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION,
+            action.id_proto());
         co_return true;
     }
 
@@ -916,13 +918,7 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         }
     }
 
-    auto stored_action = action;
-    const auto staged_origin = action.hasOrigin() ? action.origin() : QString{};
-    if (shouldStageOriginRepair() && !staged_origin.isEmpty()) {
-        stored_action.setOrigin(QString{});
-    }
-
-    params = getParams(stored_action);
+    params = getParams(action);
     const auto rval = token
         ? co_await db.queryInTransaction(*token, insert_query, params)
         : co_await db.query(insert_query, params);
@@ -943,11 +939,9 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
         co_return true;
     }
 
-    if (shouldStageOriginRepair() && !staged_origin.isEmpty()) {
-        pending_origin_repairs_[action.id_proto()] = staged_origin;
-    } else {
-        pending_origin_repairs_.erase(action.id_proto());
-    }
+    runtime_.serverComm().clearSyncIssuesForObject(
+        nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION,
+        action.id_proto());
 
     co_return true;
 }
@@ -1188,63 +1182,6 @@ QCoro::Task<bool> ActionInfoCache::reloadCacheFromStorage()
     co_return true;
 }
 
-QCoro::Task<bool> ActionInfoCache::repairStoredOrigins()
-{
-    if (pending_origin_repairs_.empty()) {
-        co_return true;
-    }
-
-    auto& db = syncDb();
-    const auto token = syncTransactionToken();
-    LOG_DEBUG_N << "Repairing " << pending_origin_repairs_.size()
-                << " staged action origin references.";
-    const auto rows = token
-        ? co_await db.queryInTransaction(*token, "SELECT id FROM action")
-        : co_await db.query("SELECT id FROM action");
-    if (!rows) {
-        LOG_ERROR_N << "Failed to load actions for origin repair: " << rows.error();
-        co_return false;
-    }
-
-    QSet<QString> existing_actions;
-    existing_actions.reserve(rows->rows.size());
-    for (const auto& row : rows->rows) {
-        existing_actions.insert(row.at(0).toString());
-    }
-
-    for (const auto& [child_id, origin_id] : pending_origin_repairs_) {
-        if (!existing_actions.contains(origin_id)) {
-            LOG_ERROR_N << "Unresolved action origin reference after repair pass: action="
-                        << child_id << " origin=" << origin_id;
-            co_return false;
-        }
-
-        if (!existing_actions.contains(child_id)) {
-            continue;
-        }
-
-        const auto updated = token
-            ? co_await db.queryInTransaction(
-                *token,
-                "UPDATE action SET origin = ? WHERE id = ?",
-                origin_id,
-                child_id)
-            : co_await db.query(
-                "UPDATE action SET origin = ? WHERE id = ?",
-                origin_id,
-                child_id);
-        if (!updated) {
-            LOG_ERROR_N << "Failed to repair action origin reference for " << child_id
-                        << " err=" << updated.error();
-            co_return false;
-        }
-    }
-
-    pending_origin_repairs_.clear();
-    LOG_DEBUG_N << "Finished repairing staged action origin references.";
-    co_return true;
-}
-
 QCoro::Task<bool> ActionInfoCache::validateStoredOrigins()
 {
     auto& db = syncDb();
@@ -1269,14 +1206,37 @@ QCoro::Task<bool> ActionInfoCache::validateStoredOrigins()
         LOG_ERROR_N << "Failed to validate action origin references: " << unresolved.error();
         co_return false;
     }
-    if (!unresolved.value().rows.empty()) {
-        for (const auto& row : unresolved.value().rows) {
-            LOG_ERROR_N << "Unresolved action origin reference: action="
-                        << row.at(0).toString()
-                        << " origin=" << row.at(1).toString();
-        }
-        co_return false;
+    if (unresolved.value().rows.empty()) {
+        co_return true;
     }
+
+    LOG_WARN_N << "Clearing " << unresolved->rows.size()
+               << " unresolved action origin references and reporting them to the server.";
+    for (const auto& row : unresolved.value().rows) {
+        const auto action_id = row.at(0).toString();
+        const auto origin_id = row.at(1).toString();
+        LOG_ERROR_N << "Unresolved action origin reference: action="
+                    << action_id
+                    << " origin=" << origin_id;
+        runtime_.serverComm().recordSyncIssue(makeMissingActionOriginIssue(action_id, origin_id));
+
+        const auto cleared = token
+            ? co_await db.queryInTransaction(
+                *token,
+                "UPDATE action SET origin = NULL WHERE id = ? AND origin = ?",
+                action_id,
+                origin_id)
+            : co_await db.query(
+                "UPDATE action SET origin = NULL WHERE id = ? AND origin = ?",
+                action_id,
+                origin_id);
+        if (!cleared) {
+            LOG_ERROR_N << "Failed to clear unresolved action origin reference for "
+                        << action_id << " err=" << cleared.error();
+            co_return false;
+        }
+    }
+
     co_return true;
 }
 
@@ -1288,7 +1248,6 @@ std::shared_ptr<GrpcIncomingStream> ActionInfoCache::openServerStream(nextapp::p
 void ActionInfoCache::clear()
 {
     hot_cache_.clear();
-    pending_origin_repairs_.clear();
 }
 
 std::shared_ptr<nextapp::pb::ActionInfo> ActionInfoCache::get_(const QUuid &action_uuid)

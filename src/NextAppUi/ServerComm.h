@@ -19,6 +19,8 @@
 #include <QProtobufSerializer>
 #include <QSettings>
 #include <QFile>
+#include <QHash>
+#include <QSet>
 
 #include "qcorotask.h"
 #include "qcorofuture.h"
@@ -168,6 +170,10 @@ public:
 
     /*! Resynch with the server */
     Q_INVOKABLE void resync() override;
+    void recordSyncIssue(const nextapp::pb::SyncIssue& issue) override;
+    void clearSyncIssuesForObject(
+        nextapp::pb::SyncObjectTypeGadget::SyncObjectType object_type,
+        const QString& object_id) override;
 
 
     static ServerComm& instance() noexcept {
@@ -327,8 +333,12 @@ private:
     void onGrpcReady();
     void onUpdateMessage();
     void applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& msg);
+    void clearSyncIssuesResolvedByUpdate(const nextapp::pb::Update& msg);
     void enqueueLiveUpdateForApply(const std::shared_ptr<nextapp::pb::Update>& msg);
     QCoro::Task<void> drainLiveUpdateQueue();
+    void scheduleSyncIssueReport();
+    QCoro::Task<void> reportPendingSyncIssues();
+    void clearTrackedSyncIssue(const QByteArray& issue_id);
     QCoro::Task<bool> applyUpdateDurably(const std::shared_ptr<nextapp::pb::Update>& msg);
     QCoro::Task<bool> applyDurableModels(const std::shared_ptr<nextapp::pb::Update>& msg);
     bool shouldDeferUpdateUntilInitialSyncComplete() const noexcept;
@@ -710,6 +720,8 @@ private:
     bool resync_scheduled_{false};
     bool import_data_in_progress_{false};
     bool import_data_resync_received_{false};
+    bool sync_issue_report_scheduled_{false};
+    bool sync_issue_report_in_flight_{false};
     bool closed_{false};
     struct SyncDiagnostics final {
         bool initial_sync_entered{false};
@@ -726,6 +738,9 @@ private:
         uint start_last_seen_update_id{0};
         uint completed_last_seen_update_id{0};
     } sync_diagnostics_;
+    QHash<QByteArray, nextapp::pb::SyncIssue> tracked_sync_issues_;
+    QHash<QByteArray, nextapp::pb::SyncIssue> pending_sync_issues_;
+    QSet<QByteArray> reported_sync_issue_ids_;
     std::deque<std::shared_ptr<nextapp::pb::Update>> deferred_updates_;
     std::deque<std::shared_ptr<nextapp::pb::Update>> live_update_apply_queue_;
     bool draining_live_updates_{false};

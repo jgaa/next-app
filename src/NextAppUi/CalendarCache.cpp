@@ -1,5 +1,6 @@
 
 #include <deque>
+#include <QCryptographicHash>
 #include <QSet>
 
 #include <QProtobufSerializer>
@@ -90,6 +91,55 @@ namespace {
         }
 
         return sanitized;
+    }
+
+    QByteArray canonicalSyncIssueKeyBytes(const nextapp::pb::SyncIssueKey& key)
+    {
+        QByteArray bytes;
+        bytes += "object_type=" + QByteArray::number(static_cast<int>(key.objectType())) + '\n';
+        bytes += "object_id=" + key.objectId().toUtf8() + '\n';
+        bytes += "problem=" + QByteArray::number(static_cast<int>(key.problem())) + '\n';
+        bytes += "referenced_type=" + QByteArray::number(static_cast<int>(key.referencedType())) + '\n';
+        bytes += "referenced_id=" + key.referencedId().toUtf8() + '\n';
+        return bytes;
+    }
+
+    nextapp::pb::SyncIssue makeMissingTimeBlockActionIssue(
+        const QString& time_block_id,
+        const QString& action_id)
+    {
+        nextapp::pb::SyncIssueKey key;
+        key.setObjectType(nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK);
+        key.setObjectId(time_block_id);
+        key.setProblem(nextapp::pb::SyncFaultKindGadget::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE);
+        key.setReferencedType(nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION);
+        key.setReferencedId(action_id);
+
+        nextapp::pb::SyncIssue issue;
+        issue.setKey(key);
+        issue.setIssueId(QCryptographicHash::hash(
+            canonicalSyncIssueKeyBytes(issue.key()),
+            QCryptographicHash::Sha256));
+        return issue;
+    }
+
+    void recordMissingTimeBlockActionIssues(
+        ServerCommAccess& server_comm,
+        const nextapp::pb::TimeBlock& tb,
+        const QSet<QString>& existing_actions)
+    {
+        QSet<QString> seen;
+        for (const auto& action_id : tb.actions().list()) {
+            if (seen.contains(action_id)) {
+                continue;
+            }
+            seen.insert(action_id);
+            if (existing_actions.contains(action_id)) {
+                continue;
+            }
+            server_comm.recordSyncIssue(
+                makeMissingTimeBlockActionIssue(tb.id_proto(), action_id));
+        }
     }
 
     std::deque<std::pair<QString, QString>> getVisibleActionRefs(
@@ -185,7 +235,7 @@ QCoro::Task<bool> CalendarCache::pocessUpdate(const std::shared_ptr<nextapp::pb:
                 bool changed = false;
                 tb = sanitizeTimeBlockActions(ce.timeBlock(), *existing_actions, &changed);
                 if (changed) {
-                    runtime_.serverComm().requestIncrementalRepair();
+                    recordMissingTimeBlockActionIssues(runtime_.serverComm(), ce.timeBlock(), *existing_actions);
                     sanitized_event.setTimeBlock(tb);
                     sanitized_event.setTimeSpan(tb.timeSpan());
                 }
@@ -349,6 +399,14 @@ QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &
         success = false;
     }
 
+    if (success) {
+        for (const auto& tb : items) {
+            runtime_.serverComm().clearSyncIssuesForObject(
+                nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK,
+                tb.id_proto());
+        }
+    }
+
     co_return success;
 }
 
@@ -418,6 +476,10 @@ QCoro::Task<bool> CalendarCache::save_(const nextapp::pb::TimeBlock &tblock)
         }
     }
 
+    runtime_.serverComm().clearSyncIssuesForObject(
+        nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_TIME_BLOCK,
+        tblock.id_proto());
+
     co_return true;
 }
 
@@ -452,7 +514,6 @@ QCoro::Task<bool> CalendarCache::repairStoredTimeBlocks()
     }
 
     QList<QUuid> changed_events;
-    bool missing_actions_detected = false;
 
     const auto deleted_refs = token
         ? co_await db.legacyQueryInTransaction(*token, "DELETE FROM time_block_actions")
@@ -477,7 +538,7 @@ QCoro::Task<bool> CalendarCache::repairStoredTimeBlocks()
         bool changed = false;
         auto sanitized = sanitizeTimeBlockActions(tb, *existing_actions, &changed);
         if (changed) {
-            missing_actions_detected = true;
+            recordMissingTimeBlockActionIssues(runtime_.serverComm(), tb, *existing_actions);
         }
         for (const auto& aid : sanitized.actions().list()) {
             QList<QVariant> params;
@@ -506,11 +567,6 @@ QCoro::Task<bool> CalendarCache::repairStoredTimeBlocks()
 
     for (const auto& id : changed_events) {
         emit eventUpdated(id);
-    }
-
-    if (missing_actions_detected) {
-        LOG_INFO_N << "Detected dangling time block actions while rebuilding refs. Requesting incremental repair.";
-        runtime_.serverComm().requestIncrementalRepair();
     }
 
     co_return true;

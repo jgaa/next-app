@@ -236,8 +236,6 @@ private:
     int getInsertRow(const TreeNode *parent, const nextapp::pb::Node& node);
     TreeNode *lookupTreeNode(const QUuid& uuid, bool emptyIsRoot = true);
     bool isDescent(const QUuid &uuid, const QUuid &toParentUuid);
-    bool shouldStageParentRepair() const noexcept;
-    QCoro::Task<bool> repairStoredNodes();
     QCoro::Task<void> onOnline();
     QCoro::Task<bool> validateStoredNodes();
     //QCoro::Task<bool> synchFromServer();
@@ -247,7 +245,6 @@ private:
     TreeNode root_;
     QMap<QUuid, TreeNode*> uuid_index_;
     std::vector<std::shared_ptr<nextapp::pb::Update>> pending_updates_;
-    std::map<QString, QString> pending_parent_repairs_;
     bool has_initial_tree_ = false;
     QString selected_;
     static MainTreeModel *instance_;

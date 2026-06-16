@@ -51,6 +51,16 @@ public:
     bool shouldUseUpdatedIdSync() const noexcept override { return should_use_updated_id_sync_; }
     void requestIncrementalRepair() override { ++incremental_repair_calls_; }
     void resync() override { ++resync_calls_; }
+    void recordSyncIssue(const nextapp::pb::SyncIssue& issue) override
+    {
+        recorded_sync_issues_.append(issue);
+    }
+    void clearSyncIssuesForObject(
+        nextapp::pb::SyncObjectTypeGadget::SyncObjectType object_type,
+        const QString& object_id) override
+    {
+        cleared_sync_issue_objects_.append({object_type, object_id});
+    }
     void fetchDay(int year, int month, int day) override { last_fetch_day_ = QDate{year, month, day}; }
     void getDayColorDefinitions() override { ++get_day_color_definitions_calls_; }
     void setDay(const nextapp::pb::CompleteDay& day) override { last_day_ = day; }
@@ -222,6 +232,8 @@ public:
     nextapp::pb::CompleteDay last_day_;
     nextapp::pb::UserGlobalSettings global_settings_;
     nextapp::pb::DataVersionsInfo data_versions_;
+    QList<nextapp::pb::SyncIssue> recorded_sync_issues_;
+    QList<QPair<nextapp::pb::SyncObjectTypeGadget::SyncObjectType, QString>> cleared_sync_issue_objects_;
     QList<nextapp::pb::Node> added_nodes_;
     QList<nextapp::pb::Node> updated_nodes_;
     QList<QPair<QUuid, QUuid>> moved_nodes_;

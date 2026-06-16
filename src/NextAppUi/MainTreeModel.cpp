@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <ranges>
 
+#include <QCryptographicHash>
 #include <QProtobufSerializer>
 
 #include "MainTreeModel.h"
@@ -112,12 +113,35 @@ void copyTreeBranch(MainTreeModel::TreeNode::node_list_t& list, const T& from, i
     });
 }
 
-} // anon ns
-
-bool MainTreeModel::shouldStageParentRepair() const noexcept
+QByteArray canonicalSyncIssueKeyBytes(const nextapp::pb::SyncIssueKey& key)
 {
-    return state() == State::SYNCHING;
+    QByteArray bytes;
+    bytes += "object_type=" + QByteArray::number(static_cast<int>(key.objectType())) + '\n';
+    bytes += "object_id=" + key.objectId().toUtf8() + '\n';
+    bytes += "problem=" + QByteArray::number(static_cast<int>(key.problem())) + '\n';
+    bytes += "referenced_type=" + QByteArray::number(static_cast<int>(key.referencedType())) + '\n';
+    bytes += "referenced_id=" + key.referencedId().toUtf8() + '\n';
+    return bytes;
 }
+
+nextapp::pb::SyncIssue makeMissingNodeParentIssue(const QString& node_id, const QString& parent_id)
+{
+    nextapp::pb::SyncIssueKey key;
+    key.setObjectType(nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_NODE);
+    key.setObjectId(node_id);
+    key.setProblem(nextapp::pb::SyncFaultKindGadget::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE);
+    key.setReferencedType(nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_NODE);
+    key.setReferencedId(parent_id);
+
+    nextapp::pb::SyncIssue issue;
+    issue.setKey(key);
+    issue.setIssueId(QCryptographicHash::hash(
+        canonicalSyncIssueKeyBytes(issue.key()),
+        QCryptographicHash::Sha256));
+    return issue;
+}
+
+} // anon ns
 
 
 MainTreeModel::MainTreeModel(QObject *parent)
@@ -267,7 +291,6 @@ void MainTreeModel::clear()
 {
     root_.children().clear();
     uuid_index_.clear();
-    pending_parent_repairs_.clear();
 }
 
 QModelIndex MainTreeModel::useRoot()
@@ -621,6 +644,10 @@ QCoro::Task<void> MainTreeModel::onOnline()
 
 QCoro::Task<bool> MainTreeModel::loadFromCache()
 {
+    if (!co_await validateStoredNodes()) {
+        co_return false;
+    }
+
     auto& db = syncDb();
 
     QString query = R"(SELECT uuid, parent, data
@@ -687,79 +714,7 @@ QCoro::Task<bool> MainTreeModel::loadFromCache()
 
 QCoro::Task<bool> MainTreeModel::finalizeSyncPersistence()
 {
-    if (!co_await repairStoredNodes()) {
-        co_return false;
-    }
     co_return co_await validateStoredNodes();
-}
-
-QCoro::Task<bool> MainTreeModel::repairStoredNodes()
-{
-    if (pending_parent_repairs_.empty()) {
-        co_return true;
-    }
-
-    auto& db = syncDb();
-    const auto token = syncTransactionToken();
-    LOG_DEBUG_N << "Repairing " << pending_parent_repairs_.size()
-                << " staged node parent references.";
-    const auto rows = token
-        ? co_await db.queryInTransaction(*token, "SELECT uuid, data FROM node")
-        : co_await db.query("SELECT uuid, data FROM node");
-    if (!rows) {
-        LOG_ERROR_N << "Failed to load nodes for parent repair: " << rows.error();
-        co_return false;
-    }
-
-    QHash<QString, QByteArray> serialized_nodes;
-    serialized_nodes.reserve(rows->rows.size());
-    for (const auto& row : rows->rows) {
-        serialized_nodes.insert(row.at(0).toString(), row.at(1).toByteArray());
-    }
-
-    for (const auto& [child_id, parent_id] : pending_parent_repairs_) {
-        if (!serialized_nodes.contains(parent_id)) {
-            LOG_ERROR_N << "Unresolved node parent reference after repair pass: node="
-                        << child_id << " parent=" << parent_id;
-            co_return false;
-        }
-
-        const auto child_it = serialized_nodes.constFind(child_id);
-        if (child_it == serialized_nodes.cend()) {
-            continue;
-        }
-
-        QProtobufSerializer serializer;
-        nextapp::pb::Node node;
-        if (!node.deserialize(&serializer, child_it.value())) {
-            LOG_ERROR_N << "Failed to deserialize cached node during parent repair: " << child_id;
-            co_return false;
-        }
-
-        node.setParent(parent_id);
-        QByteArray updated_blob = node.serialize(&serializer);
-        const auto updated = token
-            ? co_await db.queryInTransaction(
-                *token,
-                "UPDATE node SET parent = ?, data = ? WHERE uuid = ?",
-                parent_id,
-                updated_blob,
-                child_id)
-            : co_await db.query(
-                "UPDATE node SET parent = ?, data = ? WHERE uuid = ?",
-                parent_id,
-                updated_blob,
-                child_id);
-        if (!updated) {
-            LOG_ERROR_N << "Failed to repair node parent reference for " << child_id
-                        << " err=" << updated.error();
-            co_return false;
-        }
-    }
-
-    pending_parent_repairs_.clear();
-    LOG_DEBUG_N << "Finished repairing staged node parent references.";
-    co_return true;
 }
 
 QCoro::Task<bool> MainTreeModel::validateStoredNodes()
@@ -787,12 +742,73 @@ QCoro::Task<bool> MainTreeModel::validateStoredNodes()
         co_return false;
     }
 
-    if (!unresolved->rows.empty()) {
-        for (const auto& row : unresolved->rows) {
-            LOG_ERROR_N << "Unresolved node parent reference: node="
-                        << row.at(0).toString() << " parent=" << row.at(1).toString();
+    for (const auto& row : unresolved->rows) {
+        const auto node_id = row.at(0).toString();
+        const auto parent_id = row.at(1).toString();
+        LOG_WARN_N << "Removing cached node subtree with unresolved parent reference: node="
+                   << node_id << " parent=" << parent_id;
+
+        runtime_.serverComm().recordSyncIssue(makeMissingNodeParentIssue(node_id, parent_id));
+
+        const auto deleted_actions = token
+            ? co_await db.queryInTransaction(
+                *token,
+                R"(WITH RECURSIVE subtree(uuid) AS (
+                       SELECT uuid FROM node WHERE uuid = ?
+                       UNION ALL
+                       SELECT n.uuid
+                       FROM node AS n
+                       INNER JOIN subtree AS s ON n.parent = s.uuid
+                   )
+                   DELETE FROM action
+                   WHERE node IN (SELECT uuid FROM subtree))",
+                node_id)
+            : co_await db.query(
+                R"(WITH RECURSIVE subtree(uuid) AS (
+                       SELECT uuid FROM node WHERE uuid = ?
+                       UNION ALL
+                       SELECT n.uuid
+                       FROM node AS n
+                       INNER JOIN subtree AS s ON n.parent = s.uuid
+                   )
+                   DELETE FROM action
+                   WHERE node IN (SELECT uuid FROM subtree))",
+                node_id);
+        if (!deleted_actions) {
+            LOG_ERROR_N << "Failed to remove cached actions under node subtree " << node_id
+                        << ": " << deleted_actions.error();
+            co_return false;
         }
-        co_return false;
+
+        const auto deleted_nodes = token
+            ? co_await db.queryInTransaction(
+                *token,
+                R"(WITH RECURSIVE subtree(uuid) AS (
+                       SELECT uuid FROM node WHERE uuid = ?
+                       UNION ALL
+                       SELECT n.uuid
+                       FROM node AS n
+                       INNER JOIN subtree AS s ON n.parent = s.uuid
+                   )
+                   DELETE FROM node
+                   WHERE uuid IN (SELECT uuid FROM subtree))",
+                node_id)
+            : co_await db.query(
+                R"(WITH RECURSIVE subtree(uuid) AS (
+                       SELECT uuid FROM node WHERE uuid = ?
+                       UNION ALL
+                       SELECT n.uuid
+                       FROM node AS n
+                       INNER JOIN subtree AS s ON n.parent = s.uuid
+                   )
+                   DELETE FROM node
+                   WHERE uuid IN (SELECT uuid FROM subtree))",
+                node_id);
+        if (!deleted_nodes) {
+            LOG_ERROR_N << "Failed to remove cached node subtree rooted at " << node_id
+                        << ": " << deleted_nodes.error();
+            co_return false;
+        }
     }
 
     co_return true;
@@ -859,26 +875,22 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
                         << " err=" << rval.error();
             co_return false;
         }
-        pending_parent_repairs_.erase(node.uuid());
+        runtime_.serverComm().clearSyncIssuesForObject(
+            nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_NODE,
+            node.uuid());
         co_return true;
-    }
-
-    auto stored_node = node;
-    const auto staged_parent = node.parent();
-    if (shouldStageParentRepair() && !staged_parent.isEmpty()) {
-        stored_node.setParent(QString{});
     }
 
     QProtobufSerializer serializer;
 
-    params << stored_node.uuid();
-    params << stored_node.parent();
-    params << stored_node.name();
-    params << stored_node.active();
-    params << qlonglong{stored_node.updated()};
-    params << qulonglong{stored_node.updatedId()};
-    params << stored_node.excludeFromWeeklyReview();
-    params << stored_node.serialize(&serializer);
+    params << node.uuid();
+    params << node.parent();
+    params << node.name();
+    params << node.active();
+    params << qlonglong{node.updated()};
+    params << qulonglong{node.updatedId()};
+    params << node.excludeFromWeeklyReview();
+    params << node.serialize(&serializer);
 
     const auto rval = token
         ? co_await db.legacyQueryInTransaction(*token, insert_query, &params)
@@ -889,11 +901,9 @@ QCoro::Task<bool> MainTreeModel::save(const QProtobufMessage& item)
         co_return false; // TODO: Add proper error handling. Probably a full resynch.
     }
 
-    if (shouldStageParentRepair() && !staged_parent.isEmpty()) {
-        pending_parent_repairs_[node.uuid()] = staged_parent;
-    } else {
-        pending_parent_repairs_.erase(node.uuid());
-    }
+    runtime_.serverComm().clearSyncIssuesForObject(
+        nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_NODE,
+        node.uuid());
 
     co_return true;
 }
@@ -903,23 +913,6 @@ QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items
     auto& db = syncDb();
     const auto token = syncTransactionToken();
     static const QString delete_query = R"(DELETE FROM node WHERE uuid = ?)";
-    QList<nextapp::pb::Node> stored_items;
-    stored_items.reserve(items.size());
-    std::map<QString, QString> repairs;
-    std::set<QString> cleared_repairs;
-    for (const auto& node : items) {
-        if (node.deleted() || node.parent().isEmpty() || !shouldStageParentRepair()) {
-            cleared_repairs.insert(node.uuid());
-            stored_items.push_back(node);
-            continue;
-        }
-
-        auto staged = node;
-        staged.setParent(QString{});
-        stored_items.push_back(std::move(staged));
-        repairs[node.uuid()] = node.parent();
-    }
-
     auto getParams = [](const nextapp::pb::Node& node) {
         QList<QVariant> params;
         QProtobufSerializer serializer;
@@ -937,17 +930,16 @@ QCoro::Task<bool> MainTreeModel::saveBatch(const QList<nextapp::pb::Node> &items
     auto getId = [](const nextapp::pb::Node& node) { return node.uuid(); };
 
     const auto ok = token
-        ? co_await db.queryBatchInTransaction(*token, insert_query, delete_query, stored_items, getParams, isDeleted, getId)
-        : co_await db.queryBatch(insert_query, delete_query, stored_items, getParams, isDeleted, getId);
+        ? co_await db.queryBatchInTransaction(*token, insert_query, delete_query, items, getParams, isDeleted, getId)
+        : co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
     if (!ok) {
         co_return false;
     }
 
-    for (const auto& id : cleared_repairs) {
-        pending_parent_repairs_.erase(id);
-    }
-    for (const auto& [child_id, parent_id] : repairs) {
-        pending_parent_repairs_[child_id] = parent_id;
+    for (const auto& node : items) {
+        runtime_.serverComm().clearSyncIssuesForObject(
+            nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_NODE,
+            node.uuid());
     }
 
     co_return true;

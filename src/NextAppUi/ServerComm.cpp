@@ -98,6 +98,11 @@ auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind k
     return req;
 }
 
+QByteArray syncIssueIdBytes(const nextapp::pb::SyncIssue& issue)
+{
+    return issue.issueId();
+}
+
 filesystem::path getDataDir(RuntimeServices& runtime) {
     return runtime.db().dataDir();
 }
@@ -1540,6 +1545,7 @@ void ServerComm::onGrpcReady()
     setStatus(Status::ONLINE);
     emit versionChanged();
     runtime_.setOnline(true);
+    scheduleSyncIssueReport();
 }
 
 QJsonObject ServerComm::syncDiagnostics() const
@@ -1583,6 +1589,7 @@ uint ServerComm::effectiveLastSeenUpdateId() const noexcept
 void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& msg)
 {
     assert(msg);
+    clearSyncIssuesResolvedByUpdate(*msg);
 
     if (msg->hasSubscription()) {
         LOG_DEBUG_N << "Received updated subscription from server";
@@ -1663,6 +1670,13 @@ void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& 
         });
     }
 
+}
+
+void ServerComm::clearSyncIssuesResolvedByUpdate(const nextapp::pb::Update& msg)
+{
+    for (const auto& issue_id : msg.fixesIssueIds()) {
+        clearTrackedSyncIssue(issue_id);
+    }
 }
 
 QCoro::Task<bool> ServerComm::applyDurableModels(const std::shared_ptr<nextapp::pb::Update>& msg)
@@ -3242,6 +3256,103 @@ QCoro::Task<bool> ServerComm::needFullResync()
 
     LOG_INFO_N << "No data epoc found in the database. Full resync is required.";
     co_return true;
+}
+
+void ServerComm::recordSyncIssue(const nextapp::pb::SyncIssue& issue)
+{
+    const auto issue_id = syncIssueIdBytes(issue);
+    if (issue_id.isEmpty()) {
+        LOG_WARN_N << "Ignoring sync issue without issue id.";
+        return;
+    }
+
+    tracked_sync_issues_.insert(issue_id, issue);
+    if (pending_sync_issues_.contains(issue_id) || reported_sync_issue_ids_.contains(issue_id)) {
+        return;
+    }
+
+    pending_sync_issues_.insert(issue_id, issue);
+    scheduleSyncIssueReport();
+}
+
+void ServerComm::clearSyncIssuesForObject(
+    nextapp::pb::SyncObjectTypeGadget::SyncObjectType object_type,
+    const QString& object_id)
+{
+    QList<QByteArray> issue_ids;
+    issue_ids.reserve(tracked_sync_issues_.size());
+    for (auto it = tracked_sync_issues_.cbegin(); it != tracked_sync_issues_.cend(); ++it) {
+        const auto& key = it.value().key();
+        if (key.objectType() == object_type && key.objectId() == object_id) {
+            issue_ids.append(it.key());
+        }
+    }
+
+    for (const auto& issue_id : issue_ids) {
+        clearTrackedSyncIssue(issue_id);
+    }
+}
+
+void ServerComm::scheduleSyncIssueReport()
+{
+    if (sync_issue_report_scheduled_ || sync_issue_report_in_flight_) {
+        return;
+    }
+    if (status_ != Status::ONLINE || pending_sync_issues_.isEmpty()) {
+        return;
+    }
+
+    sync_issue_report_scheduled_ = true;
+    QTimer::singleShot(0, this, [this]() {
+        sync_issue_report_scheduled_ = false;
+        reportPendingSyncIssues().then(
+            [] {},
+            [](const std::exception& ex) {
+                LOG_ERROR_N << "Failed while reporting sync issues: " << ex.what();
+            });
+    });
+}
+
+QCoro::Task<void> ServerComm::reportPendingSyncIssues()
+{
+    if (sync_issue_report_in_flight_ || status_ != Status::ONLINE || pending_sync_issues_.isEmpty()) {
+        co_return;
+    }
+
+    sync_issue_report_in_flight_ = true;
+    const auto reset_guard = qScopeGuard([this]() {
+        sync_issue_report_in_flight_ = false;
+    });
+
+    nextapp::pb::ReportSyncIssuesReq req;
+    QList<QByteArray> sent_issue_ids;
+    sent_issue_ids.reserve(pending_sync_issues_.size());
+    for (auto it = pending_sync_issues_.cbegin(); it != pending_sync_issues_.cend(); ++it) {
+        req.setIssues(nextapp::append(req.issues(), it.value()));
+        sent_issue_ids.append(it.key());
+    }
+
+    auto reply = co_await rpc(req, &nextapp::pb::Nextapp::Client::ReportSyncIssues);
+    if (reply.error() != nextapp::pb::ErrorGadget::Error::OK) {
+        LOG_WARN_N << "Failed to report sync issues: " << reply.message();
+        co_return;
+    }
+
+    for (const auto& issue_id : sent_issue_ids) {
+        pending_sync_issues_.remove(issue_id);
+        reported_sync_issue_ids_.insert(issue_id);
+    }
+
+    if (!pending_sync_issues_.isEmpty()) {
+        scheduleSyncIssueReport();
+    }
+}
+
+void ServerComm::clearTrackedSyncIssue(const QByteArray& issue_id)
+{
+    pending_sync_issues_.remove(issue_id);
+    reported_sync_issue_ids_.remove(issue_id);
+    tracked_sync_issues_.remove(issue_id);
 }
 
 void ServerComm::requestIncrementalRepair()

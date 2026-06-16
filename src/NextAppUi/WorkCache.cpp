@@ -1,6 +1,7 @@
 
 #include <ranges>
 #include <algorithm>
+#include <QCryptographicHash>
 #include <QProtobufSerializer>
 
 #include "WorkCache.h"
@@ -81,6 +82,36 @@ static const QString insert_query = R"(INSERT INTO work_session (
         }
 
         return false;
+    }
+
+    QByteArray canonicalSyncIssueKeyBytes(const nextapp::pb::SyncIssueKey& key)
+    {
+        QByteArray bytes;
+        bytes += "object_type=" + QByteArray::number(static_cast<int>(key.objectType())) + '\n';
+        bytes += "object_id=" + key.objectId().toUtf8() + '\n';
+        bytes += "problem=" + QByteArray::number(static_cast<int>(key.problem())) + '\n';
+        bytes += "referenced_type=" + QByteArray::number(static_cast<int>(key.referencedType())) + '\n';
+        bytes += "referenced_id=" + key.referencedId().toUtf8() + '\n';
+        return bytes;
+    }
+
+    nextapp::pb::SyncIssue makeMissingWorkSessionActionIssue(
+        const QString& work_session_id,
+        const QString& action_id)
+    {
+        nextapp::pb::SyncIssueKey key;
+        key.setObjectType(nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_WORK_SESSION);
+        key.setObjectId(work_session_id);
+        key.setProblem(nextapp::pb::SyncFaultKindGadget::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE);
+        key.setReferencedType(nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION);
+        key.setReferencedId(action_id);
+
+        nextapp::pb::SyncIssue issue;
+        issue.setKey(key);
+        issue.setIssueId(QCryptographicHash::hash(
+            canonicalSyncIssueKeyBytes(issue.key()),
+            QCryptographicHash::Sha256));
+        return issue;
     }
 }
 
@@ -228,17 +259,37 @@ QCoro::Task<bool> WorkCache::saveBatch(const QList<nextapp::pb::WorkSession> &it
     };
 
     if (const auto token = syncTransactionToken()) {
-        co_return co_await db.queryBatchInTransaction(*token, insert_query, delete_query, items, getParams, isDeleted, getId);
+        const auto ok = co_await db.queryBatchInTransaction(*token, insert_query, delete_query, items, getParams, isDeleted, getId);
+        if (!ok) {
+            co_return false;
+        }
+    } else {
+        const auto ok = co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
+        if (!ok) {
+            co_return false;
+        }
     }
 
-    co_return co_await db.queryBatch(insert_query, delete_query, items, getParams, isDeleted, getId);
+    for (const auto& work : items) {
+        runtime_.serverComm().clearSyncIssuesForObject(
+            nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_WORK_SESSION,
+            work.id_proto());
+    }
+
+    co_return true;
 }
 
 QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
 {
     const auto& work = static_cast<const nextapp::pb::WorkSession&>(item);
     if (work.state() == nextapp::pb::WorkSession::State::DELETED) {
-        co_return co_await remove(QUuid{work.id_proto()});
+        const auto removed = co_await remove(QUuid{work.id_proto()});
+        if (removed) {
+            runtime_.serverComm().clearSyncIssuesForObject(
+                nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_WORK_SESSION,
+                work.id_proto());
+        }
+        co_return removed;
     }
 
     auto& db = syncDb();
@@ -249,6 +300,10 @@ QCoro::Task<bool> WorkCache::save(const QProtobufMessage &item)
         << " err=" << rval.error();
         co_return false; // TODO: Add proper error handling. Probably a full resynch.
     }
+
+    runtime_.serverComm().clearSyncIssuesForObject(
+        nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_WORK_SESSION,
+        work.id_proto());
 
     co_return true;
 }
@@ -278,12 +333,26 @@ WHERE ws.state < ?
         co_return false;
     }
 
-    if (!unresolved->rows.empty()) {
-        for (const auto& row : unresolved->rows) {
-            LOG_ERROR_N << "Unresolved work session action reference: session="
-                        << row.at(0).toString() << " action=" << row.at(1).toString();
+    for (const auto& row : unresolved->rows) {
+        const auto session_id = row.at(0).toString();
+        const auto action_id = row.at(1).toString();
+        LOG_WARN_N << "Deleting cached work session with unresolved action reference: session="
+                   << session_id << " action=" << action_id;
+        runtime_.serverComm().recordSyncIssue(
+            makeMissingWorkSessionActionIssue(session_id, action_id));
+
+        const auto deleted = token
+            ? co_await db.queryInTransaction(*token,
+                "DELETE FROM work_session WHERE id = ?",
+                session_id)
+            : co_await db.query(
+                "DELETE FROM work_session WHERE id = ?",
+                session_id);
+        if (!deleted) {
+            LOG_ERROR_N << "Failed to delete cached work session " << session_id
+                        << ": " << deleted.error();
+            co_return false;
         }
-        co_return false;
     }
 
     co_return true;
