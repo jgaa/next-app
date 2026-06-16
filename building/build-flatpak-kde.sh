@@ -176,30 +176,6 @@ modules:
         url: https://code.qt.io/qt/qtgraphs.git
         tag: ${QT_MODULE_REF}
 
-  - name: qtgrpc
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DQT_BUILD_TESTS=OFF
-      - -DQT_BUILD_EXAMPLES=OFF
-      - -DQT_HOST_PATH=/usr
-      - -DCMAKE_PREFIX_PATH=/usr;/app
-      - -DProtobuf_DIR=/app/lib/cmake/protobuf
-      - -DgRPC_DIR=/app/lib/cmake/grpc
-      - -DQT_FEATURE_protobuf=ON
-      - -DQT_FEATURE_grpc=ON
-      - -DQT_FEATURE_protobuf-qtcoretypes=ON
-      - -DQT_FEATURE_protobuf-qtguitypes=ON
-      - -DQT_FEATURE_protobuf-wellknowntypes=ON
-      - -DQT_FEATURE_qtprotobufgen=ON
-      - -DQT_WILL_INSTALL=ON
-      - -DCMAKE_INSTALL_PREFIX=/app
-      - -DCMAKE_INSTALL_LIBDIR=lib
-    sources:
-      - type: git
-        url: https://code.qt.io/qt/qtgrpc.git
-        tag: ${QT_MODULE_REF}
-
   - name: boost-headers
     buildsystem: simple
     build-commands:
@@ -273,6 +249,23 @@ modules:
             | while IFS= read -r -d '' lib; do
                 install -Dm755 "\${lib}" "/app/lib/\$(basename "\${lib}")"
               done
+        fi
+
+        # KDE 6.10 already ships QtGrpc/QtProtobuf in the runtime. Bundling a
+        # second copy from the app causes private Qt ABI mismatches at runtime.
+        if [[ -d /app/lib ]] && find /app/lib -maxdepth 1 \\( -type f -o -type l \\) \\
+          \\( -name 'libQt6Grpc.so*' -o -name 'libQt6Protobuf.so*' \\) | grep -q .; then
+          echo "Unexpected bundled QtGrpc/QtProtobuf libraries in /app/lib; use the KDE runtime copies instead."
+          find /app/lib -maxdepth 1 \\( -type f -o -type l \\) \\
+            \\( -name 'libQt6Grpc.so*' -o -name 'libQt6Protobuf.so*' \\) -print || true
+          exit 1
+        fi
+        if [[ -d /app/lib/x86_64-linux-gnu ]] && find /app/lib/x86_64-linux-gnu -maxdepth 1 \\( -type f -o -type l \\) \\
+          \\( -name 'libQt6Grpc.so*' -o -name 'libQt6Protobuf.so*' \\) | grep -q .; then
+          echo "Unexpected bundled QtGrpc/QtProtobuf libraries in /app/lib/x86_64-linux-gnu; use the KDE runtime copies instead."
+          find /app/lib/x86_64-linux-gnu -maxdepth 1 \\( -type f -o -type l \\) \\
+            \\( -name 'libQt6Grpc.so*' -o -name 'libQt6Protobuf.so*' \\) -print || true
+          exit 1
         fi
 
         # Prune SDK/dev payload from the final app export. The runtime only

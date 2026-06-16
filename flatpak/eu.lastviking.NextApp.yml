@@ -1,4 +1,6 @@
-# Broken. See ../building/build-flatpak.sh
+# Deprecated.
+# Use ../building/build-flatpak-kde.sh (or ../building/build-flatpak.sh, which
+# now delegates to it) for maintained Flatpak builds targeting KDE 6.10+.
 
 id: eu.lastviking.NextApp
 runtime: org.kde.Platform
@@ -139,5 +141,4 @@ modules:
     sources:
       - type: dir
         path: ../
-
 
