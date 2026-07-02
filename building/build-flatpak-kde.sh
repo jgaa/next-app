@@ -19,6 +19,8 @@ DIST_DIR="${DIST_DIR:-${WORK_ROOT}/dist}"
 BUNDLE_BRANCH="${BUNDLE_BRANCH:-stable}"
 KDE_RUNTIME_VERSION="${KDE_RUNTIME_VERSION:-6.10}"
 
+PROTOBUF_VERSION="${PROTOBUF_VERSION:-32.1}"
+PROTOBUF_SHA256="${PROTOBUF_SHA256:-3feeabd077a112b56af52519bc4ece90e28b4583f4fc2549c95d765985e0fd3c}"
 BOOST_VERSION="${BOOST_VERSION:-1.90.0}"
 BOOST_VERSION_UNDERSCORE="${BOOST_VERSION_UNDERSCORE:-1_90_0}"
 BOOST_SHA256="${BOOST_SHA256:-49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305}"
@@ -125,6 +127,16 @@ build-options:
     CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: 'OFF'
 
 modules:
+  - name: protobuf-schemas
+    buildsystem: simple
+    build-commands:
+      - install -d /app/include/google/protobuf
+      - cp -a src/google/protobuf/*.proto /app/include/google/protobuf/
+    sources:
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION}/protobuf-${PROTOBUF_VERSION}.tar.gz
+        sha256: ${PROTOBUF_SHA256}
+
   - name: qtgraphs
     buildsystem: cmake-ninja
     config-opts:
@@ -195,6 +207,8 @@ modules:
           -DNEXTAPP_WITH_SIGNUP:BOOL=OFF \\
           -DNEXTAPP_WITH_TESTS:BOOL=OFF \\
           -DUSE_STATIC_QT:BOOL=OFF \\
+          -Dprotobuf_ROOT=/app \\
+          -DProtobuf_ROOT=/app \\
           -DgRPC_DIR="\${GRPC_DIR}" \\
           -DProtobuf_PROTOC_EXECUTABLE="\${PROTOC_BIN}" \\
           -DGRPC_CPP_PLUGIN="\${GRPC_CPP_PLUGIN_BIN}" \\
@@ -305,6 +319,7 @@ main() {
 
     flatpak-builder --verbose \
         --user \
+        --disable-rofiles-fuse \
         --force-clean \
         --default-branch="${BUNDLE_BRANCH}" \
         --repo="${REPO_DIR}" \

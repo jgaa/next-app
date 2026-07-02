@@ -106,21 +106,28 @@ endif()
 
 add_definitions(-DNEXTAPP_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
-# Get Git commit ID
-execute_process(
-    COMMAND git rev-parse --short HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_COMMIT_ID
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+set(GIT_COMMIT_ID "unknown")
+set(GIT_BRANCH "unknown")
+find_package(Git QUIET)
 
-# Get Git branch name
-execute_process(
-    COMMAND git rev-parse --abbrev-ref HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_BRANCH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+if(Git_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    # Resolve VCS metadata when building from a git checkout.
+    execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT_ID
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+
+    execute_process(
+        COMMAND git rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_BRANCH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
 
 # Add definitions to the compiler
 add_definitions(-DGIT_COMMIT_ID=\"${GIT_COMMIT_ID}\")
@@ -134,14 +141,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(NEXTAPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 message(STATUS "Using ${CMAKE_CXX_COMPILER}")
-
-# Get the current Git branch name
-execute_process(
-    COMMAND git rev-parse --abbrev-ref HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_BRANCH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
 
 message(STATUS "Git branch: ${GIT_BRANCH}")
 add_compile_definitions(GIT_BRANCH="${GIT_BRANCH}")
