@@ -102,7 +102,7 @@ if(USE_STATIC_QT)
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
 
-if (LINUX_BUILD OR WINDOWS_BUILD)
+if (WINDOWS_BUILD)
   find_package(gRPC CONFIG REQUIRED)
   find_package(Protobuf CONFIG)
   if(NOT Protobuf_FOUND)
