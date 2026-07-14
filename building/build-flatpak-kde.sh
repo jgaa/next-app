@@ -127,31 +127,6 @@ build-options:
     CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: 'OFF'
 
 modules:
-  - name: protobuf-schemas
-    buildsystem: simple
-    build-commands:
-      - install -d /app/include/google/protobuf
-      - cp -a src/google/protobuf/*.proto /app/include/google/protobuf/
-    sources:
-      - type: archive
-        url: https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION}/protobuf-${PROTOBUF_VERSION}.tar.gz
-        sha256: ${PROTOBUF_SHA256}
-
-  - name: qtgraphs
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DQT_BUILD_TESTS=OFF
-      - -DQT_BUILD_EXAMPLES=OFF
-      - -DQT_HOST_PATH=/usr
-      - -DCMAKE_PREFIX_PATH=/usr;/app
-      - -DCMAKE_INSTALL_PREFIX=/app
-      - -DCMAKE_INSTALL_LIBDIR=lib
-    sources:
-      - type: git
-        url: https://code.qt.io/qt/qtgraphs.git
-        tag: ${QT_MODULE_REF}
-
   - name: boost-headers
     buildsystem: simple
     build-commands:
@@ -176,27 +151,14 @@ modules:
           fi
         }
 
-        QT_PROTOBUF_TOOLS_DIR="\$(find_cmake_pkg_dir Qt6ProtobufTools)"
-        QT_GRPC_TOOLS_DIR="\$(find_cmake_pkg_dir Qt6GrpcTools)"
-        QT_PROTOBUF_DIR="\$(find_cmake_pkg_dir Qt6Protobuf)"
-        QT_GRPC_DIR="\$(find_cmake_pkg_dir Qt6Grpc)"
-        GRPC_DIR="\$(find_cmake_pkg_dir gRPC)"
-        PROTOC_BIN="\$(command -v protoc || true)"
-        GRPC_CPP_PLUGIN_BIN="\$(command -v grpc_cpp_plugin || true)"
-
-        test -n "\${QT_PROTOBUF_TOOLS_DIR}" || { echo "Qt6ProtobufTools_DIR not found under /usr"; exit 1; }
-        test -n "\${QT_GRPC_TOOLS_DIR}" || { echo "Qt6GrpcTools_DIR not found under /usr"; exit 1; }
-        test -n "\${QT_PROTOBUF_DIR}" || { echo "Qt6Protobuf_DIR not found under /usr"; exit 1; }
-        test -n "\${QT_GRPC_DIR}" || { echo "Qt6Grpc_DIR not found under /usr"; exit 1; }
-        test -n "\${GRPC_DIR}" || { echo "gRPC_DIR not found under /usr"; exit 1; }
-        test -n "\${PROTOC_BIN}" || { echo "protoc not found in SDK PATH"; exit 1; }
-        test -n "\${GRPC_CPP_PLUGIN_BIN}" || { echo "grpc_cpp_plugin not found in SDK PATH"; exit 1; }
-
         cmake -S . -B build -G Ninja \\
           -DCMAKE_BUILD_TYPE=Release \\
           "-DCMAKE_PREFIX_PATH=/usr;/app" \\
           -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON \\
           -DCMAKE_INSTALL_PREFIX=/app \\
+          -DNEXTAPP_FLATPAK_BUILD:BOOL=ON \\
+          "-Dprotobuf_ROOT=\$PWD/protobuf-src/src" \\
+          "-DProtobuf_ROOT=\$PWD/protobuf-src/src" \\
           -DBoost_NO_BOOST_CMAKE=ON \\
           -DBoost_NO_SYSTEM_PATHS=OFF \\
           -DNEXTAPP_BOOST_ROOT=/app/include \\
@@ -207,15 +169,6 @@ modules:
           -DNEXTAPP_WITH_SIGNUP:BOOL=OFF \\
           -DNEXTAPP_WITH_TESTS:BOOL=OFF \\
           -DUSE_STATIC_QT:BOOL=OFF \\
-          -Dprotobuf_ROOT=/app \\
-          -DProtobuf_ROOT=/app \\
-          -DgRPC_DIR="\${GRPC_DIR}" \\
-          -DProtobuf_PROTOC_EXECUTABLE="\${PROTOC_BIN}" \\
-          -DGRPC_CPP_PLUGIN="\${GRPC_CPP_PLUGIN_BIN}" \\
-          -DQt6Protobuf_DIR="\${QT_PROTOBUF_DIR}" \\
-          -DQt6Grpc_DIR="\${QT_GRPC_DIR}" \\
-          -DQt6ProtobufTools_DIR="\${QT_PROTOBUF_TOOLS_DIR}" \\
-          -DQt6GrpcTools_DIR="\${QT_GRPC_TOOLS_DIR}"
 
         cmake --build build
 
@@ -261,15 +214,18 @@ modules:
         rm -rf /app/lib/cmake /app/lib/pkgconfig /app/lib/metatypes /app/lib/modules /app/lib/sbom
         rm -rf /app/mkspecs
         rm -rf /app/share/man /app/share/pkgconfig
-        rm -rf /app/lib/qml/QtGraphs/designer
 
         rm -f /app/bin/adig /app/bin/ahost /app/bin/grpc_* /app/bin/protoc*
 
-        find /app/lib -maxdepth 1 \\( -type f -o -type l \\) \\
-          \\( -name '*.a' -o -name '*.la' -o -name 'libprotoc.so*' -o -name 'libprotobuf*.so*' -o -name 'libutf8_*.so*' \\) \\
-          -delete
+        if [[ -d /app/lib ]]; then
+          find /app/lib -maxdepth 1 \\( -type f -o -type l \\) \\
+            \\( -name '*.a' -o -name '*.la' -o -name 'libprotoc.so*' -o -name 'libprotobuf*.so*' -o -name 'libutf8_*.so*' \\) \\
+            -delete
+        fi
 
-        find /app/lib/x86_64-linux-gnu -maxdepth 1 \\( -type f -o -type l \\) -name '*.prl' -delete
+        if [[ -d /app/lib/x86_64-linux-gnu ]]; then
+          find /app/lib/x86_64-linux-gnu -maxdepth 1 \\( -type f -o -type l \\) -name '*.prl' -delete
+        fi
     sources:
       - type: dir
         path: ${SOURCE_STAGE_DIR}
@@ -279,6 +235,11 @@ modules:
       - type: file
         path: ${METAINFO_FILE}
         dest-filename: ${APP_ID}.metainfo.xml
+      - type: archive
+        url: https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION}/protobuf-${PROTOBUF_VERSION}.tar.gz
+        sha256: ${PROTOBUF_SHA256}
+        dest: protobuf-src
+        strip-components: 1
       - type: git
         url: https://github.com/mackron/miniaudio.git
         branch: master
