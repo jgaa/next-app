@@ -1,6 +1,5 @@
 #include "CategoryUseModel.h"
 
-#include <span>
 #include "logging.h"
 
 using namespace std;
@@ -34,14 +33,6 @@ void CategoryUseModel::listChanged()
     endResetModel();
 }
 
-QPieSeries *CategoryUseModel::pieSeries() {
-    if (!pie_series_) {
-        pie_series_ = new QPieSeries(this);
-        updatePieList();
-    }
-    return pie_series_;
-}
-
 int CategoryUseModel::rowCount(const QModelIndex &parent) const
 {
     return list_.size();
@@ -68,6 +59,8 @@ QVariant CategoryUseModel::data(const QModelIndex &index, int role) const
             return item.color;
         case MinutesRole:
             return item.minutes;
+        case SummaryRole:
+            return item.isSummary;
     }
 
     return {};
@@ -78,23 +71,8 @@ QHash<int, QByteArray> CategoryUseModel::roleNames() const
     return {
         {NameRole, "name"},
         {ColorRole, "colorName"},
-        {MinutesRole, "minutes"}
+        {MinutesRole, "minutes"},
+        {SummaryRole, "isSummary"}
     };
 
-}
-
-void CategoryUseModel::updatePieList()
-{
-    pie_series_->clear();
-    if (!list_.empty()) {
-        const auto range = std::span{list_}.subspan(0, list_.size() - 1);
-        for (const auto &item : range) {
-            auto *slice = pie_series_->append(item.name, item.minutes);
-            slice->setColor(item.color);
-            slice->setLabelVisible(false);
-        }
-        pie_series_->setHoleSize(0.6);
-        pie_series_->setPieSize(1);
-    }
-    emit pieSeriesChanged();
 }

@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtGraphs               // 1. import the Graphs module
 import NextAppUi
 import Nextapp.Models
 
@@ -47,24 +46,12 @@ ColumnLayout {
     }
 
 
-    // --- PIE CHART AREA ---
-    GraphsView {
+    DonutChart {
         id: pieChart
         Layout.fillWidth: true
         Layout.preferredHeight: root.width * 0.5
-        seriesList: root.model.pieSeries
-        marginLeft: 0
-        marginRight: 0
-        marginTop: 0
-        marginBottom: 0
-
-        theme: GraphsTheme {
-            id: pieTheme
-            theme: GraphsTheme.Theme.UserDefined
-            labelsVisible: false
-            backgroundColor: MaterialDesignStyling.surface
-            labelBackgroundVisible: false
-            labelTextColor: MaterialDesignStyling.surface
-        }
+        model: root.model
+        backgroundColor: MaterialDesignStyling.surface
+        holeRatio: 0.6
     }
 }

@@ -606,7 +606,7 @@ CategoryUseModel::list_t CalendarModel::getCategoryUsage()
                     it->second.minutes += duration_minutes;
                 } else {
                     const auto& cat = ActionCategoriesModel::instance().getFromUuid(tb.category());
-                    use[tb.category()] = {cat.name(), cat.color(), duration_minutes};
+                    use[tb.category()] = {cat.name(), cat.color(), duration_minutes, false};
                 };
             }
         }
@@ -617,11 +617,11 @@ CategoryUseModel::list_t CalendarModel::getCategoryUsage()
                       [](const auto& pair) { return pair.second; });
 
     if (without_cat) {
-        values.push_back({tr("No category"), "transparent", without_cat});
+        values.push_back({tr("No category"), "transparent", without_cat, false});
     }
 
     ranges::sort(values, ranges::greater{}, &CategoryUseModel::Data::minutes);
-    values.push_back({tr("Total"), "transparent", total});
+    values.push_back({tr("Total"), "transparent", total, true});
 
     return values;
 }

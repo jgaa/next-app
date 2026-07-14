@@ -137,7 +137,6 @@ find_package(Qt6 REQUIRED COMPONENTS
     Gui
     Quick
     QuickControls2
-    Graphs
     Svg
     Test
     Concurrent
@@ -558,6 +557,8 @@ set(NEXTAPP_UI_CORE_SOURCES
     DbStore.h
     DevicesModel.cpp
     DevicesModel.h
+    DonutChart.cpp
+    DonutChart.h
     DualView.cpp
     DualView.h
     EventScheduler.cpp
@@ -597,6 +598,8 @@ set(NEXTAPP_UI_CORE_SOURCES
     SoundPlayer.h
     TimeBoxActionsModel.cpp
     TimeBoxActionsModel.h
+    TimelineGraph.cpp
+    TimelineGraph.h
     UseCaseTemplates.cpp
     UseCaseTemplates.h
     util.cpp
@@ -796,7 +799,6 @@ target_link_libraries(NextAppUiCoreLib
         Qt6::Gui
         Qt6::Quick
         Qt6::QuickControls2
-        Qt6::Graphs
         Qt6::Svg
         Qt6::Protobuf
         Qt6::Grpc
@@ -826,7 +828,6 @@ target_link_libraries(NextAppUiLib
         Qt6::Gui
         Qt6::Quick
         Qt6::QuickControls2
-        Qt6::Graphs
         Qt6::Svg
         Qt6::Protobuf
         Qt6::ProtobufQuick
