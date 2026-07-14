@@ -102,7 +102,7 @@ if(USE_STATIC_QT)
     add_compile_definitions(QT_STATIC QT_STATICPLUGIN)
 endif()
 
-if (WINDOWS_BUILD)
+if (LINUX_BUILD OR WINDOWS_BUILD)
   find_package(gRPC CONFIG REQUIRED)
   find_package(Protobuf CONFIG)
   if(NOT Protobuf_FOUND)
@@ -150,17 +150,14 @@ find_package(Qt6 REQUIRED COMPONENTS
     ProtobufWellKnownTypes
 )
 
-#find_package(Qt6 REQUIRED COMPONENTS Core)
-# Qt 6.10+ now requires the Private WKT component to expose the target
-# Qt 6.9 worked without this.
-if(DEFINED Qt6_VERSION)
-  set(_qt_ver "${Qt6_VERSION}")
-elseif(DEFINED Qt6Core_VERSION)         # fallback (older CMake files)
-  set(_qt_ver "${Qt6Core_VERSION}")
-endif()
-
-if(_qt_ver VERSION_GREATER_EQUAL "6.10.0")
-  find_package(Qt6 REQUIRED COMPONENTS ProtobufWellKnownTypesPrivate)
+set(PB_WELL_KNOWN_TYPES_LIB "")
+find_package(Qt6 QUIET COMPONENTS ProtobufWellKnownTypesPrivate)
+if(TARGET Qt6::ProtobufWellKnownTypesPrivate)
+  set(PB_WELL_KNOWN_TYPES_LIB "Qt6::ProtobufWellKnownTypesPrivate")
+elseif(USE_STATIC_QT)
+  message(FATAL_ERROR
+    "Static Qt builds require Qt6::ProtobufWellKnownTypesPrivate, "
+    "but this Qt installation does not provide that target.")
 endif()
 
 if(ANDROID)
@@ -301,6 +298,22 @@ qt_add_protobuf(na_proto_lib
         $<TARGET_PROPERTY:Qt6::ProtobufQtCoreTypes,QT_PROTO_INCLUDES>
 )
 
+if(NOT PB_WELL_KNOWN_TYPES_LIB)
+    set(_na_proto_lib_generated_wkt_sources
+        "${CMAKE_CURRENT_BINARY_DIR}/nextapp.qpb.cpp"
+    )
+
+    add_custom_target(na_proto_lib_strip_missing_wkt_private_include ALL
+        DEPENDS ${_na_proto_lib_generated_wkt_sources}
+        COMMAND ${CMAKE_COMMAND}
+            -DINPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/nextapp.qpb.cpp
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/StripQtWktPrivateInclude.cmake
+        COMMENT "Stripping unavailable Qt WKT private include from generated protobuf sources"
+        VERBATIM
+    )
+    add_dependencies(na_proto_lib na_proto_lib_strip_missing_wkt_private_include)
+endif()
+
 if(USE_STATIC_QT)
     ## Stalins workaround for static Qt. This works, but will break soon enough
     ## target_include_directories(na_proto_lib
@@ -328,7 +341,7 @@ else()
   target_link_libraries(na_proto_lib
     PRIVATE
       Qt6::ProtobufWellKnownTypes
-      Qt6::ProtobufWellKnownTypesPrivate
+      ${PB_WELL_KNOWN_TYPES_LIB}
   )
 endif()
 
