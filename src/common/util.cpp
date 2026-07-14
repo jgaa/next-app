@@ -4,7 +4,6 @@
 
 #include <openssl/evp.h>
 #include <boost/regex.hpp>
-
 #include <grpcpp/server_context.h>
 #include "nextapp/util.h"
 #include "nextapp/logging.h"

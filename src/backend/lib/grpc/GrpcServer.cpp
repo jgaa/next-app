@@ -1126,8 +1126,6 @@ void GrpcServer::start() {
         // Fancy way to print the class-name.
         // Useful when I copy/paste this code around ;)
         << boost::typeindex::type_id_runtime(*this).pretty_name()
-
-        // The useful information
         << " listening on " << config().address;
 
     active_ = true;
