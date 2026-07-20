@@ -21,6 +21,7 @@ Dialog {
     property var kinds: ["folder", "organization", "person", "project", "task"]
     property string icon: "qrc:/qt/qml/NextAppUi/icons/folder.svg"
     property alias excluded: excluded.checked
+    property alias inbox: inbox.checked
 
     x: Math.min(Math.max(0, (parent.width - width) / 3), parent.width - width)
     y: Math.min(Math.max(0, (parent.height - height) / 3), parent.height - height)
@@ -52,6 +53,7 @@ Dialog {
             root.parentUuid = node.parent
             root.descr = node.descr
             root.excluded = node.excludeFromWeeklyReview
+            root.inbox = node.inbox
             category.uuid = node.category
         }
     }
@@ -158,6 +160,16 @@ Dialog {
 
             Label {
                 Layout.alignment: Qt.AlignLeft
+                text: qsTr("Inbox")
+            }
+
+            CheckBox {
+                id: inbox
+                text: qsTr("Use for incoming events")
+            }
+
+            Label {
+                Layout.alignment: Qt.AlignLeft
                 text: qsTr("Category")
             }
 
@@ -178,7 +190,8 @@ Dialog {
             parent: root.parentUuid,
             descr: root.descr,
             excludeFromWeeklyReview: root.excluded,
-            category: category.uuid
+            category: category.uuid,
+            inbox: root.inbox
         }
 
         if (node != null) { // edit

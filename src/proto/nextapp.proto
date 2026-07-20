@@ -213,6 +213,7 @@ message Node {
     bool excludeFromWeeklyReview = 11;
     string category = 12;
     uint64 updatedId = 13;
+    bool inbox = 14;
 }
 
 message WorkEvent {
@@ -346,6 +347,7 @@ message NodeTemplate {
     string descr = 2;
     Node.Kind kind = 3;
     repeated NodeTemplate children = 4;
+    bool inbox = 5;
 }
 
 message ResetNodesReq {

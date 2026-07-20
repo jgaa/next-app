@@ -316,6 +316,7 @@ pb::Node MainTreeModel::toNode(const QVariantMap &map)
     n.setVersion(map.value("version").toLongLong());
     n.setExcludeFromWeeklyReview(map.value("excludeFromWeeklyReview").toBool());
     n.setCategory(map.value("category").toString());
+    n.setInbox(map.value("inbox").toBool());
 
     return n;
 }
@@ -333,6 +334,7 @@ QVariantMap MainTreeModel::toMap(const nextapp::pb::Node &node)
     vm["version"] = static_cast<qint64>(node.version());
     vm["excludeFromWeeklyReview"] = node.excludeFromWeeklyReview();
     vm["category"] = node.category();
+    vm["inbox"] = node.inbox();
 
     return vm;
 }
@@ -1100,6 +1102,19 @@ void MainTreeModel::addNode(QVariantMap args)
 
     // We will update the UI when we get the update notification
     runtime_.serverComm().addNode(node);
+}
+
+bool MainTreeModel::hasInbox() const noexcept
+{
+    const auto containsInbox = [](const auto& self, const auto& nodes) -> bool {
+        for (const auto& item : nodes) {
+            if (item->node().inbox() || self(self, item->children())) {
+                return true;
+            }
+        }
+        return false;
+    };
+    return containsInbox(containsInbox, root_.children());
 }
 
 void MainTreeModel::updateNode(const QVariantMap args)

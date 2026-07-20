@@ -632,6 +632,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
               status INTEGER NOT NULL DEFAULT 0,
               descr TEXT,
               active INTEGER NOT NULL DEFAULT 1,
+              inbox BOOLEAN NOT NULL DEFAULT FALSE,
               parent UUID,
         CONSTRAINT `node_parent_fk`  FOREIGN KEY(parent) REFERENCES node(id),
         CONSTRAINT `node_ibfk_2` FOREIGN KEY(user) REFERENCES user(id)))",
@@ -1802,6 +1803,10 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         "SET FOREIGN_KEY_CHECKS=1"
     });
 
+    static constexpr auto v31_upgrade = to_array<string_view>({
+        "ALTER TABLE node ADD COLUMN IF NOT EXISTS inbox BOOLEAN NOT NULL DEFAULT FALSE",
+    });
+
 
     static constexpr auto versions = to_array<span<const string_view>>({
         v1_bootstrap,
@@ -1834,6 +1839,7 @@ boost::asio::awaitable<void> Server::upgradeDbTables(uint version)
         v28_upgrade,
         v29_upgrade,
         v30_upgrade,
+        v31_upgrade,
     });
 
     LOG_INFO << "Will upgrade the database structure from version " << version

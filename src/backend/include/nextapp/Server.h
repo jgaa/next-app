@@ -27,7 +27,7 @@ class Plans;
 
 class Server {
 public:
-    static constexpr uint latest_version = 30;
+    static constexpr uint latest_version = 31;
 
     struct BootstrapOptions {
         bool drop_old_db = false;

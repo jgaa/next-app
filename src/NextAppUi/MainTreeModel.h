@@ -24,6 +24,7 @@ class MainTreeModel : public QAbstractItemModel
     Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectedChanged)
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
     Q_PROPERTY(bool valid READ valid NOTIFY stateChanged)
+    Q_PROPERTY(bool hasInbox READ hasInbox NOTIFY stateChanged)
 
 public:
 
@@ -130,6 +131,8 @@ public:
     bool hasSelection() const noexcept {
         return !selected_.isEmpty();
     }
+
+    bool hasInbox() const noexcept;
 
 signals:
     void useRootChanged();

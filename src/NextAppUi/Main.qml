@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
 import QtCore
@@ -32,6 +33,32 @@ ApplicationWindow {
             console.log("Opening onboarding")
             openWindow("onboard/OnBoardingWizard.qml");
         }
+    }
+
+    function checkInbox() {
+        if (!settings.onboarding || !NaMainTreeModel.valid || NaMainTreeModel.hasInbox
+                || noInboxDialog.visible) {
+            return
+        }
+        noInboxDialog.open()
+    }
+
+    Connections {
+        target: NaMainTreeModel
+
+        function onStateChanged() { appWindow.checkInbox() }
+    }
+
+    Connections {
+        target: settings
+        function onOnboardingChanged() { appWindow.checkInbox() }
+    }
+
+    MessageDialog {
+        id: noInboxDialog
+        title: qsTr("Inbox not configured")
+        text: qsTr("You do not have an inbox. Mark a node as the inbox in the Edit Node dialog so automated incoming events have a destination.")
+        buttons: MessageDialog.Ok
     }
 
     Connections {

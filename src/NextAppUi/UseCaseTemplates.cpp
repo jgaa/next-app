@@ -1071,6 +1071,7 @@ void add(nextapp::pb::NodeTemplate& nt, const UseCaseTemplates::List &list)
     child.setName(list.name);
     child.setDescr(list.description);
     child.setKind(kinds.at(list.kind));
+    child.setInbox(list.name == UseCaseTemplates::tr("Inbox"));
 
     for(const auto& c : list.children) {
         add(child, c);

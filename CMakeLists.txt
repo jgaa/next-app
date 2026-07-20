@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.24.2) # MajorVersion.MinorVersion.PatchVersion
+    set(NEXTAPP_VERSION 0.24.3) # MajorVersion.MinorVersion.PatchVersion
 endif()
 
 project(next-app

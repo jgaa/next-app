@@ -1,6 +1,8 @@
 
 #include "shared_grpc_server.h"
 
+#include <algorithm>
+
 namespace nextapp::grpc {
 
 namespace {
@@ -14,12 +16,17 @@ uint32_t countTemplateNodes(const pb::NodeTemplate& root)
     return total;
 }
 
+bool templateHasInbox(const pb::NodeTemplate& root)
+{
+    return root.inbox() || std::ranges::any_of(root.children(), templateHasInbox);
+}
+
 struct ToNode {
     enum Cols {
-        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, VERSION, UPDATED, UPDATED_ID, DELETED, EXCLUDE_FROM_WR, CATEGORY
+        ID, USER, NAME, KIND, DESCR, ACTIVE, INBOX, PARENT, VERSION, UPDATED, UPDATED_ID, DELETED, EXCLUDE_FROM_WR, CATEGORY
     };
 
-    static constexpr string_view selectCols = "id, user, name, kind, descr, active, parent, version, updated, updated_id, deleted, exclude_from_wr, category ";
+    static constexpr string_view selectCols = "id, user, name, kind, descr, active, inbox, parent, version, updated, updated_id, deleted, exclude_from_wr, category ";
 
     static void assign(const boost::mysql::row_view& row, pb::Node& node, const RequestCtx& rctx,
                        bool include_updated_id = true) {
@@ -37,6 +44,7 @@ struct ToNode {
             node.set_descr(pb_adapt(row.at(DESCR).as_string()));
         }
         node.set_active(row.at(ACTIVE).as_int64() != 0);
+        node.set_inbox(row.at(INBOX).as_int64() != 0);
         if (!row.at(PARENT).is_null()) {
             node.set_parent(pb_adapt(row.at(PARENT).as_string()));
         }
@@ -64,6 +72,7 @@ struct ToNode {
             const auto uctx = rctx.uctx;
             const auto& cuser = uctx->userUuid();
             auto dbopts = uctx->dbOptions();
+            auto trx = co_await rctx.dbh->transaction();
 
             optional<string> parent = req->node().parent();
             if (parent->empty()) {
@@ -78,6 +87,10 @@ struct ToNode {
             }
             rctx.session().requireWritableForAdd("node");
 
+            if (req->node().inbox()) {
+                co_await rctx.dbh->exec("UPDATE node SET inbox=FALSE WHERE user=?", cuser);
+            }
+
             bool active = true;
             if (!req->node().has_active()) {
                 active = req->node().active();
@@ -85,9 +98,9 @@ struct ToNode {
 
             dbopts.reconnect_and_retry_query = false;
             auto reservation = rctx.uctx->reserveAddition(1, UserContext::PlanResource::NODE);
-            const auto res = co_await owner_.server().db().exec(format(
-                    "INSERT INTO node (id, user, name, kind, descr, active, parent, exclude_from_wr, category) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            const auto res = co_await rctx.dbh->exec(format(
+                    "INSERT INTO node (id, user, name, kind, descr, active, inbox, parent, exclude_from_wr, category) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "RETURNING {}", ToNode::selectCols), dbopts,
                 id,
                 cuser,
@@ -95,6 +108,7 @@ struct ToNode {
                 static_cast<int>(req->node().kind()),
                 req->node().descr(),
                 active,
+                req->node().inbox(),
                 parent,
                 req->node().excludefromweeklyreview(),
                 toStringOrNull(req->node().category()));
@@ -106,6 +120,8 @@ struct ToNode {
             } else {
                 assert(false); // Should get exception on error
             }
+
+            co_await trx.commit();
 
             // Notify clients
             auto update = newUpdate(pb::Update::Operation::Update_Operation_ADDED);
@@ -126,11 +142,19 @@ boost::asio::awaitable<void> GrpcServer::saveNodes(jgaa::mysqlpool::Mysqlpool::H
         rctx.session().requireWritableForAdd("nodes");
     }
 
-    const auto sql = "INSERT INTO node (id, user, name, kind, descr, active, parent, exclude_from_wr, category) "
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ";
+    const auto inbox_count = std::ranges::count_if(items, [](const auto& node) { return node.inbox(); });
+    if (inbox_count > 1) {
+        throw server_err{pb::Error::CONSTRAINT_FAILED, "Only one node can be marked as inbox"};
+    }
+    if (inbox_count == 1) {
+        co_await dbh.exec("UPDATE node SET inbox=FALSE WHERE user=?", cuser);
+    }
+
+    const auto sql = "INSERT INTO node (id, user, name, kind, descr, active, inbox, parent, exclude_from_wr, category) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ";
 
     enum Cols {
-        ID, USER, NAME, KIND, DESCR, ACTIVE, PARENT, EXCLUDE_FROM_WR, CATEGORY, COLS_
+        ID, USER, NAME, KIND, DESCR, ACTIVE, INBOX, PARENT, EXCLUDE_FROM_WR, CATEGORY, COLS_
     };
 
     jgaa::mysqlpool::FieldViewMatrix values{num_items, COLS_};
@@ -145,6 +169,7 @@ boost::asio::awaitable<void> GrpcServer::saveNodes(jgaa::mysqlpool::Mysqlpool::H
         values.set(index, KIND, static_cast<int>(node.kind()));
         values.set(index, DESCR, toStringViewOrNull(node.descr()));
         values.set(index, ACTIVE, node.active() ? 1 : 0);
+        values.set(index, INBOX, node.inbox() ? 1 : 0);
         values.set(index, PARENT, toStringViewOrNull(node.parent()));
         values.set(index, EXCLUDE_FROM_WR, node.excludefromweeklyreview() ? 1 : 0);
         values.set(index, CATEGORY, toStringViewOrNull(node.category()));
@@ -165,13 +190,17 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
     if (!t.name().empty()) {
         id = newUuidStr();
         const auto kind = static_cast<int>(t.kind());
-        auto res = co_await rctx.dbh->exec(R"(INSERT INTO node (id, user, name, kind, descr, parent)
-                        VALUES(?, ?, ?, ?, ?, ?))", rctx.uctx->dbOptions(),
+        if (t.inbox()) {
+            co_await rctx.dbh->exec("UPDATE node SET inbox=FALSE WHERE user=?", cuser);
+        }
+        auto res = co_await rctx.dbh->exec(R"(INSERT INTO node (id, user, name, kind, descr, inbox, parent)
+                        VALUES(?, ?, ?, ?, ?, ?, ?))", rctx.uctx->dbOptions(),
                                            id,
                                            cuser,
                                            t.name(),
                                            kind,
                                            t.descr(),
+                                           t.inbox(),
                                            toStringOrNull(parent_id));
 
         if (!res.affected_rows()) {
@@ -198,6 +227,9 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
             auto dbopts = uctx->dbOptions();
             auto trx = co_await rctx.dbh->transaction();
             rctx.session().requireWritableForAdd("nodes");
+            if (templateHasInbox(*req)) {
+                co_await rctx.dbh->exec("UPDATE node SET inbox=FALSE WHERE user=?", cuser);
+            }
             auto reservation = rctx.uctx->reserveAddition(countTemplateNodes(*req), UserContext::PlanResource::NODE);
 
             co_await owner_.addNodes({}, *req, rctx);
@@ -282,8 +314,12 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
                 }
 
                 // Update the data, if version is unchanged
-                auto res = co_await owner_.server().db().exec(
-                    "UPDATE node SET name=?, active=?, kind=?, descr=?, exclude_from_wr=?, category=? "
+                auto trx = co_await rctx.dbh->transaction();
+                if (req->inbox()) {
+                    co_await rctx.dbh->exec("UPDATE node SET inbox=FALSE WHERE user=? AND id<>?", cuser, req->uuid());
+                }
+                auto res = co_await rctx.dbh->exec(
+                    "UPDATE node SET name=?, active=?, kind=?, descr=?, inbox=?, exclude_from_wr=?, category=? "
                     "WHERE id=? AND user=? AND version=?",
                     dbopts,
                     // Update arguments
@@ -291,6 +327,7 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
                     req->active(),
                     static_cast<int>(req->kind()),
                     req->descr(),
+                    req->inbox(),
                     req->excludefromweeklyreview(),
                     toStringOrNull(req->category()),
                     // query arguments
@@ -300,6 +337,7 @@ boost::asio::awaitable<void> GrpcServer::addNodes(const std::string &parent_id, 
                     );
 
                 if (res.affected_rows() > 0) {
+                    co_await trx.commit();
                     break; // Only succes-path out of the loop
                 }
 
