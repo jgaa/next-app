@@ -84,6 +84,18 @@ optional<logfault::LogLevel> toLogLevel(string_view name) {
     return logfault::LogLevel::INFO;
 }
 
+template <typename T>
+std::string dump_list (const T &list) {
+    std::string result;
+    for (const auto &item : list) {
+        if (!result.empty()) {
+            result += ", ";
+        }
+        result += item.toStdString();
+    }
+    return result;
+}
+
 void logQtMessages(QtMsgType type, const QMessageLogContext &context, const QString &rawMsg)
 {
     auto msg = rawMsg;
@@ -661,6 +673,10 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
 
     LOG_INFO << "Device supports OpenSSL: " << QSslSocket::supportsSsl();
+    LOG_INFO <<  "SSL build:" << QSslSocket::sslLibraryBuildVersionString();
+    LOG_INFO << "SSL runtime:" << QSslSocket::sslLibraryVersionString();
+    LOG_INFO << "SSL backend:" << QSslSocket::activeBackend();
+    LOG_INFO << "SSL backends:" << dump_list(QSslSocket::availableBackends());
 
     NextAppCore::instance()->modelsAreCreated();
 

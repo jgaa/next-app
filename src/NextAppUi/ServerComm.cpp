@@ -24,6 +24,7 @@
 #endif
 
 #include <QByteArray>
+#include <QSslCipher>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
 #include <QMultiHash>
@@ -409,7 +410,7 @@ void ServerComm::start()
         sslConfig.emplace();
         sslConfig->setPeerVerifyMode(QSslSocket::QueryPeer);
         //sslConfig->setPeerVerifyMode(QSslSocket::VerifyNone);
-        sslConfig->setProtocol(QSsl::TlsV1_3);
+        sslConfig->setProtocol(QSsl::SecureProtocols);
 
         if (auto cert = settings().value("server/clientCert").toString(); !cert.isEmpty()) {
             LOG_DEBUG_N << "Loading our private client cert/key.";
@@ -424,6 +425,69 @@ void ServerComm::start()
         // it only support https/2.
         sslConfig->setAllowedNextProtocols({{"h2"}});
     }
+
+
+    if (sslConfig) {
+        LOG_INFO << "Signup TLS configuration:"
+                 << " backend=" << QSslSocket::activeBackend()
+                 << " sslBuild=" << QSslSocket::sslLibraryBuildVersionString()
+                 << " sslRuntime=" << QSslSocket::sslLibraryVersionString()
+                 << " peerVerifyMode=" << static_cast<int>(sslConfig->peerVerifyMode())
+                 << " peerVerifyDepth=" << sslConfig->peerVerifyDepth()
+                 << " protocol=" << static_cast<int>(sslConfig->protocol())
+                 << " CA-count=" << sslConfig->caCertificates().size()
+            //<< " ALPN=" << sslConfig.allowedNextProtocols()
+            ;
+
+        for (const auto& cert : sslConfig->caCertificates()) {
+            LOG_DEBUG << "Trusted CA:"
+                      << " subject="
+                      //<< cert.subjectInfo(QSslCertificate::CommonName)
+                      << " issuer="
+                      //<< cert.issuerInfo(QSslCertificate::CommonName)
+                      << " expires="
+                      << cert.expiryDate().toString(Qt::ISODate);
+        }
+    }
+
+// #if true
+
+//     auto *socket = new QSslSocket(this);
+//     assert(sslConfig);
+//     socket->setSslConfiguration(*sslConfig);
+
+//     connect(socket, &QSslSocket::sslErrors,
+//             this, [](const QList<QSslError>& errors) {
+//                 for (const auto& error : errors) {
+//                     LOG_ERROR_N << "TLS verify error:"
+//                                 << static_cast<int>(error.error())
+//                                 << error.errorString();
+//                 }
+//             });
+
+//     connect(socket, &QSslSocket::errorOccurred,
+//             this, [socket](QAbstractSocket::SocketError error) {
+//                 LOG_ERROR_N << "TLS socket error:"
+//                             << static_cast<int>(error)
+//                             << socket->errorString();
+//             });
+
+//     connect(socket, &QSslSocket::encrypted,
+//             this, [socket]() {
+//                 LOG_INFO << "TLS encrypted;"
+//                          << "protocol=" << static_cast<int>(
+//                                 socket->sslConfiguration().sessionProtocol())
+//                          << "cipher="
+//                          << socket->sslConfiguration().sessionCipher().name()
+//                          << "ALPN=" << socket->sslConfiguration().nextNegotiatedProtocol();
+//             });
+
+//     LOG_INFO << "Connecting to server with TLS: " << "eu1.prod.next-app.org port 443";
+//     socket->connectToHostEncrypted("eu1.prod.next-app.org", 443);
+
+//     return;
+
+// #endif // tmp code
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
     auto channelOptions = QGrpcChannelOptions{url}
@@ -1921,34 +1985,123 @@ QString ServerComm::toString(const QGrpcStatus& status) {
 
     const auto ix = static_cast<size_t>(status.code());
     if (ix < errors.size()) {
-        return errors[ix] + ": " + status.message();
+        return tr("ERROR %1 (code=%2): %3").arg(errors[ix]).arg(ix).arg(status.message());
     }
 
     return tr("UNKNOWN (code=%1): %2").arg(ix).arg(status.message());
 }
 
+// void ServerComm::connectToSignupServer()
+// {
+//     QSslConfiguration sslConfig{QSslConfiguration::defaultConfiguration()};
+//     sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
+//     sslConfig.setProtocol(QSsl::SecureProtocols);
+
+//     // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
+//     // it only support https/2.
+//     sslConfig.setAllowedNextProtocols({{"h2"}});
+
+//     const bool use_tls = signup_server_address_.startsWith("https://");
+
+// #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+//     auto channelOptions = QGrpcChannelOptions{QUrl(signup_server_address_, QUrl::StrictMode)}
+//                               .withSslConfiguration(sslConfig);
+//     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
+// #else
+//     auto channelOptions = QGrpcChannelOptions{};
+//     if (use_tls) {
+//         channelOptions.setSslConfiguration(sslConfig);
+//     }
+//     signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(signup_server_address_, QUrl::StrictMode), channelOptions));
+// #endif
+
 void ServerComm::connectToSignupServer()
 {
     QSslConfiguration sslConfig{QSslConfiguration::defaultConfiguration()};
     sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
-    sslConfig.setProtocol(QSsl::TlsV1_3);
-
-    // For some reason, the standard GRPC server reqire ALPN to be configured when using TLS, even though
-    // it only support https/2.
-    sslConfig.setAllowedNextProtocols({{"h2"}});
+    sslConfig.setProtocol(QSsl::SecureProtocols);
+    sslConfig.setAllowedNextProtocols({"h2"});
 
     const bool use_tls = signup_server_address_.startsWith("https://");
 
+    LOG_INFO << "Signup TLS configuration:"
+             << " tls=" << use_tls
+             << " backend=" << QSslSocket::activeBackend()
+             << " sslBuild=" << QSslSocket::sslLibraryBuildVersionString()
+             << " sslRuntime=" << QSslSocket::sslLibraryVersionString()
+             << " peerVerifyMode=" << static_cast<int>(sslConfig.peerVerifyMode())
+             << " peerVerifyDepth=" << sslConfig.peerVerifyDepth()
+             << " protocol=" << static_cast<int>(sslConfig.protocol())
+             << " CA-count=" << sslConfig.caCertificates().size()
+             //<< " ALPN=" << sslConfig.allowedNextProtocols()
+        ;
+
+    for (const auto& cert : sslConfig.caCertificates()) {
+        LOG_DEBUG << "Trusted CA:"
+                  << " subject="
+                  //<< cert.subjectInfo(QSslCertificate::CommonName)
+                  << " issuer="
+                  //<< cert.issuerInfo(QSslCertificate::CommonName)
+                  << " expires="
+                  << cert.expiryDate().toString(Qt::ISODate);
+    }
+
+
+#if false
+
+    auto *socket = new QSslSocket(this);
+    socket->setSslConfiguration(sslConfig);
+
+    connect(socket, &QSslSocket::sslErrors,
+            this, [](const QList<QSslError>& errors) {
+                for (const auto& error : errors) {
+                    LOG_ERROR_N << "TLS verify error:"
+                                << static_cast<int>(error.error())
+                                << error.errorString();
+                }
+            });
+
+    connect(socket, &QSslSocket::errorOccurred,
+            this, [socket](QAbstractSocket::SocketError error) {
+                LOG_ERROR_N << "TLS socket error:"
+                            << static_cast<int>(error)
+                            << socket->errorString();
+            });
+
+    connect(socket, &QSslSocket::encrypted,
+            this, [socket]() {
+                LOG_INFO << "TLS encrypted;"
+                         << "protocol=" << static_cast<int>(
+                                socket->sslConfiguration().sessionProtocol())
+                         << "cipher="
+                         << socket->sslConfiguration().sessionCipher().name()
+                         << "ALPN=" << socket->sslConfiguration().nextNegotiatedProtocol();
+            });
+
+    socket->connectToHostEncrypted("signup.prod.next-app.org", 443);
+
+    return;
+
+#endif // tmp code
+
 #if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
-    auto channelOptions = QGrpcChannelOptions{QUrl(signup_server_address_, QUrl::StrictMode)}
-                              .withSslConfiguration(sslConfig);
-    signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(channelOptions));
+    auto channelOptions =
+        QGrpcChannelOptions{QUrl(signup_server_address_, QUrl::StrictMode)}
+            .withSslConfiguration(sslConfig);
+
+    signup_client_->attachChannel(
+        std::make_shared<QGrpcHttp2Channel>(channelOptions));
 #else
     auto channelOptions = QGrpcChannelOptions{};
+
     if (use_tls) {
         channelOptions.setSslConfiguration(sslConfig);
     }
-    signup_client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(QUrl(signup_server_address_, QUrl::StrictMode), channelOptions));
+
+    signup_client_->attachChannel(
+        std::make_shared<QGrpcHttp2Channel>(
+            QUrl(signup_server_address_, QUrl::StrictMode),
+            channelOptions));
 #endif
 
     LOG_INFO << "Using signup server at " << signup_server_address_;
