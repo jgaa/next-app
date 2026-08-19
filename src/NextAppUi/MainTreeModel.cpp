@@ -1117,6 +1117,22 @@ bool MainTreeModel::hasInbox() const noexcept
     return containsInbox(containsInbox, root_.children());
 }
 
+QString MainTreeModel::inboxUuid() const noexcept
+{
+    const auto findInbox = [](const auto& self, const auto& nodes) -> QString {
+        for (const auto& item : nodes) {
+            if (item->node().inbox()) {
+                return item->node().uuid();
+            }
+            if (const auto uuid = self(self, item->children()); !uuid.isEmpty()) {
+                return uuid;
+            }
+        }
+        return {};
+    };
+    return findInbox(findInbox, root_.children());
+}
+
 void MainTreeModel::updateNode(const QVariantMap args)
 {
     nextapp::pb::Node node = toNode(args);

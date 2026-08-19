@@ -10,6 +10,7 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QSslKey>
 #include <QSslCertificate>
+#include <QDateTime>
 #include <QNetworkInformation>
 #include <QProtobufSerializer>
 #include <qcorocore.h>
@@ -414,7 +415,16 @@ void ServerComm::start()
 
         if (auto cert = settings().value("server/clientCert").toString(); !cert.isEmpty()) {
             LOG_DEBUG_N << "Loading our private client cert/key.";
-            sslConfig->setLocalCertificate(QSslCertificate{cert.toUtf8()});
+            const auto clientCertificate = QSslCertificate{cert.toUtf8()};
+            if (!clientCertificate.isNull()
+                && clientCertificate.expiryDate() <= QDateTime::currentDateTimeUtc()) {
+                LOG_ERROR_N << "The private TLS client certificate expired on "
+                            << clientCertificate.expiryDate().toString(Qt::ISODate);
+                setStatus(Status::ERROR);
+                emit privateCertificateExpired();
+                return;
+            }
+            sslConfig->setLocalCertificate(clientCertificate);
             sslConfig->setPrivateKey(QSslKey{settings().value("server/clientKey").toByteArray(), QSsl::Rsa});
             auto caCert = QSslCertificate{settings().value("server/caCert").toByteArray()};
             sslConfig->setCaCertificates({caCert});

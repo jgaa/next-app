@@ -133,6 +133,7 @@ public:
     }
 
     bool hasInbox() const noexcept;
+    Q_INVOKABLE QString inboxUuid() const noexcept;
 
 signals:
     void useRootChanged();

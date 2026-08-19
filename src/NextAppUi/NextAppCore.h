@@ -102,6 +102,8 @@ public:
     static Q_INVOKABLE CalendarModel *createCalendarModel();
     static Q_INVOKABLE ReviewModel *getReviewModel();
     static Q_INVOKABLE DevicesModel *getDevicesModel();
+    Q_INVOKABLE bool pasteClipboardToNode(const QString& nodeUuid);
+    Q_INVOKABLE bool pasteClipboardToInbox();
     Q_INVOKABLE void openFile(const QString& path);
     //Q_INVOKABLE void emitSettingsChanged();
     Q_INVOKABLE void setProperty(const QString& name, const QVariant& value);

@@ -61,6 +61,21 @@ ApplicationWindow {
         buttons: MessageDialog.Ok
     }
 
+    MessageDialog {
+        id: privateCertificateExpiredDialog
+        title: qsTr("Private TLS certificate expired")
+        text: qsTr("The private TLS certificate used to connect to the server has expired. The connection was aborted. Certificate renewal is not available yet.")
+        buttons: MessageDialog.Ok
+    }
+
+    Connections {
+        target: NaComm
+
+        function onPrivateCertificateExpired() {
+            privateCertificateExpiredDialog.open()
+        }
+    }
+
     Connections {
         target: NaCore
 
@@ -128,6 +143,22 @@ ApplicationWindow {
                 text: qsTr("Exit")
                 onTriggered: Qt.exit(0)
                 shortcut: StandardKey.Quit
+            }
+        }
+
+        MyMenu {
+            title: qsTr("Edit")
+
+            Action {
+                text: qsTr("Paste to inbox")
+                enabled: NaComm.connected && NaMainTreeModel.hasInbox
+                onTriggered: NaCore.pasteClipboardToInbox()
+            }
+
+            Action {
+                text: qsTr("Paste to selected list")
+                enabled: NaComm.connected && NaMainTreeModel.hasSelection
+                onTriggered: NaCore.pasteClipboardToNode(NaMainTreeModel.selected)
             }
         }
 

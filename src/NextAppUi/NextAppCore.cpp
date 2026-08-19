@@ -2,6 +2,8 @@
 
 #include <CalendarModel.h>
 #include <QDateTime>
+#include <QClipboard>
+#include <QRegularExpression>
 #include <QDesktopServices>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
@@ -33,6 +35,73 @@
 using namespace std;
 
 namespace {
+
+QString normalizedPasteWhitespace(const QString& text)
+{
+    return text.simplified();
+}
+
+QString markdownPasteTitle(const QString& text)
+{
+    const auto lines = text.split(u'\n');
+    for (const auto& line : lines) {
+        auto title = line.trimmed();
+        if (title.startsWith(u'#')) {
+            title.remove(QRegularExpression(QStringLiteral(R"(^#+\s*)")));
+            title.remove(QRegularExpression(QStringLiteral(R"(\s*#+$)")));
+            return normalizedPasteWhitespace(title);
+        }
+    }
+
+    for (const auto& line : lines) {
+        auto title = line.trimmed();
+        if (title.isEmpty() || title.startsWith(QStringLiteral("```"))) {
+            continue;
+        }
+        title.remove(QRegularExpression(QStringLiteral(R"(^[-*+>]\s+)")));
+        title.remove(QRegularExpression(QStringLiteral(R"(^\d+\.\s+)")));
+        title.remove(QRegularExpression(QStringLiteral(R"(`+)")));
+        title.replace(QRegularExpression(QStringLiteral(R"(\[(.*?)\]\((.*?)\))")), QStringLiteral("\\1"));
+        title = normalizedPasteWhitespace(title);
+        if (!title.isEmpty()) {
+            return title;
+        }
+    }
+    return {};
+}
+
+bool looksLikeMarkdownPaste(const QString& text)
+{
+    return text.contains(QRegularExpression(QStringLiteral(R"((^|\n)\s{0,3}(#|[-*+] |\d+\. |```|> ))")));
+}
+
+QString pasteActionTitle(const QString& text)
+{
+    const auto trimmed = text.trimmed();
+    if (looksLikeMarkdownPaste(trimmed)) {
+        const auto markdownTitle = markdownPasteTitle(trimmed);
+        if (!markdownTitle.isEmpty()) {
+            return markdownTitle;
+        }
+    }
+
+    const auto sentenceEnd = trimmed.indexOf(QRegularExpression(QStringLiteral("[.!?](?:\\s|$)")));
+    const auto title = sentenceEnd >= 0 ? trimmed.left(sentenceEnd + 1) : trimmed;
+    return normalizedPasteWhitespace(title);
+}
+
+QStringList splitPastedMarkdown(const QString& text)
+{
+    const auto sections = text.split(QRegularExpression(QStringLiteral(R"((?:\r?\n)\s*---\s*(?:\r?\n))")));
+    QStringList result;
+    for (const auto& section : sections) {
+        if (!section.trimmed().isEmpty()) {
+            result.append(section.trimmed());
+        }
+    }
+    return result;
+}
+
 QDate getDefaultDate(time_t when) {
     if (when > 0) {
         return QDateTime::fromSecsSinceEpoch(when).date();
@@ -102,6 +171,53 @@ private:
 
 NextAppCore *NextAppCore::instance_;
 std::deque<std::function<void()>> NextAppCore::pre_instance_callbacks_;
+
+bool NextAppCore::pasteClipboardToInbox()
+{
+    return pasteClipboardToNode(MainTreeModel::instance()->inboxUuid());
+}
+
+bool NextAppCore::pasteClipboardToNode(const QString& nodeUuid)
+{
+    const auto target = nodeUuid.trimmed();
+    if (target.isEmpty()) {
+        return false;
+    }
+
+    const auto *clipboard = QGuiApplication::clipboard();
+    if (clipboard == nullptr) {
+        LOG_ERROR_N << "Paste failed: clipboard is not available";
+        return false;
+    }
+
+    const auto text = clipboard->text().trimmed();
+    if (text.isEmpty()) {
+        LOG_WARN_N << "Paste failed: clipboard does not contain text";
+        return false;
+    }
+
+    const auto items = text.contains(QRegularExpression(QStringLiteral(R"((?:\r?\n)\s*---\s*(?:\r?\n))")))
+        ? splitPastedMarkdown(text)
+        : QStringList{text};
+    int created = 0;
+    for (const auto& item : items) {
+        const auto title = pasteActionTitle(item);
+        if (title.isEmpty()) {
+            LOG_WARN_N << "Paste skipped text without a usable title";
+            continue;
+        }
+        nextapp::pb::Action action;
+        nextapp::pb::Priority priority;
+        priority.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
+        action.setDynamicPriority(priority);
+        action.setNode(target);
+        action.setName(title);
+        action.setDescr(item);
+        server_comm_->addAction(action);
+        ++created;
+    }
+    return created > 0;
+}
 
 NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
     : engine_{&engine}

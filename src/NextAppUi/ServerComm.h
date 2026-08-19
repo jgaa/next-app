@@ -303,6 +303,7 @@ public:
 signals:
     void versionChanged();
     void errorRecieved(const QString &value);
+    void privateCertificateExpired();
     void signupInfoChanged();
 
     // When we get the full node-list

@@ -186,6 +186,21 @@ ApplicationWindow {
         z: 10000
     }
 
+    MessageDialog {
+        id: privateCertificateExpiredDialog
+        title: qsTr("Private TLS certificate expired")
+        text: qsTr("The private TLS certificate used to connect to the server has expired. The connection was aborted. Certificate renewal is not available yet.")
+        buttons: MessageDialog.Ok
+    }
+
+    Connections {
+        target: NaComm
+
+        function onPrivateCertificateExpired() {
+            privateCertificateExpiredDialog.open()
+        }
+    }
+
     function openWindow(name, args) {
         console.log("Creating QML window: " + name + " with args: " + JSON.stringify(args) )
         var component = Qt.createComponent("qrc:/qt/qml/NextAppUi/qml/" + name);
