@@ -547,6 +547,8 @@ set(NEXTAPP_UI_CORE_SOURCES
     CalendarCache.h
     CalendarDayModel.cpp
     CalendarDayModel.h
+    DateCalendarModel.cpp
+    DateCalendarModel.h
     CalendarModel.cpp
     CalendarModel.h
     CategoryUseModel.cpp
@@ -683,6 +685,7 @@ qt_add_qml_module(NextAppUiLib
         qml/categories/EditCategoryDlg.qml
         qml/common.js
         qml/components/DatePicker.qml
+        qml/components/DateCalendar.qml
         qml/components/DbInfoDlg.qml
         qml/components/DifficultySelector.qml
         qml/components/MoveDue.qml
