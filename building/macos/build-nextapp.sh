@@ -57,9 +57,12 @@ if [[ -d "${VCPKG_ROOT}" ]]; then
 else
   echo "Cloning vcpkg into ${VCPKG_ROOT}..."
   git clone https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
-  echo "Bootstrapping vcpkg..."
-  ( cd "${VCPKG_ROOT}" && ./bootstrap-vcpkg.sh )
 fi
+
+# Rebuild the vcpkg executable after every source update. A checkout can contain
+# metadata newer than an executable left behind by an earlier bootstrap.
+echo "Bootstrapping vcpkg..."
+( cd "${VCPKG_ROOT}" && ./bootstrap-vcpkg.sh -disableMetrics )
 
 # Prepend vcpkg CLI to PATH
 export PATH="${VCPKG_ROOT}:${PATH}"

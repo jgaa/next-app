@@ -85,11 +85,13 @@ export VCPKG_BUILD_TYPE=release
 if [ ! -d "$VCPKG_ROOT/.git" ]; then
     echo "Installing vcpkg";
     git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT";
-    ( cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics );
 else
     echo "Updating vcpkg";
     ( cd "$VCPKG_ROOT" && git pull --ff-only );
 fi
+
+# Keep the executable in sync with the checkout's metadata after every update.
+( cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics );
 
 if [ -n "$VCPKG_DEFAULT_BINARY_CACHE" ]; then
     echo "Creating binary cache directory: $VCPKG_DEFAULT_BINARY_CACHE"
@@ -138,4 +140,3 @@ cmake --build . -j
 cp -v bin/nextapp "${ASSETS_DIR}"
 
 echo Done. Executable is in ${ASSETS_DIR}
-

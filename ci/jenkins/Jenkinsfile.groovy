@@ -70,7 +70,8 @@ pipeline {
 
                 pushd %VCPKG_ROOT%
                 echo 🔄 Pulling latest vcpkg…
-                git pull
+                git pull --ff-only
+                call bootstrap-vcpkg.bat -disableMetrics
                 popd
 
                 set "REBUILD_WINDOWS_DEPS=${params.REBUILD_WINDOWS_DEPS ? 'ON' : 'OFF'}"
@@ -180,6 +181,7 @@ pipeline {
                     echo "Updating vcpkg";
                     ( cd "$VCPKG_ROOT" && git pull --ff-only );
                 fi
+                ( cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics );
 
                 echo "Building nextapp with static QT"
                 docker run --rm -v "$(pwd)":/src:ro  -v "${ASSETS_DIR}":/artifacts -v "${VCPKG_ROOT}":/vcpkg -v "${BUILD_DIR}":/build -v ${CACHE_DIR}:/cache  nextapp-builder
@@ -277,6 +279,7 @@ pipeline {
                   echo "Updating vcpkg in $VCPKG_ROOT"
                   (cd "$VCPKG_ROOT" && git pull --ff-only)
                 fi
+                (cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics)
 
                 # Run your macOS build script
                 chmod +x ./building/macos/build-nextapp.sh
