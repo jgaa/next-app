@@ -742,7 +742,7 @@ message Notification {
     enum Kind {
         INFO = 0;
         WARNING = 1;
-        ERROR = 2;
+        ERROR_NOTIFICATION = 2; // `ERROR` conflicts with a Windows macro
         UPGRADE = 3;
         OUTAGE = 4;
         PROMOTION = 5;
