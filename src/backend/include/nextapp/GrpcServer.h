@@ -187,6 +187,7 @@ public:
         ::grpc::ServerUnaryReactor *DeleteActionCategory(::grpc::CallbackServerContext *ctx, const pb::DeleteActionCategoryReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetActionCategories(::grpc::CallbackServerContext *ctx, const pb::Empty *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *GetOtpForNewDevice(::grpc::CallbackServerContext *ctx, const pb::OtpRequest *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *GetOtpForUser(::grpc::CallbackServerContext *ctx, const pb::AdminOtpRequest *req, pb::Status *reply) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewDays(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
         ::grpc::ServerUnaryReactor *GetNewDayColorDefinitions(::grpc::CallbackServerContext *, const pb::GetNewReq *, pb::Status *) override;
         ::grpc::ServerWriteReactor<::nextapp::pb::Status>* GetNewNodes(::grpc::CallbackServerContext* ctx, const ::nextapp::pb::GetNewReq *req) override;
@@ -220,6 +221,10 @@ public:
 
 
     private:
+        boost::asio::awaitable<pb::OtpResponse> issueOtpForNewDevice(
+            RequestCtx& rctx, std::string_view userId, std::string_view email,
+            bool notifyUserOfAdminRecovery);
+
         // Boilerplate code to run async SQL queries or other async coroutines from an unary gRPC callback
         template <typename ReqT, typename ReplyT, typename FnT>
         ::grpc::ServerUnaryReactor*
@@ -288,7 +293,18 @@ public:
                         } else if constexpr (!UnaryFnWithoutContext<FnT, ReplyT *> && !UnaryFnWithContext<FnT, ReplyT *>) {
                             static_assert(false, "Invalid unary handler function");
                         }
-                        LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(*reply);
+                        // OTPs are bearer credentials. Do not expose them when protobuf reply logging is enabled.
+                        if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {
+                            if (reply->has_otpresponse()) {
+                                auto redacted = *reply;
+                                redacted.mutable_otpresponse()->clear_otp();
+                                LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(redacted);
+                            } else {
+                                LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(*reply);
+                            }
+                        } else {
+                            LOG_TRACE << "Replying [" << name << "]: " << owner_.toJsonForLog(*reply);
+                        }
                         reactor->Finish(::grpc::Status::OK);
                     } catch (const server_err& ex) {
                         if constexpr (std::is_same_v<pb::Status *, decltype(reply)>) {

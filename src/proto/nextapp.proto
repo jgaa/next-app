@@ -1017,6 +1017,15 @@ message OtpRequest {
 message OtpResponse {
     string otp = 1;
     string email = 2;
+    common.Time issuedAt = 3;
+}
+
+// Administrative account-recovery request. Exactly one user selector is required.
+message AdminOtpRequest {
+    oneof user {
+        common.Uuid userId = 1;
+        string email = 2;
+    }
 }
 
 enum ProtopcolVersion {
@@ -1315,6 +1324,7 @@ service Nextapp {
 
     rpc CreateDevice(CreateDeviceReq) returns (Status) {}
     rpc GetOtpForNewDevice(OtpRequest) returns (Status) {}
+    rpc GetOtpForUser(AdminOtpRequest) returns (Status) {} // admin only; account recovery
     rpc GetDevices(Empty) returns (Status) {}
     rpc UpdateDevice(DeviceUpdateReq) returns (Status) {}
     rpc DeleteDevice(common.Uuid) returns (Status) {}

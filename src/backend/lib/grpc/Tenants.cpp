@@ -19,6 +19,8 @@ namespace nextapp::grpc {
 
 namespace {
 
+constexpr auto otp_ttl_minutes = 15;
+
 string getOtpHash(string_view user, string_view uuid, string_view otp)
 {
     return sha256(format("{}/{}/{}",user, uuid, otp), true);
@@ -440,7 +442,9 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
                         throw server_err{pb::Error::CONSTRAINT_FAILED, "Invalid email"};
                     }
                     auto res = co_await rctx.dbh->exec(
-                        "SELECT id, user, otp_hash FROM otp WHERE email=? AND kind='new_device'",
+                        format("SELECT id, user, otp_hash FROM otp "
+                               "WHERE email=? AND kind='new_device' "
+                               "AND created >= UTC_TIMESTAMP() - INTERVAL {} MINUTE", otp_ttl_minutes),
                         auth.email());
                     if (res.rows().empty()) {
                         LOG_DEBUG << "No 'new_device' OTP found for email " << auth.email();
@@ -644,36 +648,120 @@ boost::asio::awaitable<bool> GrpcServer::saveUserGlobalSettings(
     ::grpc::CallbackServerContext *ctx, const pb::OtpRequest *req, pb::Status *reply)
 {
     return mutatingUnaryHandler(ctx, req, reply,
-        [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+        [this] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
-            // Delete any existing OTP for this user
             auto res = co_await rctx.dbh->exec(
-                "DELETE from otp WHERE user = ?", cuser);
-
-            res = co_await rctx.dbh->exec(
                 "SELECT email FROM user WHERE id = ?", cuser);
             if (res.rows().empty()) {
                 throw server_err{pb::Error::MISSING_USER_EMAIL, "Email for the current user was not found"};
             }
 
-            pb::OtpResponse resp;
-            resp.set_email(pb_adapt(res.rows().front().front().as_string()));
-
-            // Generate a new OTP
-            const auto otp = getRandomStr(8, "0123456789");
-            const auto uuid = newUuidStr();
-            auto hash = getOtpHash(cuser, uuid, otp);
-            co_await rctx.dbh->exec(
-                "INSERT INTO otp (id, user, otp_hash, email, kind) VALUES (?, ?, ?, ?, 'new_device') ",
-                rctx.uctx->dbOptions(), uuid, cuser, hash, resp.email());
-
-            LOG_DEBUG << "Generated OTP, for new device, with hash " << hash << ", for user " << cuser;
-            resp.set_otp(otp);
-            reply->mutable_otpresponse()->CopyFrom(resp);
+            reply->mutable_otpresponse()->CopyFrom(co_await issueOtpForNewDevice(
+                rctx, cuser, res.rows().front().front().as_string(), false));
 
             co_return;
         }, __func__);
+}
+
+boost::asio::awaitable<pb::OtpResponse> GrpcServer::NextappImpl::issueOtpForNewDevice(
+    RequestCtx& rctx, string_view userId, string_view email, bool notifyUserOfAdminRecovery)
+{
+    auto trx = co_await rctx.dbh->transaction();
+
+    // Only new-device OTPs compete with each other; do not invalidate other OTP kinds.
+    co_await rctx.dbh->exec("DELETE FROM otp WHERE user=? AND kind='new_device'", userId);
+
+    pb::OtpResponse response;
+    response.set_email(pb_adapt(email));
+    const auto otp = getRandomStr(8, "0123456789");
+    const auto otpId = newUuidStr();
+    const auto hash = getOtpHash(userId, otpId, otp);
+    co_await rctx.dbh->exec(
+        "INSERT INTO otp (id, user, otp_hash, email, kind) VALUES (?, ?, ?, ?, 'new_device')",
+        rctx.uctx->dbOptions(), otpId, userId, hash, email);
+
+    auto otpCreated = co_await rctx.dbh->exec("SELECT created FROM otp WHERE id=?", rctx.uctx->dbOptions(), otpId);
+    const auto issuedAt = toTimeT(otpCreated.rows().front().front().as_datetime(), rctx.uctx->tz());
+    response.mutable_issuedat()->set_unixtime(issuedAt);
+    response.set_otp(otp);
+
+    std::optional<pb::Notification> notification;
+    if (notifyUserOfAdminRecovery) {
+        notification.emplace();
+        notification->mutable_uuid()->set_uuid(newUuidStr());
+        notification->mutable_touser()->set_uuid(pb_adapt(userId));
+        notification->set_subject("Account recovery OTP issued");
+        notification->set_message(format(
+            "An administrator obtained a one-time password for account recovery at {} UTC.",
+            *toAnsiTime(issuedAt, rctx.uctx->tz(), true)));
+        notification->set_sendertype(pb::Notification::SenderType::Notification_SenderType_SYSTEM);
+        notification->set_senderid(Server::instance().serverId());
+        notification->set_kind(pb::Notification::Kind::Notification_Kind_WARNING);
+        notification->set_data(format("event=admin_otp_issued;issued_at={}", issuedAt));
+
+        const auto ins = co_await rctx.dbh->exec(R"(INSERT INTO notification
+            (valid_to, subject, message, sender_type, sender_id, to_tenant, to_user, uuid, kind, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
+            rctx.uctx->dbOptions(), std::optional<string>{}, notification->subject(), notification->message(),
+            "system", notification->senderid(), std::optional<string>{}, userId, notification->uuid().uuid(),
+            "warning", notification->data());
+        notification->set_id(ins.last_insert_id());
+
+        auto created = co_await rctx.dbh->exec(
+            "SELECT updated, created_time FROM notification WHERE id=?", rctx.uctx->dbOptions(), notification->id());
+        notification->set_updated(toMsTimestamp(created.rows().front().at(0).as_datetime(), rctx.uctx->tz()));
+        notification->mutable_createdtime()->set_unixtime(toTimeT(created.rows().front().at(1).as_datetime(), rctx.uctx->tz()));
+    }
+
+    co_await trx.commit();
+
+    if (notification) {
+        owner_.setLastNotificationUpdated(notification->updated());
+        co_await owner_.sessionManager().publishNotification(*notification);
+    }
+
+    co_return response;
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetOtpForUser(
+    ::grpc::CallbackServerContext *ctx, const pb::AdminOtpRequest *req, pb::Status *reply)
+{
+    return mutatingUnaryHandler(ctx, req, reply,
+        [this, ctx, req] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            string userId;
+            string email;
+            boost::mysql::results result;
+
+            switch (req->user_case()) {
+            case pb::AdminOtpRequest::kUserId:
+                validatedUuid(req->userid().uuid());
+                result = co_await rctx.dbh->exec(
+                    "SELECT id, email FROM user WHERE id=?", rctx.uctx->dbOptions(), req->userid().uuid());
+                break;
+            case pb::AdminOtpRequest::kEmail:
+                if (!isValidEmail(req->email())) {
+                    throw server_err{pb::Error::CONSTRAINT_FAILED, "Invalid email"};
+                }
+                result = co_await rctx.dbh->exec(
+                    "SELECT id, email FROM user WHERE email=?", rctx.uctx->dbOptions(), req->email());
+                break;
+            case pb::AdminOtpRequest::USER_NOT_SET:
+                throw server_err{pb::Error::INVALID_ARGUMENT, "User ID or email is required"};
+            }
+
+            if (result.rows().empty()) {
+                throw server_err{pb::Error::MISSING_USER_ID, "User was not found"};
+            }
+
+            userId = result.rows().front().at(0).as_string();
+            email = result.rows().front().at(1).as_string();
+            reply->mutable_otpresponse()->CopyFrom(co_await issueOtpForNewDevice(rctx, userId, email, true));
+
+            LOG_INFO << "Admin account-recovery OTP issued by user " << rctx.uctx->userUuid()
+                     << " for user " << userId << " from " << ctx->peer();
+            co_return;
+        }, __func__, true /* allow new session */, true /* admin only */);
 }
 
 ::grpc::ServerWriteReactor<pb::Status> *GrpcServer::NextappImpl::ListTenants(
