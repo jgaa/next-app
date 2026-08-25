@@ -60,7 +60,7 @@ export SOURCE_DIR="${SOURCE_DIR:-${SCRIPT_DIR}/../../}"
 export BUILD_DIR="${BUILD_DIR:-/var/local/build/nextapp-android}"
 export SDK_PATH="${SDK_PATH:-/var/local/build/android-sdk}"
 export NDK_VERSION="${NDK_VERSION:-27.2.12479018}"
-export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-29}"
+export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-31}"
 
 echo "QT_VERSION is ${QT_VERSION}"
 echo "HOST_TRIPLET is: $HOST_TRIPLET"
@@ -151,7 +151,7 @@ cmake -S ${SOURCE_DIR} \
   -DCMAKE_BUILD_TYPE:STRING=Release \
   -DQT_USE_TARGET_ANDROID_BUILD_DIR:BOOL=ON \
   -DANDROID_STL:STRING=c++_shared \
-  -DANDROID_PLATFORM:STRING=android-29 \
+  -DANDROID_PLATFORM:STRING=${ANDROID_PLATFORM} \
   -DQT_QMAKE_EXECUTABLE:FILEPATH=${QT_INSTALL_DIR}/android_${ABI}/bin/qmake \
   -DCMAKE_CXX_COMPILER:FILEPATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ \
   -DCMAKE_C_COMPILER:FILEPATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
@@ -247,4 +247,3 @@ if [ "$BUILD_AAB" = "aab" ]; then
 
   echo "✔ AAB built and stored in ${aab_dst}"
 fi
-
