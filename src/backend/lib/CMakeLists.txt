@@ -18,6 +18,7 @@ add_library(${PROJECT_NAME}
     Server.cpp
     UserContext.cpp
     certs.cpp
+    ClientUpdatePolicy.cpp
     grpc/Plans.cpp
     grpc/Actions.cpp
     grpc/Calendar.cpp

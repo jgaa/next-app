@@ -3,6 +3,10 @@
 #include <thread>
 #include <string>
 #include <cstdint>
+#include <filesystem>
+#include <optional>
+#include <unordered_map>
+#include <string_view>
 #include "nextapp/util.h"
 #include "mysqlpool/conf.h"
 #include "nextapp/certs.h"
@@ -11,12 +15,30 @@
 
 namespace nextapp {
 
+/** Read-mostly, per-server release policy.  It deliberately contains no
+ * connection or user state: a policy is selected only from DeviceInfo. */
+class ClientUpdatePolicy {
+public:
+    [[nodiscard]] std::optional<pb::ClientUpdate> forDevice(const pb::DeviceInfo& device) const;
+    [[nodiscard]] bool empty() const noexcept { return entries_.empty() && !default_; }
+    bool add(std::string_view name, pb::ClientUpdate update, std::string& error);
+
+    static std::optional<ClientUpdatePolicy> load(const std::filesystem::path& path,
+                                                  std::string& error);
+
+private:
+    std::unordered_map<int, pb::ClientUpdate> entries_;
+    std::optional<pb::ClientUpdate> default_;
+};
+
 struct ServerConfig {
     size_t io_threads = std::min<size_t>(std::max<size_t>(4,std::thread::hardware_concurrency()), 16);
     size_t time_block_max_actions = 24;
     uint32_t plan_delete_grace_window = 120;
     uint32_t session_timeout_sec = 60 * 5;
     uint32_t session_timer_interval_sec = 15;
+    std::string client_versions_manifest;
+    ClientUpdatePolicy client_update_policy;
 };
 
 struct GrpcConfig {

@@ -15,6 +15,7 @@ list(GET VERSION_PARTS 2 VERSION_PATCH)
 
 # Convert to integer version code: major * 10000 + minor * 100 + patch
 math(EXPR VERSION_CODE "${VERSION_MAJOR} * 10000 + ${VERSION_MINOR} * 100 + ${VERSION_PATCH}")
+add_definitions(-DNEXTAPP_UI_VERSION_CODE=${VERSION_CODE})
 
 message(STATUS "Version: ${NEXTAPP_VERSION}")
 message(STATUS "Version code: ${VERSION_CODE}")

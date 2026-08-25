@@ -355,6 +355,9 @@ public:
             sync_client_mode_.store(static_cast<uint8_t>(mode), std::memory_order_relaxed);
         }
 
+        void setDeviceInfo(const pb::DeviceInfo& info) { device_info_ = info; }
+        [[nodiscard]] const std::optional<pb::DeviceInfo>& deviceInfo() const noexcept { return device_info_; }
+
         void requireWritableForAdd(std::string_view resource) const;
 
         /*! Indicates if the session has push notifications enabled.
@@ -370,8 +373,11 @@ public:
         void setHasPush(bool enabled);
 
         void setPublisher(const std::shared_ptr<Publisher>& publisher) {
+            std::scoped_lock lock{publisher_mutex_};
             publisher_ = publisher;
         }
+
+        bool publishClientUpdate(const pb::ClientUpdate& update);
 
         boost::asio::awaitable<void> processPushState(nextapp::pb::PushNotificationConfig wp);
 
@@ -387,8 +393,11 @@ public:
         std::chrono::steady_clock::time_point created_{std::chrono::steady_clock::now()};
         std::atomic<uint8_t> access_mode_{static_cast<uint8_t>(SessionAccessMode::FULL_ACCESS)};
         std::atomic<uint8_t> sync_client_mode_{static_cast<uint8_t>(SyncClientMode::Unset)};
+        std::optional<pb::DeviceInfo> device_info_;
         bool has_push_{false}; // Indicates if the session has push enabled.
+        std::mutex publisher_mutex_;
         std::weak_ptr<Publisher> publisher_; // The publisher for this session, if any.
+        std::optional<pb::ClientUpdate> announced_client_update_;
     };
 
     class WriteAccessGuard {
@@ -780,6 +789,8 @@ public:
     boost::asio::awaitable<std::shared_ptr<UserContext::Session>> getSession(const ::grpc::ServerContextBase* context, bool allowNewSession = false);
 
     std::shared_ptr<UserContext::Session> getExistingSession(const ::grpc::ServerContextBase *context);
+
+    std::vector<std::shared_ptr<UserContext::Session>> sessions() const;
 
     void removeSession(const boost::uuids::uuid& sessionId);
 

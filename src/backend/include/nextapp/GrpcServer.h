@@ -513,6 +513,8 @@ public:
         return active_;
     }
 
+    void publishClientUpdatePolicyChanges();
+
     //const std::shared_ptr<UserContext> userContext(::grpc::CallbackServerContext *ctx) const;
     //boost::asio::awaitable<std::shared_ptr<UserContext>> userContext(::grpc::CallbackServerContext *ctx) const;
 

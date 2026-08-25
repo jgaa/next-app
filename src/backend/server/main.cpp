@@ -231,6 +231,8 @@ int main(int argc, char* argv[]) {
              "TLS mode; one of 'ca' or 'none'. Ca will use a self-signed server cert.")
             ("session-timeout", po::value(&config.svr.session_timeout_sec)->default_value(config.svr.session_timeout_sec),
              "Client-session timeout in seconds. Client sessions are removed after this period." )
+            ("client-versions-manifest", po::value(&config.svr.client_versions_manifest),
+             "YAML manifest with the client update policy for this nextappd instance.")
             ("plan-delete-grace-window",
              po::value(&config.svr.plan_delete_grace_window)->default_value(config.svr.plan_delete_grace_window),
              "Temporary extra allowance per quota while counts are stale after mass deletes.")
@@ -545,6 +547,19 @@ int main(int argc, char* argv[]) {
     if (config.svr.io_threads < 4) {
         LOG_WARN << "Cannot start with less than 4 IO threads. Setting to 4.";
         config.svr.io_threads = 4;
+    }
+
+    if (config.svr.client_versions_manifest.empty()) {
+        LOG_WARN << "Client update notifications are disabled: no --client-versions-manifest was configured.";
+    } else {
+        std::string error;
+        if (auto policy = ClientUpdatePolicy::load(config.svr.client_versions_manifest, error)) {
+            config.svr.client_update_policy = std::move(*policy);
+            LOG_INFO << "Loaded client update policy from " << config.svr.client_versions_manifest;
+        } else {
+            LOG_ERROR << "Client update notifications are disabled: invalid manifest '"
+                      << config.svr.client_versions_manifest << "': " << error;
+        }
     }
 
     {

@@ -172,7 +172,9 @@ struct ToDevice {
 {
     return mutatingUnaryHandler(ctx, req, reply,
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
-        (void)req;
+        if (req->has_deviceinfo()) {
+            rctx.session().setDeviceInfo(req->deviceinfo());
+        }
         co_return co_await helloCommon(owner_, ctx, reply, rctx, UserContext::SyncClientMode::Current);
     }, __func__, true /* allow new session */);
 }
@@ -281,6 +283,27 @@ GrpcServer::NextappImpl::GetServerInfo(::grpc::CallbackServerContext *ctx,
                 }
 
                 const auto replay_result = session->user().addPublisher(self_, replay_from_message_id);
+                if (const auto& device = session->deviceInfo()) {
+                    if (auto policy = owner_.server().clientUpdateFor(*device);
+                        policy && policy->version_code() > device->version_code()) {
+                        if (session->publishClientUpdate(*policy)) {
+                            LOG_INFO_N << "Published client update " << policy->version()
+                                       << " (code " << policy->version_code() << ") to session "
+                                       << session->sessionId();
+                        } else {
+                            LOG_DEBUG_N << "Client update " << policy->version_code()
+                                        << " was already announced or the update stream closed for session "
+                                        << session->sessionId();
+                        }
+                    } else if (policy) {
+                        LOG_DEBUG_N << "Client version code " << device->version_code()
+                                    << " is current for advertised client update code "
+                                    << policy->version_code();
+                    } else {
+                        LOG_DEBUG_N << "No client update policy for device platform "
+                                    << device->deviceplatform();
+                    }
+                }
                 if (req && req->has_withpush()) {
                     LOG_TRACE_N << "Remote client " << context_->peer()
                                 << " is subscribing to updates with push config: "
@@ -548,6 +571,18 @@ failed:
     }
 
     return {};
+}
+
+void GrpcServer::publishClientUpdatePolicyChanges()
+{
+    for (const auto& session : sessionManager_.sessions()) {
+        const auto& device = session->deviceInfo();
+        if (!device) continue;
+        if (auto policy = server_.clientUpdateFor(*device);
+            policy && policy->version_code() > device->version_code()) {
+            session->publishClientUpdate(*policy);
+        }
+    }
 }
 
 ::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::GetDevices(::grpc::CallbackServerContext *ctx,

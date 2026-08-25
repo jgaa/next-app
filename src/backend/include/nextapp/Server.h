@@ -3,6 +3,7 @@
 #include <thread>
 #include <optional>
 #include <atomic>
+#include <shared_mutex>
 
 #include <boost/asio.hpp>
 #include <boost/uuid.hpp>
@@ -73,6 +74,8 @@ public:
     bool hasGrpcService() const noexcept {
         return static_cast<bool>(grpc_service_);
     }
+
+    [[nodiscard]] std::optional<pb::ClientUpdate> clientUpdateFor(const pb::DeviceInfo& device) const;
 
     auto& ca() noexcept {
         assert(ca_);
@@ -161,6 +164,8 @@ private:
     boost::asio::awaitable<void> ensureServerCertIsFresh();
     void startMetricsTimer();
     void startServerCertTimer();
+    void startClientUpdatePolicyWatcher();
+    void reloadClientUpdatePolicy();
 
     void createCa();
     void createServerCert();
@@ -184,6 +189,9 @@ private:
     std::shared_ptr<jgaa::cpp_push::Pusher> google_pusher_;
     std::shared_ptr<Plans> plans_;
     boost::asio::steady_timer update_plan_timer_{ctx_};
+    mutable std::shared_mutex client_update_policy_mutex_;
+    ClientUpdatePolicy client_update_policy_;
+    std::optional<std::filesystem::file_time_type> client_update_policy_last_write_;
 };
 
 template <ProtoMessage T>

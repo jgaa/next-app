@@ -1445,6 +1445,26 @@ void UserContext::Session::push(const std::shared_ptr<pb::Update> &message)
     }, boost::asio::detached);
 }
 
+bool UserContext::Session::publishClientUpdate(const pb::ClientUpdate& update)
+{
+    std::shared_ptr<Publisher> publisher;
+    {
+        std::scoped_lock lock{publisher_mutex_};
+        if (announced_client_update_ && announced_client_update_->version_code() == update.version_code()
+            && announced_client_update_->version() == update.version()
+            && announced_client_update_->required() == update.required()) {
+            return false;
+        }
+        publisher = publisher_.lock();
+        if (!publisher) return false;
+        announced_client_update_ = update;
+    }
+    auto message = std::make_shared<pb::Update>();
+    message->set_messageid(0);
+    message->mutable_clientupdate()->CopyFrom(update);
+    return publisher->publish(message);
+}
+
 boost::asio::awaitable<void> UserContext::push(const std::shared_ptr<pb::Update> &message, const boost::uuids::uuid deviceId)
 {
     std::shared_ptr<PushNotifications> handler;
@@ -1770,6 +1790,17 @@ initial_auth_ok:
     }
 
     throw server_err{pb::Error::AUTH_FAILED, "Session not found"};
+}
+
+std::vector<std::shared_ptr<UserContext::Session>> SessionManager::sessions() const
+{
+    std::vector<std::shared_ptr<UserContext::Session>> result;
+    shared_lock lock{mutex_};
+    result.reserve(sessions_.size());
+    for (const auto& [_, session] : sessions_) {
+        result.emplace_back(session->shared_from_this());
+    }
+    return result;
 }
 
 void SessionManager::removeSession(const boost::uuids::uuid &sessionId)

@@ -850,6 +850,7 @@ message Update {
         bool push = 27; // Push notifications has been enabled or disabled at the server
         Subscription subscription = 28; // The subscription info has been updated
         SessionAccess sessionAccess = 29; // Access mode for a specific device/session changed
+        ClientUpdate clientUpdate = 31; // A new version of the client is available
     }
 
     repeated bytes fixesIssueIds = 30;
@@ -1070,8 +1071,30 @@ message ResetPlaybackReq {
     uint32 instanceId = 2; // starts at 1
 }
 
+enum DevicePlatform {
+    UNKNOWN_PLATFORM = 0;
+    LINUX_NATIVE_X64 = 1;
+    LINUX_FLATPAK_X64 = 2;
+    MACOS_X64 = 3;
+    MACOS_ARM64 = 4;
+    WINDOWS_X64 = 5;
+    ANDROID = 6;
+}
+
+message DeviceInfo {
+    DevicePlatform devicePlatform = 1;
+    uint32 version_code = 2;
+}
+
 message HelloReq {
     optional ProtopcolVersion protocolVersion = 1;
+    optional DeviceInfo deviceInfo = 2; // Identifies the platform. Used to supply upgrade information.
+}
+
+message ClientUpdate {
+    uint32 version_code = 1;
+    string version = 2;
+    bool required = 3;
 }
 
 message Hello {

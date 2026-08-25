@@ -68,6 +68,41 @@ ApplicationWindow {
         buttons: MessageDialog.Ok
     }
 
+    Rectangle {
+        id: clientUpdateBanner
+        parent: Overlay.overlay
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 24
+        width: Math.min(parent.width - 48, 620)
+        height: bannerRow.implicitHeight + 24
+        radius: 6
+        color: NaComm.clientUpdateRequired ? "#b91c1c" : MaterialDesignStyling.primary
+        visible: NaComm.clientUpdateAvailable
+        z: 10000
+
+        RowLayout {
+            id: bannerRow
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 12
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: "white"
+                text: NaComm.clientUpdateRequired
+                    ? qsTr("A required NextApp update is available: %1.").arg(NaComm.clientUpdateVersion)
+                    : qsTr("NextApp %1 is available.").arg(NaComm.clientUpdateVersion)
+            }
+            Button { text: qsTr("Update"); onClicked: NaComm.openClientUpdatePage() }
+            Button {
+                visible: !NaComm.clientUpdateRequired
+                text: qsTr("Dismiss")
+                onClicked: NaComm.dismissClientUpdate()
+            }
+        }
+    }
+
     Connections {
         target: NaComm
 

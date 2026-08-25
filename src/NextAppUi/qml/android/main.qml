@@ -186,6 +186,38 @@ ApplicationWindow {
         z: 10000
     }
 
+    Rectangle {
+        parent: Overlay.overlay
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 16
+        width: parent.width - 24
+        height: updateRow.implicitHeight + 20
+        radius: 6
+        color: NaComm.clientUpdateRequired ? "#b91c1c" : "#2563eb"
+        visible: NaComm.clientUpdateAvailable
+        z: 10000
+        RowLayout {
+            id: updateRow
+            anchors.fill: parent
+            anchors.margins: 10
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: "white"
+                text: NaComm.clientUpdateRequired
+                    ? qsTr("A required NextApp update is available: %1.").arg(NaComm.clientUpdateVersion)
+                    : qsTr("NextApp %1 is available.").arg(NaComm.clientUpdateVersion)
+            }
+            Button { text: qsTr("Update"); onClicked: NaComm.openClientUpdatePage() }
+            Button {
+                visible: !NaComm.clientUpdateRequired
+                text: qsTr("Dismiss")
+                onClicked: NaComm.dismissClientUpdate()
+            }
+        }
+    }
+
     MessageDialog {
         id: privateCertificateExpiredDialog
         title: qsTr("Private TLS certificate expired")

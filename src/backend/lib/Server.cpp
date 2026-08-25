@@ -51,8 +51,13 @@ void logCertExpiry(std::string_view cert_name, std::time_t not_after,
 } // anon ns
 
 Server::Server(const Config& config)
-    : config_(config), metrics_(*this)
+    : config_(config), metrics_(*this), client_update_policy_(config.svr.client_update_policy)
 {
+    if (!config.svr.client_versions_manifest.empty()) {
+        std::error_code ec;
+        const auto last_write = std::filesystem::last_write_time(config.svr.client_versions_manifest, ec);
+        if (!ec) client_update_policy_last_write_ = last_write;
+    }
 }
 
 Server::~Server()
@@ -169,10 +174,17 @@ void Server::run()
 
     startMetricsTimer();
     startServerCertTimer();
+    startClientUpdatePolicyWatcher();
 
     LOG_DEBUG_N << "Main thread joins the IO thread pool...";
     runIoThread(0);
     LOG_DEBUG_N << "Main thread left the IO thread pool...";
+}
+
+std::optional<pb::ClientUpdate> Server::clientUpdateFor(const pb::DeviceInfo& device) const
+{
+    std::shared_lock lock{client_update_policy_mutex_};
+    return client_update_policy_.forDevice(device);
 }
 
 void Server::stop()
@@ -450,6 +462,46 @@ void Server::startServerCertTimer()
             }
         }
     }, asio::detached);
+}
+
+void Server::startClientUpdatePolicyWatcher()
+{
+    if (config().svr.client_versions_manifest.empty()) return;
+
+    asio::co_spawn(ctx_, [this]() -> asio::awaitable<void> {
+        while (!ctx_.stopped()) {
+            co_await asio::steady_timer{ctx_, std::chrono::minutes{1}}.async_wait(asio::use_awaitable);
+            reloadClientUpdatePolicy();
+        }
+    }, asio::detached);
+}
+
+void Server::reloadClientUpdatePolicy()
+{
+    const auto& path = config().svr.client_versions_manifest;
+    std::error_code ec;
+    const auto last_write = std::filesystem::last_write_time(path, ec);
+    if (ec) {
+        LOG_ERROR_N << "Unable to check client update manifest '" << path << "': " << ec.message();
+        return;
+    }
+    if (client_update_policy_last_write_ && last_write == *client_update_policy_last_write_) return;
+
+    std::string error;
+    auto policy = ClientUpdatePolicy::load(path, error);
+    if (!policy) {
+        LOG_ERROR_N << "Keeping the active client update policy: manifest '" << path
+                    << "' is invalid: " << error;
+        return;
+    }
+
+    {
+        std::unique_lock lock{client_update_policy_mutex_};
+        client_update_policy_ = std::move(*policy);
+        client_update_policy_last_write_ = last_write;
+    }
+    LOG_INFO_N << "Reloaded client update policy from " << path;
+    if (grpc_service_) grpc_service_->publishClientUpdatePolicyChanges();
 }
 
 void Server::startPlanSyncSchedule()

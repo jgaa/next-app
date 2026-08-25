@@ -103,6 +103,9 @@ private:
     Q_PROPERTY(QString statusColor MEMBER status_color_ NOTIFY statusChanged)
     Q_PROPERTY(QString version MEMBER server_version_ NOTIFY versionChanged)
     Q_PROPERTY(QString serverId MEMBER server_id_ NOTIFY versionChanged)
+    Q_PROPERTY(bool clientUpdateAvailable READ clientUpdateAvailable NOTIFY clientUpdateChanged)
+    Q_PROPERTY(bool clientUpdateRequired READ clientUpdateRequired NOTIFY clientUpdateChanged)
+    Q_PROPERTY(QString clientUpdateVersion READ clientUpdateVersion NOTIFY clientUpdateChanged)
     Q_PROPERTY(nextapp::pb::UserGlobalSettings globalSettings
                 READ getGlobalSettings
                 NOTIFY globalSettingsChanged)
@@ -167,6 +170,12 @@ public:
     }
     Q_INVOKABLE QStringList getRegionsForSignup() const;
     Q_INVOKABLE void sendFeedback(const nextapp::pb::Feedback& feedback);
+    Q_INVOKABLE void dismissClientUpdate();
+    Q_INVOKABLE void openClientUpdatePage() const;
+
+    [[nodiscard]] bool clientUpdateAvailable() const noexcept { return client_update_available_; }
+    [[nodiscard]] bool clientUpdateRequired() const noexcept { return client_update_required_; }
+    [[nodiscard]] QString clientUpdateVersion() const { return client_update_version_; }
 
     /*! Resynch with the server */
     Q_INVOKABLE void resync() override;
@@ -320,6 +329,7 @@ signals:
     void resynching();
     void subscriptionChanged(const nextapp::pb::Subscription& subscription);
     void sessionAccessChanged(const nextapp::pb::SessionAccess& sessionAccess);
+    void clientUpdateChanged();
 
 private slots:
     void onAppWokeFromSleep();
@@ -334,6 +344,7 @@ private:
     void onGrpcReady();
     void onUpdateMessage();
     void applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& msg);
+    void processClientUpdate(const nextapp::pb::ClientUpdate& update);
     void clearSyncIssuesResolvedByUpdate(const nextapp::pb::Update& msg);
     void enqueueLiveUpdateForApply(const std::shared_ptr<nextapp::pb::Update>& msg);
     QCoro::Task<void> drainLiveUpdateQueue();
@@ -744,6 +755,11 @@ private:
     QSet<QByteArray> reported_sync_issue_ids_;
     std::deque<std::shared_ptr<nextapp::pb::Update>> deferred_updates_;
     std::deque<std::shared_ptr<nextapp::pb::Update>> live_update_apply_queue_;
+    bool client_update_available_{false};
+    bool client_update_required_{false};
+    uint32_t client_update_version_code_{0};
+    uint32_t last_announced_client_update_version_code_{0};
+    QString client_update_version_;
     bool draining_live_updates_{false};
 #if defined(ANDROID_BUILD) && defined(WITH_FCM)
     bool fcm_requested_{false};

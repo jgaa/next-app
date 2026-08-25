@@ -12,6 +12,9 @@
 #include <QSslCertificate>
 #include <QDateTime>
 #include <QNetworkInformation>
+#include <QSysInfo>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QProtobufSerializer>
 #include <qcorocore.h>
 #include <qcorothread.h>
@@ -103,6 +106,35 @@ auto createWorkEventReq(const QString& sessionId, nextapp::pb::WorkEvent::Kind k
 QByteArray syncIssueIdBytes(const nextapp::pb::SyncIssue& issue)
 {
     return issue.issueId();
+}
+
+nextapp::pb::DevicePlatformGadget::DevicePlatform localDevicePlatform()
+{
+    const auto architecture = QSysInfo::currentCpuArchitecture().toLower();
+    const bool x64 = architecture == "x86_64" || architecture == "amd64";
+    const bool arm64 = architecture == "arm64" || architecture == "aarch64";
+#if defined(ANDROID_BUILD)
+    return nextapp::pb::DevicePlatformGadget::DevicePlatform::ANDROID;
+#elif defined(LINUX_BUILD)
+#  if defined(NEXTAPP_FLATPAK_BUILD)
+    return x64 ? nextapp::pb::DevicePlatformGadget::DevicePlatform::LINUX_FLATPAK_X64
+               : nextapp::pb::DevicePlatformGadget::DevicePlatform::UNKNOWN_PLATFORM;
+#  else
+    return x64
+        ? nextapp::pb::DevicePlatformGadget::DevicePlatform::LINUX_NATIVE_X64
+        : nextapp::pb::DevicePlatformGadget::DevicePlatform::UNKNOWN_PLATFORM;
+#  endif
+#elif defined(MACOS_BUILD)
+    return arm64 ? nextapp::pb::DevicePlatformGadget::DevicePlatform::MACOS_ARM64
+                 : x64 ? nextapp::pb::DevicePlatformGadget::DevicePlatform::MACOS_X64
+                        : nextapp::pb::DevicePlatformGadget::DevicePlatform::UNKNOWN_PLATFORM;
+#elif defined(WINDOWS_BUILD)
+    return x64
+        ? nextapp::pb::DevicePlatformGadget::DevicePlatform::WINDOWS_X64
+        : nextapp::pb::DevicePlatformGadget::DevicePlatform::UNKNOWN_PLATFORM;
+#else
+    return nextapp::pb::DevicePlatformGadget::DevicePlatform::UNKNOWN_PLATFORM;
+#endif
 }
 
 filesystem::path getDataDir(RuntimeServices& runtime) {
@@ -1753,6 +1785,67 @@ void ServerComm::clearSyncIssuesResolvedByUpdate(const nextapp::pb::Update& msg)
     }
 }
 
+void ServerComm::processClientUpdate(const nextapp::pb::ClientUpdate& update)
+{
+    constexpr auto local_version_code = static_cast<uint32_t>(NEXTAPP_UI_VERSION_CODE);
+    const auto version = update.version();
+    if (update.versionCode() == 0 || version.isEmpty() || version.size() > 128) {
+        LOG_WARN_N << "Ignoring malformed client update policy.";
+        return;
+    }
+    if (update.versionCode() <= local_version_code) {
+        if (client_update_available_ || client_update_required_ || !client_update_version_.isEmpty()) {
+            client_update_available_ = false;
+            client_update_required_ = false;
+            client_update_version_code_ = 0;
+            client_update_version_.clear();
+            emit clientUpdateChanged();
+        }
+        return;
+    }
+    // Update announcements are intentionally session-local.  A dismissal must
+    // prevent repeated messages from the server from nagging the user during
+    // this run, but a new application run should remind them again.
+    const bool newly_announced = last_announced_client_update_version_code_ != update.versionCode();
+    const bool visible = update.required() || newly_announced || client_update_available_;
+    const bool changed = client_update_available_ != visible
+        || client_update_required_ != update.required()
+        || client_update_version_code_ != update.versionCode()
+        || client_update_version_ != version;
+    client_update_available_ = visible;
+    client_update_required_ = update.required();
+    client_update_version_code_ = update.versionCode();
+    client_update_version_ = version;
+    if (newly_announced) {
+        last_announced_client_update_version_code_ = update.versionCode();
+        LOG_INFO_N << "Server advertised NextApp client update " << version
+                   << " (code " << update.versionCode() << ", required=" << update.required()
+                   << ", visible=" << visible << ')';
+    } else {
+        LOG_TRACE_N << "Ignoring a repeated client update announcement for version code "
+                    << update.versionCode();
+    }
+    if (changed) emit clientUpdateChanged();
+}
+
+void ServerComm::dismissClientUpdate()
+{
+    if (client_update_required_ || client_update_version_code_ == 0) return;
+    if (client_update_available_) {
+        client_update_available_ = false;
+        emit clientUpdateChanged();
+    }
+}
+
+void ServerComm::openClientUpdatePage() const
+{
+#if defined(ANDROID_BUILD)
+    QDesktopServices::openUrl(QUrl{QStringLiteral("market://details?id=eu.lastviking.nextapp.app")});
+#else
+    QDesktopServices::openUrl(QUrl{QStringLiteral("https://github.com/jgaa/next-app/releases")});
+#endif
+}
+
 QCoro::Task<bool> ServerComm::applyDurableModels(const std::shared_ptr<nextapp::pb::Update>& msg)
 {
     if (msg->hasDay() && !co_await GreenDaysModel::instance()->applyLiveUpdate(msg)) {
@@ -1875,6 +1968,11 @@ void ServerComm::onUpdateMessage()
 #endif
             LOG_TRACE << "Got update: #" << msg->messageId() << " " << msg->when().seconds();
             const auto msgid = msg->messageId();
+
+            if (msg->hasClientUpdate()) {
+                processClientUpdate(msg->clientUpdate());
+                return;
+            }
 
             if (msg->hasResync() && msg->resync()) {
                 LOG_INFO_N << "Received resync request from server on update stream.";
@@ -2305,6 +2403,10 @@ QCoro::Task<void> ServerComm::startNextappSession()
     uint64_t hello_last_notification{0};
     nextapp::pb::HelloReq hello_req;
     hello_req.setProtocolVersion(nextapp::pb::ProtopcolVersionGadget::ProtopcolVersion::USE_UPDATED_ID);
+    auto device_info = hello_req.deviceInfo();
+    device_info.setDevicePlatform(localDevicePlatform());
+    device_info.setVersionCode(NEXTAPP_UI_VERSION_CODE);
+    hello_req.setDeviceInfo(std::move(device_info));
     auto res = co_await rpc(hello_req,
                             &nextapp::pb::Nextapp::Client::HelloEx,
                             options);
