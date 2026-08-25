@@ -1087,7 +1087,7 @@ enum DevicePlatform {
     MACOS_X64 = 3;
     MACOS_ARM64 = 4;
     WINDOWS_X64 = 5;
-    ANDROID = 6;
+    ANDROID_ALL = 6; // `ANDROID` breaks the Android build as it's already a macro
 }
 
 message DeviceInfo {

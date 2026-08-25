@@ -114,7 +114,7 @@ nextapp::pb::DevicePlatformGadget::DevicePlatform localDevicePlatform()
     const bool x64 = architecture == "x86_64" || architecture == "amd64";
     const bool arm64 = architecture == "arm64" || architecture == "aarch64";
 #if defined(ANDROID_BUILD)
-    return nextapp::pb::DevicePlatformGadget::DevicePlatform::ANDROID;
+    return nextapp::pb::DevicePlatformGadget::DevicePlatform::ANDROID_ALL;
 #elif defined(LINUX_BUILD)
 #  if defined(NEXTAPP_FLATPAK_BUILD)
     return x64 ? nextapp::pb::DevicePlatformGadget::DevicePlatform::LINUX_FLATPAK_X64

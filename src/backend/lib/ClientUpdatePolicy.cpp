@@ -47,7 +47,7 @@ std::optional<int> platformFor(std::string_view name) {
         {"macos_x64", pb::DevicePlatform::MACOS_X64},
         {"macos_arm64", pb::DevicePlatform::MACOS_ARM64},
         {"windows_x64", pb::DevicePlatform::WINDOWS_X64},
-        {"android", pb::DevicePlatform::ANDROID},
+        {"android", pb::DevicePlatform::ANDROID_ALL},
     };
     for (const auto& [key, value] : platforms) if (key == name) return static_cast<int>(value);
     return std::nullopt;
