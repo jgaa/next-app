@@ -231,6 +231,27 @@ ApplicationWindow {
         function onPrivateCertificateExpired() {
             privateCertificateExpiredDialog.open()
         }
+
+        function onConnectionFailed(details) {
+            connectionFailureDialogLoader.failureDetails = details
+            connectionFailureDialogLoader.active = true
+            if (connectionFailureDialogLoader.item) {
+                connectionFailureDialogLoader.item.details = details
+                connectionFailureDialogLoader.item.open()
+            }
+        }
+    }
+
+    Loader {
+        id: connectionFailureDialogLoader
+        active: false
+        source: "qrc:/qt/qml/NextAppUi/qml/components/ConnectionFailureDialog.qml"
+        property string failureDetails: ""
+
+        onLoaded: {
+            item.details = failureDetails
+            item.open()
+        }
     }
 
     function openWindow(name, args) {

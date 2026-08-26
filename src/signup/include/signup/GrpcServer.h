@@ -224,6 +224,10 @@ public:
                                                  const common::Uuid *req,
                                                  signup::pb::Reply *reply) override;
 
+        ::grpc::ServerUnaryReactor * IdentifyUser(::grpc::CallbackServerContext *ctx,
+                                                  const signup::pb::IdentifyUserRequest *req,
+                                                  signup::pb::Reply *reply) override;
+
         ::grpc::ServerUnaryReactor * AddInstance(::grpc::CallbackServerContext *ctx,
                                                  const signup::pb::SetInstance *req,
                                                  signup::pb::Reply *reply) override;

@@ -687,6 +687,7 @@ qt_add_qml_module(NextAppUiLib
         qml/common.js
         qml/components/DatePicker.qml
         qml/components/DateCalendar.qml
+        qml/components/ConnectionFailureDialog.qml
         qml/components/DbInfoDlg.qml
         qml/components/DifficultySelector.qml
         qml/components/MoveDue.qml

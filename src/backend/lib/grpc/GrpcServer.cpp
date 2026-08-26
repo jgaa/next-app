@@ -73,6 +73,7 @@ boost::asio::awaitable<void> helloCommon(GrpcServer& owner,
         const auto& server = owner.server();
         hello->set_sessionid(to_string(rctx.session().sessionId()));
         hello->set_serverid(server.serverId());
+        hello->set_userid(rctx.uctx->userUuid());
         hello->set_serverinstancetag(server.instanceTag());
         hello->set_lastpublishid(rctx.uctx->currentPublishId());
         hello->set_userpublishepoch(rctx.uctx->currentPublishEpoch());

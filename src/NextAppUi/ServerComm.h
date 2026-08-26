@@ -102,7 +102,10 @@ private:
     Q_PROPERTY(QString statusText MEMBER status_text_ NOTIFY statusChanged)
     Q_PROPERTY(QString statusColor MEMBER status_color_ NOTIFY statusChanged)
     Q_PROPERTY(QString version MEMBER server_version_ NOTIFY versionChanged)
-    Q_PROPERTY(QString serverId MEMBER server_id_ NOTIFY versionChanged)
+    Q_PROPERTY(QString serverId MEMBER server_id_ NOTIFY serverConfigurationChanged)
+    Q_PROPERTY(QString userId MEMBER user_id_ NOTIFY serverConfigurationChanged)
+    Q_PROPERTY(QString nextappUrl READ nextappUrl NOTIFY serverConfigurationChanged)
+    Q_PROPERTY(QString signupUrl READ signupUrl NOTIFY serverConfigurationChanged)
     Q_PROPERTY(bool clientUpdateAvailable READ clientUpdateAvailable NOTIFY clientUpdateChanged)
     Q_PROPERTY(bool clientUpdateRequired READ clientUpdateRequired NOTIFY clientUpdateChanged)
     Q_PROPERTY(QString clientUpdateVersion READ clientUpdateVersion NOTIFY clientUpdateChanged)
@@ -151,6 +154,8 @@ public:
 
     [[nodiscard]] QString version();
     [[nodiscard]] bool connected() const noexcept override;
+    [[nodiscard]] QString nextappUrl() const;
+    [[nodiscard]] QString signupUrl() const;
 
     Q_INVOKABLE void toggleConnect();
 
@@ -311,7 +316,9 @@ public:
 
 signals:
     void versionChanged();
+    void serverConfigurationChanged();
     void errorRecieved(const QString &value);
+    void connectionFailed(const QString &details);
     void privateCertificateExpired();
     void signupInfoChanged();
 
@@ -339,6 +346,7 @@ private slots:
 private:
     void onReachabilityChanged(QNetworkInformation::Reachability reachability);
     void errorOccurred(const QGrpcStatus &status);
+    void reportConnectionFailure(const QString& details);
     void onServerInfo(nextapp::pb::ServerInfo info);
     void initGlobalSettings();
     void onGrpcReady();
@@ -696,6 +704,7 @@ private:
     nextapp::pb::ServerInfo server_info_;
     QString server_version_{"Unknown"};
     QString server_id_;
+    QString user_id_;
     Status status_{Status::OFFLINE};
     QString status_text_;
     QString status_color_;
@@ -710,6 +719,7 @@ private:
     SignupStatus signup_status_{SIGNUP_NOT_STARTED};
     QUuid device_uuid_;
     QString messages_;
+    bool connection_failure_reported_{false};
     QTimer ping_timer_;
     unsigned ping_timer_interval_sec_{60}; // 60 seconds
     nextapp::pb::DataVersionsInfo server_data_versions_;

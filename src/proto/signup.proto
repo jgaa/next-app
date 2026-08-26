@@ -89,6 +89,22 @@ message SignUpResponse {
     string caCert = 6; // PEM encoded server CA certificate
 }
 
+// An administrative lookup of the identifiers signupd has for a user.
+// The email itself is not retained, only a salted hash of it.
+message IdentifyUserRequest {
+  oneof lookup {
+    string email = 1;
+    common.Uuid id = 2;
+  }
+}
+
+message UserIdentification {
+  common.Uuid region = 1;
+  string regionName = 2;
+  common.Uuid user = 3;
+  common.Uuid tenant = 4;
+}
+
 // This comes from a device without any known identity
 // for an existing user.
 message CreateNewDeviceRequest {
@@ -109,6 +125,7 @@ message Reply {
         Regions regions = 12;
         common.Uuid uuid = 13; // For create operations to return the new uuid
         Instances instances = 14;
+        UserIdentification userIdentification = 15;
     }
 }
 
@@ -122,6 +139,7 @@ service SignUp {
   rpc UpdateRegion(Region) returns (Reply) {}
   rpc DeleteRegion(common.Uuid) returns (Reply) {}
   rpc ListRegions(common.Empty) returns (Reply) {}
+  rpc IdentifyUser(IdentifyUserRequest) returns (Reply) {}
 
   rpc AddInstance(SetInstance) returns (Reply) {}
   rpc RemoveInstance(common.Uuid) returns (Reply) {}

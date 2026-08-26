@@ -127,7 +127,7 @@ message SubscriptionInfo {
     enum RegistrationState {
         LOCAL_ONLY = 0;
         PENDING_REG = 1;
-        REGISTERED = 2;
+        REGISTRATION_COMPLETE = 2; // `REGISTERED` conflicts with the Windows SDK macro
     }
 
     Subscription subscription = 1;
@@ -1118,6 +1118,7 @@ message Hello {
     uint64 userDataEpoch = 9; // Identifies the current full-sync data generation for this user
     optional uint32 oldestRetainedPublishId = 10; // Oldest live update still available for replay
     SessionAccess sessionAccess = 11; // Access mode for the current device/session
+    string userId = 12; // Authenticated user UUID
 }
 
 // Debug info about the user-sessions on the server

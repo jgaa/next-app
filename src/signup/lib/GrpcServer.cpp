@@ -558,6 +558,48 @@ GrpcServer::GrpcServer(Server &server)
     }, __func__, true);
 }
 
+::grpc::ServerUnaryReactor *GrpcServer::SignupImpl::IdentifyUser(
+    ::grpc::CallbackServerContext *ctx,
+    const signup::pb::IdentifyUserRequest *req,
+    signup::pb::Reply *reply)
+{
+    return unaryHandler(ctx, req, reply, [this, req](signup::pb::Reply *reply) -> boost::asio::awaitable<void> {
+        using LookupCase = signup::pb::IdentifyUserRequest::LookupCase;
+        const auto lookup = req->lookup_case();
+        if (lookup == LookupCase::kEmail && req->email().empty()) {
+            throw Error{nextapp::pb::Error::MISSING_USER_EMAIL, "Email is required"};
+        }
+        if (lookup == LookupCase::LOOKUP_NOT_SET
+            || (lookup == LookupCase::kId && req->id().uuid().empty())) {
+            throw Error{nextapp::pb::Error::GENERIC_ERROR, "Email or user ID is required"};
+        }
+
+        const string lookup_column = lookup == LookupCase::kEmail ? "u.email_hash" : "u.id";
+        const auto lookup_value = lookup == LookupCase::kEmail
+            ? owner_.server().getEmailHash(req->email())
+            : req->id().uuid();
+        auto res = co_await owner_.server().db().exec(
+            "SELECT u.id, u.tenant, t.region, r.name "
+            "FROM `user` u "
+            "JOIN tenant t ON t.id = u.tenant "
+            "JOIN region r ON r.id = t.region "
+            "WHERE " + lookup_column + " = ? LIMIT 1",
+            lookup_value);
+
+        if (res.rows().empty()) {
+            co_return;
+        }
+
+        enum Cols { USER_ID, TENANT_ID, REGION_ID, REGION_NAME };
+        const auto& row = res.rows().front();
+        auto *identification = reply->mutable_useridentification();
+        identification->mutable_region()->set_uuid(row[REGION_ID].as_string());
+        identification->set_regionname(row[REGION_NAME].as_string());
+        identification->mutable_user()->set_uuid(row[USER_ID].as_string());
+        identification->mutable_tenant()->set_uuid(row[TENANT_ID].as_string());
+    }, __func__, true);
+}
+
 void GrpcServer::start() {
     while(!server_.is_done()) {
         // Wait for us to be connected to the nextapp instances

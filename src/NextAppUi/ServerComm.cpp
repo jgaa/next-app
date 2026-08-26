@@ -214,6 +214,9 @@ ServerComm::ServerComm(RuntimeServices& runtime)
     nextapp::pb::Nextapp::Client xx;
     instance_ = this;
 
+    server_id_ = settings().value("server/id", QString{}).toString();
+    user_id_ = settings().value("server/userId", QString{}).toString();
+
     const auto configured_device_uuid = QUuid{settings().value("device/uuid", QString()).toString()};
     const auto legacy_device_uuid = QUuid{settings().value("deviceUuid", QString()).toString()};
     if (!legacy_device_uuid.isNull()
@@ -453,7 +456,8 @@ void ServerComm::start()
                 LOG_ERROR_N << "The private TLS client certificate expired on "
                             << clientCertificate.expiryDate().toString(Qt::ISODate);
                 setStatus(Status::ERROR);
-                emit privateCertificateExpired();
+                reportConnectionFailure(tr("The private TLS client certificate expired on %1.")
+                                            .arg(clientCertificate.expiryDate().toString(Qt::ISODate)));
                 return;
             }
             sslConfig->setLocalCertificate(clientCertificate);
@@ -1419,6 +1423,16 @@ signup::pb::GetInfoResponse ServerComm::getSignupInfo() const {
     return signup_info_;
 }
 
+QString ServerComm::nextappUrl() const
+{
+    return settings().value("server/url", QString{}).toString();
+}
+
+QString ServerComm::signupUrl() const
+{
+    return settings().value("signup/url", QString{}).toString();
+}
+
 void ServerComm::setSignupServerAddress(const QString &address)
 {
     if (address != signup_server_address_) {
@@ -1428,6 +1442,9 @@ void ServerComm::setSignupServerAddress(const QString &address)
 
         signup_status_ = SignupStatus::SIGNUP_NOT_STARTED;
         emit signupStatusChanged();
+
+        settings().setValue("signup/url", address);
+        emit serverConfigurationChanged();
     }
 
     clearMessages();
@@ -1508,6 +1525,7 @@ QCoro::Task<void> ServerComm::signupOrAdd(QString name,
             settings().setValue("server/clientCert", su.signUpResponse().cert());
             settings().setValue("server/clientKey", key);
             settings().setValue("server/caCert", su.signUpResponse().caCert());
+            emit serverConfigurationChanged();
 
             addMessage(tr("Your account was successfully created!"));
             signup_status_ = SignupStatus::SIGNUP_SUCCESS;
@@ -1613,11 +1631,21 @@ void ServerComm::errorOccurred(const QGrpcStatus &status)
 {
     LOG_ERROR_N << "Connection to gRPC server failed: " << status.message();
 
+    const auto details = toString(status);
     emit errorRecieved(tr("Connection to gRPC server failed: %1").arg(status.message()));
     if (status_ != Status::MANUAL_OFFLINE) {
+        reportConnectionFailure(details);
         setStatus(Status::ERROR);
     }
     scheduleReconnect();
+}
+
+void ServerComm::reportConnectionFailure(const QString& details)
+{
+    if (!connection_failure_reported_) {
+        connection_failure_reported_ = true;
+        emit connectionFailed(details);
+    }
 }
 
 void ServerComm::initGlobalSettings()
@@ -2412,6 +2440,16 @@ QCoro::Task<void> ServerComm::startNextappSession()
                             options);
     if (res.error() == nextapp::pb::ErrorGadget::Error::OK) {
         if (res.hasHello()) {
+            connection_failure_reported_ = false;
+            if (!res.hello().serverId().isEmpty()) {
+                server_id_ = res.hello().serverId();
+                settings().setValue("server/id", server_id_);
+            }
+            if (!res.hello().userId().isEmpty()) {
+                user_id_ = res.hello().userId();
+                settings().setValue("server/userId", user_id_);
+            }
+            emit serverConfigurationChanged();
             session_id_ = res.hello().sessionId().toLatin1();
             if (res.hello().hasSessionAccess()) {
                 emit sessionAccessChanged(res.hello().sessionAccess());
@@ -2538,6 +2576,9 @@ failed:
         }
 
         LOG_ERROR_N << "Failed to start new session: " << res.message();
+        reportConnectionFailure(tr("Authentication with the server failed. Error %1: %2")
+                                    .arg(static_cast<int>(res.error()))
+                                    .arg(res.message()));
         if (res.error() == nextapp::pb::ErrorGadget::Error::NOT_FOUND) {
             addMessage(tr("*** The server does not recognize this device. You should re-run the signup process, select 'Add Device' and use a One Time Password (OTP) fom another devive to autorize it."));
             runtime_.showUnrecognizedDeviceError();

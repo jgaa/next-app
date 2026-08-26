@@ -55,14 +55,20 @@ Dialog {
                          + "<p>Copyright (C) 2023-%3 The Last Viking LTD, Jarle Aase, and other contributors.</p> "
                          + "This build of Nextapp uses QT version %4 (GPL versioning).<br/>"
                          + "The Nextapp server is version %5.<br/>"
-                         + "The server-id is %6"
+                         + "The nextappd URL is %6.<br/>"
+                         + "The signupd URL is %7.<br/>"
+                         + "The server-id is %8.<br/>"
+                         + "The user-id is %9"
                          + "")
                        .arg(Application.version)
                        .arg("https://github.com/jgaa/next-app/blob/8dc49525facb8047137cd56f372afd5c6d2908fa/src/NextAppUi/LICENSE")
                        .arg("2025")
                        .arg(NaCore.qtVersion)
                        .arg(NaComm.version)
+                       .arg(NaComm.nextappUrl)
+                       .arg(NaComm.signupUrl)
                        .arg(NaComm.serverId)
+                       .arg(NaComm.userId)
               wrapMode: Text.WordWrap
               readOnly: true
               antialiasing: true
