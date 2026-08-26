@@ -3,9 +3,6 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'The tag to release, with or without the leading v (e.g. 1.2.3 or v1.2.3)'
-        required: true
       prerelease:
         description: 'Mark this as a prerelease?'
         required: true
@@ -33,18 +30,6 @@ jobs:
       release_tag: ${{ steps.release.outputs.release_tag }}
 
     steps:
-      - name: Normalize release inputs
-        id: release
-        run: |
-          set -euo pipefail
-
-          RAW_TAG="${{ github.event.inputs.tag }}"
-          VERSION="${RAW_TAG#v}"
-          RELEASE_TAG="v${VERSION}"
-
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
@@ -52,20 +37,14 @@ jobs:
           submodules: false
           token: ${{ secrets.MY_PAT }}
 
-      - name: Validate repository version and tag state
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+      - name: Discover release version and validate tag state
+        id: release
         run: |
           set -euo pipefail
 
-          REPO_VERSION="$(sed -nE 's/^[[:space:]]*set\(NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt | head -n1)"
-          test -n "${REPO_VERSION:-}" || { echo "::error::Unable to determine NEXTAPP_VERSION from CMakeLists.txt"; exit 1; }
-
-          if [[ "${REPO_VERSION}" != "${VERSION}" ]]; then
-            echo "::error::Requested release version ${VERSION} does not match repository version ${REPO_VERSION}"
-            exit 1
-          fi
+          VERSION="$(sed -nE 's/^[[:space:]]*set\(NEXTAPP_VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt | head -n1)"
+          test -n "${VERSION:-}" || { echo "::error::Unable to determine NEXTAPP_VERSION from CMakeLists.txt"; exit 1; }
+          RELEASE_TAG="v${VERSION}"
 
           if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
             echo "::error::Tag ${RELEASE_TAG} already exists locally"
@@ -76,6 +55,11 @@ jobs:
             echo "::error::Tag ${RELEASE_TAG} already exists on origin"
             exit 1
           fi
+
+          {
+            echo "version=${VERSION}"
+            echo "release_tag=${RELEASE_TAG}"
+          } >> "$GITHUB_OUTPUT"
 
   find-flatpak-run:
     name: Find Flatpak Artifacts
