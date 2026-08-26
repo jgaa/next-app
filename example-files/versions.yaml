@@ -1,0 +1,10 @@
+client_updates:
+  default:
+    version_code: 2404
+    version: "0.24.4"
+    required: false
+
+  linux_native_x64:
+    version_code: 2405
+    version: "0.24.5"
+    required: false
