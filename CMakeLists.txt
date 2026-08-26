@@ -233,9 +233,15 @@ if(WINDOWS_BUILD)
         "${CMAKE_BINARY_DIR}/bin/libcrypto-3-x64.dll"
         "${CMAKE_BINARY_DIR}/bin/brotlidec.dll"
         "${CMAKE_BINARY_DIR}/bin/brotlicommon.dll"
-        "${CMAKE_BINARY_DIR}/bin/zlib1.dll"
         DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT Application
+    )
+
+    install(FILES
+        "${CMAKE_BINARY_DIR}/bin/z.dll"
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT Application
+        OPTIONAL
     )
 
     set(CPACK_GENERATOR "NSIS")
