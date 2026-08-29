@@ -200,22 +200,27 @@ pipeline {
             }
           } //Linux
 
-        // Add this new stage inside your existing `parallel { ... }` block
         stage('macOS Build (x64)') {
           when {
             beforeAgent true
             expression { return params.RUN_MACOS }
           }
-          // Your mac runner label; ensure Xcode + codesign tools installed
           agent { label 'macos' }
 
           environment {
-            SRC_DIR        = "${WORKSPACE}"
-            BUILD_DIR      = "${WORKSPACE}/build"
-            VCPKG_ROOT     = "/Volumes/devel/src/vcpkg"
-            VCPKG_MANIFEST_MODE = "ON"
-            VCPKG_INSTALL_OPTIONS = "--clean-after-build"
-            SIGN_ID        = "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"           }
+            BUILD_DIR              = "${WORKSPACE}/build"
+            STAGE_DIR              = "${WORKSPACE}/stage-macos-x86_64"
+            DMG_DIR                = "${WORKSPACE}/dmg-macos-x86_64"
+            QT_SDK_CACHE_DIR       = "${WORKSPACE}/.qt-sdk-cache"
+            QT_SDK_DIR             = "${WORKSPACE}/qt-sdk"
+            QT_SDK_VERSION         = "6.11.0"
+            QT_SDK_BASE_URL        = "https://next-app.org/ci"
+            QT_SDK_USERNAME        = "jgaa"
+            MACOS_DEPLOYMENT_TARGET = "15.0"
+            MACOS_ARCH              = "x86_64"
+            NOTARIZATION_ENABLED    = "false"
+            SIGN_ID                 = "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"
+          }
 
           steps {
             echo "Runner: node=${env.NODE_NAME}, labels=${env.NODE_LABELS}, executor=${env.EXECUTOR_NUMBER}"
@@ -225,34 +230,34 @@ pipeline {
             sh 'git submodule update --init'
 
             withCredentials([
-              file(credentialsId: 'MACOS_P12_FILE', variable: 'P12_FILE'),    // create in Jenkins
-              string(credentialsId: 'MACOS_P12_PASS', variable: 'P12_PASS')
+              file(credentialsId: 'MACOS_P12_FILE', variable: 'P12_FILE'),
+              string(credentialsId: 'MACOS_P12_PASS', variable: 'P12_PASS'),
+              string(credentialsId: 'QT_SDK_PASSWORD', variable: 'QT_SDK_PASSWORD')
             ]) {
               sh '''#!/usr/bin/env bash
                 set -Eeuo pipefail
 
-                # --- Signing keychain (re-entrant) ---
                 KEYCHAIN_NAME="ci-signing"
                 KEYCHAIN_FILE="$KEYCHAIN_NAME.keychain"
                 KEYCHAIN_DB="$HOME/Library/Keychains/$KEYCHAIN_NAME.keychain-db"
-                KEYCHAIN_PWD="${P12_PASS}"   # reuse your P12 password to avoid another secret
+                KEYCHAIN_PWD="${P12_PASS}"
+                cleanup() {
+                  security list-keychains -d user -s login.keychain || true
+                  security lock-keychain "$KEYCHAIN_FILE" || true
+                }
+                trap cleanup EXIT
 
-                # 0) Create keychain if missing
                 if [ ! -f "$KEYCHAIN_DB" ] && [ ! -f "$HOME/Library/Keychains/$KEYCHAIN_FILE" ]; then
                   security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_FILE"
                 fi
 
-                # 1) Unlock + set a reasonable timeout (6h)
                 security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_FILE" || true
                 security set-keychain-settings -lut 21600 "$KEYCHAIN_FILE"
 
-                # 2) Ensure our keychain is first in the user search list (so codesign finds it)
-                #    Keep login.keychain in the list as well.
                 if ! security list-keychains -d user | grep -q "$KEYCHAIN_FILE"; then
                   security list-keychains -d user -s "$KEYCHAIN_FILE" login.keychain
                 fi
 
-                # 3) Import the Developer ID .p12 if SIGN_ID not present in this keychain
                 if ! security find-identity -p codesigning "$KEYCHAIN_FILE" | grep -Fq "$SIGN_ID"; then
                   security import "$P12_FILE" \
                     -k "$KEYCHAIN_FILE" \
@@ -262,53 +267,109 @@ pipeline {
                     -T /usr/bin/productsign
                 fi
 
-                # 4) Allow non-interactive access for codesign
                 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_FILE"
+                security find-identity -v -p codesigning "$KEYCHAIN_FILE"
 
-                # (Optional) sanity check
-                security find-identity -v -p codesigning "$KEYCHAIN_FILE" || true
+                brew update
+                brew install ninja pkg-config openssl@3 boost protobuf
 
+                QT_SDK_ARCHIVE="$QT_SDK_CACHE_DIR/qt-${QT_SDK_VERSION}-macos.tar.zst"
+                if [ ! -f "$QT_SDK_ARCHIVE" ]; then
+                  mkdir -p "$QT_SDK_CACHE_DIR"
+                  netrc_file="$(mktemp)"
+                  chmod 600 "$netrc_file"
+                  printf 'machine next-app.org login %s password %s\n' "$QT_SDK_USERNAME" "$QT_SDK_PASSWORD" > "$netrc_file"
+                  trap 'rm -f "$netrc_file"; cleanup' EXIT
 
-                # Ensure vcpkg "cache" dir exists
-                mkdir -p "$VCPKG_ROOT"
-                if [ ! -d "$VCPKG_ROOT/.git" ]; then
-                  echo "Installing vcpkg into $VCPKG_ROOT"
-                  git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
-                  (cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics)
-                else
-                  echo "Updating vcpkg in $VCPKG_ROOT"
-                  (cd "$VCPKG_ROOT" && git pull --ff-only)
+                  curl --fail --silent --show-error --location \
+                    --netrc-file "$netrc_file" \
+                    --output "${QT_SDK_ARCHIVE}.tmp" \
+                    "$QT_SDK_BASE_URL/qt-${QT_SDK_VERSION}-macos.tar.zst"
+                  mv "${QT_SDK_ARCHIVE}.tmp" "$QT_SDK_ARCHIVE"
                 fi
-                (cd "$VCPKG_ROOT" && ./bootstrap-vcpkg.sh -disableMetrics)
 
-                # Run your macOS build script
-                chmod +x ./building/macos/build-nextapp.sh
-                ./building/macos/build-nextapp.sh
+                rm -rf "$QT_SDK_DIR" "$BUILD_DIR" "$STAGE_DIR" "$DMG_DIR"
+                mkdir -p "$QT_SDK_DIR" "$DMG_DIR"
+                tar -xf "$QT_SDK_ARCHIVE" -C "$QT_SDK_DIR"
 
-                # Read version
+                QT_ROOT="$QT_SDK_DIR/$QT_SDK_VERSION"
+                test -d "$QT_ROOT" || { echo "Qt SDK root $QT_ROOT is missing after extraction" >&2; exit 1; }
+                QT_MACDEPLOYQT="$(find "$QT_ROOT" -type f -path '*/bin/macdeployqt' -print -quit)"
+                QT_CMAKE="$(find "$QT_ROOT" -type f -path '*/bin/qt-cmake' -print -quit)"
+                test -n "$QT_MACDEPLOYQT" || { echo "Unable to locate macdeployqt in the Qt SDK" >&2; exit 1; }
+                test -n "$QT_CMAKE" || { echo "Unable to locate qt-cmake in the Qt SDK" >&2; exit 1; }
+
+                OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+                BOOST_PREFIX="$(brew --prefix boost)"
+                PROTOBUF_PREFIX="$(brew --prefix protobuf)"
+                export PATH="$PROTOBUF_PREFIX/bin:$PATH"
+
+                "$QT_CMAKE" -S "$WORKSPACE" -B "$BUILD_DIR" -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DCMAKE_OSX_ARCHITECTURES="$MACOS_ARCH" \
+                  -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOS_DEPLOYMENT_TARGET" \
+                  -DCMAKE_PREFIX_PATH="$OPENSSL_PREFIX;$BOOST_PREFIX" \
+                  -DOPENSSL_ROOT_DIR="$OPENSSL_PREFIX" \
+                  -DNEXTAPP_WITH_TESTS=OFF \
+                  -DNEXTAPP_WITH_BACKEND=OFF \
+                  -DNEXTAPP_WITH_SIGNUP=OFF \
+                  -DUSE_STATIC_QT=OFF \
+                  -DSIGN_ID="$SIGN_ID"
+
+                cmake --build "$BUILD_DIR" --config Release
+                cmake --install "$BUILD_DIR" --prefix "$STAGE_DIR" --component Application
+
+                APP_PATH="$(find "$STAGE_DIR" -maxdepth 2 -type d -name 'nextapp.app' -print -quit)"
+                test -n "$APP_PATH" || { echo "Unable to locate installed nextapp.app" >&2; exit 1; }
+
+                "$QT_MACDEPLOYQT" "$APP_PATH" \
+                  -always-overwrite \
+                  -verbose=2 \
+                  -qmldir="$WORKSPACE/src/NextAppUi" \
+                  -codesign="$SIGN_ID"
+
+                codesign --force --deep --options runtime --sign "$SIGN_ID" "$APP_PATH"
+                codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+                APP_BIN="$APP_PATH/Contents/MacOS/nextapp"
+                file "$APP_BIN"
+                lipo -info "$APP_BIN"
+                lipo "$APP_BIN" -verify_arch "$MACOS_ARCH"
+
                 ver="$(< "${BUILD_DIR}/VERSION.txt")"
                 echo "✅ NEXTAPP_VERSION=$ver"
+                dmg_name="nextapp-macos-x86_64-${ver}.dmg"
+                ditto "$APP_PATH" "$DMG_DIR/nextapp.app"
+                ln -s /Applications "$DMG_DIR/Applications"
+                hdiutil create \
+                  -volname "NextApp ${ver}" \
+                  -srcfolder "$DMG_DIR" \
+                  -ov \
+                  -format UDZO \
+                  "$BUILD_DIR/$dmg_name"
+                codesign --force --sign "$SIGN_ID" "$BUILD_DIR/$dmg_name"
+
+                # Set NOTARIZATION_ENABLED=true only after a notarytool keychain profile
+                # has been provisioned on the Jenkins macOS node. The profile keeps Apple
+                # credentials out of the job environment and build log.
+                if [ "$NOTARIZATION_ENABLED" = "true" ]; then
+                  : "${NOTARY_KEYCHAIN_PROFILE:?Set NOTARY_KEYCHAIN_PROFILE to enable notarization}"
+                  xcrun notarytool submit "$BUILD_DIR/$dmg_name" --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" --wait
+                  xcrun stapler staple "$BUILD_DIR/$dmg_name"
+                  xcrun stapler validate "$BUILD_DIR/$dmg_name"
+                else
+                  echo "Apple notarization is disabled."
+                fi
+
                 echo "$ver" > "${BUILD_DIR}/.nextapp_version"
-
-                # --- Teardown (safe) ---
-                KEYCHAIN_NAME="ci-signing"
-                KEYCHAIN_FILE="$KEYCHAIN_NAME.keychain"
-
-                # Remove from user search list (login.keychain remains)
-                security list-keychains -d user -s login.keychain
-
-                # Lock the CI keychain
-                security lock-keychain "$KEYCHAIN_FILE" || true
 
               '''
             }
 
             script {
-              // lift the version into env so we can name the artifact nicely, like your Windows stage does :contentReference[oaicite:7]{index=7}
               env.NEXTAPP_VERSION = readFile("${env.BUILD_DIR}/.nextapp_version").trim()
             }
 
-            // 5) Archive DMG (GA uploads '*.dmg' with retention) :contentReference[oaicite:8]{index=8}
             archiveArtifacts artifacts: 'build/*.dmg', fingerprint: true
           }
         } // macos
