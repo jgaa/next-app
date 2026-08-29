@@ -4,14 +4,15 @@ See [https://next-app.org](https://next-app.org) for more information.
 
 Backend Docker containers:
 
-* **nextappd**: Backend for NextApp
-* **signupd**: Handles user sign-up and new devices for existing users
+* **nextappd**: Backend for NextApp `docker pull ghcr.io/jgaa/nextappd:latest`
+* **signupd**: Handles user sign-up and new devices for existing users `docker pull ghcr.io/jgaa/signupd:latest`
 
 NextApp user application — supported platforms:
 
 * Linux x64 (Flatpak)
 * Windows x64 (EXE installer)
 * macOS (DMG installers)
+* Android (APK installer)
 
-The Android version is distributed on [Google Play](https://play.google.com/store/apps/details?id=eu.lastviking.nextapp).
+The Android version is also distributed on [Google Play](https://play.google.com/store/apps/details?id=eu.lastviking.nextapp).
 
