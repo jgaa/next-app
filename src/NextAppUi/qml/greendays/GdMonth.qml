@@ -34,7 +34,7 @@ Rectangle {
             font.bold: true
             font.italic: true
             font.pixelSize: root.fontSize
-            text: grid.locale.monthName(root.month + 1)
+            text: grid.locale.monthName(root.month)
                   + ' ' + grid.year
             color: MaterialDesignStyling.onSurfaceVariant
         }
