@@ -1,6 +1,7 @@
 #include "NextAppCore.h"
 
 #include <CalendarModel.h>
+#include <algorithm>
 #include <QDateTime>
 #include <QClipboard>
 #include <QRegularExpression>
@@ -36,6 +37,12 @@ using namespace std;
 
 namespace {
 
+constexpr qsizetype kMaxActionNameCharacters = 256;
+constexpr qsizetype kMaxActionDescriptionUtf8Bytes = 65535;
+constexpr int kDefaultPasteActionTitleWordCount = 9;
+constexpr int kMinPasteActionTitleWordCount = 1;
+constexpr int kMaxPasteActionTitleWordCount = 16;
+
 QString normalizedPasteWhitespace(const QString& text)
 {
     return text.simplified();
@@ -52,42 +59,41 @@ QString markdownPasteTitle(const QString& text)
             return normalizedPasteWhitespace(title);
         }
     }
-
-    for (const auto& line : lines) {
-        auto title = line.trimmed();
-        if (title.isEmpty() || title.startsWith(QStringLiteral("```"))) {
-            continue;
-        }
-        title.remove(QRegularExpression(QStringLiteral(R"(^[-*+>]\s+)")));
-        title.remove(QRegularExpression(QStringLiteral(R"(^\d+\.\s+)")));
-        title.remove(QRegularExpression(QStringLiteral(R"(`+)")));
-        title.replace(QRegularExpression(QStringLiteral(R"(\[(.*?)\]\((.*?)\))")), QStringLiteral("\\1"));
-        title = normalizedPasteWhitespace(title);
-        if (!title.isEmpty()) {
-            return title;
-        }
-    }
     return {};
 }
 
-bool looksLikeMarkdownPaste(const QString& text)
+QString boundedUtf8(const QString& text, qsizetype maxBytes)
 {
-    return text.contains(QRegularExpression(QStringLiteral(R"((^|\n)\s{0,3}(#|[-*+] |\d+\. |```|> ))")));
-}
-
-QString pasteActionTitle(const QString& text)
-{
-    const auto trimmed = text.trimmed();
-    if (looksLikeMarkdownPaste(trimmed)) {
-        const auto markdownTitle = markdownPasteTitle(trimmed);
-        if (!markdownTitle.isEmpty()) {
-            return markdownTitle;
-        }
+    const auto utf8 = text.toUtf8();
+    if (utf8.size() <= maxBytes) {
+        return text;
     }
 
+    auto boundary = maxBytes;
+    // Do not leave a partial UTF-8 character at the end of a database field.
+    while (boundary > 0 && (static_cast<unsigned char>(utf8.at(boundary)) & 0xc0) == 0x80) {
+        --boundary;
+    }
+    return QString::fromUtf8(utf8.constData(), boundary);
+}
+
+QString plainPasteTitle(const QString& text, int wordCount)
+{
+    const auto trimmed = text.trimmed();
     const auto sentenceEnd = trimmed.indexOf(QRegularExpression(QStringLiteral("[.!?](?:\\s|$)")));
-    const auto title = sentenceEnd >= 0 ? trimmed.left(sentenceEnd + 1) : trimmed;
-    return normalizedPasteWhitespace(title);
+    const auto sentence = sentenceEnd >= 0 ? trimmed.left(sentenceEnd + 1) : trimmed;
+    const auto words = normalizedPasteWhitespace(sentence).split(u' ', Qt::SkipEmptyParts);
+    return words.sliced(0, std::clamp(wordCount, kMinPasteActionTitleWordCount,
+                                      kMaxPasteActionTitleWordCount)).join(u' ');
+}
+
+QString pasteActionTitle(const QString& text, int wordCount)
+{
+    const auto markdownTitle = markdownPasteTitle(text.trimmed());
+    const auto title = markdownTitle.isEmpty()
+        ? plainPasteTitle(text, wordCount)
+        : markdownTitle;
+    return normalizedPasteWhitespace(title).left(kMaxActionNameCharacters);
 }
 
 QStringList splitPastedMarkdown(const QString& text)
@@ -196,12 +202,16 @@ bool NextAppCore::pasteClipboardToNode(const QString& nodeUuid)
         return false;
     }
 
+    const auto configuredTitleWordCount = server_comm_->getGlobalSettings().pasteActionTitleWordCount();
+    const auto titleWordCount = std::clamp(
+        configuredTitleWordCount > 0 ? configuredTitleWordCount : kDefaultPasteActionTitleWordCount,
+        kMinPasteActionTitleWordCount, kMaxPasteActionTitleWordCount);
     const auto items = text.contains(QRegularExpression(QStringLiteral(R"((?:\r?\n)\s*---\s*(?:\r?\n))")))
         ? splitPastedMarkdown(text)
         : QStringList{text};
     int created = 0;
     for (const auto& item : items) {
-        const auto title = pasteActionTitle(item);
+        const auto title = pasteActionTitle(item, titleWordCount);
         if (title.isEmpty()) {
             LOG_WARN_N << "Paste skipped text without a usable title";
             continue;
@@ -212,7 +222,7 @@ bool NextAppCore::pasteClipboardToNode(const QString& nodeUuid)
         action.setDynamicPriority(priority);
         action.setNode(target);
         action.setName(title);
-        action.setDescr(item);
+        action.setDescr(boundedUtf8(item, kMaxActionDescriptionUtf8Bytes));
         server_comm_->addAction(action);
         ++created;
     }

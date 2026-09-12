@@ -2075,6 +2075,7 @@ void ServerComm::setDefaulValuesInUserSettings()
 
     const bool monday_is_first_dow = QLocale::system().firstDayOfWeek() == Qt::Monday;
     userGlobalSettings_.setFirstDayOfWeekIsMonday(monday_is_first_dow);
+    userGlobalSettings_.setPasteActionTitleWordCount(9);
 }
 
 void ServerComm::scheduleReconnect()

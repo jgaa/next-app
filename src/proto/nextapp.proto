@@ -189,6 +189,7 @@ message UserGlobalSettings {
     bool autoStartNewWorkSession = 7;
     int64 version = 8;
     bool optInEmail = 9; // If the user wants to receive emails
+    int32 pasteActionTitleWordCount = 10;
 }
 
 message Node {

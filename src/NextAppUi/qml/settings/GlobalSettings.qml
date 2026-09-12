@@ -23,6 +23,7 @@ ScrollView {
         tmp.autoStartNextWorkSession = autoStartNextWs.checked
         tmp.autoStartNewWorkSession = autoStartNewWs.checked
         tmp.optInEmail = optInEmail.checked
+        tmp.pasteActionTitleWordCount = pasteActionTitleWords.value
 
         NaComm.saveGlobalSettings(tmp)
         initialized = false
@@ -40,6 +41,8 @@ ScrollView {
             autoStartNextWs.checked = tmp.autoStartNextWorkSession
             autoStartNewWs.checked = tmp.autoStartNewWorkSession
             optInEmail.checked = tmp.optInEmail
+            pasteActionTitleWords.value = Math.max(1, Math.min(16,
+                tmp.pasteActionTitleWordCount || 9))
         }
     }
 
@@ -111,6 +114,16 @@ ScrollView {
         CheckBox {
             id: optInEmail
             text: qsTr("Opt in to receive information or\npromotions on email")
+        }
+
+        Label { text: qsTr("Words in pasted action title") }
+
+        SpinBox {
+            id: pasteActionTitleWords
+            from: 1
+            to: 16
+            value: 9
+            editable: true
         }
 
         Item {
