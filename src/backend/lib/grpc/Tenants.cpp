@@ -428,7 +428,7 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
             }
 
             auto missing = co_await rctx.dbh->exec(
-                "SELECT id FROM tenant WHERE system_tenant = FALSE AND NULLIF(plan, '') IS NULL");
+                "SELECT id FROM tenant WHERE COALESCE(system_tenant, FALSE) = FALSE AND plan IS NULL");
             vector<string> tenant_ids;
             tenant_ids.reserve(missing.rows().size());
             for (const auto& row : missing.rows()) {
@@ -447,7 +447,7 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
                     grace_period_expires = NULL, account_expires = NULL,
                     registration_state = 'pending_reg', registration_attempts = 0,
                     last_registration_attempt = NULL, next_registration_retry = UTC_TIMESTAMP()
-                WHERE system_tenant = FALSE AND NULLIF(plan, '') IS NULL
+                WHERE COALESCE(system_tenant, FALSE) = FALSE AND plan IS NULL
             )", plan_name);
             co_await trx.commit();
 
