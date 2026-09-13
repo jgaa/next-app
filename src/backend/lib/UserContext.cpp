@@ -1168,7 +1168,7 @@ pb::Subscription UserContext::getSubscription() const
 {
     pb::Subscription s;
 
-    if (tenant_plan_) {
+    if (tenant_plan_ && tenant_plan_->plan) {
         const auto& tp = *tenant_plan_;
         if (auto p = s.mutable_plan()) {
             auto& plan = *p;
@@ -1233,7 +1233,7 @@ boost::asio::awaitable<void> UserContext::reloadTenantPlan(jgaa::mysqlpool::Mysq
     }
 
     const auto& row = res.rows().front();
-    if (row.at(PLAN).is_null()) {
+    if (row.at(PLAN).is_null() || row.at(PLAN).as_string().empty()) {
         setTenantPlan({});
         co_return;
     }
@@ -2091,7 +2091,8 @@ boost::asio::awaitable<std::shared_ptr<UserContext> > SessionManager::getUserCon
             : std::chrono::system_clock::now();
 
         shared_ptr<TenantPlan> tenant_plan;
-        if (server_.config().payment.enable_plan && !row.at(PLAN).is_null()) {
+        if (server_.config().payment.enable_plan && !row.at(PLAN).is_null()
+            && !row.at(PLAN).as_string().empty()) {
             tenant_plan = make_shared<TenantPlan>();
             tenant_plan->plan = getPlan(row.at(PLAN).as_string());
             if (row.at(PLAN_UPDATED).is_datetime()) {
