@@ -1131,6 +1131,11 @@ int64_t getIntValue(const payments::v1::Plan& plan, string_view key,
                     std::optional<int64_t> defaultValue = {})
 {
     if (auto it = plan.values().find(string{key}); it != plan.values().end()) {
+        // The payment service represents an unset/unlimited optional limit as
+        // "-". Use this field's default (normally zero, meaning unlimited).
+        if (it->second == "-" && defaultValue) {
+            return *defaultValue;
+        }
         size_t pos = 0;
         try {
             auto value = stoll(it->second, &pos);
