@@ -202,7 +202,8 @@ bool NextAppCore::pasteClipboardToNode(const QString& nodeUuid)
         return false;
     }
 
-    const auto configuredTitleWordCount = server_comm_->getGlobalSettings().pasteActionTitleWordCount();
+    const int configuredTitleWordCount = static_cast<int>(
+        server_comm_->getGlobalSettings().pasteActionTitleWordCount());
     const auto titleWordCount = std::clamp(
         configuredTitleWordCount > 0 ? configuredTitleWordCount : kDefaultPasteActionTitleWordCount,
         kMinPasteActionTitleWordCount, kMaxPasteActionTitleWordCount);
