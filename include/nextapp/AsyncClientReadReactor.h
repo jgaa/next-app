@@ -98,6 +98,10 @@ public:
             lock.unlock();
 
             try {
+                // The timer is only a completion notifier. Its default expiry
+                // is construction time, which would make this wait complete
+                // immediately and busy-loop until a gRPC callback cancels it.
+                timer_.expires_at(std::chrono::steady_clock::time_point::max());
                 co_await timer_.async_wait(boost::asio::use_awaitable);
             } catch (const boost::system::system_error& e) {
                 if (e.code() != boost::asio::error::operation_aborted) {

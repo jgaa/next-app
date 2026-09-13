@@ -557,11 +557,18 @@ void Server::runIoThread(const size_t id)
     auto scope = metrics().asio_worker_threads().scoped();
 
     LOG_DEBUG_N << "starting io-thread " << id;
+    bool first_run = true;
     while(!ctx_.stopped()) {
         try {
+            LOG_DEBUG_N << (first_run ? "Starting" : "Restarting")
+                        << " io_context::run() in IO thread #" << id;
+            first_run = false;
             ++running_io_threads_;
             ctx_.run();
             --running_io_threads_;
+            if (!ctx_.stopped()) {
+                LOG_DEBUG_N << "io_context::run() returned in IO thread #" << id;
+            }
         } catch (const std::exception& ex) {
             --running_io_threads_;
             LOG_ERROR << LogEvent::LE_IOTHREAD_THREW
