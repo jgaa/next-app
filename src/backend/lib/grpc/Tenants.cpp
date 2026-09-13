@@ -1,6 +1,7 @@
 
 #include <deque>
 #include <array>
+#include <vector>
 
 #include <boost/asio/co_spawn.hpp>
 
@@ -171,31 +172,34 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
             std::optional<string> plan;
             std::optional<string> trial_end;
             if (owner_.server().config().payment.enable_plan) {
-                if (auto p = owner_.server().plans()) {
-                    auto [pfs, is_trial] = p->getPlanForSignup();
-                    plan = pfs;
-                    LOG_TRACE_N << "Assigning plan " << (plan ? *plan : "[NULL]"s) << " to tenant " << tenant.name() << " during creation";
+                const auto p = owner_.server().plans();
+                if (!p) {
+                    throw server_err{pb::Error::TEMPORATY_FAILURE, "Payment plans are not available"};
+                }
+                auto [pfs, is_trial] = p->getPlanForSignup();
+                if (!owner_.server().grpc().sessionManager().getPlan(pfs)) {
+                    throw server_err{pb::Error::TEMPORATY_FAILURE, "The selected signup plan is not available"};
+                }
+                plan = pfs;
+                LOG_TRACE_N << "Assigning plan " << *plan << " to tenant " << tenant.name() << " during creation";
 
-                    if (is_trial) {
-                        if (auto pc = p->activePlans()) {
-                            if (pc->trial_days > 0) {
-                                auto trial_end_time = std::chrono::system_clock::now() + std::chrono::hours(24 * pc->trial_days);
-                                std::time_t trial_end_time_t = std::chrono::system_clock::to_time_t(trial_end_time);
-                                //Round up to midnight on the last day
-                                trial_end_time_t = ((trial_end_time_t + 86399) / 86400) * 86400;
-                                trial_end = toAnsiTime(trial_end_time_t);
-                                LOG_TRACE_N << "Setting trial end to " << *trial_end << " for tenant " << tenant.name() << " during creation";
-                            }
-                        } else {
-                            assert(false); // This should not happen, because getPlanForSignup should throw if there is no active plan for signup, and if there is an active plan for signup, there should be an active plans snapshot.
+                if (is_trial) {
+                    if (auto pc = p->activePlans()) {
+                        if (pc->trial_days > 0) {
+                            auto trial_end_time = std::chrono::system_clock::now() + std::chrono::hours(24 * pc->trial_days);
+                            std::time_t trial_end_time_t = std::chrono::system_clock::to_time_t(trial_end_time);
+                            //Round up to midnight on the last day
+                            trial_end_time_t = ((trial_end_time_t + 86399) / 86400) * 86400;
+                            trial_end = toAnsiTime(trial_end_time_t);
+                            LOG_TRACE_N << "Setting trial end to " << *trial_end << " for tenant " << tenant.name() << " during creation";
                         }
-                    } // is_trial
-                } else {
-                    LOG_ERROR_N << "Payment plans are enabled but failed to load plans from payment service. No plan will be assigned to tenant " << tenant.uuid() << " during creation.";
+                    } else {
+                        throw server_err{pb::Error::TEMPORATY_FAILURE, "Payment plan details are not available"};
+                    }
                 }
             }
 
-            co_await owner_.server().db().exec(
+            co_await rctx.dbh->exec(
                 "INSERT INTO tenant (id, name, kind, descr, state, registration_state, properties, plan, plan_expires, next_registration_retry) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tenant.uuid(),
@@ -237,7 +241,7 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
                 }
 
                 auto user_props = toJson(*user.mutable_properties());
-                co_await owner_.server().db().exec(
+                co_await rctx.dbh->exec(
                     "INSERT INTO user (id, tenant, name, email, kind, active, descr, properties) VALUES (?,?,?,?,?,?,?,?)",
                     user.uuid(),
                     user.tenant(),
@@ -402,6 +406,64 @@ void setUnixTimeIfPresent(common::Time* time, const boost::mysql::field_view& fi
             }
 
             reply->mutable_tenant()->CopyFrom(tenant);
+            co_return;
+        }, __func__, true /* allow new session */, true /* admin only */);
+}
+
+::grpc::ServerUnaryReactor *GrpcServer::NextappImpl::RepairMissingTenantPlans(
+    ::grpc::CallbackServerContext *ctx, const pb::RepairMissingTenantPlansReq *req, pb::Status *reply)
+{
+    return mutatingUnaryHandler(ctx, req, reply,
+        [this, req, ctx](pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
+            if (!owner_.server().config().payment.enable_plan || !owner_.server().plans()) {
+                throw server_err{pb::Error::INVALID_REQUEST, "Payments and plans are disabled"};
+            }
+            const auto& plan_name = req->plan();
+            if (plan_name.empty()) {
+                throw server_err{pb::Error::INVALID_REQUEST, "A plan is required"};
+            }
+            const auto plan = owner_.server().grpc().sessionManager().getPlan(plan_name);
+            if (!plan || !plan->active) {
+                throw server_err{pb::Error::NOT_FOUND, "Plan not found or inactive"};
+            }
+
+            auto missing = co_await rctx.dbh->exec(
+                "SELECT id FROM tenant WHERE system_tenant = FALSE AND plan IS NULL");
+            vector<string> tenant_ids;
+            tenant_ids.reserve(missing.rows().size());
+            for (const auto& row : missing.rows()) {
+                tenant_ids.emplace_back(row.at(0).as_string());
+            }
+
+            if (tenant_ids.empty()) {
+                reply->set_message("No normal tenants are missing a plan.");
+                co_return;
+            }
+
+            auto trx = co_await rctx.dbh->transaction();
+            co_await rctx.dbh->exec(R"(
+                UPDATE tenant
+                SET plan = ?, plan_updated = UTC_TIMESTAMP(), plan_expires = NULL, plan_seats = 1,
+                    grace_period_expires = NULL, account_expires = NULL,
+                    registration_state = 'pending_reg', registration_attempts = 0,
+                    last_registration_attempt = NULL, next_registration_retry = UTC_TIMESTAMP()
+                WHERE system_tenant = FALSE AND plan IS NULL
+            )", plan_name);
+            co_await trx.commit();
+
+            reply->set_message(format("Assigned plan '{}' to {} tenant(s) and queued registration.",
+                                      plan_name, tenant_ids.size()));
+            LOG_INFO << "Admin " << rctx.uctx->userUuid() << " assigned plan " << plan_name
+                     << " to " << tenant_ids.size() << " tenant(s) without a plan from " << ctx->peer();
+
+            for (const auto& tenant_id : tenant_ids) {
+                co_await owner_.server().grpc().sessionManager().refreshTenantPlansAndPublish(*rctx.dbh, tenant_id);
+                boost::asio::co_spawn(owner_.server().ctx(),
+                    [plans = owner_.server().plans(), tenant_id = toUuid(tenant_id)]() -> boost::asio::awaitable<void> {
+                        co_await plans->queueTenantRegistration(tenant_id);
+                    },
+                    boost::asio::detached);
+            }
             co_return;
         }, __func__, true /* allow new session */, true /* admin only */);
 }

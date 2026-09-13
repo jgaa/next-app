@@ -1053,6 +1053,12 @@ message SetTenantStateReq {
     Tenant.State state = 3;
 }
 
+// Assign a fallback plan to every non-system tenant that currently has none,
+// then queue those tenants for payment-service registration. Admin only.
+message RepairMissingTenantPlansReq {
+    string plan = 1;
+}
+
 message GetCertificatesReq {
 }
 
@@ -1319,6 +1325,7 @@ service Nextapp {
     rpc CreateTenant(CreateTenantReq) returns (Status) {}
     rpc ListTenants(ListTenantsReq) returns (stream Status) {} // admin only
     rpc SetTenantState(SetTenantStateReq) returns (Status) {} // admin only
+    rpc RepairMissingTenantPlans(RepairMissingTenantPlansReq) returns (Status) {} // admin only
     rpc GetCertificates(GetCertificatesReq) returns (Status) {} // admin only
 
     // If called by a super-user, user.uuid can point to any tenant. If unset, the logged-in tenant is used.

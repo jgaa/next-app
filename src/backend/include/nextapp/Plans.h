@@ -172,6 +172,7 @@ private:
     boost::asio::awaitable<void> runEntitlementSubscriptionLoop();
     boost::asio::awaitable<void> runTenantRegistrationLoop();
     boost::asio::awaitable<void> processPendingTenantRegistrations(std::string_view reason);
+    boost::asio::awaitable<void> trackPendingTenantRegistrationBackoffs();
     boost::asio::awaitable<void> reconcileLocalOnlyTenants();
     boost::asio::awaitable<void> applyEntitlementChange(const payments::v1::EntitlementChangeEvent& event);
     boost::asio::awaitable<bool> updatePlanFromEntitlement(
@@ -191,6 +192,8 @@ private:
         std::string_view reason);
     bool tryBeginTenantRegistration(const boost::uuids::uuid& tenant_id);
     void endTenantRegistration(const boost::uuids::uuid& tenant_id) noexcept;
+    void markTenantRegistrationBackoff(const boost::uuids::uuid& tenant_id);
+    void clearTenantRegistrationBackoff(const boost::uuids::uuid& tenant_id) noexcept;
 
     Server& server_;
     std::shared_ptr<::grpc::Channel> channel_;
@@ -207,6 +210,7 @@ private:
     std::shared_ptr<EntitlementStream> entitlement_stream_;
     mutable std::mutex tenant_registration_mutex_;
     std::unordered_set<std::string> tenant_registrations_in_flight_;
+    std::unordered_set<std::string> tenant_registrations_in_backoff_;
 };
 
 } // namespace nextapp

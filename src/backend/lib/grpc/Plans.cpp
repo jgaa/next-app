@@ -23,11 +23,13 @@ namespace {
 constexpr string_view kRegistrationStateLocalOnly = "local_only";
 constexpr string_view kRegistrationStatePending = "pending_reg";
 constexpr string_view kRegistrationStateRegistered = "registered";
-constexpr auto kRegistrationSweepInterval = std::chrono::hours{1};
+// The database timestamp provides the backoff. Poll often enough to honour
+// the short initial retry intervals without keeping a timer per tenant.
+constexpr auto kRegistrationSweepInterval = std::chrono::minutes{1};
 constexpr auto kPerTenantSweepDelayMin = std::chrono::milliseconds{50};
 constexpr auto kPerTenantSweepDelayMax = std::chrono::milliseconds{500};
-constexpr uint32_t kRegistrationRetryMinSeconds = 5 * 60;
-constexpr uint32_t kRegistrationRetryMaxSeconds = 65 * 60;
+constexpr uint32_t kMaxTenantRegistrationAttempts = 3;
+constexpr uint32_t kRegistrationRetryBaseSeconds = 5 * 60;
 
 uint64_t getUint64(const boost::mysql::field_view& field)
 {
@@ -176,6 +178,18 @@ void Plans::endTenantRegistration(const boost::uuids::uuid& tenant_id) noexcept
 {
     auto guard = std::scoped_lock{tenant_registration_mutex_};
     tenant_registrations_in_flight_.erase(to_string(tenant_id));
+}
+
+void Plans::markTenantRegistrationBackoff(const boost::uuids::uuid& tenant_id)
+{
+    auto guard = std::scoped_lock{tenant_registration_mutex_};
+    tenant_registrations_in_backoff_.insert(to_string(tenant_id));
+}
+
+void Plans::clearTenantRegistrationBackoff(const boost::uuids::uuid& tenant_id) noexcept
+{
+    auto guard = std::scoped_lock{tenant_registration_mutex_};
+    tenant_registrations_in_backoff_.erase(to_string(tenant_id));
 }
 
 boost::asio::awaitable<std::string> Plans::getTenantRegistrationState(
@@ -483,15 +497,27 @@ boost::asio::awaitable<bool> Plans::ensureTenantRegistered(
     ScopedExit clear_inflight{[this, tenant_id] {
         endTenantRegistration(tenant_id);
     }};
+    clearTenantRegistrationBackoff(tenant_id);
 
-    const auto state = co_await getTenantRegistrationState(dbh, tenant_id);
-    if (state.empty()) {
+    auto registration = co_await dbh.exec(
+        "SELECT registration_state, registration_attempts FROM tenant WHERE id = ?", tenant_id);
+    if (registration.rows().empty()) {
         LOG_DEBUG_N << "Skipping registration for tenant " << tenant_id << " because it no longer exists.";
         co_return false;
     }
+    const auto& registration_row = registration.rows().front();
+    const auto state = registration_row.at(0).as_string();
     if (state == kRegistrationStateLocalOnly || state == kRegistrationStateRegistered) {
         co_return true;
     }
+
+    const auto previous_attempts = static_cast<uint32_t>(getUint64(registration_row.at(1)));
+    if (previous_attempts >= kMaxTenantRegistrationAttempts) {
+        LOG_ERROR_N << "Tenant " << tenant_id << " registration remains pending after "
+                    << previous_attempts << " attempts. Automatic retries are disabled.";
+        co_return false;
+    }
+    const auto attempt = previous_attempts + 1;
 
     co_await dbh.exec(R"(
         UPDATE tenant
@@ -513,17 +539,28 @@ boost::asio::awaitable<bool> Plans::ensureTenantRegistered(
     }
 
     if (!response) {
-        const auto retry_after = randomBetween<uint32_t>(
-            kRegistrationRetryMinSeconds, kRegistrationRetryMaxSeconds);
-        co_await dbh.exec(R"(
-            UPDATE tenant
-            SET next_registration_retry = UTC_TIMESTAMP() + INTERVAL ? SECOND
-            WHERE id = ? AND registration_state = ?
-        )", retry_after, tenant_id, kRegistrationStatePending);
-
-        LOG_WARN_N << "Failed to register tenant " << tenant_id
-                   << " with the payment service: " << error_message
-                   << ". Will retry in " << retry_after << " seconds.";
+        if (attempt >= kMaxTenantRegistrationAttempts) {
+            co_await dbh.exec(R"(
+                UPDATE tenant
+                SET next_registration_retry = NULL
+                WHERE id = ? AND registration_state = ?
+            )", tenant_id, kRegistrationStatePending);
+            LOG_ERROR_N << "Failed to register tenant " << tenant_id
+                        << " with the payment service after " << attempt
+                        << " attempts: " << error_message
+                        << ". Automatic retries are disabled; the assigned fallback plan remains active.";
+        } else {
+            const auto retry_after = kRegistrationRetryBaseSeconds << (attempt - 1);
+            co_await dbh.exec(R"(
+                UPDATE tenant
+                SET next_registration_retry = UTC_TIMESTAMP() + INTERVAL ? SECOND
+                WHERE id = ? AND registration_state = ?
+            )", retry_after, tenant_id, kRegistrationStatePending);
+            markTenantRegistrationBackoff(tenant_id);
+            LOG_WARN_N << "Failed to register tenant " << tenant_id
+                       << " with the payment service (attempt " << attempt << '/' << kMaxTenantRegistrationAttempts
+                       << "): " << error_message << ". Will retry in " << retry_after << " seconds.";
+        }
         co_return false;
     }
 
@@ -625,6 +662,7 @@ asio::awaitable<void> Plans::onServerReady()
 {
     co_await reconcileLocalOnlyTenants();
     startEntitlementSubscription();
+    co_await trackPendingTenantRegistrationBackoffs();
     co_await processPendingTenantRegistrations("startup");
 
     auto expected = false;
@@ -681,6 +719,16 @@ void Plans::startEntitlementSubscription()
 void Plans::shutdown()
 {
     stopping_.store(true);
+    size_t registrations_in_backoff = 0;
+    {
+        std::scoped_lock lock{tenant_registration_mutex_};
+        registrations_in_backoff = tenant_registrations_in_backoff_.size();
+    }
+    if (registrations_in_backoff > 0) {
+        LOG_ERROR_N << "Server is shutting down while " << registrations_in_backoff
+                    << " tenant registration retry backoff(s) are pending. "
+                    << "The persisted retry schedule will resume after restart.";
+    }
     {
         std::scoped_lock lock{entitlement_stream_mutex_};
         if (entitlement_stream_) {
@@ -745,9 +793,10 @@ asio::awaitable<void> Plans::processPendingTenantRegistrations(std::string_view 
         SELECT id
         FROM tenant
         WHERE registration_state = ?
+          AND registration_attempts < ?
           AND (next_registration_retry IS NULL OR next_registration_retry <= UTC_TIMESTAMP())
         ORDER BY COALESCE(next_registration_retry, '1970-01-01 00:00:00'), id
-    )", kRegistrationStatePending);
+    )", kRegistrationStatePending, kMaxTenantRegistrationAttempts);
 
     if (res.rows().empty()) {
         LOG_DEBUG_N << "No tenant registrations are pending for reason=" << reason;
@@ -778,6 +827,23 @@ asio::awaitable<void> Plans::processPendingTenantRegistrations(std::string_view 
 
         const auto tenant_id = toUuid(row.at(0).as_string());
         (void)co_await ensureTenantRegistered(db, tenant_id, true);
+    }
+}
+
+asio::awaitable<void> Plans::trackPendingTenantRegistrationBackoffs()
+{
+    auto db = co_await server_.db().getConnection();
+    auto res = co_await db.exec(R"(
+        SELECT id
+        FROM tenant
+        WHERE registration_state = ?
+          AND registration_attempts < ?
+          AND next_registration_retry > UTC_TIMESTAMP()
+    )", kRegistrationStatePending, kMaxTenantRegistrationAttempts);
+
+    std::scoped_lock lock{tenant_registration_mutex_};
+    for (const auto& row : res.rows()) {
+        tenant_registrations_in_backoff_.insert(row.at(0).as_string());
     }
 }
 

@@ -152,6 +152,7 @@ public:
         ::grpc::ServerWriteReactor<::nextapp::pb::Update>* SubscribeToUpdates(::grpc::CallbackServerContext* context, const ::nextapp::pb::UpdatesReq* request) override;
         ::grpc::ServerUnaryReactor *CreateTenant(::grpc::CallbackServerContext *ctx, const pb::CreateTenantReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *SetTenantState(::grpc::CallbackServerContext *ctx, const pb::SetTenantStateReq *req, pb::Status *reply) override;
+        ::grpc::ServerUnaryReactor *RepairMissingTenantPlans(::grpc::CallbackServerContext *ctx, const pb::RepairMissingTenantPlansReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *CreateDevice(::grpc::CallbackServerContext *ctx, const pb::CreateDeviceReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *CreateNode(::grpc::CallbackServerContext *ctx, const pb::CreateNodeReq *req, pb::Status *reply) override;
         ::grpc::ServerUnaryReactor *UpdateNode(::grpc::CallbackServerContext *ctx, const pb::Node*req, pb::Status *reply) override;
