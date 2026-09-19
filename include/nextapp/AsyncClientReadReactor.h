@@ -7,6 +7,7 @@
 
 #include <boost/asio.hpp>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/support/client_callback.h>
 
 #include "nextapp/logging.h"
 
@@ -21,6 +22,17 @@ class AsyncClientReadReactor
 public:
     using starter_t = std::function<void(::grpc::ClientContext&, const ReqT*, ::grpc::ClientReadReactor<RespT>*)>;
     using on_connected_fn_t = std::function<void(bool ok)>;
+
+    enum class ReadOutcome {
+        message,
+        done,
+        timeout,
+    };
+
+    struct ReadResult {
+        ReadOutcome outcome;
+        std::optional<RespT> message;
+    };
 
     AsyncClientReadReactor(boost::asio::io_context& asio,
                            ReqT request,
@@ -54,11 +66,14 @@ public:
     void OnReadInitialMetadataDone(bool ok) override
     {
         LOG_DEBUG_N << "Initial metadata read completed with status " << ok;
-        if (on_connected_fn_) {
+        {
             std::scoped_lock lock{mutex_};
+            connected_ = ok;
+        }
+        if (on_connected_fn_) {
             on_connected_fn_(ok);
         }
-        timer_.cancel();
+        notifyWaiter();
     }
 
     boost::asio::awaitable<::grpc::Status> waitForDone()
@@ -111,6 +126,62 @@ public:
         }
     }
 
+    template <typename Rep, typename Period>
+    boost::asio::awaitable<ReadResult> readFor(
+        const std::chrono::duration<Rep, Period>& timeout)
+    {
+        for (;;) {
+            {
+                std::scoped_lock lock{mutex_};
+                if (buffer_) {
+                    RespT msg = std::move(*buffer_);
+                    buffer_.reset();
+                    this->StartRead(&temp_msg_);
+                    co_return ReadResult{ReadOutcome::message, std::move(msg)};
+                }
+                if (done_) {
+                    co_return ReadResult{ReadOutcome::done, std::nullopt};
+                }
+            }
+
+            bool expired = false;
+            try {
+                timer_.expires_after(timeout);
+                co_await timer_.async_wait(boost::asio::use_awaitable);
+                expired = true;
+            } catch (const boost::system::system_error& e) {
+                if (e.code() != boost::asio::error::operation_aborted) {
+                    throw;
+                }
+            }
+
+            // A gRPC callback and the timer may become ready together. Always
+            // prefer observable stream state over reporting a timeout.
+            {
+                std::scoped_lock lock{mutex_};
+                if (buffer_) {
+                    RespT msg = std::move(*buffer_);
+                    buffer_.reset();
+                    this->StartRead(&temp_msg_);
+                    co_return ReadResult{ReadOutcome::message, std::move(msg)};
+                }
+                if (done_) {
+                    co_return ReadResult{ReadOutcome::done, std::nullopt};
+                }
+            }
+
+            if (expired) {
+                co_return ReadResult{ReadOutcome::timeout, std::nullopt};
+            }
+        }
+    }
+
+    bool wasConnected() const
+    {
+        std::scoped_lock lock{mutex_};
+        return connected_;
+    }
+
     void OnReadDone(bool ok) override
     {
         {
@@ -121,24 +192,35 @@ public:
                 done_ = true;
             }
         }
-        timer_.cancel();
+        notifyWaiter();
     }
 
     void OnDone(const ::grpc::Status& status) override
     {
+        const bool notify_disconnected = !status.ok() && static_cast<bool>(on_connected_fn_);
         {
             std::scoped_lock lock{mutex_};
             done_ = true;
             status_ = status;
-            if (on_connected_fn_ && !status.ok()) {
-                on_connected_fn_(false);
-            }
         }
-        timer_.cancel();
+        if (notify_disconnected) {
+            on_connected_fn_(false);
+        }
+        notifyWaiter();
         self_.reset();
     }
 
 private:
+    void notifyWaiter()
+    {
+        // gRPC invokes reactor callbacks on its own threads. asio objects are
+        // not generally thread-safe, so serialize timer access on its executor.
+        auto self = this->shared_from_this();
+        boost::asio::post(asio_, [self = std::move(self)] {
+            self->timer_.cancel();
+        });
+    }
+
     boost::asio::io_context& asio_;
     boost::asio::steady_timer timer_;
     ::grpc::ClientContext ctx_;
@@ -148,6 +230,7 @@ private:
     std::optional<RespT> buffer_;
     std::optional<::grpc::Status> status_;
     bool done_{false};
+    bool connected_{false};
     RespT temp_msg_;
     on_connected_fn_t on_connected_fn_;
     std::shared_ptr<AsyncClientReadReactor> self_;

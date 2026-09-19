@@ -81,6 +81,21 @@ Metrics::Metrics(Server& server)
     payment_notifications_connected_ = metrics_.AddGauge("nextapp_payment_notifications_connected",
                                                          "Whether the connection to payment notifications is active (1) or not (0)",
                                                          {}, default_labels);
+    payment_notification_subscriptions_established_ = metrics_.AddCounter(
+        "nextapp_payment_notification_subscriptions_established",
+        "Number of established payment notification subscriptions", {}, default_labels);
+    payment_notification_stream_terminations_ = metrics_.AddCounter(
+        "nextapp_payment_notification_stream_terminations",
+        "Number of terminated payment notification streams", {}, default_labels);
+    payment_notification_stale_detections_ = metrics_.AddCounter(
+        "nextapp_payment_notification_stale_detections",
+        "Number of payment notification streams cancelled after becoming stale", {}, default_labels);
+    payment_notification_reconnect_attempts_ = metrics_.AddCounter(
+        "nextapp_payment_notification_reconnect_attempts",
+        "Number of payment notification reconnect attempts", {}, default_labels);
+    payment_notification_events_ = metrics_.AddCounter(
+        "nextapp_payment_notification_events",
+        "Number of payment notification events received", {}, default_labels);
 
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::ERROR, errors_));
     logfault::LogManager::Instance().AddHandler(std::make_unique<LogHandler>(logfault::LogLevel::WARN, warnings_));

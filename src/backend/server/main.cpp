@@ -274,6 +274,10 @@ int main(int argc, char* argv[]) {
              "PEM client certificate file for the payment service gRPC client. Required for https payment service URLs.")
             ("payment-service-tls-key", po::value(&config.payment.tls_key),
              "PEM client private key file for the payment service gRPC client. Required for https payment service URLs.")
+            ("payment-entitlement-max-silence-seconds",
+             po::value(&config.payment.entitlement_stream_max_silence_seconds)
+                 ->default_value(config.payment.entitlement_stream_max_silence_seconds),
+             "Cancel and recreate a payment entitlement stream after this many seconds without an event.")
             ;
 
         po::options_description metrics("Metrics");

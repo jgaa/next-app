@@ -34,3 +34,19 @@ target_link_libraries(time_date_tests
 )
 
 add_test(NAME time_date_tests COMMAND time_date_tests)
+
+####### entitlement_stream_tests
+
+add_executable(entitlement_stream_tests entitlement_stream_tests.cpp)
+set_property(TARGET entitlement_stream_tests PROPERTY CXX_STANDARD 20)
+target_include_directories(entitlement_stream_tests PRIVATE
+    $<BUILD_INTERFACE:${NEXTAPP_ROOT}/include>
+    $<BUILD_INTERFACE:${NEXTAPP_BACKEND}/include>
+)
+target_link_libraries(entitlement_stream_tests
+    ${GTEST_LIBRARIES}
+    payments_proto
+    logfault
+    Threads::Threads
+)
+add_test(NAME entitlement_stream_tests COMMAND entitlement_stream_tests)

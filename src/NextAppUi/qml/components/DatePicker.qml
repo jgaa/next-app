@@ -209,7 +209,7 @@ Popup {
                 highlightedDate: popup.highlightedDate
                 interactive: popup.canSelectMonth
                 weekNumbersInteractive: popup.mode === NextappPB.ActionDueKind.WEEK
-                todayBackground: "lightgreen"
+                todayBorderColor: "lightgreen"
                 // The picker owns a white popup background, regardless of the
                 // application theme, so its normal text must remain dark.
                 normalDayTextColor: "#1D1B20"

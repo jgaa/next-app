@@ -174,6 +174,7 @@ private:
     Metrics metrics_;
     boost::asio::io_context ctx_;
     std::optional<boost::asio::signal_set> signals_;
+    std::optional<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> work_guard_;
     std::vector <std::jthread> io_threads_;
     std::optional<jgaa::mysqlpool::Mysqlpool> db_;
     Config config_;

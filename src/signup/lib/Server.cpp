@@ -165,6 +165,7 @@ void Server::stop()
     }
 
     LOG_DEBUG << "Shutting down the thread-pool.";
+    work_guard_.reset();
     ctx_.stop();
     LOG_DEBUG << "Server stopped.";
 }
@@ -187,6 +188,8 @@ boost::asio::awaitable<signup::pb::GetInfoResponse> Server::getInfo(const signup
 
 void Server::initCtx(size_t numThreads)
 {
+    // Keep the context alive while worker threads are being started and until shutdown.
+    work_guard_.emplace(ctx_.get_executor());
     io_threads_.reserve(numThreads);
     for(size_t i = 1; i < numThreads; ++i) {
         io_threads_.emplace_back([this, i]{

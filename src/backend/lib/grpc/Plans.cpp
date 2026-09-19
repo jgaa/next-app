@@ -646,6 +646,11 @@ asio::awaitable<void> Plans::connect()
     ::grpc::ChannelArguments args;
     args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, server_.config().grpc.keepalive_time_sec * 1000);
     args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, server_.config().grpc.keepalive_timeout_sec * 1000);
+    // A notification stream can legitimately carry no DATA frames for hours.
+    // gRPC otherwise stops client pings after its small no-data ping budget is
+    // exhausted, which leaves half-open streams undetected indefinitely.
+    args.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+    args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
 
     channel_ = ::grpc::CreateCustomChannel(grpcServerAddress(), createCredentials(), args);
     stub_ = payments::v1::PaymentsService::NewStub(channel_);
@@ -854,6 +859,9 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
     }};
 
     auto backoff = std::chrono::seconds{1};
+    const auto max_silence = std::chrono::seconds{
+        std::max<uint32_t>(1, config().entitlement_stream_max_silence_seconds)};
+    bool first_attempt = true;
 
     while (!stopping_.load() && !server_.is_done()) {
         if (!notifications_stub_) {
@@ -874,6 +882,11 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
             },
             [this] (bool ok) {
                 server().metrics().setPaymentNotificationsConnected(ok);
+                if (ok) {
+                    server().metrics().paymentNotificationSubscriptionsEstablished().inc();
+                    LOG_INFO << "Payment entitlement subscription established as backend instance "
+                             << server_.serverId();
+                }
             });
 
         {
@@ -881,22 +894,49 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
             entitlement_stream_ = stream;
         }
 
-        LOG_INFO << "Subscribing to payment entitlement changes as backend instance " << server_.serverId();
+        if (!first_attempt) {
+            server().metrics().paymentNotificationReconnectAttempts().inc();
+            LOG_INFO << "Reconnecting payment entitlement subscription as backend instance "
+                     << server_.serverId();
+        } else {
+            LOG_INFO << "Subscribing to payment entitlement changes as backend instance " << server_.serverId();
+            first_attempt = false;
+        }
         stream->start();
 
+        bool stale = false;
+        bool healthy = false;
         try {
             for (;;) {
-                auto event = co_await stream->read();
-                if (!event) {
+                const auto result = co_await stream->readFor(max_silence);
+                if (result.outcome == EntitlementStream::ReadOutcome::timeout) {
+                    stale = true;
+                    server().metrics().paymentNotificationStaleDetections().inc();
+                    server().metrics().setPaymentNotificationsConnected(false);
+                    LOG_WARN_N << "Payment entitlement stream had no activity for "
+                               << max_silence.count()
+                               << " seconds; treating it as stale and cancelling it.";
+                    stream->cancel();
+                    break;
+                }
+                if (result.outcome == EntitlementStream::ReadOutcome::done) {
                     break;
                 }
 
+                const auto& event = *result.message;
+                healthy = true;
+                server().metrics().paymentNotificationEvents().inc();
+                LOG_INFO << "Received payment entitlement event " << event.event_id()
+                         << " for tenant " << event.subject_id()
+                         << " product " << event.entitlement().product_id()
+                         << " version " << event.entitlement().version();
+
                 try {
-                    co_await applyEntitlementChange(*event);
+                    co_await applyEntitlementChange(event);
                 } catch (const std::exception& ex) {
                     LOG_WARN_N << "Caught exception while applying entitlement change event "
-                               << " for tenant " << event->subject_id()
-                               << " product " << event->entitlement().product_id()
+                               << " for tenant " << event.subject_id()
+                               << " product " << event.entitlement().product_id()
                                << ": " << ex.what();
                 }
             }
@@ -912,8 +952,14 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
         }
 
         const auto status = co_await stream->waitForDone();
+        server().metrics().setPaymentNotificationsConnected(false);
+        server().metrics().paymentNotificationStreamTerminations().inc();
+        if (stream->wasConnected() || healthy) {
+            backoff = std::chrono::seconds{1};
+        }
         if (status.ok()) {
-            LOG_INFO << "Payment entitlement change stream ended normally.";
+            LOG_INFO << "Payment entitlement change stream terminated with status code 0 (OK)"
+                     << (stale ? " after stale-stream cancellation." : ".");
         } else {
             LOG_WARN_N << "Payment entitlement change stream ended with status code "
                        << static_cast<int>(status.error_code())
@@ -924,6 +970,8 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
             break;
         }
 
+        LOG_INFO << "Retrying payment entitlement subscription in " << backoff.count()
+                 << " seconds.";
         asio::steady_timer timer{server_.ctx()};
         timer.expires_after(backoff);
         try {

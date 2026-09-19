@@ -210,6 +210,7 @@ void Server::stop()
         LOG_DEBUG << "Database connections closed.";
     }
     LOG_DEBUG << "Shutting down the thread-pool.";
+    work_guard_.reset();
     ctx_.stop();
     LOG_DEBUG << "Server stopped.";
 }
@@ -511,7 +512,7 @@ void Server::startPlanSyncSchedule()
     }
 
     if (auto seconds = config().payment.plan_sync_interval_seconds) {
-        asio::co_spawn(ctx_, [&]() -> asio::awaitable<void> {
+        asio::co_spawn(ctx_, [this, seconds]() -> asio::awaitable<void> {
             auto scope = metrics().asio_worker_threads().scoped();
             while (!ctx_.stopped()) {
                 LOG_DEBUG_N << "Waiting for " << seconds
@@ -544,6 +545,8 @@ string Server::hashPassword(std::string_view passwd)
 
 void Server::initCtx(size_t numThreads)
 {
+    // Keep the context alive while worker threads are being started and until shutdown.
+    work_guard_.emplace(ctx_.get_executor());
     io_threads_.reserve(numThreads);
     for(size_t i = 1; i < numThreads; ++i) {
         io_threads_.emplace_back([this, i]{

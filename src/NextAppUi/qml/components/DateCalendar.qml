@@ -17,7 +17,9 @@ Item {
     property bool selectionIsWeek: false
     property date highlightedDate: new Date(NaN)
     property bool showToday: true
-    property color todayBackground: "lightgreen"
+    // Borders let today's indicator coexist with a caller-supplied day color.
+    property color dayBorderColor: "transparent"
+    property color todayBorderColor: "lightgreen"
     property color selectedBackground: "yellow"
     property color selectedWeekBackground: "#e8e3ef"
     property color highlightedBackground: "#b9d7ff"
@@ -131,13 +133,10 @@ Item {
                 property color backgroundColor: {
                     if (isWeekNumber) return isSelectedWeek ? root.selectedWeekBackground : "transparent"
                     if (!inCurrentMonth) return "transparent"
-                    // Today stays visible even when its week is selected.
-                    if (root.selectionIsWeek && root.showToday && isToday) return root.todayBackground
                     if (isSelectedWeek) return root.selectedWeekBackground
                     if (root.isSameDate(root.selectedDate, year, month, day)) return root.selectedBackground
                     if (root.isSameDate(root.highlightedDate, year, month, day)) return root.highlightedBackground
                     if (customBackground.a > 0) return customBackground
-                    if (root.showToday && isToday) return root.todayBackground
                     return "transparent"
                 }
                 property color foregroundColor: {
@@ -156,6 +155,9 @@ Item {
                     anchors.fill: parent
                     visible: !parent.isWeekNumber
                     color: parent.backgroundColor
+                    border.color: parent.isToday && root.showToday
+                        ? root.todayBorderColor : root.dayBorderColor
+                    border.width: 1
                 }
 
                 Label {

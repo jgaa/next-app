@@ -62,7 +62,7 @@ Dialog {
                          + "")
                        .arg(Application.version)
                        .arg("https://github.com/jgaa/next-app/blob/8dc49525facb8047137cd56f372afd5c6d2908fa/src/NextAppUi/LICENSE")
-                       .arg("2025")
+                       .arg("2026")
                        .arg(NaCore.qtVersion)
                        .arg(NaComm.version)
                        .arg(NaComm.nextappUrl)

@@ -105,6 +105,12 @@ public:
         payment_notifications_connected_->set(connected ? 1 : 0);
     }
 
+    counter_t& paymentNotificationSubscriptionsEstablished() noexcept { return *payment_notification_subscriptions_established_; }
+    counter_t& paymentNotificationStreamTerminations() noexcept { return *payment_notification_stream_terminations_; }
+    counter_t& paymentNotificationStaleDetections() noexcept { return *payment_notification_stale_detections_; }
+    counter_t& paymentNotificationReconnectAttempts() noexcept { return *payment_notification_reconnect_attempts_; }
+    counter_t& paymentNotificationEvents() noexcept { return *payment_notification_events_; }
+
 private:
     Server& server_;
     yahat::Metrics metrics_;
@@ -127,8 +133,12 @@ private:
     counter_t * data_exports_{};
     counter_t * user_feedbacks_{};
     gauge_t * payment_notifications_connected_{}; // Boolean gauge: 1 if connected, 0 if not
+    counter_t * payment_notification_subscriptions_established_{};
+    counter_t * payment_notification_stream_terminations_{};
+    counter_t * payment_notification_stale_detections_{};
+    counter_t * payment_notification_reconnect_attempts_{};
+    counter_t * payment_notification_events_{};
 };
 
 
 } // ns nextapp
-

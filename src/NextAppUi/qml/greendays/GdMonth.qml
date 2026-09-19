@@ -44,11 +44,14 @@ Rectangle {
             year: root.year
             month: root.month
             firstDayOfWeek: NaComm.globalSettings.firstDayOfWeekIsMonday ? Qt.Monday : Qt.Sunday
+            // Green Days is not a selection control; avoid masking a day color
+            // with DateCalendar's default selected date.
+            selectedDate: new Date(NaN)
             cellWidth: Math.max(18, root.fontSize + 8)
             cellHeight: Math.max(18, root.fontSize + 8)
             weekNumberWidth: Math.max(20, root.fontSize + 10)
             showToday: true
-            todayBackground: "lightgreen"
+            todayBorderColor: "lightgreen"
             weekNumberColor: MaterialDesignStyling.onSurfaceVariant
             dayBackgroundProvider: function(date) {
                 return root.validColors
