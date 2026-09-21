@@ -16,17 +16,11 @@ public:
     struct Outcome {
         bool duration = false;
         bool paused = false;
-        bool end = false;
-        bool start = false;
-        bool name = false;
-
-        bool changed() const noexcept {
-            return duration || paused || end || start || name;
-        }
     };
 
     // For the active work sessions when we have updated their durations.
     struct ActiveDurationChanged {
+        QUuid id;
         bool duration = false;
         bool paused = false;
     };
@@ -74,23 +68,23 @@ signals:
     void WorkSessionDeleted(const QUuid& item);
     void stateChanged();
 
-    // Durations has changed, but the ordeing and state is the same.
+    // Only sessions whose displayed minutes changed; identified independently of row order.
     void activeDurationChanged(const active_duration_changes_t& changes);
 
     // The active work sessions has changed. Reset the UI model
     void activeChanged();
 
 private:
+    friend class tst_NextAppUiRuntime;
     RuntimeServices& runtime_;
     void purge();
     void onTimer();
-    void updateSessionsDurations();
+    void updateSessionsDurations(qint64 now);
     QCoro::Task<bool> validateStoredWorkSessions();
     QCoro::Task<bool> remove(const QUuid& id);
-    Outcome updateOutcome(nextapp::pb::WorkSession &work);
+    Outcome updateOutcome(nextapp::pb::WorkSession &work, qint64 now);
 
     std::map<QUuid, std::shared_ptr<nextapp::pb::WorkSession>> items_;    
     std::vector<std::shared_ptr<nextapp::pb::WorkSession>> active_;
     QTimer *timer_ = {};
-    std::map<QString, QString> known_durations_;
 };

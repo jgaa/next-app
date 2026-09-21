@@ -23,18 +23,29 @@ WorkSessionsModel::WorkSessionsModel(QObject *parent)
 }
 
 WorkSessionsModel::WorkSessionsModel(RuntimeServices& runtime, QObject *parent)
+    : WorkSessionsModel(runtime, *WorkCache::instance(), parent)
+{
+}
+
+WorkSessionsModel::WorkSessionsModel(RuntimeServices& runtime, WorkCache& cache, QObject *parent)
     : WorkModelBase{runtime, parent}
+    , cache_{cache}
 {
     assert(instance_ == nullptr);
     instance_ = this;
 
-    connect(WorkCache::instance(), &WorkCache::activeChanged, this, &WorkSessionsModel::fetchIf);
-    connect(WorkCache::instance(), &WorkCache::WorkSessionAdded, this, &WorkSessionsModel::fetchIf);
-    connect(WorkCache::instance(), &WorkCache::WorkSessionChanged, this, &WorkSessionsModel::fetchIf);
-    connect(WorkCache::instance(), &WorkCache::WorkSessionActionMoved, this, &WorkSessionsModel::fetchIf);
-    connect(WorkCache::instance(), &WorkCache::WorkSessionDeleted, this, &WorkSessionsModel::fetchIf);
-    connect(WorkCache::instance(), &WorkCache::activeDurationChanged, this, &WorkSessionsModel::onDurationChanged);
+    connect(&cache_, &WorkCache::activeChanged, this, &WorkSessionsModel::fetchIf);
+    connect(&cache_, &WorkCache::WorkSessionAdded, this, &WorkSessionsModel::fetchIf);
+    connect(&cache_, &WorkCache::WorkSessionChanged, this, &WorkSessionsModel::fetchIf);
+    connect(&cache_, &WorkCache::WorkSessionActionMoved, this, &WorkSessionsModel::fetchIf);
+    connect(&cache_, &WorkCache::WorkSessionDeleted, this, &WorkSessionsModel::fetchIf);
+    connect(&cache_, &WorkCache::activeDurationChanged, this, &WorkSessionsModel::onDurationChanged);
     connect(this, &WorkSessionsModel::visibleChanged, this, &WorkSessionsModel::fetchIf);
+}
+
+WorkSessionsModel::~WorkSessionsModel()
+{
+    instance_ = nullptr;
 }
 
 void WorkSessionsModel::startWork(const QString &actionId)
@@ -107,7 +118,7 @@ void WorkSessionsModel::fetch()
     beginResetModel();
     ScopedExit reset{[this] { endResetModel(); }};
 
-    auto active = WorkCache::instance()->getActive();
+    const auto& active = cache_.getActive();
     sessions_.clear();
     for (const auto& session : active) {
         if (session->state() >= nextapp::pb::WorkSession::State::DONE) {
@@ -152,19 +163,28 @@ void WorkSessionsModel::fetchIf()
     }
 }
 
-// Assume that the order of the changes is the same as the order of the sessions
 void WorkSessionsModel::onDurationChanged(const WorkCache::active_duration_changes_t &changes)
 {
-    uint row = 0;
+    // Hidden views fetch a fresh snapshot when shown again.
+    if (!isVisible()) {
+        return;
+    }
+
     for (const auto& change : changes) {
+        const auto& by_id = session_by_id();
+        const auto it = by_id.find(change.id);
+        if (it == by_id.end()) {
+            continue;
+        }
+        const auto ordered = sessions_.project<ordered_tag>(it);
+        const auto row = static_cast<int>(std::distance(session_by_ordered().begin(), ordered));
         if (change.duration) {
-            QModelIndex index = createIndex(row, USED);
-            emit dataChanged(index, index);
+            const auto cell = index(row, USED);
+            emit dataChanged(cell, cell, {Qt::DisplayRole, DurationRole});
         }
         if (change.paused) {
-            QModelIndex index = createIndex(row, PAUSE);
-            emit dataChanged(index, index);
+            const auto cell = index(row, PAUSE);
+            emit dataChanged(cell, cell, {Qt::DisplayRole, PauseRole});
         }
-        ++row;
     }
 }

@@ -26,6 +26,7 @@
 #include "ServerSynchedCahce.h"
 #include "UseCaseTemplates.h"
 #include "WorkCache.h"
+#include "WorkSessionsModel.h"
 
 #include "tests/TestRuntimeSupport.h"
 
@@ -782,6 +783,8 @@ private slots:
     void calendarCacheLoadDoesNotRepairMissingActionRefs();
     void calendarCacheInvalidCalendarDeleteUpdateRequestsResync();
     void workCacheLoadsPersistedSessionsAndFiltersByAction();
+    void workSessionMinuteNotificationsFollowSessionIds();
+    void workCacheSortsNewActiveSessions();
     void workCacheRejectsDanglingActionReferences();
     void workCacheProcessesActionMoveAndDeleteUpdates();
     void workCacheSaveIgnoresStaleUpdatedId();
@@ -1523,6 +1526,106 @@ void tst_NextAppUiRuntime::workCacheLoadsPersistedSessionsAndFiltersByAction()
     QCOMPARE(filtered.at(0)->action(), QStringLiteral("action-1"));
     QCOMPARE(filtered.at(1)->action(), QStringLiteral("action-1"));
 
+    db->close();
+}
+
+void tst_NextAppUiRuntime::workSessionMinuteNotificationsFollowSessionIds()
+{
+    TestRuntimeServices runtime;
+    WorkCache cache(runtime);
+    cache.timer_->stop();
+    constexpr qint64 start = 1700000000;
+    using Kind = nextapp::pb::WorkEvent_QtProtobufNested::Kind;
+    auto paused = std::make_shared<nextapp::pb::WorkSession>(makeWorkSession(
+        QStringLiteral("11111111-1111-1111-1111-111111111111"),
+        QStringLiteral("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), QStringLiteral("Paused"),
+        {makeWorkEvent(Kind::START, start - 120), makeWorkEvent(Kind::PAUSE, start)},
+        nextapp::pb::WorkSession::State::PAUSED));
+    auto active = std::make_shared<nextapp::pb::WorkSession>(makeWorkSession(
+        QStringLiteral("22222222-2222-2222-2222-222222222222"),
+        QStringLiteral("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), QStringLiteral("Active"),
+        {makeWorkEvent(Kind::START, start)}));
+    cache.updateOutcome(*paused, start);
+    cache.updateOutcome(*active, start);
+    // Deliberately reverse the model's order: notifications must not depend on cache order.
+    cache.active_ = {paused, active};
+    WorkSessionsModel model(runtime, cache);
+    model.setIsVisible(true);
+    const auto used = model.index(0, WorkModelBase::USED);
+    QCOMPARE(model.data(used, WorkModelBase::UuidRole).toString(), active->id_proto());
+    QCOMPARE(model.data(used, Qt::DisplayRole).toString(), QStringLiteral("00:00"));
+
+    // Observe the value a view would read only when its Used cell is notified.
+    QString displayed = model.data(used, Qt::DisplayRole).toString();
+    connect(&model, &QAbstractItemModel::dataChanged, &model,
+            [&](const QModelIndex& first, const QModelIndex& last, const QList<int>& roles) {
+        if (first.row() == 0 && first.column() == WorkModelBase::USED) {
+            QCOMPARE(first, last);
+            QVERIFY(roles.contains(Qt::DisplayRole));
+            QVERIFY(roles.contains(WorkModelBase::DurationRole));
+            displayed = model.data(first, Qt::DisplayRole).toString();
+        }
+    });
+    QSignalSpy changes(&model, &QAbstractItemModel::dataChanged);
+    QSignalSpy resets(&model, &QAbstractItemModel::modelReset);
+    cache.updateSessionsDurations(start + 59);
+    QCOMPARE(changes.size(), 0);
+    cache.updateSessionsDurations(start + 60);
+    QCOMPARE(changes.size(), 2); // Active Used and paused Pause, each on its own row.
+    QCOMPARE(displayed, QStringLiteral("00:01"));
+    QCOMPARE(qvariant_cast<QModelIndex>(changes.at(0).at(0)), model.index(1, WorkModelBase::PAUSE));
+    QCOMPARE(qvariant_cast<QModelIndex>(changes.at(1).at(0)), used);
+    changes.clear();
+    cache.updateSessionsDurations(start + 65);
+    QCOMPARE(changes.size(), 0);
+
+    cache.updateSessionsDurations(start + 2 * 3600 + 17 * 60);
+    QCOMPARE(displayed, QStringLiteral("02:17"));
+    cache.updateSessionsDurations(start + 2 * 3600 + 18 * 60);
+    QCOMPARE(displayed, QStringLiteral("02:18"));
+    // A delayed tick exactly one day later must not alias a local hh:mm clock string.
+    cache.updateSessionsDurations(start + 26 * 3600 + 18 * 60);
+    QCOMPARE(displayed, QStringLiteral("26:18"));
+    QCOMPARE(resets.size(), 0);
+
+    model.setIsVisible(false);
+    changes.clear();
+    cache.updateSessionsDurations(start + 26 * 3600 + 19 * 60);
+    QCOMPARE(changes.size(), 0);
+    model.setIsVisible(true);
+    QCOMPARE(model.data(model.index(0, WorkModelBase::USED), Qt::DisplayRole).toString(),
+             QStringLiteral("26:19"));
+}
+
+void tst_NextAppUiRuntime::workCacheSortsNewActiveSessions()
+{
+    auto db = makeInitializedDb(QStringLiteral("work-cache-insertion.sqlite"));
+    insertMinimalAction(*db, QStringLiteral("action-1"), QStringLiteral("node-1"), QStringLiteral("Action"));
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    WorkCache cache(runtime);
+    cache.timer_->stop();
+    using Kind = nextapp::pb::WorkEvent_QtProtobufNested::Kind;
+    const auto now = QDateTime::currentSecsSinceEpoch();
+    const auto paused = makeWorkSession(
+        QStringLiteral("11111111-1111-1111-1111-111111111111"), QStringLiteral("action-1"),
+        QStringLiteral("Paused"),
+        {makeWorkEvent(Kind::START, now - 120), makeWorkEvent(Kind::PAUSE, now - 60)},
+        nextapp::pb::WorkSession::State::PAUSED);
+    const auto active = makeWorkSession(
+        QStringLiteral("22222222-2222-2222-2222-222222222222"), QStringLiteral("action-1"),
+        QStringLiteral("Active"), {makeWorkEvent(Kind::START, now)});
+    QVERIFY(waitForTask(cache.pocessUpdate(std::make_shared<nextapp::pb::Update>(
+        makeWorkUpdate(nextapp::pb::Update::Operation::ADDED, paused)))));
+    bool saw_addition = false;
+    connect(&cache, &WorkCache::WorkSessionAdded, &cache, [&](const QUuid&) {
+        saw_addition = true;
+        QCOMPARE(cache.getActive().front()->id_proto(), active.id_proto());
+    });
+    QVERIFY(waitForTask(cache.pocessUpdate(std::make_shared<nextapp::pb::Update>(
+        makeWorkUpdate(nextapp::pb::Update::Operation::ADDED, active)))));
+    QVERIFY(saw_addition);
+    QCOMPARE(cache.getActive().size(), size_t{2});
     db->close();
 }
 

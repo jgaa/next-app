@@ -38,6 +38,8 @@ public:
 
     explicit WorkSessionsModel(QObject *parent = nullptr);
     WorkSessionsModel(RuntimeServices& runtime, QObject *parent = nullptr);
+    WorkSessionsModel(RuntimeServices& runtime, WorkCache& cache, QObject *parent = nullptr);
+    ~WorkSessionsModel() override;
 
     Q_INVOKABLE void startWork(const QString& actionId);
     Q_INVOKABLE void startWorkSetActive(const QString& actionId);
@@ -71,6 +73,7 @@ signals:
     void updatedDuration();
 
 private:
+    WorkCache& cache_;
     void onDurationChanged(const WorkCache::active_duration_changes_t& changes);
     void fetch();
     void sortAndValidate();

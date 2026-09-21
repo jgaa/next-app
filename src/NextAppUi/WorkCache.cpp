@@ -2,6 +2,7 @@
 #include <ranges>
 #include <algorithm>
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QProtobufSerializer>
 
 #include "WorkCache.h"
@@ -137,7 +138,7 @@ QCoro::Task<bool> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
     if (update->hasWork()) {
         const auto persisted = update->work();
         auto work = persisted;
-        updateOutcome(work);
+        updateOutcome(work, QDateTime::currentSecsSinceEpoch());
         const auto id_str = persisted.id_proto();
         const QUuid id{persisted.id_proto()};
         bool active_changed = false;
@@ -193,7 +194,12 @@ QCoro::Task<bool> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
                 || wsp->state() == nextapp::pb::WorkSession::State::PAUSED) {
                 if (!exist_in_active) {
                     active_.push_back(wsp);
+                    active_changed = true;
                 }
+            }
+
+            if (active_changed || exist_in_active) {
+                sortActive(active_);
             }
 
             if (op == nextapp::pb::Update::Operation::ADDED) {
@@ -203,7 +209,6 @@ QCoro::Task<bool> WorkCache::pocessUpdate(const std::shared_ptr<nextapp::pb::Upd
             }
 
             if (active_changed || exist_in_active) {
-                sortActive(active_);
                 emit activeChanged();
             }
         }
@@ -380,7 +385,7 @@ QCoro::Task<bool> WorkCache::loadFromCache()
             }
 
             auto [it, _] = items_.emplace(QUuid{work.id_proto()}, std::make_shared<nextapp::pb::WorkSession>(work));
-            updateOutcome(*it->second);
+            updateOutcome(*it->second, QDateTime::currentSecsSinceEpoch());
             active_.emplace_back(it->second);
         }
     } else {
@@ -403,7 +408,6 @@ void WorkCache::clear()
 {
     items_.clear();
     active_.clear();
-    known_durations_.clear();
 }
 
 QCoro::Task<std::vector<std::shared_ptr<nextapp::pb::WorkSession>>>
@@ -528,34 +532,21 @@ void WorkCache::purge()
 
 void WorkCache::onTimer()
 {
-    updateSessionsDurations();
+    updateSessionsDurations(QDateTime::currentSecsSinceEpoch());
 }
 
-void WorkCache::updateSessionsDurations()
+void WorkCache::updateSessionsDurations(qint64 now)
 {
-    int row = 0;
-    bool changed = false;
     active_duration_changes_t changes;
     changes.reserve(active_.size());
-    std::set<QString> seen_ids;
     for(auto& ws : active_) {
-        seen_ids.insert(ws->id_proto());
-        const auto outcome = updateOutcome(*ws);
-        auto& change = changes.emplace_back();
-        if (outcome.changed()) {
-            change.duration = outcome.duration;
-            change.paused = outcome.paused;
-            if (change.paused || change.duration) {
-                changed = true;
-            }
+        const auto outcome = updateOutcome(*ws, now);
+        if (outcome.duration || outcome.paused) {
+            changes.push_back({QUuid{ws->id_proto()}, outcome.duration, outcome.paused});
         }
     }
 
-    std::erase_if(known_durations_, [&seen_ids](const auto& pair) {
-        return !seen_ids.contains(pair.first);
-    });
-
-    if (changed) {
+    if (!changes.empty()) {
         LOG_TRACE_N << "Active duration changed. Emitting signal.";
         emit activeDurationChanged(changes);
     }
@@ -570,30 +561,22 @@ QCoro::Task<bool> WorkCache::remove(const QUuid &id)
         LOG_DEBUG_N << "Failed to delete work session: " << res.error();
         co_return false;
     }
-    known_durations_.erase(id.toString(QUuid::WithoutBraces));
     co_return true;
 }
 
-WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
+WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work, qint64 now)
 {
     using namespace nextapp;
-    const auto now = time({});
 
     // First event *must* be a start event
     if (work.events().empty()) {
         return {}; // Nothing to do
     }
 
-    const auto orig_start = work.start() / 60;
-    const auto orig_end = work.hasEnd() ? work.end() / 60 : 0;
-    //const auto orig_duration = work.duration() / 60;
-    //const auto orig_paused = work.paused() / 60;
+    const auto orig_duration = work.duration() / 60;
+    const auto orig_paused = work.paused() / 60;
     const auto orig_state = work.state();
-    const auto orig_name = work.name();
     const auto full_orig_duration = work.duration();
-
-    const QString str_duration = NextAppCore::toTime(work.duration());
-    const QString str_paused = NextAppCore::toTime(work.paused());
 
     work.setPaused(0);
     work.setDuration(0);
@@ -707,17 +690,9 @@ WorkCache::Outcome WorkCache::updateOutcome(nextapp::pb::WorkSession &work)
     }
 
     Outcome outcome;
-    auto duration_str = NextAppCore::toTime(work.duration());
-    if (known_durations_[work.id_proto()] != duration_str) {
-        LOG_TRACE_N << "Duration changed for session " << work.name() << " from " << known_durations_[work.id_proto()] << " to " << duration_str;
-        known_durations_[work.id_proto()] = duration_str;
-        outcome.duration = true;
-    }
-
-    outcome.start = orig_start != (work.start() / 60);
-    outcome.end = orig_end != (work.hasEnd() ? work.end() / 60 : 0);
-    outcome.paused = str_paused != NextAppCore::toTime(work.paused());
-    outcome.name = orig_name != work.name();
+    // Match the elapsed-minute formatting used by WorkModelBase, not local clock time.
+    outcome.duration = orig_duration != work.duration() / 60;
+    outcome.paused = orig_paused != work.paused() / 60;
 
     LOG_TRACE << "Updated work session " << work.name() << " from " << full_orig_duration << " to "
               << work.duration()
