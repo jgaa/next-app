@@ -20,6 +20,9 @@ All sub-projects are built using the root `./CMakeLists.txt`.
 * Do not rebuild the project unless asked to do so. 
 * For QML, do not use components from Qt Labs. 
 
+## Code
+* For the C++ code, use C++20. Prefer `(if auto *p = foo()) {} ` over old style code. Prefer templates over repeated code.
+
 ## Release GA workflow
 * The release workflow must never rebuild Flatpak, macOS, or other package artifacts. Package builds are expensive, slow, and can fail for reasons unrelated to the release logic.
 * The release workflow is expected to reuse already-built successful artifacts by versioned artifact filename only. Do not bind release artifact selection to a specific commit or require a full rebuild because one package had to be rebuilt later for the same version.

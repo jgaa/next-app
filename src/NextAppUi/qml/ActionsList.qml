@@ -549,6 +549,30 @@ Rectangle {
                 openAddWorkDialog(contextMenu.uuid, contextMenu.name)
             }
         }
+        Menu {
+            title: qsTr("Copy")
+
+            Action {
+                text: qsTr("Title")
+                onTriggered: NaActionsModel.copyActionToClipboard(
+                    contextMenu.uuid, NaActionsModel.CopyTitle)
+            }
+            Action {
+                text: qsTr("Description")
+                onTriggered: NaActionsModel.copyActionToClipboard(
+                    contextMenu.uuid, NaActionsModel.CopyDescription)
+            }
+            Action {
+                text: qsTr("To Markdown")
+                onTriggered: NaActionsModel.copyActionToClipboard(
+                    contextMenu.uuid, NaActionsModel.CopyMarkdown)
+            }
+            Action {
+                text: qsTr("To JSON")
+                onTriggered: NaActionsModel.copyActionToClipboard(
+                    contextMenu.uuid, NaActionsModel.CopyJson)
+            }
+        }
         Action {
             icon.source: "../icons/fontawsome/trash-can.svg"
             text: qsTr("Delete")

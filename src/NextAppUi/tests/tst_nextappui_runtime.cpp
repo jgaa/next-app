@@ -3,6 +3,8 @@
 
 #include <QEventLoop>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QVariantMap>
@@ -791,6 +793,7 @@ private slots:
     void importExportModelDispatchesExportAndImportThroughInjectedComms();
     void importExportModelRejectsInvalidInputsWithoutCallingImport();
     void actionInfoCacheComputesStableScores();
+    void actionsModelFormatsClipboardText();
     void actionInfoCacheClearsMissingOriginsReportsIssueAndPersistsTags();
     void actionInfoCacheUpdateReloadsMissingOriginsAndInvalidDeletesRequestResync();
     void actionInfoCacheSaveIgnoresStaleUpdatedId();
@@ -2067,6 +2070,58 @@ void tst_NextAppUiRuntime::actionInfoCacheComputesStableScores()
 
     const auto color = ActionInfoCache::getScoreColor(urgent_score);
     QVERIFY(color.isValid());
+}
+
+void tst_NextAppUiRuntime::actionsModelFormatsClipboardText()
+{
+    auto action = makeAction(
+        QStringLiteral("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),
+        QStringLiteral("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        QStringLiteral("Clipboard title"),
+        1,
+        100,
+        11,
+        std::nullopt,
+        {QStringLiteral("first"), QStringLiteral("second")});
+    action.setDescr(QStringLiteral("Clipboard description"));
+    action.setStatus(nextapp::pb::ActionStatusGadget::ActionStatus::ONHOLD);
+
+    QCOMPARE(ActionsModel::actionToText(action, ActionsModel::CopyTitle),
+             QStringLiteral("Clipboard title"));
+    QCOMPARE(ActionsModel::actionToText(action, ActionsModel::CopyDescription),
+             QStringLiteral("Clipboard description"));
+
+    const auto markdown = ActionsModel::actionToText(action, ActionsModel::CopyMarkdown);
+    QVERIFY(markdown.startsWith(QStringLiteral("# Clipboard title\n\nClipboard description")));
+    QVERIFY(markdown.contains(QStringLiteral("- **Due:** None")));
+    QVERIFY(markdown.contains(QStringLiteral("- **Tags:** #first #second")));
+    QVERIFY(markdown.contains(QStringLiteral("- **Status:** On hold")));
+
+    nextapp::pb::Due due;
+    due.setKind(nextapp::pb::ActionDueKindGadget::ActionDueKind::DATETIME);
+    due.setDue(1893456000); // 2030-01-01 00:00:00 UTC
+    action.setDue(due);
+    const auto due_markdown = ActionsModel::actionToText(action, ActionsModel::CopyMarkdown);
+    QVERIFY(due_markdown.contains(QStringLiteral("- **Due:** Time ")));
+    QVERIFY(!due_markdown.contains(QStringLiteral("- **Due:** None")));
+
+    QJsonParseError error;
+    const auto json_text = ActionsModel::actionToText(action, ActionsModel::CopyJson);
+    QVERIFY(json_text.contains(QStringLiteral("\n    \"")));
+    const auto json = QJsonDocument::fromJson(json_text.toUtf8(), &error);
+    QCOMPARE(error.error, QJsonParseError::NoError);
+    QVERIFY(json.isObject());
+    QCOMPARE(json.object().value(QStringLiteral("name")).toString(),
+             QStringLiteral("Clipboard title"));
+
+    action.setName(QString{});
+    action.setDescr(QString{});
+    action.setTags(QStringList{});
+    due.setKind(nextapp::pb::ActionDueKindGadget::ActionDueKind::UNSET);
+    action.setDue(due);
+    const auto empty_markdown = ActionsModel::actionToText(action, ActionsModel::CopyMarkdown);
+    QVERIFY(empty_markdown.startsWith(QStringLiteral("# None\n\nNone")));
+    QVERIFY(empty_markdown.contains(QStringLiteral("- **Tags:** None")));
 }
 
 void tst_NextAppUiRuntime::actionInfoCacheClearsMissingOriginsReportsIssueAndPersistsTags()

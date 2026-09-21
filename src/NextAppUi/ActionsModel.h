@@ -186,6 +186,13 @@ class ActionsModel : public QAbstractListModel
     };
 
 public:
+    enum CopyFormat {
+        CopyTitle,
+        CopyDescription,
+        CopyMarkdown,
+        CopyJson,
+    };
+
     enum PriorityKind {
         PkPriority, // Traditinal priority
         PkDynamic, // Urhency and importance
@@ -228,6 +235,7 @@ public:
     Q_ENUM(FetchWhat)
     Q_ENUM(Sorting)
     Q_ENUM(PriorityKind)
+    Q_ENUM(CopyFormat)
 
     Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY isVisibleChanged)
     Q_PROPERTY(FetchWhat mode READ mode WRITE setMode NOTIFY modeChanged)
@@ -248,6 +256,7 @@ public:
     Q_INVOKABLE ActionPrx *getAction(QString uuid);
     Q_INVOKABLE void markActionAsDone(const QString& actionUuid, bool done);
     Q_INVOKABLE void markActionAsFavorite(const QString& actionUuid, bool favorite);
+    Q_INVOKABLE void copyActionToClipboard(const QString& actionUuid, CopyFormat format);
     static Q_INVOKABLE QString toName(nextapp::pb::ActionKindGadget::ActionKind kind);
     static Q_INVOKABLE QString formatWhen(time_t from, time_t to, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
     static Q_INVOKABLE QString formatDue(const nextapp::pb::Due& due);
@@ -357,6 +366,9 @@ private:
     friend class tst_NextAppUiRuntime;
 
     RuntimeServices& runtime_;
+    static QString actionToText(const nextapp::pb::Action& action, CopyFormat format);
+    static QString actionStatusName(nextapp::pb::ActionStatusGadget::ActionStatus status);
+    QCoro::Task<void> copyActionToClipboardAsync(QUuid actionUuid, CopyFormat format);
     QCoro::Task<void> fetchIf(bool restart = true);
     static bool matchesActionForMode(
         FetchWhat mode,

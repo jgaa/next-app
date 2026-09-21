@@ -4,8 +4,12 @@
 #include <QUuid>
 #include <QTimeZone>
 #include <QDateTime>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QJsonDocument>
 #include <QMimeData>
 #include <QIODevice>
+#include <QProtobufJsonSerializer>
 
 #include "ActionsModel.h"
 #include "ServerCommAccess.h"
@@ -380,6 +384,102 @@ void ActionsModel::markActionAsDone(const QString &actionUuid, bool done)
 void ActionsModel::markActionAsFavorite(const QString &actionUuid, bool favorite)
 {
     runtime_.serverComm().markActionAsFavorite(actionUuid, favorite);
+}
+
+void ActionsModel::copyActionToClipboard(const QString &actionUuid, CopyFormat format)
+{
+    const QUuid uuid{actionUuid};
+    if (uuid.isNull()) {
+        LOG_WARN_N << "Cannot copy action with invalid UUID: " << actionUuid;
+        return;
+    }
+
+    QCoro::connect(copyActionToClipboardAsync(uuid, format), this, [] {});
+}
+
+QCoro::Task<void> ActionsModel::copyActionToClipboardAsync(QUuid actionUuid, CopyFormat format)
+{
+    if (const auto action = co_await ActionInfoCache::instance()->getAction(actionUuid)) {
+        if (auto *clipboard = QGuiApplication::clipboard()) {
+            clipboard->setText(actionToText(*action, format));
+            co_return;
+        }
+
+        LOG_ERROR_N << "Cannot copy action; clipboard is not available";
+        co_return;
+    }
+
+    LOG_WARN_N << "Cannot copy action; it was not found in the local cache: " << actionUuid.toString();
+}
+
+QString ActionsModel::actionStatusName(nextapp::pb::ActionStatusGadget::ActionStatus status)
+{
+    using Status = nextapp::pb::ActionStatusGadget::ActionStatus;
+    switch (status) {
+    case Status::ACTIVE:
+        return tr("Active");
+    case Status::DONE:
+        return tr("Done");
+    case Status::ONHOLD:
+        return tr("On hold");
+    case Status::DELETED:
+        return tr("Deleted");
+    }
+
+    return tr("Unknown");
+}
+
+QString ActionsModel::actionToText(const nextapp::pb::Action &action, CopyFormat format)
+{
+    switch (format) {
+    case CopyTitle:
+        return action.name();
+    case CopyDescription:
+        return action.descr();
+    case CopyMarkdown: {
+        const auto none = tr("None");
+        const auto title = action.name().isEmpty() ? none : action.name();
+        const auto description = action.descr().isEmpty() ? none : action.descr();
+        auto due = none;
+        if (action.hasDue()
+            && action.due().kind() != nextapp::pb::ActionDueKindGadget::ActionDueKind::UNSET) {
+            const auto& action_due = action.due();
+            const auto from = action_due.hasStart()
+                ? action_due.start()
+                : (action_due.hasDue() ? action_due.due() : 0);
+            const auto to = action_due.hasDue() ? action_due.due() : 0;
+            if (const auto formatted = formatWhen(from, to, action_due.kind()); !formatted.isEmpty()) {
+                due = formatted;
+            }
+        }
+        const auto tags = action.tags().isEmpty() ? none : tagsToString(action.tags(), true);
+
+        return QStringLiteral("# %1\n\n%2\n\n- **%3:** %4\n- **%5:** %6\n- **%7:** %8")
+            .arg(title,
+                 description,
+                 tr("Due"),
+                 due,
+                 tr("Tags"),
+                 tags,
+                 tr("Status"),
+                 actionStatusName(action.status()));
+    }
+    case CopyJson: {
+        QProtobufJsonSerializer serializer;
+        const auto serialized = action.serialize(&serializer);
+        QJsonParseError error;
+        const auto document = QJsonDocument::fromJson(serialized, &error);
+        if (error.error == QJsonParseError::NoError) {
+            return QString::fromUtf8(document.toJson(QJsonDocument::Indented));
+        }
+
+        LOG_WARN_N << "Failed to pretty-format action JSON: " << error.errorString();
+        return QString::fromUtf8(serialized);
+    }
+    }
+
+    LOG_WARN_N << "Unknown action copy format: " << static_cast<int>(format);
+    return {};
 }
 
 void ActionsModel::onUpdate(const std::shared_ptr<nextapp::pb::Update> &update)
