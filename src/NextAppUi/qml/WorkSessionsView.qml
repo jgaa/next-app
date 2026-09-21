@@ -13,22 +13,31 @@ Rectangle {
     enabled: NaComm.connected
     opacity: NaComm.connected ? 1.0 : 0.5
     property bool ready: false
-    property int prev_selection: 0
+
+    function initializeWhenVisible() {
+        if (!root.visible || root.ready) {
+            return
+        }
+
+        root.ready = true
+        workSessions.model.setSorting(sortCtl.currentIndex)
+        workSessions.model.fetchSome(selectionCtl.currentIndex)
+    }
 
     onVisibleChanged: {
-        if (root.visible) {
-            // console.log("WorkSessionsView is now visible.")
-            if (!root.ready) {
-                //console.log("WorkSessionsView is now becoming ready.")
-                root.ready = true
-                workSessions.model.setSorting(sortCtl.currentIndex)
-                workSessions.model.fetchSome(selectionCtl.currentIndex)
-            }
+        workSessions.model.isVisible = root.visible
+        if (root.visible && !root.ready) {
+            initialFetchTimer.restart()
         }
+    }
 
-        if (root.ready) {
-            workSessions.model.isVisible = root.visible
-        }
+    // Let StackLayout and the table view finish their visibility transition
+    // before the model starts its first asynchronous fetch.
+    Timer {
+        id: initialFetchTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.initializeWhenVisible()
     }
 
     Connections {
@@ -57,6 +66,7 @@ Rectangle {
                 spacing: 6
                 StyledComboBox {
                     id: selectionCtl
+                    currentIndex: WorkModel.TODAY
                     model: ListModel {
                         ListElement { text: qsTr("Today") }
                         ListElement { text: qsTr("Yesterday") }
@@ -68,10 +78,7 @@ Rectangle {
                     }
 
                     onActivated: (ix) => {
-                        if (prev_selection !== ix) {
-                            workSessions.model.fetchSome(ix)
-                        }
-                        prev_selection = ix
+                        workSessions.model.fetchSome(ix)
                     }
                 }
 
