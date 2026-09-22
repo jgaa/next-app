@@ -24,6 +24,8 @@ ScrollView {
         tmp.autoStartNewWorkSession = autoStartNewWs.checked
         tmp.optInEmail = optInEmail.checked
         tmp.pasteActionTitleWordCount = pasteActionTitleWords.value
+        settings.setValue("ai/enabled", enableAi.checked)
+        settings.sync()
 
         NaComm.saveGlobalSettings(tmp)
         initialized = false
@@ -43,8 +45,11 @@ ScrollView {
             optInEmail.checked = tmp.optInEmail
             pasteActionTitleWords.value = Math.max(1, Math.min(16,
                 tmp.pasteActionTitleWordCount || 9))
+            enableAi.checked = settings.value("ai/enabled", false)
         }
     }
+
+    Settings { id: settings }
 
     GridLayout {
         id: grid
@@ -124,6 +129,13 @@ ScrollView {
             to: 16
             value: 9
             editable: true
+        }
+
+        Label { text: qsTr("AI") }
+        CheckBox {
+            id: enableAi
+            text: qsTr("Enable AI features")
+            Accessible.description: qsTr("Turns all AI and agent integrations on or off")
         }
 
         Item {

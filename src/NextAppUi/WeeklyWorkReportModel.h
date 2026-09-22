@@ -6,7 +6,7 @@
 #include <optional>
 #include <vector>
 
-#include <QQmlEngine>
+//#include <QQmlEngine>
 #include <QAbstractTableModel>
 #include "qcorotask.h"
 #include "RuntimeServices.h"

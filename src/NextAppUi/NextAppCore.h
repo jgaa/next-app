@@ -1,8 +1,8 @@
 #pragma once
 
 #include <QObject>
-#include <QQmlEngine>
-#include <QQmlApplicationEngine>
+//#include <QQmlEngine>
+//#include <QQmlApplicationEngine>
 #include <QGuiApplication>
 #include <QVariantMap>
 #include <optional>
@@ -14,14 +14,21 @@
 #include "ReviewModel.h"
 #include "DevicesModel.h"
 
-#ifdef LINUX_BUILD
-#include <QDBusConnection>
-#endif
+// #ifdef LINUX_BUILD
+// #include <QDBusConnection>
+// #endif
 
 #include "qcorotask.h"
 
+class QQmlEngine;
+class QQmlApplicationEngine;
+class QDBusConnection;
+
 class CalendarModel;
 class ServerComm;
+#ifdef NEXTAPP_WITH_MCP
+namespace nextapp::mcp { class McpHttpServer; }
+#endif
 
 class NextAppCore : public QObject
     , public RuntimeServices
@@ -53,6 +60,7 @@ public:
     Q_PROPERTY(SessionAccessMode sessionAccessMode READ sessionAccessMode NOTIFY sessionAccessModeChanged)
     Q_PROPERTY(bool canAddLimitedResources READ canAddLimitedResources NOTIFY sessionAccessModeChanged)
     Q_PROPERTY(QString sessionAccessMessage READ sessionAccessMessage NOTIFY sessionAccessModeChanged)
+    Q_PROPERTY(QString mcpEndpoint READ mcpEndpoint NOTIFY mcpEndpointChanged)
 
     enum class ClickInitiator {
         NONE,
@@ -110,6 +118,11 @@ public:
     Q_INVOKABLE QVariant getProperty(const QString& name) const noexcept;
     static Q_INVOKABLE void debugLog(const QString message);
     static Q_INVOKABLE void settingsWasChanged();
+    // Empty when MCP was not compiled in or its listener is not active.
+    Q_INVOKABLE QString mcpEndpoint() const;
+    Q_INVOKABLE QString mcpCredential();
+    Q_INVOKABLE QString rotateMcpCredential();
+    Q_INVOKABLE bool copyToClipboard(const QString& text) const;
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
@@ -282,6 +295,7 @@ signals:
     void heightChanged();
     void dragEnabledChanged();
     void settingsChanged();
+    void mcpEndpointChanged();
     void propertyChanged(const QString& name);
     void stateChanged();
     void wokeFromSleep();
@@ -321,6 +335,9 @@ private:
     std::unique_ptr<DbStore> db_;
     std::unique_ptr<SettingsAccess> settings_;
     std::unique_ptr<ServerComm> server_comm_;
+#ifdef NEXTAPP_WITH_MCP
+    std::unique_ptr<nextapp::mcp::McpHttpServer> mcp_http_server_;
+#endif
 
     int height_{0};
     int width_{0};
@@ -332,7 +349,7 @@ private:
     std::map<QString, QVariant> properties_;
     std::optional<QDate> today_;
 #ifdef LINUX_BUILD
-    std::unique_ptr<QDBusConnection> dbus_connection_;
+    std::shared_ptr<QDBusConnection> dbus_connection_;
 #endif
     QQmlApplicationEngine *engine_{};
     static std::deque<std::function<void()>> pre_instance_callbacks_;

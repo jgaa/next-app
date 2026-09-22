@@ -22,6 +22,7 @@ All sub-projects are built using the root `./CMakeLists.txt`.
 
 ## Code
 * For the C++ code, use C++20. Prefer `(if auto *p = foo()) {} ` over old style code. Prefer templates over repeated code.
+* Be generous with log statement. On DEBUG level I want a good overview of what's going on in the app. On TRACE level I want all relevant info to investigate bugs. On INFO level I want any relevant information, like open ports, server address and id etc.
 
 ## Release GA workflow
 * The release workflow must never rebuild Flatpak, macOS, or other package artifacts. Package builds are expensive, slow, and can fail for reasons unrelated to the release logic.

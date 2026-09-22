@@ -1,4 +1,7 @@
 #include "NextAppCore.h"
+#ifdef NEXTAPP_WITH_MCP
+#include "mcp/McpHttpServer.h"
+#endif
 
 #include <CalendarModel.h>
 #include <algorithm>
@@ -255,6 +258,20 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
     db_ = make_unique<DbStore>();
     settings_ = std::make_unique<QSettingsAccess>();
     server_comm_ = std::make_unique<ServerComm>(*this);
+#ifdef NEXTAPP_WITH_MCP
+    mcp_http_server_ = std::make_unique<nextapp::mcp::McpHttpServer>(*this, this);
+    connect(this, &NextAppCore::settingsChanged, mcp_http_server_.get(), &nextapp::mcp::McpHttpServer::refresh);
+    connect(mcp_http_server_.get(), &nextapp::mcp::McpHttpServer::listenerChanged,
+            this, &NextAppCore::mcpEndpointChanged);
+    connect(server_comm_.get(), &ServerComm::statusChanged, this, [this] {
+        if (server_comm_->connected()) {
+            mcp_http_server_->refresh();
+        } else {
+            mcp_http_server_->abortForOffline();
+        }
+    });
+    connect(server_comm_.get(), &ServerComm::resynching, mcp_http_server_.get(), &nextapp::mcp::McpHttpServer::abortForSync);
+#endif
 
     connect(db_.get(), &DbStore::error, [this](DbStore::Error error) {
         LOG_ERROR_N << "DB error: " << static_cast<int>(error);
@@ -278,7 +295,7 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
             });
 
 #ifdef LINUX_BUILD
-    dbus_connection_ = make_unique<QDBusConnection>(QDBusConnection::systemBus());
+    dbus_connection_ = make_shared<QDBusConnection>(QDBusConnection::systemBus());
     if (dbus_connection_->isConnected()) {
         LOG_DEBUG << "Connected to the D-Bus system bus";
         if (!dbus_connection_->connect(
@@ -379,6 +396,12 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
 
 NextAppCore::~NextAppCore()
 {
+#ifdef NEXTAPP_WITH_MCP
+    if (mcp_http_server_) {
+        mcp_http_server_->stop();
+        mcp_http_server_.reset();
+    }
+#endif
 #ifdef LINUX_BUILD
     LOG_DEBUG_N << "Disconnecting from D-Bus";
     if (dbus_connection_) {
@@ -674,6 +697,9 @@ QCoro::Task<void> NextAppCore::modelsAreCreated()
 {
     LOG_INFO << "All models are created. Starting to initialize NextappCore...";
     co_await db_->init();
+#ifdef NEXTAPP_WITH_MCP
+    mcp_http_server_->refresh();
+#endif
     bool emitted = false;
 
     QTimer::singleShot(100ms, this, [this] {
@@ -685,6 +711,46 @@ QCoro::Task<void> NextAppCore::modelsAreCreated()
     });
 
     co_return;
+}
+
+QString NextAppCore::mcpEndpoint() const
+{
+#ifdef NEXTAPP_WITH_MCP
+    if (!mcp_http_server_ || !mcp_http_server_->running()) return {};
+    const auto address = settings().value("ai/mcp/listen_address", QStringLiteral("127.0.0.1")).toString();
+    return QStringLiteral("http://%1:%2/mcp").arg(address.contains(':') ? QStringLiteral("[") + address + QStringLiteral("]") : address).arg(mcp_http_server_->port());
+#else
+    return {};
+#endif
+}
+
+QString NextAppCore::mcpCredential()
+{
+#ifdef NEXTAPP_WITH_MCP
+    return mcp_http_server_ ? mcp_http_server_->credential() : QString{};
+#else
+    return {};
+#endif
+}
+
+QString NextAppCore::rotateMcpCredential()
+{
+#ifdef NEXTAPP_WITH_MCP
+    return mcp_http_server_ ? mcp_http_server_->rotateCredential() : QString{};
+#else
+    return {};
+#endif
+}
+
+bool NextAppCore::copyToClipboard(const QString& text) const
+{
+    if (text.isEmpty()) return false;
+    if (auto *clipboard = QGuiApplication::clipboard()) {
+        clipboard->setText(text);
+        return true;
+    }
+    LOG_ERROR_N << "Copy failed: clipboard is not available";
+    return false;
 }
 
 QQmlApplicationEngine &NextAppCore::engine()

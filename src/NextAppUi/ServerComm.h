@@ -1,7 +1,7 @@
 #pragma once
 
 #include <queue>
-#include <qqmlregistration.h>
+//#include <qqmlregistration.h>
 #include <memory>
 #include <optional>
 
@@ -228,6 +228,9 @@ public:
     void updateActions(const nextapp::pb::UpdateActionsReq& action) override;
     void deleteAction(const QString& actionUuid) override;
     void markActionAsDone(const QString& actionUuid, bool done) override;
+    QCoro::Task<nextapp::pb::Status> addActionDirect(const nextapp::pb::Action& action) override;
+    QCoro::Task<nextapp::pb::Status> updateActionDirect(const nextapp::pb::Action& action) override;
+    QCoro::Task<nextapp::pb::Status> markActionDoneDirect(const nextapp::pb::ActionDoneReq& request) override;
     void markActionAsFavorite(const QString& actionUuid, bool favorite) override;
     void getActiveWorkSessions();
     void startWork(const QString& actionId, bool activate = false) override;

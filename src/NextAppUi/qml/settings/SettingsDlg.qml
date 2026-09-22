@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
+import QtCore
 import NextAppUi
 import Nextapp.Models
 
@@ -14,6 +15,8 @@ Dialog {
 
     standardButtons: Dialog.Ok | Dialog.Cancel
     title: qsTr("Settings")
+
+    Settings { id: settings }
 
     Connections {
         target: NaComm
@@ -56,6 +59,12 @@ Dialog {
             }
 
             TabButton {
+                visible: settings.value("ai/enabled", false)
+                text: qsTr("Agent")
+                width: implicitWidth
+            }
+
+            TabButton {
                 visible: NaCore.plansEnabled
                 text: qsTr("Plan")
                 width: implicitWidth
@@ -90,6 +99,11 @@ Dialog {
                 GlobalSettings {id: global}
             }
             Item {
+                id: agentTab
+                visible: settings.value("ai/enabled", false)
+                AgentSettings { id: agent }
+            }
+            Item {
                 id: planTab
                 visible: NaCore.plansEnabled
                 PlanSettings {id: plan}
@@ -113,6 +127,7 @@ Dialog {
         NaCore.debugLog("Saving all settings...")
         //server.commit()
         global.commit()
+        agent.commit()
         preferences.commit()
         advanced.commit()
         notifications.commit()

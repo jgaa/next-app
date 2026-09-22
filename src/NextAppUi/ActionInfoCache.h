@@ -6,7 +6,7 @@
 
 #include <QColor>
 #include <QObject>
-#include <QQmlEngine>
+//#include <QQmlEngine>
 #include <QUuid>
 
 #include "nextapp.qpb.h"

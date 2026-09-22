@@ -2,6 +2,9 @@
 #include <string_view>
 #include <fstream>
 #include "ServerComm.h"
+#ifdef NEXTAPP_WITH_MCP
+#include "mcp/McpRequestStore.h"
+#endif
 #include "logging.h"
 
 #include <QSettings>
@@ -832,6 +835,21 @@ void ServerComm::markActionAsDone(const QString &actionUuid, bool done)
     req.setDone(done);
 
     rpcQueueAndExecute<QueuedRequest::Type::MARK_ACTION_AS_DONE>(req);
+}
+
+QCoro::Task<nextapp::pb::Status> ServerComm::addActionDirect(const nextapp::pb::Action& action)
+{
+    co_return co_await rpc(action, &nextapp::pb::Nextapp::Client::CreateAction);
+}
+
+QCoro::Task<nextapp::pb::Status> ServerComm::updateActionDirect(const nextapp::pb::Action& action)
+{
+    co_return co_await rpc(action, &nextapp::pb::Nextapp::Client::UpdateAction);
+}
+
+QCoro::Task<nextapp::pb::Status> ServerComm::markActionDoneDirect(const nextapp::pb::ActionDoneReq& request)
+{
+    co_return co_await rpc(request, &nextapp::pb::Nextapp::Client::MarkActionAsDone);
 }
 
 void ServerComm::markActionAsFavorite(const QString &actionUuid, bool favorite)
@@ -2798,6 +2816,15 @@ failed:
 
         if (full_sync) {
             addMessage(tr("Swithing to new data..."));
+#ifdef NEXTAPP_WITH_MCP
+            // The staged database intentionally contains only synchronized data.
+            // Preserve the local-only MCP idempotency and audit records before the swap.
+            if (!co_await nextapp::mcp::McpRequestStore::copyToStagedDatabase(runtime_.db(), *staged_db)) {
+                LOG_WARN_N << "Failed to preserve local MCP records during full sync.";
+                co_await abort_staged_full_sync();
+                goto failed;
+            }
+#endif
             if (!co_await staged_db->legacyQuery("COMMIT")) {
                 LOG_WARN_N << "Failed to commit staged full sync transaction.";
                 co_await abort_staged_full_sync();

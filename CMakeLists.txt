@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 if (NOT DEFINED NEXTAPP_VERSION)
-    set(NEXTAPP_VERSION 0.25.4) # MajorVersion.MinorVersion.PatchVersion
+    set(NEXTAPP_VERSION 0.25.0) # MajorVersion.MinorVersion.PatchVersion
 endif()
 
 project(next-app
@@ -66,6 +66,7 @@ endif()
 option(NEXTAPP_WITH_TESTS "Enable Nestapp Tests" OFF)
 option(NEXTAPP_BOOST_USE_STATIC_LIBS "Link statically with boost libraries" ON)
 option(NEXTAPP_WITH_UI "Include the UI project in the build" ON)
+option(NEXTAPP_WITH_AI "Include experimental AI features" ON)
 option(NEXTAPP_WITH_PLANS "Include the plans in the build" ON)
 option(NEXTAPP_FLATPAK_BUILD "Enable Flatpak-specific build adjustments" OFF)
 if (NEXTAPP_FLATPAK_BUILD)

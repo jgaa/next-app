@@ -78,6 +78,26 @@ public:
     virtual void updateActions(const nextapp::pb::UpdateActionsReq& action) = 0;
     virtual void deleteAction(const QString& actionUuid) = 0;
     virtual void markActionAsDone(const QString& actionUuid, bool done) = 0;
+    // MCP deliberately bypasses the durable offline queue: the caller needs the
+    // terminal gRPC status for the open, idempotent MCP operation.
+    virtual QCoro::Task<nextapp::pb::Status> addActionDirect(const nextapp::pb::Action&) {
+        nextapp::pb::Status status;
+        status.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
+        status.setMessage(QStringLiteral("Direct action mutations are unavailable"));
+        co_return status;
+    }
+    virtual QCoro::Task<nextapp::pb::Status> updateActionDirect(const nextapp::pb::Action&) {
+        nextapp::pb::Status status;
+        status.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
+        status.setMessage(QStringLiteral("Direct action mutations are unavailable"));
+        co_return status;
+    }
+    virtual QCoro::Task<nextapp::pb::Status> markActionDoneDirect(const nextapp::pb::ActionDoneReq&) {
+        nextapp::pb::Status status;
+        status.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
+        status.setMessage(QStringLiteral("Direct action mutations are unavailable"));
+        co_return status;
+    }
     virtual void markActionAsFavorite(const QString& actionUuid, bool favorite) = 0;
     virtual void startWork(const QString& actionId, bool activate = false) = 0;
     virtual void addWorkFromTimeBlock(const QString& timeBlockUuid) = 0;

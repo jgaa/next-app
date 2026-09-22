@@ -39,6 +39,12 @@ if (NEXTAPP_WITH_TESTS)
     option(NEXTAPP_WITH_TESTS_UI "Enable Nextapp UI Tests" ON)
 endif()
 option(NEXTAPP_USE_GRPC_STREAMING_FLOW_CONTROL "Use gRPC flow control. If disabled, caches the stream in memory." OFF)
+option(NEXTAPP_WITH_MCP "Include the experimental local MCP interface" ${NEXTAPP_WITH_AI})
+# MCP is an AI Phase 1 feature.  It must not remain enabled merely because an
+# earlier configure left the option cached as ON.
+if (NOT NEXTAPP_WITH_AI)
+    set(NEXTAPP_WITH_MCP OFF CACHE BOOL "Include the experimental local MCP interface" FORCE)
+endif()
 option(NEXTAPP_DB_COPY_BATCH_DATA "Copy database batch data before queued coroutine writes" OFF)
 option(NEXTAPP_EXPAT_FIX "Injects a dependency for expat in fontconfig to deal with a breakage in vcpkg/fontconfig/qtbase" OFF)
 set(NEXTAPP_DESKTOP_FILE_NAME "" CACHE STRING "Desktop file ID used by Linux desktop portals, without the .desktop suffix.")
@@ -149,6 +155,16 @@ find_package(Qt6 REQUIRED COMPONENTS
     ProtobufQtCoreTypes
     ProtobufWellKnownTypes
 )
+
+if (NEXTAPP_WITH_AI)
+    # AI Phase 1 includes the local MCP HTTP interface.  Do not silently
+    # build an AI-enabled client without its transport dependency.
+    find_package(Qt6 REQUIRED COMPONENTS HttpServer)
+endif()
+
+if (NEXTAPP_WITH_MCP AND ANDROID)
+    message(FATAL_ERROR "NEXTAPP_WITH_MCP is not supported on Android")
+endif()
 
 set(PB_WELL_KNOWN_TYPES_LIB "")
 find_package(Qt6 QUIET COMPONENTS ProtobufWellKnownTypesPrivate)
@@ -361,6 +377,25 @@ target_link_libraries(na_grpc_lib
 
 add_library(NextAppUiCoreLib STATIC)
 qt_add_library(NextAppUiLib STATIC)
+
+if (NEXTAPP_WITH_MCP)
+    add_library(NextAppMcp STATIC
+        mcp/McpProtocol.cpp
+        mcp/McpProtocol.h
+        mcp/McpRequestStore.cpp
+        mcp/McpRequestStore.h
+        mcp/McpGateway.cpp
+        mcp/McpGateway.h
+        mcp/McpHttpServer.cpp
+        mcp/McpHttpServer.h
+    )
+    target_include_directories(NextAppMcp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(NextAppMcp PUBLIC
+        na_grpc_lib na_proto_lib
+        Qt6::Concurrent Qt6::Core Qt6::Grpc Qt6::Gui Qt6::HttpServer Qt6::Protobuf
+        Qt6::ProtobufQtCoreTypes Qt6::Sql QCoro6::Core)
+    target_compile_definitions(NextAppMcp PUBLIC NEXTAPP_WITH_MCP=1)
+endif()
 
 qt_add_executable(${PROJECT_NAME}
     main.cpp
@@ -714,6 +749,7 @@ qt_add_qml_module(NextAppUiLib
         qml/onboard/OnboardingServer.qml
         qml/onboard/OnboardingWelcome.qml
         qml/settings/AdvancedSettings.qml
+        qml/settings/AgentSettings.qml
         qml/settings/DeleteAccountConfirmation.qml
         qml/settings/GlobalSettings.qml
         qml/settings/NotificationSettings.qml
@@ -816,6 +852,7 @@ target_link_libraries(NextAppUiCoreLib
         ${OPEN_SSL_CORE_DEPS}
         ${FMT_DEPS}
         miniaudio
+        $<$<BOOL:${NEXTAPP_WITH_MCP}>:NextAppMcp>
 )
 
 target_compile_definitions(NextAppUiCoreLib

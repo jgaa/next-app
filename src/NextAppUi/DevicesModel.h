@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
-#include <QQmlEngine>
+//#include <QQmlEngine>
 #include "qcorotask.h"
 
 #include "nextapp.qpb.h"
