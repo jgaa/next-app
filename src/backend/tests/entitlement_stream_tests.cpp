@@ -19,14 +19,14 @@ namespace {
 
 using Stream = nextapp::AsyncClientReadReactor<
     payments::v1::SubscribeEntitlementChangesRequest,
-    payments::v1::EntitlementChangeEvent>;
+    payments::v1::EntitlementNotification>;
 
 class NotificationService final : public payments::v1::EntitlementNotificationsService::Service {
 public:
-    grpc::Status SubscribeEntitlementChanges(
+    grpc::Status SubscribeEntitlementNotifications(
         grpc::ServerContext* context,
         const payments::v1::SubscribeEntitlementChangesRequest*,
-        grpc::ServerWriter<payments::v1::EntitlementChangeEvent>* writer) override
+        grpc::ServerWriter<payments::v1::EntitlementNotification>* writer) override
     {
         {
             std::scoped_lock lock{mutex_};
@@ -44,10 +44,10 @@ public:
             if (events_.empty()) {
                 continue;
             }
-            auto event = std::move(events_.front());
+            auto notification = std::move(events_.front());
             events_.pop_front();
             lock.unlock();
-            if (!writer->Write(event)) {
+            if (!writer->Write(notification)) {
                 break;
             }
         }
@@ -56,14 +56,26 @@ public:
 
     void publish(std::string id, uint64_t version)
     {
-        payments::v1::EntitlementChangeEvent event;
-        event.set_event_id(std::move(id));
-        event.set_subject_id("tenant");
-        event.mutable_entitlement()->set_product_id("nextapp");
-        event.mutable_entitlement()->set_version(version);
+        payments::v1::EntitlementNotification notification;
+        auto* event = notification.mutable_change();
+        event->set_event_id(std::move(id));
+        event->set_subject_id("tenant");
+        event->mutable_entitlement()->set_product_id("nextapp");
+        event->mutable_entitlement()->set_version(version);
         {
             std::scoped_lock lock{mutex_};
-            events_.push_back(std::move(event));
+            events_.push_back(std::move(notification));
+        }
+        events_changed_.notify_all();
+    }
+
+    void heartbeat()
+    {
+        payments::v1::EntitlementNotification notification;
+        notification.mutable_heartbeat();
+        {
+            std::scoped_lock lock{mutex_};
+            events_.push_back(std::move(notification));
         }
         events_changed_.notify_all();
     }
@@ -86,7 +98,7 @@ private:
     mutable std::mutex mutex_;
     std::condition_variable events_changed_;
     std::condition_variable subscriptions_changed_;
-    std::deque<payments::v1::EntitlementChangeEvent> events_;
+    std::deque<payments::v1::EntitlementNotification> events_;
     size_t subscriptions_{};
 };
 
@@ -137,8 +149,8 @@ protected:
             io_, std::move(request),
             [this](grpc::ClientContext& context,
                    const payments::v1::SubscribeEntitlementChangesRequest* request,
-                   grpc::ClientReadReactor<payments::v1::EntitlementChangeEvent>* reactor) {
-                stub_->async()->SubscribeEntitlementChanges(&context, request, reactor);
+                   grpc::ClientReadReactor<payments::v1::EntitlementNotification>* reactor) {
+                stub_->async()->SubscribeEntitlementNotifications(&context, request, reactor);
             });
         stream->start();
         return stream;
@@ -169,8 +181,9 @@ TEST_F(EntitlementStreamTest, DeliversEventsNormally)
     const auto result = wait(stream->readFor(2s));
     ASSERT_EQ(result.outcome, Stream::ReadOutcome::message);
     ASSERT_TRUE(result.message);
-    EXPECT_EQ(result.message->event_id(), "event-1");
-    EXPECT_EQ(result.message->entitlement().version(), 1);
+    ASSERT_TRUE(result.message->has_change());
+    EXPECT_EQ(result.message->change().event_id(), "event-1");
+    EXPECT_EQ(result.message->change().entitlement().version(), 1);
     stream->cancel();
     EXPECT_FALSE(wait(stream->waitForDone()).ok());
 }
@@ -205,30 +218,24 @@ TEST_F(EntitlementStreamTest, ServerRestartAllowsResubscriptionAndDelivery)
     const auto result = wait(replacement->readFor(2s));
     ASSERT_EQ(result.outcome, Stream::ReadOutcome::message);
     ASSERT_TRUE(result.message);
-    EXPECT_EQ(result.message->event_id(), "after-restart");
-    EXPECT_EQ(result.message->entitlement().version(), 2);
+    ASSERT_TRUE(result.message->has_change());
+    EXPECT_EQ(result.message->change().event_id(), "after-restart");
+    EXPECT_EQ(result.message->change().entitlement().version(), 2);
     replacement->cancel();
     (void)wait(replacement->waitForDone());
 }
 
-TEST_F(EntitlementStreamTest, SilentStreamIsCancelledAndResubscribed)
+TEST_F(EntitlementStreamTest, HeartbeatIsDeliveredDuringAnOtherwiseIdleStream)
 {
-    auto stale = makeStream();
+    auto stream = makeStream();
     ASSERT_TRUE(service_->waitForSubscriptions(1, 2s));
-    EXPECT_EQ(wait(stale->readFor(100ms)).outcome, Stream::ReadOutcome::timeout);
-    stale->cancel();
-    EXPECT_FALSE(wait(stale->waitForDone()).ok());
-
-    auto replacement = makeStream();
-    ASSERT_TRUE(service_->waitForSubscriptions(2, 2s));
-    service_->publish("event-after-reconnect", 2);
-    const auto result = wait(replacement->readFor(2s));
+    service_->heartbeat();
+    const auto result = wait(stream->readFor(2s));
     ASSERT_EQ(result.outcome, Stream::ReadOutcome::message);
     ASSERT_TRUE(result.message);
-    EXPECT_EQ(result.message->event_id(), "event-after-reconnect");
-    EXPECT_EQ(result.message->entitlement().version(), 2);
-    replacement->cancel();
-    (void)wait(replacement->waitForDone());
+    EXPECT_TRUE(result.message->has_heartbeat());
+    stream->cancel();
+    EXPECT_FALSE(wait(stream->waitForDone()).ok());
 }
 
 TEST_F(EntitlementStreamTest, CleanCancellationDoesNotCreateAnotherSubscription)

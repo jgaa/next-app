@@ -85,12 +85,12 @@ struct PaymentOptions {
      */
     uint32_t plan_sync_interval_seconds = 60 * 60 * 3;
 
-    /*! Maximum time an entitlement stream may be silent before it is
-     *  cancelled and recreated. The notification protocol currently has no
-     *  heartbeat, so a bounded reconnect is the only application-level way
-     *  to distinguish a quiet stream from a silently stale one.
+    /*! Maximum time an entitlement notification stream may go without a
+     *  heartbeat or entitlement change before it is cancelled and recreated.
+     *  The payment service sends a heartbeat every 60 seconds; the default
+     *  allows three missed heartbeats.
      */
-    uint32_t entitlement_stream_max_silence_seconds = 5 * 60;
+    uint32_t entitlement_stream_max_silence_seconds = 3 * 60;
 
     uint32_t grace_period_days = 7;
 };

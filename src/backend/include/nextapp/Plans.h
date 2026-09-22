@@ -107,7 +107,7 @@ private:
 
     using EntitlementStream = AsyncClientReadReactor<
         payments::v1::SubscribeEntitlementChangesRequest,
-        payments::v1::EntitlementChangeEvent>;
+        payments::v1::EntitlementNotification>;
 
     template <ProtoMessage ReplyT, ProtoMessage ReqT, typename T>
     struct CallData {

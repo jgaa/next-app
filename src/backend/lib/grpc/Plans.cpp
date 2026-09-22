@@ -877,8 +877,8 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
             std::move(req),
             [this](::grpc::ClientContext& ctx,
                    const payments::v1::SubscribeEntitlementChangesRequest* request,
-                   ::grpc::ClientReadReactor<payments::v1::EntitlementChangeEvent>* reactor) {
-                notifications_stub_->async()->SubscribeEntitlementChanges(&ctx, request, reactor);
+                   ::grpc::ClientReadReactor<payments::v1::EntitlementNotification>* reactor) {
+                notifications_stub_->async()->SubscribeEntitlementNotifications(&ctx, request, reactor);
             },
             [this] (bool ok) {
                 server().metrics().setPaymentNotificationsConnected(ok);
@@ -913,7 +913,7 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
                     stale = true;
                     server().metrics().paymentNotificationStaleDetections().inc();
                     server().metrics().setPaymentNotificationsConnected(false);
-                    LOG_WARN_N << "Payment entitlement stream had no activity for "
+                    LOG_WARN_N << "Payment entitlement stream received no heartbeat or entitlement change for "
                                << max_silence.count()
                                << " seconds; treating it as stale and cancelling it.";
                     stream->cancel();
@@ -923,8 +923,18 @@ asio::awaitable<void> Plans::runEntitlementSubscriptionLoop()
                     break;
                 }
 
-                const auto& event = *result.message;
+                const auto& notification = *result.message;
                 healthy = true;
+                if (notification.has_heartbeat()) {
+                    LOG_DEBUG_N << "Received payment entitlement stream heartbeat.";
+                    continue;
+                }
+                if (!notification.has_change()) {
+                    LOG_WARN_N << "Received payment entitlement notification without a payload.";
+                    continue;
+                }
+
+                const auto& event = notification.change();
                 server().metrics().paymentNotificationEvents().inc();
                 LOG_INFO << "Received payment entitlement event " << event.event_id()
                          << " for tenant " << event.subject_id()

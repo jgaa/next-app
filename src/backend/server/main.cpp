@@ -277,7 +277,7 @@ int main(int argc, char* argv[]) {
             ("payment-entitlement-max-silence-seconds",
              po::value(&config.payment.entitlement_stream_max_silence_seconds)
                  ->default_value(config.payment.entitlement_stream_max_silence_seconds),
-             "Cancel and recreate a payment entitlement stream after this many seconds without an event.")
+             "Cancel and recreate a payment entitlement stream after this many seconds without a heartbeat or entitlement change.")
             ;
 
         po::options_description metrics("Metrics");
