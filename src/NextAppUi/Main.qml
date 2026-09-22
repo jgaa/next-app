@@ -118,6 +118,12 @@ ApplicationWindow {
                 connectionFailureDialogLoader.item.open()
             }
         }
+
+        function onConnectedChanged() {
+            if (NaComm.connected) {
+                connectionFailureDialogLoader.active = false
+            }
+        }
     }
 
     Loader {
@@ -128,7 +134,9 @@ ApplicationWindow {
 
         onLoaded: {
             item.details = failureDetails
-            item.open()
+            if (!NaComm.connected) {
+                item.open()
+            }
         }
     }
 
