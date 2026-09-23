@@ -98,6 +98,18 @@ public:
         status.setMessage(QStringLiteral("Direct action mutations are unavailable"));
         co_return status;
     }
+    virtual QCoro::Task<nextapp::pb::Status> createNodeDirect(const nextapp::pb::CreateNodeReq&) {
+        nextapp::pb::Status status;
+        status.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
+        status.setMessage(QStringLiteral("Direct node mutations are unavailable"));
+        co_return status;
+    }
+    virtual QCoro::Task<nextapp::pb::Status> updateNodeDirect(const nextapp::pb::Node&) {
+        nextapp::pb::Status status;
+        status.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);
+        status.setMessage(QStringLiteral("Direct node mutations are unavailable"));
+        co_return status;
+    }
     virtual void markActionAsFavorite(const QString& actionUuid, bool favorite) = 0;
     virtual void startWork(const QString& actionId, bool activate = false) = 0;
     virtual void addWorkFromTimeBlock(const QString& timeBlockUuid) = 0;

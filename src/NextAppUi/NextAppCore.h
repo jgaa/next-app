@@ -4,6 +4,12 @@
 //#include <QQmlEngine>
 //#include <QQmlApplicationEngine>
 #include <QGuiApplication>
+#include <QFuture>
+#include <QHash>
+#include <QPointer>
+#include <QPromise>
+#include <QQueue>
+#include <QTimer>
 #include <QVariantMap>
 #include <optional>
 
@@ -61,6 +67,8 @@ public:
     Q_PROPERTY(bool canAddLimitedResources READ canAddLimitedResources NOTIFY sessionAccessModeChanged)
     Q_PROPERTY(QString sessionAccessMessage READ sessionAccessMessage NOTIFY sessionAccessModeChanged)
     Q_PROPERTY(QString mcpEndpoint READ mcpEndpoint NOTIFY mcpEndpointChanged)
+    Q_PROPERTY(QVariantMap mcpPendingApproval READ mcpPendingApproval NOTIFY mcpPendingApprovalChanged)
+    Q_PROPERTY(QVariantList mcpActivityHistory READ mcpActivityHistory NOTIFY mcpActivityHistoryChanged)
 
     enum class ClickInitiator {
         NONE,
@@ -123,6 +131,9 @@ public:
     Q_INVOKABLE QString mcpCredential();
     Q_INVOKABLE QString rotateMcpCredential();
     Q_INVOKABLE bool copyToClipboard(const QString& text) const;
+    Q_INVOKABLE void resolveMcpApproval(const QString& requestId, bool approved, bool alwaysAllow);
+    QVariantMap mcpPendingApproval() const;
+    QVariantList mcpActivityHistory() const;
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
@@ -216,6 +227,9 @@ public:
     void setAppProperty(const QString& name, const QVariant& value) override;
     QQmlEngine& qmlEngine() const noexcept override;
     bool isMobileUi() const noexcept override;
+    QFuture<McpApprovalDecision> requestMcpApproval(const QVariantMap& operation) override;
+    void cancelMcpApprovals() override;
+    void recordMcpActivity(const QVariantMap& event) override;
 
     void showSyncPopup(bool visible) override;
 
@@ -296,6 +310,8 @@ signals:
     void dragEnabledChanged();
     void settingsChanged();
     void mcpEndpointChanged();
+    void mcpPendingApprovalChanged();
+    void mcpActivityHistoryChanged();
     void propertyChanged(const QString& name);
     void stateChanged();
     void wokeFromSleep();
@@ -338,6 +354,14 @@ private:
 #ifdef NEXTAPP_WITH_MCP
     std::unique_ptr<nextapp::mcp::McpHttpServer> mcp_http_server_;
 #endif
+    struct McpApproval {
+        QVariantMap operation;
+        QSharedPointer<QPromise<McpApprovalDecision>> promise;
+        QPointer<QTimer> timer;
+    };
+    QHash<QString, McpApproval> mcp_approvals_;
+    QQueue<QString> mcp_approval_queue_;
+    QVariantList mcp_activity_history_;
 
     int height_{0};
     int width_{0};

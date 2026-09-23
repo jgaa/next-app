@@ -852,6 +852,16 @@ QCoro::Task<nextapp::pb::Status> ServerComm::markActionDoneDirect(const nextapp:
     co_return co_await rpc(request, &nextapp::pb::Nextapp::Client::MarkActionAsDone);
 }
 
+QCoro::Task<nextapp::pb::Status> ServerComm::createNodeDirect(const nextapp::pb::CreateNodeReq& request)
+{
+    co_return co_await rpc(request, &nextapp::pb::Nextapp::Client::CreateNode);
+}
+
+QCoro::Task<nextapp::pb::Status> ServerComm::updateNodeDirect(const nextapp::pb::Node& node)
+{
+    co_return co_await rpc(node, &nextapp::pb::Nextapp::Client::UpdateNode);
+}
+
 void ServerComm::markActionAsFavorite(const QString &actionUuid, bool favorite)
 {
     nextapp::pb::ActionFavoriteReq req;

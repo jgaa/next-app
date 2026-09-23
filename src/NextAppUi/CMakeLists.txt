@@ -661,6 +661,7 @@ qt_add_qml_module(NextAppUiLib
     VERSION ${VERSION}
     QML_FILES
         Main.qml
+        qml/McpApprovalDialog.qml
         qml/About.qml
         qml/ActionStatisticsView.qml
         qml/ActionStatsDlg.qml

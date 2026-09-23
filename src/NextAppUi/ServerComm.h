@@ -231,6 +231,8 @@ public:
     QCoro::Task<nextapp::pb::Status> addActionDirect(const nextapp::pb::Action& action) override;
     QCoro::Task<nextapp::pb::Status> updateActionDirect(const nextapp::pb::Action& action) override;
     QCoro::Task<nextapp::pb::Status> markActionDoneDirect(const nextapp::pb::ActionDoneReq& request) override;
+    QCoro::Task<nextapp::pb::Status> createNodeDirect(const nextapp::pb::CreateNodeReq& request) override;
+    QCoro::Task<nextapp::pb::Status> updateNodeDirect(const nextapp::pb::Node& node) override;
     void markActionAsFavorite(const QString& actionUuid, bool favorite) override;
     void getActiveWorkSessions();
     void startWork(const QString& actionId, bool activate = false) override;

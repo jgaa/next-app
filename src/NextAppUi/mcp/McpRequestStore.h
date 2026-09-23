@@ -20,6 +20,7 @@ struct StoredRequest {
     QJsonObject arguments;
     OperationState state{OperationState::Validating};
     QJsonObject result;
+    bool newly_reserved{};
 };
 
 class McpRequestStore {
@@ -32,6 +33,7 @@ public:
                                                       const QString& idempotency_key,
                                                       const QString& operation,
                                                       const QJsonObject& arguments);
+    QCoro::Task<std::optional<StoredRequest>> get(const QString& agent_id, const QString& request_id);
     QCoro::Task<bool> transition(const QString& request_id, OperationState from,
                                  OperationState to, const QJsonObject& result = {});
     QCoro::Task<void> abortNonterminal(OperationState terminal_state);

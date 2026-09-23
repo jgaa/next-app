@@ -21,6 +21,7 @@ Rectangle
     property bool autoToggle: true
     property string bgColor: "transparent"
     property bool attentionAnimation: false
+    readonly property bool hovered: mouseArea.containsMouse
 
     width: childrenRect.width
     height: childrenRect.height
@@ -56,6 +57,7 @@ Rectangle
     }
 
     MouseArea {
+        id: mouseArea
         anchors.fill: parent
         hoverEnabled: true
 

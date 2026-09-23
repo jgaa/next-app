@@ -78,7 +78,16 @@ QCoro::Task<std::optional<StoredRequest>> McpRequestStore::reserve(const QString
         stored.request_id, agent_id, idempotency_key, hash, operation,
         QJsonDocument(arguments).toJson(QJsonDocument::Compact), stateName(stored.state), QByteArray{"{}"}, QDateTime::currentSecsSinceEpoch());
     if (!inserted || !co_await db_.commitExclusiveTransaction(token)) { (void) co_await db_.rollbackExclusiveTransaction(token); co_return std::nullopt; }
+    stored.newly_reserved = true;
     co_return stored;
+}
+
+QCoro::Task<std::optional<StoredRequest>> McpRequestStore::get(const QString& agent_id, const QString& request_id) {
+    const auto result = co_await db_.query(
+        "SELECT request_id,agent_id,idempotency_key,request_hash,operation,arguments,state,COALESCE(result,'{}') "
+        "FROM mcp_request WHERE agent_id=? AND request_id=?", agent_id, request_id);
+    if (!result || result->rows.isEmpty()) co_return std::nullopt;
+    co_return fromRow(result->rows.front());
 }
 
 QCoro::Task<bool> McpRequestStore::transition(const QString& request_id, OperationState from, OperationState to, const QJsonObject& result) {

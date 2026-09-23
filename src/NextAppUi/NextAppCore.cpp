@@ -5,6 +5,7 @@
 
 #include <CalendarModel.h>
 #include <algorithm>
+#include <utility>
 #include <QDateTime>
 #include <QClipboard>
 #include <QRegularExpression>
@@ -396,6 +397,7 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
 
 NextAppCore::~NextAppCore()
 {
+    cancelMcpApprovals();
 #ifdef NEXTAPP_WITH_MCP
     if (mcp_http_server_) {
         mcp_http_server_->stop();
@@ -751,6 +753,90 @@ bool NextAppCore::copyToClipboard(const QString& text) const
     }
     LOG_ERROR_N << "Copy failed: clipboard is not available";
     return false;
+}
+
+QVariantMap NextAppCore::mcpPendingApproval() const
+{
+    for (const auto& request_id : mcp_approval_queue_) {
+        if (const auto it = mcp_approvals_.constFind(request_id); it != mcp_approvals_.cend())
+            return it->operation;
+    }
+    return {};
+}
+
+QVariantList NextAppCore::mcpActivityHistory() const
+{
+    return mcp_activity_history_;
+}
+
+QFuture<RuntimeServices::McpApprovalDecision> NextAppCore::requestMcpApproval(const QVariantMap& operation)
+{
+    auto promise = QSharedPointer<QPromise<McpApprovalDecision>>::create();
+    const auto future = promise->future();
+    const auto request_id = operation.value(QStringLiteral("requestId")).toString();
+    const auto limit = std::clamp(settings().value(QStringLiteral("ai/mcp/limits/pending_approvals"), 8).toInt(), 1, 8);
+    if (request_id.isEmpty() || mcp_approvals_.contains(request_id) || mcp_approvals_.size() >= limit) {
+        promise->addResult(McpApprovalDecision::Reject);
+        promise->finish();
+        return future;
+    }
+
+    auto *timer = new QTimer(this);
+    timer->setSingleShot(true);
+    const auto timeout_seconds = std::clamp(settings().value(QStringLiteral("ai/mcp/limits/approval_timeout"), 120).toInt(), 1, 600);
+    McpApproval approval{operation, promise, timer};
+    mcp_approvals_.insert(request_id, approval);
+    mcp_approval_queue_.enqueue(request_id);
+    connect(timer, &QTimer::timeout, this, [this, request_id] {
+        const auto approval = mcp_approvals_.take(request_id);
+        if (!approval.promise) return;
+        approval.promise->addResult(McpApprovalDecision::Expired);
+        approval.promise->finish();
+        if (approval.timer) approval.timer->deleteLater();
+        emit mcpPendingApprovalChanged();
+    });
+    timer->start(std::chrono::seconds(timeout_seconds));
+    emit mcpPendingApprovalChanged();
+    return future;
+}
+
+void NextAppCore::resolveMcpApproval(const QString& requestId, bool approved, bool alwaysAllow)
+{
+    const auto approval = mcp_approvals_.take(requestId);
+    if (!approval.promise) return;
+    if (approved && alwaysAllow) {
+        const auto operation = approval.operation.value(QStringLiteral("operation")).toString();
+        if (!operation.isEmpty()) {
+            settings().setValue(QStringLiteral("ai/mcp/gate/") + operation, QStringLiteral("Always allow"));
+            settings().sync();
+        }
+    }
+    approval.promise->addResult(approved ? McpApprovalDecision::Approve : McpApprovalDecision::Reject);
+    approval.promise->finish();
+    if (approval.timer) approval.timer->deleteLater();
+    emit mcpPendingApprovalChanged();
+}
+
+void NextAppCore::cancelMcpApprovals()
+{
+    const auto approvals = std::exchange(mcp_approvals_, {});
+    mcp_approval_queue_.clear();
+    for (const auto& approval : approvals) {
+        approval.promise->addResult(McpApprovalDecision::Cancelled);
+        approval.promise->finish();
+        if (approval.timer) approval.timer->deleteLater();
+    }
+    emit mcpPendingApprovalChanged();
+}
+
+void NextAppCore::recordMcpActivity(const QVariantMap& event)
+{
+    auto entry = event;
+    entry.insert(QStringLiteral("timestamp"), QDateTime::currentDateTime());
+    mcp_activity_history_.prepend(entry);
+    constexpr qsizetype maximum_history = 100;
+    while (mcp_activity_history_.size() > maximum_history) mcp_activity_history_.removeLast();
+    emit mcpActivityHistoryChanged();
 }
 
 QQmlApplicationEngine &NextAppCore::engine()

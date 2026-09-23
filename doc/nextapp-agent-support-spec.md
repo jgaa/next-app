@@ -165,12 +165,15 @@ Credential creation, storage, rotation, and migration to an operating-system cre
 
 Phase 1 does not depend on a general-purpose MCP SDK. It uses Qt HTTP Server for HTTP request handling and an intentionally small NextApp-native MCP layer implemented with Qt JSON types and the existing QCoro-based services.
 
-The initial implementation is pinned to the current MCP protocol revision, `2026-07-28`. Additional revisions are added only when required for interoperability with a target client. This revision is stateless and carries protocol version, client capabilities, and optional client information on every request, so Phase 1 does not implement the legacy initialization handshake or protocol-level sessions.
+The implementation supports the current stateless MCP protocol revision, `2026-07-28`, and the `2025-03-26` Streamable HTTP request path used by Jan. Modern requests carry the published namespaced `_meta` keys (`io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities`) and matching HTTP headers. The legacy path accepts `initialize`, `notifications/initialized`, and ordinary requests with optional progress metadata. It does not mint protocol-level session IDs. Unknown legacy versions are offered `2025-03-26` during initialization; the client decides whether to accept that version. The adapter accepts harmless optional metadata and known legacy header omissions, but sends responses in the shape required by the selected revision.
+
+The exposed tool names use a `nextapp_` prefix so aggregated agent tool catalogs identify their owner. Action tools are `nextapp_get_action`, `nextapp_list_actions`, `nextapp_search_actions`, `nextapp_create_action`, `nextapp_update_action`, and `nextapp_complete_action`. `nextapp_get_request_status` retrieves the state and outcome of a mutation by request ID. List/node tools are `nextapp_list_nodes`, `nextapp_search_nodes`, `nextapp_create_node`, and `nextapp_update_node`; a list is a node, and node kind defaults to Folder on creation. `nextapp_list_categories` and `nextapp_search_categories` expose action categories. Node deletion is not exposed to MCP. Internal mutation gate and audit operation keys retain their existing names. `nextapp_create_action` defaults to the node marked as Inbox when `nodeId` is omitted. An explicit `nodeId` must identify a node in the local cache, such as one returned by `nextapp_list_nodes`; an invented ID is rejected before approval. The backend remains the final authority for ownership and node validity. Node listings return active nodes only and default to a short form containing `nodeId`, name, kind, parent ID, and `inbox` only for the Inbox; `format: "full"` adds details and version. Node updates are patches with a required base version and cannot move or delete a node. Creating and updating nodes have separate MCP mutation gates, disabled by default.
 
 The native layer supports only the protocol needed by NextApp:
 
 - JSON-RPC 2.0 requests, responses, and errors;
-- the required per-request `_meta` fields and corresponding Streamable HTTP headers;
+- the required namespaced per-request `_meta` fields and corresponding Streamable HTTP headers for modern requests;
+- `server/discover` for modern clients, plus legacy initialization, ping, and empty resource and prompt list probes;
 - exact validation that the mirrored protocol version, method, and tool name headers match the JSON body;
 - `tools/list`, in deterministic order and with a bounded cursor if pagination is needed;
 - `tools/call`;
@@ -255,9 +258,9 @@ The dialog must not render arbitrary rich text, remote images, active links, or 
 
 ## Waiting behavior
 
-Phase 1 may keep the MCP tool call open while the confirmation dialog is pending, subject to a short configurable timeout. This is intentionally a prototype simplification.
+Phase 1 returns a normal MCP tool result with `state: "PENDING"` and a stable `requestId` as soon as a local confirmation is queued. The HTTP request does not wait for the user to respond. The mutation continues in the client process, and `nextapp_get_request_status` returns the current state and recorded result. Agents must poll that tool rather than repeat the mutation with a new idempotency key. A retry with the same key and identical request returns the existing request state or terminal result. The configurable approval timeout still bounds the pending confirmation, independently of the MCP client's HTTP timeout.
 
-For a mutation using a request-scoped SSE response, the client closing that response stream cancels the associated MCP operation. Loss of an unrelated or idle HTTP connection has no effect because the protocol is stateless. UI exit, disabling AI or MCP, operation timeout, transition offline, or synchronization start also cancels requests that have not been submitted to gRPC. Pending requests do not resume after a client restart in phase 1.
+For a future mutation using a request-scoped SSE response, the client closing that response stream may cancel the associated MCP operation. An ordinary HTTP client disconnect after a `PENDING` response does not cancel the local confirmation. UI exit, disabling AI or MCP, operation timeout, transition offline, or synchronization start cancels requests that have not been submitted to gRPC. Pending requests do not resume after a client restart in phase 1.
 
 When the client goes offline, all MCP operations are cancelled and their records receive `ABORTED_OFFLINE`. If a direct gRPC mutation had already been submitted, its server outcome may be marked unknown in addition to `ABORTED_OFFLINE`; it is never replayed automatically when the client reconnects.
 

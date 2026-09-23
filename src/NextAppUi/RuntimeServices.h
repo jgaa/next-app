@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QFuture>
 #include <QSettings>
 #include <QString>
 #include <QVariant>
@@ -48,6 +49,7 @@ public:
 class RuntimeServices
 {
 public:
+    enum class McpApprovalDecision { Approve, Reject, Expired, Cancelled };
     virtual ~RuntimeServices() = default;
 
     virtual DbStore& db() const noexcept = 0;
@@ -64,4 +66,7 @@ public:
     virtual QObject& appEventSource() noexcept = 0;
     virtual QQmlEngine& qmlEngine() const noexcept = 0;
     virtual bool isMobileUi() const noexcept = 0;
+    virtual QFuture<McpApprovalDecision> requestMcpApproval(const QVariantMap& operation) = 0;
+    virtual void cancelMcpApprovals() = 0;
+    virtual void recordMcpActivity(const QVariantMap& event) = 0;
 };

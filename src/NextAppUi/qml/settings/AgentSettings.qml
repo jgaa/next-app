@@ -15,17 +15,25 @@ ScrollView {
         enabled.checked = settings.value("ai/mcp/enabled", false)
         listeningAddress.text = settings.value("ai/mcp/listen_address", "127.0.0.1")
         port.value = settings.value("ai/mcp/port", 58421)
+        agentName.text = settings.value("ai/mcp/agent_name", "Local agent")
+        agentId.text = settings.value("ai/mcp/agent_id", "local-agent")
         createGate.currentIndex = createGate.indexOfValue(settings.value("ai/mcp/gate/create_action", "Disabled"))
         updateGate.currentIndex = updateGate.indexOfValue(settings.value("ai/mcp/gate/update_action", "Disabled"))
         completeGate.currentIndex = completeGate.indexOfValue(settings.value("ai/mcp/gate/complete_action", "Disabled"))
+        createNodeGate.currentIndex = createNodeGate.indexOfValue(settings.value("ai/mcp/gate/create_node", "Disabled"))
+        updateNodeGate.currentIndex = updateNodeGate.indexOfValue(settings.value("ai/mcp/gate/update_node", "Disabled"))
     }
     function commit() {
         settings.setValue("ai/mcp/enabled", enabled.checked)
         settings.setValue("ai/mcp/listen_address", listeningAddress.text.trim())
         settings.setValue("ai/mcp/port", port.value)
+        settings.setValue("ai/mcp/agent_name", agentName.text.trim())
+        settings.setValue("ai/mcp/agent_id", agentId.text.trim())
         settings.setValue("ai/mcp/gate/create_action", createGate.currentValue)
         settings.setValue("ai/mcp/gate/update_action", updateGate.currentValue)
         settings.setValue("ai/mcp/gate/complete_action", completeGate.currentValue)
+        settings.setValue("ai/mcp/gate/create_node", createNodeGate.currentValue)
+        settings.setValue("ai/mcp/gate/update_node", updateNodeGate.currentValue)
         settings.sync()
     }
     onVisibleChanged: if (visible) load()
@@ -52,6 +60,20 @@ ScrollView {
             Layout.fillWidth: true
             ToolTip.visible: hovered
             ToolTip.text: qsTr("The default port is stored so the local agent can use the same URL after a restart")
+        }
+        Label { text: qsTr("Agent name") }
+        TextField {
+            id: agentName
+            Layout.fillWidth: true
+            placeholderText: qsTr("Local agent")
+            inputMethodHints: Qt.ImhNoPredictiveText
+        }
+        Label { text: qsTr("Agent ID") }
+        TextField {
+            id: agentId
+            Layout.fillWidth: true
+            placeholderText: "local-agent"
+            inputMethodHints: Qt.ImhNoPredictiveText
         }
         Label { text: qsTr("MCP endpoint") }
         RowLayout {
@@ -107,5 +129,22 @@ ScrollView {
         ComboBox { id: updateGate; textRole: "text"; valueRole: "value"; model: [{text: qsTr("Disabled"), value: "Disabled"}, {text: qsTr("Ask every time"), value: "Ask"}, {text: qsTr("Always allow"), value: "Always allow"}] }
         Label { text: qsTr("Complete actions") }
         ComboBox { id: completeGate; textRole: "text"; valueRole: "value"; model: [{text: qsTr("Disabled"), value: "Disabled"}, {text: qsTr("Ask every time"), value: "Ask"}, {text: qsTr("Always allow"), value: "Always allow"}] }
+        Label { text: qsTr("Create lists/nodes") }
+        ComboBox { id: createNodeGate; textRole: "text"; valueRole: "value"; model: [{text: qsTr("Disabled"), value: "Disabled"}, {text: qsTr("Ask every time"), value: "Ask"}, {text: qsTr("Always allow"), value: "Always allow"}] }
+        Label { text: qsTr("Update lists/nodes") }
+        ComboBox { id: updateNodeGate; textRole: "text"; valueRole: "value"; model: [{text: qsTr("Disabled"), value: "Disabled"}, {text: qsTr("Ask every time"), value: "Ask"}, {text: qsTr("Always allow"), value: "Always allow"}] }
+        Label { text: qsTr("Recent agent activity") }
+        ListView {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(160, contentHeight)
+            clip: true
+            model: NaCore.mcpActivityHistory
+            delegate: Label {
+                required property var modelData
+                width: ListView.view.width
+                elide: Text.ElideRight
+                text: "%1: %2 — %3".arg(modelData.operation || "MCP").arg(modelData.state || "").arg(modelData.requestId || "")
+            }
+        }
     }
 }

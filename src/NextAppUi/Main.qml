@@ -61,6 +61,8 @@ ApplicationWindow {
         buttons: MessageDialog.Ok
     }
 
+    McpApprovalDialog { id: mcpApprovalDialog }
+
     MessageDialog {
         id: privateCertificateExpiredDialog
         title: qsTr("Private TLS certificate expired")
@@ -581,6 +583,19 @@ ApplicationWindow {
                     onClicked: {
                         openDialog("NotificationsView.qml")
                     }
+                }
+
+                CheckBoxWithFontIcon {
+                    uncheckedCode: "\uf544"
+                    checkedCode: "\uf544"
+                    useSolidForAll: true
+                    autoToggle: false
+                    isChecked: NaCore.mcpPendingApproval.requestId !== undefined
+                    attentionAnimation: isChecked
+                    checkedColor: MaterialDesignStyling.primary
+                    ToolTip.visible: hovered
+                    ToolTip.text: isChecked ? qsTr("Agent operation awaiting approval") : qsTr("No agent operation awaiting approval")
+                    onClicked: mcpApprovalDialog.refresh()
                 }
 
                 Item {
