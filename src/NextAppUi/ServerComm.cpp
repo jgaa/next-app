@@ -1336,19 +1336,61 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
     }
 
     bool finished = false;
-    QPromise<bool> ok;
-    auto future = ok.future();
+    QPromise<QString> completion;
+    completion.start();
+    auto future = completion.future();
+    QTimer deadline;
+    deadline.setSingleShot(true);
+    const auto complete = [&](QString error) {
+        if (finished) {
+            return;
+        }
+        finished = true;
+        deadline.stop();
+        completion.addResult(std::move(error));
+        completion.finish();
+    };
+    const auto abort = [&](QString error) {
+        if (finished) {
+            return;
+        }
+        finished = true;
+        deadline.stop();
+        stream->cancel();
+        completion.addResult(std::move(error));
+        completion.finish();
+    };
 
-    QObject::connect(stream.get(), &QGrpcClientStream::finished, [&](const QGrpcStatus &status) {
+    QObject::connect(stream.get(), &QGrpcClientStream::finished, &deadline, [&](const QGrpcStatus &status) {
+        if (finished) {
+            return;
+        }
+        QString error;
         if (status.isOk()) {
-            LOG_DEBUG_N << "Import stream finished successfully.";
-            ok.addResult(true);
+            if (const auto response = stream->read<nextapp::pb::Status>();
+                response) {
+                if (response->error() != nextapp::pb::ErrorGadget::Error::OK) {
+                    error = response->message();
+                    if (error.isEmpty()) {
+                        error = tr("The server rejected the import.");
+                    }
+                    LOG_ERROR_N << "Import rejected by server: " << error;
+                } else {
+                    LOG_DEBUG_N << "Import stream finished successfully.";
+                }
+            } else {
+                error = tr("The server returned no import result.");
+                LOG_ERROR_N << error;
+            }
         } else {
             LOG_ERROR_N << "Import stream finished with error: " << status.message();
-            ok.addResult(false);
+            error = status.message().isEmpty() ? tr("The import connection failed.") : status.message();
         }
-        ok.finish();
-        finished = true;
+        complete(std::move(error));
+    });
+    QObject::connect(&deadline, &QTimer::timeout, &deadline, [&] {
+        LOG_ERROR_N << "Import timed out waiting for the server response.";
+        abort(tr("The server did not complete the import within two minutes."));
     });
 
     while(!finished) {
@@ -1380,9 +1422,7 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
                     // we will ignore it and keep reading until read() returns false.
                     continue;
                 } else {
-                    LOG_WARN_N << "Received unexpected field# in import stream: "
-                               << static_cast<int>(status.whatField());
-                    continue;
+                    throw std::runtime_error("Unexpected data in the import file");
                 }
                 stream->writeMessage(req);
             } else {
@@ -1393,19 +1433,18 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
             }
         } catch (const std::exception &e) {
             LOG_ERROR_N << "Failed to read data from file: " << e.what();
-            if (!stream->isFinished()) {
-                req.setCompleted(false);
-                stream->writeMessage(req);
-                stream->writesDone();
-            }
-
-            finished = true;
+            abort(tr("Failed to read the import file: %1").arg(QString::fromUtf8(e.what())));
             break;
         }
     }
 
-    auto result = co_await future;
-    if (result) {
+    if (!finished) {
+        LOG_DEBUG_N << "Import file sent; waiting for the server result.";
+        deadline.start(120000);
+    }
+
+    const auto error = co_await future;
+    if (error.isEmpty()) {
         if (import_data_resync_received_) {
             LOG_INFO_N << "Import completed after receiving server resync request.";
             QTimer::singleShot(0, this, [this] {
@@ -1416,7 +1455,7 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
         }
         co_return;
     }
-    throw std::runtime_error("Import was not successful");
+    throw std::runtime_error(error.toStdString());
 }
 
 void ServerComm::setStatus(Status status) {

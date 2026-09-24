@@ -1554,7 +1554,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                 std::remove_if(action_origin.begin(), action_origin.end(),
                                [&mapper] (const auto& ao) {
                                    if (!mapper.containsAction(ao.second)) [[unlikely]] {
-                                        LOG_DEBUG_EX() << "Removing action origin mapping for action "
+                                        LOG_TRACE_EX() << "Removing action origin mapping for action "
                                                        << toString(ao.first) << " -> " << toString(ao.second)
                                                        << ", since the origin action does not exist in the mapping-table.";
                                        return true;
@@ -1740,7 +1740,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                     if (!msg->completed()) {
                         LOG_INFO_N << "ImportData stream for user " << cuser
                                    << " was aborted by the user.";
-                        co_await clear_user_data();
+                        throw server_err{pb::Error::GENERIC_ERROR, "Import cancelled"};
                     }
                     auto last = co_await stream->read();
                     if (last) {
@@ -1771,6 +1771,9 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
         }
         const auto data_sync_epoch = epoch_res.rows().front().at(0).as_uint64();
 
+        if (ctx->IsCancelled()) {
+            throw server_err{pb::Error::GENERIC_ERROR, "Import cancelled"};
+        }
         co_await trx.commit();
 
         rctx.updates.clear();

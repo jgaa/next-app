@@ -21,6 +21,20 @@ Dialog {
         }
     }
 
+    Connections {
+        target: ImportExportModel
+        function onImportFailed(message) {
+            importError.text = message
+            importError.open()
+        }
+    }
+
+    MessageDialog {
+        id: importError
+        title: qsTr("Import failed")
+        buttons: MessageDialog.Ok
+    }
+
     SequentialAnimation {
         id: fadeOut
         NumberAnimation {

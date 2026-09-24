@@ -451,7 +451,6 @@ public:
                       }
                       rctx->dbh.emplace(co_await owner_.server().db().getConnection(rctx->uctx->dbOptions()));
                       co_await fn(stream, *rctx);
-                      co_await stream->finish();
                       co_await owner_.publishUpdates(*rctx);
                       LOG_TRACE << "Finished client stream [" << name << "]: ";
                       goto done;
@@ -477,7 +476,7 @@ public:
 
                   assert(reply->error() != nextapp::pb::Error::OK);
               done:
-                  // Ignored if the stream is already closed.
+                  co_await stream->finish(finish_status);
                   LOG_TRACE << "Request [" << name << "] Exiting client-stream handler.";
 
               }, boost::asio::detached);

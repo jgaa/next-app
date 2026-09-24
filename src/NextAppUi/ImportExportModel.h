@@ -41,6 +41,7 @@ public:
 signals:
     void workingChanged();
     void fileChanged();
+    void importFailed(const QString& message);
 
 private:
     void setWorking(bool working);

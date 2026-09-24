@@ -475,26 +475,37 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
 
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly)) {
-        LOG_ERROR_N << "Failed to open file for import: " << file.errorString();
+        const auto message = tr("Failed to open the import file: %1").arg(file.errorString());
+        LOG_ERROR_N << message;
+        emit importFailed(message);
         co_return;
     }
 
     if (file.size() < sizeof(ImportExportModel::FileHeader)) {
-        LOG_ERROR_N << "Not a valid .nextapp import file: " << fileName;
+        const auto message = tr("The selected file is not a valid NextApp backup.");
+        LOG_ERROR_N << message << " Path: " << fileName;
+        emit importFailed(message);
         co_return;
     }
 
     ImportExportModel::FileHeader hdr;
     if (file.read(reinterpret_cast<char*>(&hdr), sizeof(hdr)) != sizeof(hdr)) {
-        LOG_ERROR_N << "Failed to read file header from " << fileName;
+        const auto message = tr("Failed to read the import file header.");
+        LOG_ERROR_N << message << " Path: " << fileName;
+        emit importFailed(message);
         co_return;
     }
     if (std::string_view(hdr.magic, sizeof(hdr.magic)) != "NextApp") {
-        LOG_ERROR_N << "Not a valid .nextapp import file: " << fileName;
+        const auto message = tr("The selected file is not a valid NextApp backup.");
+        LOG_ERROR_N << message << " Path: " << fileName;
+        emit importFailed(message);
         co_return;
     }
     if (hdr.version != ImportExportModel::current_file_version) {
-        LOG_ERROR_N << "Unsupported file version: " << static_cast<int>(hdr.version);
+        const auto message = tr("This backup uses an unsupported file version (%1).")
+                                 .arg(static_cast<int>(hdr.version));
+        LOG_ERROR_N << message;
+        emit importFailed(message);
         co_return;
     }
 
@@ -509,7 +520,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
             state = SENDING_DATA;
         } else if (state > SENDING_DATA) {
             LOG_TRACE_N << "Unexpected state: " << static_cast<int>(state);
-            return false; // stop reading
+            throw std::runtime_error("Invalid import state");
         }
 
         // Read message-length
@@ -519,7 +530,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
             LOG_ERROR_N << "Failed to read message length from file at position "
                         << segment_len_read_position;
             state = ERROR;
-            return false;
+            throw std::runtime_error("Failed to read a record length from the import file");
         }
         const auto len = qFromBigEndian<quint32>(binary_len);
         LOG_TRACE_N << "Read " << len << " bytes segment-length at position "
@@ -528,7 +539,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
         if (len > ten_megabytes) {
             LOG_ERROR_N << "Message-length is too large: " << len;
             state = ERROR;
-            return false;
+            throw std::runtime_error("A record in the import file is too large");
         }
 
         QByteArray data;
@@ -539,7 +550,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
                 LOG_ERROR_N << "Failed to read message data from file at position "
                             << read_position;
                 state = ERROR;
-                return false;
+                throw std::runtime_error("Failed to read a record from the import file");
             }
 
             LOG_TRACE_N << "Read " << len << " bytes of data at position "
@@ -552,7 +563,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
                 LOG_ERROR_N << "Failed to parse protobuf message at position "
                             << read_position << " : " << serializer.lastErrorString();
                 state = ERROR;
-                return false;
+                throw std::runtime_error("Invalid record in the import file");
             }
 
             const bool last = msg.hasHasMore() && !msg.hasMore();
@@ -561,7 +572,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
                     LOG_ERROR_N << "Invalid end of data-file. Last=" << last
                                 << ", eof=" << file.atEnd();
                     state = ERROR;
-                    return false;
+                    throw std::runtime_error("The import file ended unexpectedly");
                 }
 
                 state = DONE;
@@ -573,7 +584,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
 
         LOG_ERROR_N << "Message-length cannot be zero.";
         state = ERROR;
-        return false;
+        throw std::runtime_error("A record in the import file has zero length");
     };
 
     try {
@@ -581,6 +592,13 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
     } catch (const std::exception &e) {
         LOG_ERROR_N << "Import failed: " << e.what();
         state = ERROR;
+        const auto stagingPath = QDir(QString::fromStdString(runtime_.db().dataDir()))
+                                     .filePath(QStringLiteral("db.staging.sqlite"));
+        if (QFile::exists(stagingPath) && !QFile::remove(stagingPath)) {
+            LOG_WARN_N << "Failed to remove abandoned staged database: " << stagingPath;
+        }
+        emit importFailed(tr("The import failed: %1\n\nYour current database is still available.")
+                              .arg(QString::fromUtf8(e.what())));
     }
 
     if (state == DONE) {
