@@ -26,14 +26,14 @@ MaterialDesignStyling::ColorTheme lightTheme()
     theme.secondaryFixedDim = "#CCC2DC";
     theme.onSecondaryFixedVariant = "#4A4458";
 
-    theme.tertiary = "#7D5260";
+    theme.tertiary = "#476879";
     theme.onTertiary = "#FFFFFF";
-    theme.tertiaryContainer = "#FFD8E4";
-    theme.onTertiaryContainer = "#31111D";
-    theme.tertiaryFixed = "#FFD8E4";
-    theme.onTertiaryFixed = "#31111D";
-    theme.tertiaryFixedDim = "#EFB8C8";
-    theme.onTertiaryFixedVariant = "#633B48";
+    theme.tertiaryContainer = "#D2E5F0";
+    theme.onTertiaryContainer = "#234152";
+    theme.tertiaryFixed = "#D2E5F0";
+    theme.onTertiaryFixed = "#234152";
+    theme.tertiaryFixedDim = "#ADCADA";
+    theme.onTertiaryFixedVariant = "#2D4F60";
 
     theme.error = "#B3261E";
     theme.onError = "#FFFFFF";
@@ -84,14 +84,14 @@ MaterialDesignStyling::ColorTheme darkTheme()
     theme.secondaryFixedDim = "#CCC2DC";
     theme.onSecondaryFixedVariant = "#4A4458";
 
-    theme.tertiary = "#EFB8C8";
-    theme.onTertiary = "#492532";
-    theme.tertiaryContainer = "#633B48";
-    theme.onTertiaryContainer = "#FFD8E4";
-    theme.tertiaryFixed = "#31111D";
-    theme.onTertiaryFixed = "#31111D";
-    theme.tertiaryFixedDim = "#EFB8C8";
-    theme.onTertiaryFixedVariant = "#633B48";
+    theme.tertiary = "#B8CCD8";
+    theme.onTertiary = "#263746";
+    theme.tertiaryContainer = "#3C5363";
+    theme.onTertiaryContainer = "#DDE7ED";
+    theme.tertiaryFixed = "#DDE7ED";
+    theme.onTertiaryFixed = "#263746";
+    theme.tertiaryFixedDim = "#B8CCD8";
+    theme.onTertiaryFixedVariant = "#3C5363";
 
     theme.error = "#F2B8B5";
     theme.onError = "#601410";
@@ -121,6 +121,226 @@ MaterialDesignStyling::ColorTheme darkTheme()
     return theme;
 }
 
+MaterialDesignStyling::ColorTheme coffeeTheme()
+{
+    MaterialDesignStyling::ColorTheme theme;
+    theme.primary = "#795335";
+    theme.onPrimary = "#FFFFFF";
+    theme.primaryContainer = "#F5DFC5";
+    theme.onPrimaryContainer = "#2D190C";
+    theme.primaryFixed = "#F5DFC5";
+    theme.onPrimaryFixed = "#2D190C";
+    theme.primaryFixedDim = "#E5BB91";
+    theme.onPrimaryFixedVariant = "#5D3D24";
+
+    theme.secondary = "#71604C";
+    theme.onSecondary = "#FFFFFF";
+    theme.secondaryContainer = "#EEDFCB";
+    theme.onSecondaryContainer = "#281E12";
+    theme.secondaryFixed = "#EEDFCB";
+    theme.onSecondaryFixed = "#281E12";
+    theme.secondaryFixedDim = "#D4C2A9";
+    theme.onSecondaryFixedVariant = "#554532";
+
+    theme.tertiary = "#95513D";
+    theme.onTertiary = "#FFFFFF";
+    theme.tertiaryContainer = "#FFDACE";
+    theme.onTertiaryContainer = "#37150C";
+    theme.tertiaryFixed = "#FFDACE";
+    theme.onTertiaryFixed = "#37150C";
+    theme.tertiaryFixedDim = "#EDB39E";
+    theme.onTertiaryFixedVariant = "#743B2A";
+
+    theme.error = "#B3261E";
+    theme.onError = "#FFFFFF";
+    theme.errorContainer = "#F9DEDC";
+    theme.onErrorContainer = "#410E0B";
+
+    theme.surfaceDim = "#E2D5C7";
+    theme.surface = "#FFF8EF";
+    theme.surfaceBright = "#FFF8EF";
+
+    theme.surfaceContainerLowest = "#FFFCF7";
+    theme.surfaceContainerLow = "#FAF0E4";
+    theme.surfaceContainer = "#F4E9DC";
+    theme.surfaceContainerHigh = "#EEDFD0";
+    theme.surfaceContainerHighest = "#E8D8C7";
+
+    theme.onSurface = "#2D221B";
+    theme.onSurfaceVariant = "#5B4B3E";
+    theme.outline = "#8A7766";
+    theme.outlineVariant = "#D5C3B1";
+
+    theme.inverseSurface = "#392D24";
+    theme.inverseOnSurface = "#FAEFE2";
+    theme.inversePrimary = "#E5BB91";
+    theme.scrim = "#000000";
+    theme.shadow = "#000000";
+    return theme;
+}
+
+MaterialDesignStyling::ColorTheme lateNightCoffeeTheme()
+{
+    // Keep Coffee's fixed accents consistent between its light and dark variants.
+    auto theme = coffeeTheme();
+    theme.primary = "#E5BB91";
+    theme.onPrimary = "#452B16";
+    theme.primaryContainer = "#5D3D24";
+    theme.onPrimaryContainer = "#F5DFC5";
+
+    theme.secondary = "#D4C2A9";
+    theme.onSecondary = "#3D2F20";
+    theme.secondaryContainer = "#554532";
+    theme.onSecondaryContainer = "#EEDFCB";
+
+    theme.tertiary = "#EDB39E";
+    theme.onTertiary = "#562719";
+    theme.tertiaryContainer = "#743B2A";
+    theme.onTertiaryContainer = "#FFDACE";
+
+    theme.error = "#F2B8B5";
+    theme.onError = "#601410";
+    theme.errorContainer = "#8C1D18";
+    theme.onErrorContainer = "#F9DEDC";
+
+    theme.surfaceDim = "#1A1410";
+    theme.surface = "#1A1410";
+    theme.surfaceBright = "#44372D";
+
+    theme.surfaceContainerLowest = "#140F0C";
+    theme.surfaceContainerLow = "#231B16";
+    theme.surfaceContainer = "#2A201A";
+    theme.surfaceContainerHigh = "#352920";
+    theme.surfaceContainerHighest = "#403228";
+
+    theme.onSurface = "#F0E1D2";
+    theme.onSurfaceVariant = "#D5C3B1";
+    theme.outline = "#A38E7B";
+    theme.outlineVariant = "#5B4B3E";
+
+    theme.inverseSurface = "#F0E1D2";
+    theme.inverseOnSurface = "#392D24";
+    theme.inversePrimary = "#795335";
+    return theme;
+}
+
+MaterialDesignStyling::ColorTheme rosewoodTheme()
+{
+    MaterialDesignStyling::ColorTheme theme;
+    theme.primary = "#704F5D";
+    theme.onPrimary = "#FFFFFF";
+    theme.primaryContainer = "#EAD7DF";
+    theme.onPrimaryContainer = "#2D1922";
+    theme.primaryFixed = "#EAD7DF";
+    theme.onPrimaryFixed = "#2D1922";
+    theme.primaryFixedDim = "#D5B6C4";
+    theme.onPrimaryFixedVariant = "#563946";
+
+    theme.secondary = "#936B72";
+    theme.onSecondary = "#FFFFFF";
+    theme.secondaryContainer = "#F0DDE0";
+    theme.onSecondaryContainer = "#341D22";
+    theme.secondaryFixed = "#F0DDE0";
+    theme.onSecondaryFixed = "#341D22";
+    theme.secondaryFixedDim = "#DCB8BF";
+    theme.onSecondaryFixedVariant = "#61434A";
+
+    theme.tertiary = "#747B68";
+    theme.onTertiary = "#060A03";
+    theme.tertiaryContainer = "#E0E5D5";
+    theme.onTertiaryContainer = "#202719";
+    theme.tertiaryFixed = "#E0E5D5";
+    theme.onTertiaryFixed = "#202719";
+    theme.tertiaryFixedDim = "#C2CBB1";
+    theme.onTertiaryFixedVariant = "#444D38";
+
+    theme.error = "#B3261E";
+    theme.onError = "#FFFFFF";
+    theme.errorContainer = "#F9DEDC";
+    theme.onErrorContainer = "#410E0B";
+
+    theme.surfaceDim = "#E2D6CE";
+    theme.surface = "#F7F3EF";
+    theme.surfaceBright = "#F7F3EF";
+
+    theme.surfaceContainerLowest = "#FFFBF8";
+    theme.surfaceContainerLow = "#F3EDE7";
+    theme.surfaceContainer = "#EEE7E1";
+    theme.surfaceContainerHigh = "#E8DED6";
+    theme.surfaceContainerHighest = "#E2D6CE";
+
+    theme.onSurface = "#3B3435";
+    // Slightly deeper than the base palette's #74696B for text on selected surfaces.
+    theme.onSurfaceVariant = "#655A5C";
+    theme.outline = "#85777A";
+    theme.outlineVariant = "#CEC0BC";
+
+    theme.inverseSurface = "#3B3435";
+    theme.inverseOnSurface = "#F7F3EF";
+    theme.inversePrimary = "#D5B6C4";
+    theme.scrim = "#000000";
+    theme.shadow = "#000000";
+    return theme;
+}
+
+MaterialDesignStyling::ColorTheme windowsTheme()
+{
+    MaterialDesignStyling::ColorTheme theme;
+    theme.primary = "#0078D4";
+    theme.onPrimary = "#FFFFFF";
+    theme.primaryContainer = "#DFF0FF";
+    theme.onPrimaryContainer = "#003B70";
+    theme.primaryFixed = "#DFF0FF";
+    theme.onPrimaryFixed = "#003B70";
+    theme.primaryFixedDim = "#A7D4F5";
+    theme.onPrimaryFixedVariant = "#124F80";
+
+    theme.secondary = "#586775";
+    theme.onSecondary = "#FFFFFF";
+    theme.secondaryContainer = "#E6EEF5";
+    theme.onSecondaryContainer = "#263845";
+    theme.secondaryFixed = "#E6EEF5";
+    theme.onSecondaryFixed = "#263845";
+    theme.secondaryFixedDim = "#C9D9E6";
+    theme.onSecondaryFixedVariant = "#3C5263";
+
+    theme.tertiary = "#476F77";
+    theme.onTertiary = "#FFFFFF";
+    theme.tertiaryContainer = "#D8EDF0";
+    theme.onTertiaryContainer = "#153A41";
+    theme.tertiaryFixed = "#D8EDF0";
+    theme.onTertiaryFixed = "#153A41";
+    theme.tertiaryFixedDim = "#AED3D9";
+    theme.onTertiaryFixedVariant = "#31555C";
+
+    theme.error = "#C42B1C";
+    theme.onError = "#FFFFFF";
+    theme.errorContainer = "#FDE7E4";
+    theme.onErrorContainer = "#6B1D13";
+
+    theme.surfaceDim = "#EAEAEA";
+    theme.surface = "#F3F3F3";
+    theme.surfaceBright = "#FFFFFF";
+
+    theme.surfaceContainerLowest = "#FFFFFF";
+    theme.surfaceContainerLow = "#FAFAFA";
+    theme.surfaceContainer = "#F8F8F8";
+    theme.surfaceContainerHigh = "#EAEAEA";
+    theme.surfaceContainerHighest = "#E1E1E1";
+
+    theme.onSurface = "#202020";
+    theme.onSurfaceVariant = "#444444";
+    theme.outline = "#707070";
+    theme.outlineVariant = "#D1D1D1";
+
+    theme.inverseSurface = "#202020";
+    theme.inverseOnSurface = "#FFFFFF";
+    theme.inversePrimary = "#A7D4F5";
+    theme.scrim = "#000000";
+    theme.shadow = "#000000";
+    return theme;
+}
+
 }
 
 MaterialDesignStyling::MaterialDesignStyling()
@@ -133,32 +353,24 @@ MaterialDesignStyling::MaterialDesignStyling(RuntimeServices& runtime)
 {
     assert(!instance_);
     instance_ = this;
-    auto theme = runtime_.settings().value("UI/theme", "light").toString();
-
-    if (theme == "dark") {
-        setDarkTheme();
-    } else {
-        setLightTheme();
-    }
+    setTheme(runtime_.settings().value("UI/theme", "light").toString());
 }
 
 void MaterialDesignStyling::setTheme(const QString &name)
 {
-    if (name == currentTheme_) {
+    const auto selectedTheme = availableThemes().contains(name) ? name : QStringLiteral("light");
+    if (selectedTheme == currentTheme_) {
         return;
     }
 
-    if (name == "dark") {
-        setDarkTheme();
-    } else {
-        setLightTheme();
-    }
+    theme_ = themeForName(selectedTheme);
+    currentTheme_ = selectedTheme;
     emit colorsChanged();
 }
 
 QStringList MaterialDesignStyling::availableThemes() const
 {
-    return {"light", "dark"};
+    return {"light", "dark", "coffee", "lateNightCoffee", "rosewood", "windows"};
 }
 
 QVariantMap MaterialDesignStyling::previewTheme(const QString &name) const
@@ -228,6 +440,18 @@ MaterialDesignStyling::ColorTheme MaterialDesignStyling::themeForName(const QStr
     if (name == "dark") {
         return darkTheme();
     }
+    if (name == "coffee") {
+        return coffeeTheme();
+    }
+    if (name == "lateNightCoffee") {
+        return lateNightCoffeeTheme();
+    }
+    if (name == "rosewood") {
+        return rosewoodTheme();
+    }
+    if (name == "windows") {
+        return windowsTheme();
+    }
 
     return lightTheme();
 }
@@ -284,16 +508,4 @@ QVariantMap MaterialDesignStyling::toVariantMap(const ColorTheme &theme) const
         {"scrim", theme.scrim},
         {"shadow", theme.shadow}
     };
-}
-
-void MaterialDesignStyling::setLightTheme()
-{
-    theme_ = lightTheme();
-    currentTheme_ = "light";
-}
-
-void MaterialDesignStyling::setDarkTheme()
-{
-    theme_ = darkTheme();
-    currentTheme_ = "dark";
 }

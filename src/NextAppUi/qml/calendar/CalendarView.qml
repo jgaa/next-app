@@ -55,59 +55,37 @@ Rectangle {
 
             RowLayout {
                 anchors.fill: parent
-                Button {
-                    height: navigation.height - 4
+                ToolBarBtn {
                     Layout.preferredWidth: 28
-                    Text {
-                        anchors.fill: parent
-                        font.family: ce.faSolidName
-                        font.styleName: ce.faSolidStyle
-                        font.pixelSize: 10
-                        text: "\uf104"
-                        verticalAlignment: Text.AlignVCenter
-                        horizontalAlignment: Text.AlignHCenter
-                        color: MaterialDesignStyling.onPrimary
-                    }
+                    Layout.preferredHeight: navigation.height - 4
+                    icon: "\uf104"
+                    iconColor: hovered ? MaterialDesignStyling.onPrimaryContainer : MaterialDesignStyling.onPrimary
+                    isActive: true
+                    tooltipText: qsTr("Previous period")
                     onClicked: {
                         root.model.goPrev();
                     }
                 }
 
-                Button {
-                    height: navigation.height - 4
+                ToolBarBtn {
                     Layout.preferredWidth: 28
-                    width: height
-                    Text {
-                        anchors.fill: parent
-                        font.family: ce.faSolidName
-                        font.styleName: ce.faSolidStyle
-                        font.pixelSize: 10
-                        text: "\uf783"
-                        verticalAlignment: Text.AlignVCenter
-                        horizontalAlignment: Text.AlignHCenter
-                        color: MaterialDesignStyling.onPrimary
-                    }
-
+                    Layout.preferredHeight: navigation.height - 4
+                    icon: "\uf783"
+                    iconColor: hovered ? MaterialDesignStyling.onPrimaryContainer : MaterialDesignStyling.onPrimary
+                    isActive: true
+                    tooltipText: qsTr("Today")
                     onClicked: {
                         root.model.goToday();
                     }
                 }
 
-                Button {
-                    height: navigation.height - 4
+                ToolBarBtn {
                     Layout.preferredWidth: 28
-                    width: height
-                    Text {
-                        anchors.fill: parent
-                        font.family: ce.faSolidName
-                        font.styleName: ce.faSolidStyle
-                        font.pixelSize: 10
-                        text: "\uf200"
-                        verticalAlignment: Text.AlignVCenter
-                        horizontalAlignment: Text.AlignHCenter
-                        color: MaterialDesignStyling.onPrimary
-                    }
-
+                    Layout.preferredHeight: navigation.height - 4
+                    icon: "\uf200"
+                    iconColor: hovered ? MaterialDesignStyling.onPrimaryContainer : MaterialDesignStyling.onPrimary
+                    isActive: true
+                    tooltipText: qsTr("Category use")
                     onClicked: {
                         Common.openDialog("calendar/CategoryUsedPopup.qml", root, {
                                               model: root.model.getCategoryUseModel()
@@ -116,21 +94,13 @@ Rectangle {
                 }
 
 
-                Button {
-                    height: navigation.height - 4
+                ToolBarBtn {
                     Layout.preferredWidth: 28
-                    width: height
-                    Text {
-                        anchors.fill: parent
-                        font.family: ce.faSolidName
-                        font.styleName: ce.faSolidStyle
-                        font.pixelSize: 10
-                        text: "\uf105"
-                        verticalAlignment: Text.AlignVCenter
-                        horizontalAlignment: Text.AlignHCenter
-                        color: MaterialDesignStyling.onPrimary
-                    }
-
+                    Layout.preferredHeight: navigation.height - 4
+                    icon: "\uf105"
+                    iconColor: hovered ? MaterialDesignStyling.onPrimaryContainer : MaterialDesignStyling.onPrimary
+                    isActive: true
+                    tooltipText: qsTr("Next period")
                     onClicked: {
                         root.model.goNext();
                     }

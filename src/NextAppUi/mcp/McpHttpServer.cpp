@@ -12,7 +12,7 @@
 
 namespace nextapp::mcp {
 namespace {
-constexpr quint16 default_mcp_port = 58421;
+constexpr quint16 default_mcp_port = 3120;
 }
 
 McpHttpServer::McpHttpServer(RuntimeServices& runtime, QObject* parent)
@@ -21,7 +21,7 @@ McpHttpServer::McpHttpServer(RuntimeServices& runtime, QObject* parent)
     server_.route(QStringLiteral("/mcp"), QHttpServerRequest::Method::Post,
         [this](const QHttpServerRequest& request, QHttpServerResponder& responder) {
             const auto peer = QStringLiteral("%1:%2").arg(request.remoteAddress().toString()).arg(request.remotePort());
-            const auto max_body = std::clamp(runtime_.settings().value("ai/mcp/limits/request_body", 256 * 1024).toInt(), 1024, 256 * 1024);
+            const auto max_body = std::clamp(runtime_.settings().value("ai/mcp/limits/requestBody", 256 * 1024).toInt(), 1024, 256 * 1024);
             LOG_DEBUG_N << "MCP HTTP POST from " << peer << ", body=" << request.body().size() << " bytes";
             LOG_TRACE_N << "MCP request payload from " << peer << ": " << request.body();
             if (request.body().size() > max_body) {
@@ -29,7 +29,7 @@ McpHttpServer::McpHttpServer(RuntimeServices& runtime, QObject* parent)
                 writeJson(std::move(responder), errorResponse({}, {-32600, QStringLiteral("MCP request body is too large"), {}}), 413);
                 return;
             }
-            const auto max_calls = std::clamp(runtime_.settings().value("ai/mcp/limits/concurrent_calls", 16).toInt(), 1, 64);
+            const auto max_calls = std::clamp(runtime_.settings().value("ai/mcp/limits/concurrentCalls", 16).toInt(), 1, 64);
             if (active_calls_ >= max_calls) {
                 LOG_DEBUG_N << "Rejected MCP request from " << peer << ": " << active_calls_ << " calls active";
                 writeJson(std::move(responder), errorResponse({}, {-32000, QStringLiteral("MCP server is busy; retry later"), {}}), 429);
@@ -101,7 +101,7 @@ QCoro::Task<bool> McpHttpServer::start() {
         LOG_ERROR_N << "Cannot initialize the local MCP request store";
         co_return false;
     }
-    const auto configured_address = runtime_.settings().value("ai/mcp/listen_address", QStringLiteral("127.0.0.1")).toString();
+    const auto configured_address = runtime_.settings().value("ai/mcp/listenAddress", QStringLiteral("127.0.0.1")).toString();
     QHostAddress address;
 
     if (!address.setAddress(configured_address)) {
@@ -138,6 +138,7 @@ QCoro::Task<bool> McpHttpServer::start() {
     }
     bound_ = true;
     port_ = listener_.serverPort();
+    bound_address_ = configured_address;
     running_ = true;
     (void) gateway_.credential();
     LOG_INFO_N << "Local MCP listener started at http://" << configured_address << ":" << port_ << "/mcp";
@@ -151,9 +152,21 @@ void McpHttpServer::stop() {
     listener_.close();
     running_ = false;
     port_ = 0;
+    bound_address_.clear();
     emit listenerChanged();
 }
-void McpHttpServer::refresh() { if (gateway_.enabled()) QCoro::connect(start(), this, [] (bool) {}); else stop(); }
+void McpHttpServer::refresh() {
+    if (!gateway_.enabled()) {
+        stop();
+        return;
+    }
+    const auto address = runtime_.settings().value("ai/mcp/listenAddress", QStringLiteral("127.0.0.1")).toString();
+    const auto saved_port = runtime_.settings().value("ai/mcp/port", default_mcp_port).toUInt();
+    const auto configured_port = saved_port == 0 ? default_mcp_port : static_cast<quint16>(saved_port);
+    if (running_ && bound_address_ == address && port_ == configured_port) return;
+    if (running_) stop();
+    QCoro::connect(start(), this, [] (bool) {});
+}
 void McpHttpServer::abortForOffline() { gateway_.abortForOffline(); stop(); }
 void McpHttpServer::abortForSync() { gateway_.abortForSync(); stop(); }
 QString McpHttpServer::credential() { return gateway_.credential(); }

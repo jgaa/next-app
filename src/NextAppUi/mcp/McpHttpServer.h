@@ -35,6 +35,7 @@ private:
     bool bound_{};
     bool running_{};
     quint16 port_{};
+    QString bound_address_;
     int active_calls_{};
 };
 } // namespace nextapp::mcp

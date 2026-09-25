@@ -16,7 +16,8 @@ ScrollView {
     }
 
     function commit() {
-        settings.setValue("UI/theme", uiTheme.currentText)
+        settings.setValue("UI/theme", uiTheme.currentValue)
+        MaterialDesignStyling.setTheme(uiTheme.currentValue)
         settings.setValue("UI/style", uiStyle.currentIndex.toString())
         settings.setValue("UI/mobile/persistDualViewSplit", persistDualViewSplit.checked)
         //settings.setValue("UI/scale", uiScale.currentIndex.toString())
@@ -31,8 +32,15 @@ ScrollView {
         Label { text: qsTr("Ui Theme")}
         ComboBox {
             id: uiTheme
-            currentIndex: settings.value("UI/theme") === "light" ? 0 : 1
-            model: ["light", "dark"]
+            textRole: "label"
+            valueRole: "name"
+            model: MaterialDesignStyling.availableThemes().map(function(name) {
+                return { name: name, label: (name.charAt(0).toUpperCase() + name.slice(1)).replace(/([a-z])([A-Z])/g, "$1 $2") }
+            })
+            Component.onCompleted: {
+                const index = indexOfValue(settings.value("UI/theme", "light"))
+                currentIndex = index >= 0 ? index : 0
+            }
         }
 
         Item {}

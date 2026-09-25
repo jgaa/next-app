@@ -13,29 +13,26 @@ ScrollView {
 
     function load() {
         enabled.checked = settings.value("ai/mcp/enabled", false)
-        listeningAddress.text = settings.value("ai/mcp/listen_address", "127.0.0.1")
-        port.value = settings.value("ai/mcp/port", 58421)
-        agentName.text = settings.value("ai/mcp/agent_name", "Local agent")
-        agentId.text = settings.value("ai/mcp/agent_id", "local-agent")
-        createGate.currentIndex = createGate.indexOfValue(settings.value("ai/mcp/gate/create_action", "Disabled"))
-        updateGate.currentIndex = updateGate.indexOfValue(settings.value("ai/mcp/gate/update_action", "Disabled"))
-        completeGate.currentIndex = completeGate.indexOfValue(settings.value("ai/mcp/gate/complete_action", "Disabled"))
-        createNodeGate.currentIndex = createNodeGate.indexOfValue(settings.value("ai/mcp/gate/create_node", "Disabled"))
-        updateNodeGate.currentIndex = updateNodeGate.indexOfValue(settings.value("ai/mcp/gate/update_node", "Disabled"))
+        listeningAddress.text = settings.value("ai/mcp/listenAddress", "127.0.0.1")
+        port.value = settings.value("ai/mcp/port", 3120)
+        createGate.currentIndex = createGate.indexOfValue(settings.value("ai/mcp/gate/createAction", "Disabled"))
+        updateGate.currentIndex = updateGate.indexOfValue(settings.value("ai/mcp/gate/updateAction", "Disabled"))
+        completeGate.currentIndex = completeGate.indexOfValue(settings.value("ai/mcp/gate/completeAction", "Disabled"))
+        createNodeGate.currentIndex = createNodeGate.indexOfValue(settings.value("ai/mcp/gate/createNode", "Disabled"))
+        updateNodeGate.currentIndex = updateNodeGate.indexOfValue(settings.value("ai/mcp/gate/updateNode", "Disabled"))
     }
     function commit() {
         settings.setValue("ai/mcp/enabled", enabled.checked)
-        settings.setValue("ai/mcp/listen_address", listeningAddress.text.trim())
+        settings.setValue("ai/mcp/listenAddress", listeningAddress.text.trim())
         settings.setValue("ai/mcp/port", port.value)
-        settings.setValue("ai/mcp/agent_name", agentName.text.trim())
-        settings.setValue("ai/mcp/agent_id", agentId.text.trim())
-        settings.setValue("ai/mcp/gate/create_action", createGate.currentValue)
-        settings.setValue("ai/mcp/gate/update_action", updateGate.currentValue)
-        settings.setValue("ai/mcp/gate/complete_action", completeGate.currentValue)
-        settings.setValue("ai/mcp/gate/create_node", createNodeGate.currentValue)
-        settings.setValue("ai/mcp/gate/update_node", updateNodeGate.currentValue)
+        settings.setValue("ai/mcp/gate/createAction", createGate.currentValue)
+        settings.setValue("ai/mcp/gate/updateAction", updateGate.currentValue)
+        settings.setValue("ai/mcp/gate/completeAction", completeGate.currentValue)
+        settings.setValue("ai/mcp/gate/createNode", createNodeGate.currentValue)
+        settings.setValue("ai/mcp/gate/updateNode", updateNodeGate.currentValue)
         settings.sync()
     }
+    Component.onCompleted: load()
     onVisibleChanged: if (visible) load()
 
     GridLayout {
@@ -61,20 +58,6 @@ ScrollView {
             ToolTip.visible: hovered
             ToolTip.text: qsTr("The default port is stored so the local agent can use the same URL after a restart")
         }
-        Label { text: qsTr("Agent name") }
-        TextField {
-            id: agentName
-            Layout.fillWidth: true
-            placeholderText: qsTr("Local agent")
-            inputMethodHints: Qt.ImhNoPredictiveText
-        }
-        Label { text: qsTr("Agent ID") }
-        TextField {
-            id: agentId
-            Layout.fillWidth: true
-            placeholderText: "local-agent"
-            inputMethodHints: Qt.ImhNoPredictiveText
-        }
         Label { text: qsTr("MCP endpoint") }
         RowLayout {
             Layout.fillWidth: true
@@ -95,11 +78,7 @@ ScrollView {
         Label { text: qsTr("MCP credential") }
         RowLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                elide: Text.ElideMiddle
-                text: root.mcpCredential
-            }
+            Item { Layout.fillWidth: true }
             ToolButton {
                 icon.name: "edit-copy"
                 display: AbstractButton.IconOnly

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 #include "RuntimeServices.h"
 #include "ActionInfoCache.h"
@@ -102,7 +103,29 @@ QJsonObject storedOutcome(const StoredRequest& request) {
 
 McpGateway::McpGateway(RuntimeServices& runtime) : runtime_{runtime}, store_{runtime.db()} {}
 
-QCoro::Task<bool> McpGateway::initialize() { co_return co_await store_.initialize(); }
+QCoro::Task<bool> McpGateway::initialize() {
+    auto& settings = runtime_.settings();
+    const auto migrateKey = [&settings](const QString& oldKey, const QString& newKey) {
+        if (settings.value(newKey).isValid()) return;
+        const auto oldValue = settings.value(oldKey);
+        if (oldValue.isValid()) settings.setValue(newKey, oldValue);
+    };
+    for (const auto& [oldKey, newKey] : {
+             std::pair{QStringLiteral("ai/mcp/listen_address"), QStringLiteral("ai/mcp/listenAddress")},
+             std::pair{QStringLiteral("ai/mcp/limits/page_size"), QStringLiteral("ai/mcp/limits/pageSize")},
+             std::pair{QStringLiteral("ai/mcp/limits/request_body"), QStringLiteral("ai/mcp/limits/requestBody")},
+             std::pair{QStringLiteral("ai/mcp/limits/concurrent_calls"), QStringLiteral("ai/mcp/limits/concurrentCalls")},
+             std::pair{QStringLiteral("ai/mcp/limits/pending_approvals"), QStringLiteral("ai/mcp/limits/pendingApprovals")},
+             std::pair{QStringLiteral("ai/mcp/limits/approval_timeout"), QStringLiteral("ai/mcp/limits/approvalTimeout")},
+             std::pair{QStringLiteral("ai/mcp/gate/create_action"), QStringLiteral("ai/mcp/gate/createAction")},
+             std::pair{QStringLiteral("ai/mcp/gate/update_action"), QStringLiteral("ai/mcp/gate/updateAction")},
+             std::pair{QStringLiteral("ai/mcp/gate/complete_action"), QStringLiteral("ai/mcp/gate/completeAction")},
+             std::pair{QStringLiteral("ai/mcp/gate/create_node"), QStringLiteral("ai/mcp/gate/createNode")},
+             std::pair{QStringLiteral("ai/mcp/gate/update_node"), QStringLiteral("ai/mcp/gate/updateNode")}})
+        migrateKey(oldKey, newKey);
+    settings.sync();
+    co_return co_await store_.initialize();
+}
 
 bool McpGateway::enabled() const {
     return runtime_.settings().value(ai_enabled, false).toBool()
@@ -149,7 +172,7 @@ bool McpGateway::originAllowed(const HeaderMap& headers) const {
 }
 
 int McpGateway::boundedPageSize(const QJsonObject& arguments) const {
-    const auto configured = runtime_.settings().value("ai/mcp/limits/page_size", 50).toInt();
+    const auto configured = runtime_.settings().value("ai/mcp/limits/pageSize", 50).toInt();
     const auto maximum = std::clamp(configured, 1, 50);
     return std::clamp(arguments.value(QStringLiteral("pageSize")).toInt(maximum), 1, maximum);
 }
@@ -288,7 +311,17 @@ QCoro::Task<QJsonObject> McpGateway::categories(const QJsonObject& arguments, bo
 }
 
 QString McpGateway::mutationGate(const QString& operation) const {
-    return runtime_.settings().value(QStringLiteral("ai/mcp/gate/") + operation, QStringLiteral("Disabled")).toString();
+    QString setting;
+    bool capitalizeNext = false;
+    for (const auto character : operation) {
+        if (character == QLatin1Char('_')) {
+            capitalizeNext = true;
+        } else {
+            setting.append(capitalizeNext ? character.toUpper() : character);
+            capitalizeNext = false;
+        }
+    }
+    return runtime_.settings().value(QStringLiteral("ai/mcp/gate/") + setting, QStringLiteral("Disabled")).toString();
 }
 
 bool McpGateway::mutationAllowed(const QString& operation) const {
@@ -299,8 +332,7 @@ bool McpGateway::mutationAllowed(const QString& operation) const {
 QCoro::Task<std::optional<StoredRequest>> McpGateway::reserveMutation(const QString& operation, const QJsonObject& arguments) {
     if (!mutationAllowed(operation)) co_return std::nullopt;
     const auto key = arguments.value(QStringLiteral("idempotencyKey")).toString();
-    const auto configured_id = runtime_.settings().value(QStringLiteral("ai/mcp/agent_id"), QStringLiteral("local-agent")).toString().trimmed();
-    co_return co_await store_.reserve(configured_id.isEmpty() ? QStringLiteral("local-agent") : configured_id, key, operation, arguments);
+    co_return co_await store_.reserve(QStringLiteral("local-agent"), key, operation, arguments);
 }
 
 void McpGateway::recordActivity(const StoredRequest& request, const QString& state, const QJsonObject& result) const {
@@ -310,14 +342,13 @@ void McpGateway::recordActivity(const StoredRequest& request, const QString& sta
     runtime_.recordMcpActivity(event);
 }
 
-QString McpGateway::agentDescription(const StoredRequest& request) const {
-    const auto configured_name = runtime_.settings().value(QStringLiteral("ai/mcp/agent_name")).toString().trimmed();
-    return configured_name.isEmpty() ? request.agent_id : configured_name + QStringLiteral(" (") + request.agent_id + QStringLiteral(")");
+QString McpGateway::agentDescription() const {
+    return QStringLiteral("AI Agent");
 }
 
 void McpGateway::logMutation(const StoredRequest& request, const QJsonObject& arguments,
                              const QString& peer) const {
-    const auto agent = agentDescription(request);
+    const auto agent = agentDescription();
     if (request.operation == QStringLiteral("create_action")) {
         LOG_INFO_N << "MCP agent " << agent << " at " << peer << " created action \""
                    << arguments.value(QStringLiteral("name")).toString() << "\" in list "
@@ -428,7 +459,7 @@ QCoro::Task<std::optional<QJsonObject>> McpGateway::approveMutation(const Stored
         co_return QJsonObject{{QStringLiteral("error"), QStringLiteral("Unable to queue MCP approval")}};
 
     QVariantMap presentation{{QStringLiteral("requestId"), request.request_id}, {QStringLiteral("operation"), request.operation},
-                             {QStringLiteral("agent"), runtime_.settings().value(QStringLiteral("ai/mcp/agent_name"), request.agent_id).toString()},
+                             {QStringLiteral("agent"), QStringLiteral("AI Agent")},
                              {QStringLiteral("reason"), arguments.value(QStringLiteral("reason")).toString()}};
     if (request.operation == QStringLiteral("create_action")) {
         presentation.insert(QStringLiteral("target"), arguments.value(QStringLiteral("name")).toString());
@@ -757,9 +788,7 @@ QCoro::Task<QJsonObject> McpGateway::requestStatus(const QJsonObject& arguments)
     const auto request_id = canonicalUuid(arguments.value(QStringLiteral("requestId")).toString());
     if (request_id.isEmpty())
         co_return toolResult({{QStringLiteral("error"), QStringLiteral("A valid requestId is required")}}, true);
-    const auto configured_id = runtime_.settings().value(QStringLiteral("ai/mcp/agent_id"), QStringLiteral("local-agent")).toString().trimmed();
-    const auto agent_id = configured_id.isEmpty() ? QStringLiteral("local-agent") : configured_id;
-    const auto stored = co_await store_.get(agent_id, request_id);
+    const auto stored = co_await store_.get(QStringLiteral("local-agent"), request_id);
     if (!stored) co_return toolResult({{QStringLiteral("error"), QStringLiteral("MCP request not found")}}, true);
     LOG_DEBUG_N << "MCP request status queried for " << request_id << ": " << McpRequestStore::stateName(stored->state);
     co_return toolResult(storedOutcome(*stored));

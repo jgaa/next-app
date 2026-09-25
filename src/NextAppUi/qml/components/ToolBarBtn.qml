@@ -11,10 +11,11 @@ Rectangle {
     property alias icon : iconCtl.text
     property alias iconColor: iconCtl.color
     property bool isActive: false
+    readonly property bool hovered: mouseArea.containsMouse
     property string text
     property string tooltipText: ""
     property bool alwaysAvailable : false
-    color: "transparent"
+    color: isActive && hovered ? MaterialDesignStyling.primaryContainer : "transparent"
     signal clicked
 
     Text {
@@ -30,16 +31,6 @@ Rectangle {
         id: mouseArea
         anchors.fill: parent
         hoverEnabled: true
-
-        onEntered: {
-            if (root.isActive) {
-                root.color = MaterialDesignStyling.primaryContainer
-            }
-        }
-
-        onExited: {
-            root.color = "transparent"
-        }
 
         onClicked: {
             if (root.isActive || root.alwaysAvailable) {
@@ -65,4 +56,3 @@ Rectangle {
         id: ce
     }
 }
-

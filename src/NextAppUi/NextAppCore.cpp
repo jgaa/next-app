@@ -719,7 +719,7 @@ QString NextAppCore::mcpEndpoint() const
 {
 #ifdef NEXTAPP_WITH_MCP
     if (!mcp_http_server_ || !mcp_http_server_->running()) return {};
-    const auto address = settings().value("ai/mcp/listen_address", QStringLiteral("127.0.0.1")).toString();
+    const auto address = settings().value("ai/mcp/listenAddress", QStringLiteral("127.0.0.1")).toString();
     return QStringLiteral("http://%1:%2/mcp").arg(address.contains(':') ? QStringLiteral("[") + address + QStringLiteral("]") : address).arg(mcp_http_server_->port());
 #else
     return {};
@@ -774,7 +774,7 @@ QFuture<RuntimeServices::McpApprovalDecision> NextAppCore::requestMcpApproval(co
     auto promise = QSharedPointer<QPromise<McpApprovalDecision>>::create();
     const auto future = promise->future();
     const auto request_id = operation.value(QStringLiteral("requestId")).toString();
-    const auto limit = std::clamp(settings().value(QStringLiteral("ai/mcp/limits/pending_approvals"), 8).toInt(), 1, 8);
+    const auto limit = std::clamp(settings().value(QStringLiteral("ai/mcp/limits/pendingApprovals"), 8).toInt(), 1, 8);
     if (request_id.isEmpty() || mcp_approvals_.contains(request_id) || mcp_approvals_.size() >= limit) {
         promise->addResult(McpApprovalDecision::Reject);
         promise->finish();
@@ -783,7 +783,7 @@ QFuture<RuntimeServices::McpApprovalDecision> NextAppCore::requestMcpApproval(co
 
     auto *timer = new QTimer(this);
     timer->setSingleShot(true);
-    const auto timeout_seconds = std::clamp(settings().value(QStringLiteral("ai/mcp/limits/approval_timeout"), 120).toInt(), 1, 600);
+    const auto timeout_seconds = std::clamp(settings().value(QStringLiteral("ai/mcp/limits/approvalTimeout"), 120).toInt(), 1, 600);
     McpApproval approval{operation, promise, timer};
     mcp_approvals_.insert(request_id, approval);
     mcp_approval_queue_.enqueue(request_id);

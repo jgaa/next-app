@@ -194,8 +194,6 @@ signals:
 private:
     ColorTheme themeForName(const QString& name) const;
     QVariantMap toVariantMap(const ColorTheme& theme) const;
-    void setLightTheme();
-    void setDarkTheme();
 
     ColorTheme theme_;
     QString currentTheme_;

@@ -44,7 +44,7 @@ private:
     void recordActivity(const StoredRequest& request, const QString& state, const QJsonObject& result = {}) const;
     void logMutation(const StoredRequest& request, const QJsonObject& arguments,
                      const QString& peer) const;
-    QString agentDescription(const StoredRequest& request) const;
+    QString agentDescription() const;
     QJsonObject toolResult(const QJsonObject& structured, bool is_error = false) const;
     bool authenticate(const HeaderMap& headers) const;
     bool originAllowed(const HeaderMap& headers) const;
