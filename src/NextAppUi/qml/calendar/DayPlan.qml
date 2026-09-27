@@ -65,18 +65,6 @@ Rectangle {
             }
             ctx.stroke()
 
-            // console.log("model.workHoursStart=", model.workHoursStart, ", model.workHoursEnd=", model.workHoursEnd)
-            // // Work-hours background
-            // if (model.workHoursStart > 0 && model.workHoursEnd > 0) {
-            //     console.log("Drawing work hours background")
-            //     ctx.beginPath();
-            //     ctx.fillStyle = "yellow"; //MaterialDesignStyling.tertiaryContainer;
-            //     var y = model.workHoursStart * hourHeight;
-            //     var h = (model.workHoursEnd - model.workHoursStart) * hourHeight;
-            //     ctx.fillRect(0, y, width, h);
-            //     ctx.stroke()
-            // }
-
             ctx.beginPath();
             ctx.save()
             ctx.strokeStyle = MaterialDesignStyling.outlineVariant;

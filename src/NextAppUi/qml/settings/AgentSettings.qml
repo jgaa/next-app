@@ -56,7 +56,7 @@ ScrollView {
             editable: true
             Layout.fillWidth: true
             ToolTip.visible: hovered
-            ToolTip.text: qsTr("The default port is stored so the local agent can use the same URL after a restart")
+            ToolTip.text: qsTr("Port to listen to")
         }
         Label { text: qsTr("MCP endpoint") }
         RowLayout {
@@ -83,14 +83,14 @@ ScrollView {
                 icon.name: "edit-copy"
                 display: AbstractButton.IconOnly
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Copy MCP credential")
+                ToolTip.text: qsTr("Copy MCP credential.")
                 onClicked: NaCore.copyToClipboard(root.mcpCredential)
             }
             ToolButton {
                 icon.name: "view-refresh"
                 display: AbstractButton.IconOnly
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Rotate MCP credential")
+                ToolTip.text: qsTr("Rotate (re-generate) MCP credential")
                 onClicked: root.mcpCredential = NaCore.rotateMcpCredential()
             }
         }
