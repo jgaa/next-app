@@ -87,8 +87,9 @@ QString plainPasteTitle(const QString& text, int wordCount)
     const auto sentenceEnd = trimmed.indexOf(QRegularExpression(QStringLiteral("[.!?](?:\\s|$)")));
     const auto sentence = sentenceEnd >= 0 ? trimmed.left(sentenceEnd + 1) : trimmed;
     const auto words = normalizedPasteWhitespace(sentence).split(u' ', Qt::SkipEmptyParts);
-    return words.sliced(0, std::clamp(wordCount, kMinPasteActionTitleWordCount,
-                                      kMaxPasteActionTitleWordCount)).join(u' ');
+    const auto titleWordCount = std::min<qsizetype>(words.size(),
+        std::clamp(wordCount, kMinPasteActionTitleWordCount, kMaxPasteActionTitleWordCount));
+    return words.sliced(0, titleWordCount).join(u' ');
 }
 
 QString pasteActionTitle(const QString& text, int wordCount)
