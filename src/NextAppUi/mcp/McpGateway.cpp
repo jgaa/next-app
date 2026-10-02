@@ -1,4 +1,5 @@
 #include "McpGateway.h"
+#include "McpHelp.h"
 
 #include <QCryptographicHash>
 #include <QJsonArray>
@@ -62,23 +63,10 @@ bool onlyFields(const QJsonObject& arguments, const QSet<QString>& allowed) {
     return true;
 }
 QString nodeKind(nextapp::pb::Node::Kind kind) {
-    using Kind = nextapp::pb::Node::Kind;
-    switch (kind) {
-    case Kind::FOLDER: return QStringLiteral("folder");
-    case Kind::ORGANIZATION: return QStringLiteral("organization");
-    case Kind::PERSON: return QStringLiteral("person");
-    case Kind::PROJECT: return QStringLiteral("project");
-    case Kind::TASK: return QStringLiteral("task");
-    }
-    return QStringLiteral("unknown");
+    return nodeKindName(int(kind));
 }
 std::optional<nextapp::pb::Node::Kind> parseNodeKind(const QString& value) {
-    using Kind = nextapp::pb::Node::Kind;
-    if (value == QStringLiteral("folder")) return Kind::FOLDER;
-    if (value == QStringLiteral("organization")) return Kind::ORGANIZATION;
-    if (value == QStringLiteral("person")) return Kind::PERSON;
-    if (value == QStringLiteral("project")) return Kind::PROJECT;
-    if (value == QStringLiteral("task")) return Kind::TASK;
+    if (const auto kind = nodeKindValue(value)) return static_cast<nextapp::pb::Node::Kind>(*kind);
     return std::nullopt;
 }
 QString canonicalUuid(const QString& value) {
@@ -796,6 +784,17 @@ QCoro::Task<QJsonObject> McpGateway::requestStatus(const QJsonObject& arguments)
 
 QCoro::Task<QJsonObject> McpGateway::toolCall(const Request& request, const QString& peer, PendingReply pending_reply) {
     const auto arguments = request.params.value(QStringLiteral("arguments")).toObject();
+    if (request.tool_name == QStringLiteral("get_mcp_help")) {
+        LOG_DEBUG_N << "MCP help requested for " << arguments.value(QStringLiteral("subject")).toString()
+                    << "/" << arguments.value(QStringLiteral("name")).toString();
+        co_return mcpHelp(arguments);
+    }
+    if (const auto error = validateMutationArguments(request.tool_name, arguments)) {
+        LOG_DEBUG_N << "Rejected MCP mutation fields for " << request.tool_name
+                    << ": " << error->value(QStringLiteral("field")).toString();
+        co_return toolResult(*error, true);
+    }
+
     if (request.tool_name == QStringLiteral("nextapp_get_request_status")) co_return co_await requestStatus(arguments);
     if (request.tool_name == QStringLiteral("nextapp_get_action")) co_return co_await action(arguments.value(QStringLiteral("id")).toString());
     if (request.tool_name == QStringLiteral("nextapp_list_actions")) co_return co_await actions(arguments, false);

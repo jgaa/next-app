@@ -380,6 +380,8 @@ qt_add_library(NextAppUiLib STATIC)
 
 if (NEXTAPP_WITH_MCP)
     add_library(NextAppMcp STATIC
+        mcp/McpHelp.cpp
+        mcp/McpHelp.h
         mcp/McpProtocol.cpp
         mcp/McpProtocol.h
         mcp/McpRequestStore.cpp
@@ -963,6 +965,18 @@ if (NEXTAPP_WITH_TESTS_UI)
 
     add_test(NAME tst_nextappui_runtime COMMAND tst_nextappui_runtime)
 
+    if (NEXTAPP_WITH_MCP AND NOT ANDROID)
+        qt_add_executable(tst_nextappui_mcp
+            tests/tst_nextappui_mcp.cpp
+            mcp/McpProtocol.cpp
+            mcp/McpHelp.cpp
+        )
+        target_include_directories(tst_nextappui_mcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+        target_link_libraries(tst_nextappui_mcp PRIVATE na_proto_lib Qt6::Core Qt6::Test)
+        set_target_properties(tst_nextappui_mcp PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+        add_test(NAME tst_nextappui_mcp COMMAND tst_nextappui_mcp)
+    endif()
+
     qt_add_executable(tst_nextappui_acceptance
         tests/tst_nextappui_acceptance.cpp
         tests/AcceptanceHarness.cpp
@@ -987,6 +1001,9 @@ if (NEXTAPP_WITH_TESTS_UI)
     set_target_properties(tst_nextappui_acceptance PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
+
+    # The test launches this helper from the same binary directory.
+    add_dependencies(tst_nextappui_acceptance nextappui_acceptance_device)
 
     add_test(NAME tst_nextappui_acceptance COMMAND tst_nextappui_acceptance)
 endif()

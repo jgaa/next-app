@@ -5,6 +5,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QPromise>
 #include <QStringList>
 #include <QtGlobal>
 
@@ -379,6 +380,28 @@ public:
         return mobile_ui_;
     }
 
+    QFuture<McpApprovalDecision> requestMcpApproval(const QVariantMap& operation) override
+    {
+        mcp_approval_requests_.append(operation);
+        // Finish immediately so tests cannot hang waiting for a UI dialog.
+        // Tests must opt in explicitly when they need an approved mutation.
+        QPromise<McpApprovalDecision> promise;
+        promise.start();
+        promise.addResult(mcp_approval_decision_);
+        promise.finish();
+        return promise.future();
+    }
+
+    void cancelMcpApprovals() override
+    {
+        ++cancel_mcp_approvals_calls_;
+    }
+
+    void recordMcpActivity(const QVariantMap& event) override
+    {
+        mcp_activity_.append(event);
+    }
+
     void setDbForTest(DbStore& db) noexcept
     {
         db_ = &db;
@@ -396,4 +419,8 @@ public:
     bool unrecognized_device_error_shown_{false};
     bool mobile_ui_{false};
     DbStore* db_{};
+    McpApprovalDecision mcp_approval_decision_{McpApprovalDecision::Reject};
+    QList<QVariantMap> mcp_approval_requests_;
+    QList<QVariantMap> mcp_activity_;
+    int cancel_mcp_approvals_calls_{0};
 };

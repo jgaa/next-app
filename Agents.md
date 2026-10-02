@@ -45,3 +45,10 @@ Always act like a senior engineer with strong operational judgment, not a naive 
 * When there is a well-known standard way to do something, use it.
 * When creating a release artifact for an application, include only the necessary files. No static libraries, tests, headers, SDKs, or anything else that is irrelevant to running the target binary.
 * Prefer shallow git checkouts on CI builds. Only do a full checkout if it is factually required.
+
+## MCP maintenance
+
+* MCP tool definitions, input schemas, help metadata, examples, and constraints must be reviewed and updated whenever relevant protobuf definitions, domain models, validation rules, enums, field semantics, or other constraints change. Changing an existing protobuf/API constraint requires checking all affected MCP metadata.
+* MCP documentation drifting away from the running implementation is a bug. Reuse generated protobuf metadata and shared validation/schema definitions where practical; keep detailed documentation in local MCP help rather than duplicating it in tool descriptions.
+* Normal feature work must include an MCP-impact review. Every new user-visible/domain feature must be evaluated to determine whether it should also be exposed through MCP.
+* Evaluation of MCP exposure is mandatory, but implementation is not automatic. Adding a new MCP tool or substantially extending the MCP API requires explicit project-owner approval first. Maintenance fixes that keep already-approved MCP tools, schemas, help, and validation synchronized with the implementation do not require new approval.

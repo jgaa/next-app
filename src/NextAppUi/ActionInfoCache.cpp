@@ -903,15 +903,6 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
             const auto new_hash = computeTagsHash(action.tags());
             if (hash == new_hash) {
                 need_tags_update = false;
-            } else {
-                const auto _ = token
-                    ? co_await db.queryInTransaction(*token, "DELETE FROM tag WHERE action=?", action.id_proto())
-                    : co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
-                if (!_) {
-                    LOG_ERROR_N << "Failed to delete stale tags for action " << action.id_proto()
-                                << " " << action.name() << " err=" << _.error();
-                    co_return false;
-                }
             }
         } else {
             need_tags_update = !action.tags().isEmpty();
@@ -930,6 +921,16 @@ QCoro::Task<bool> ActionInfoCache::save(const QProtobufMessage &item)
     const bool applied = rval->affected_rows.has_value();
 
     if (applied && need_tags_update) {
+        // Only replace tag rows after the action revision was accepted. An
+        // ignored stale update must preserve the current action's tags.
+        const auto removed_tags = token
+            ? co_await db.queryInTransaction(*token, "DELETE FROM tag WHERE action=?", action.id_proto())
+            : co_await db.query("DELETE FROM tag WHERE action=?", action.id_proto());
+        if (!removed_tags) {
+            LOG_ERROR_N << "Failed to replace tags for action " << action.id_proto()
+                        << " err=" << removed_tags.error();
+            co_return false;
+        }
         if (!co_await updateTags(action)) {
             co_return false;
         }

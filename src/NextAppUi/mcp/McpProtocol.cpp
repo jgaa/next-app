@@ -1,7 +1,11 @@
 #include "McpProtocol.h"
+#include "McpHelp.h"
+
+#include <limits>
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QStringList>
 
 namespace nextapp::mcp {
 namespace {
@@ -40,6 +44,7 @@ QString serverInstructions() {
                           "An action in NextApp is a task or action item. "
                           "A list is a NextApp node; lists, folders, and projects are nodes. "
                           "When creating an action, omit nodeId for Inbox; only supply a nodeId returned by nextapp_list_nodes. "
+                          "Use get_mcp_help for detailed tool, schema, and concept documentation. "
                           "If a mutation returns PENDING, poll nextapp_get_request_status with requestId. Never retry it with a new idempotencyKey.");
 }
 } // namespace
@@ -183,6 +188,8 @@ QJsonObject toolList()
     const auto string = [](int max = -1) { QJsonObject value{{QStringLiteral("type"), QStringLiteral("string")}}; if (max >= 0) value.insert(QStringLiteral("maxLength"), max); return value; };
     const auto uuid = [&string] { auto value = string(); value.insert(QStringLiteral("format"), QStringLiteral("uuid")); return value; };
     const auto integer = [](int minimum, int maximum) { return QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), minimum}, {QStringLiteral("maximum"), maximum}}; };
+    const auto version = integer(0, std::numeric_limits<int>::max());
+    const auto nonempty = [&string](int max) { auto value = string(max); value.insert(QStringLiteral("minLength"), 1); return value; };
     const auto page = schema(QJsonObject{{QStringLiteral("pageSize"), integer(1, 50)}, {QStringLiteral("cursor"), string(256)}});
     const auto node_format = QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
         {QStringLiteral("enum"), QJsonArray{QStringLiteral("short"), QStringLiteral("full")}}};
@@ -196,46 +203,70 @@ QJsonObject toolList()
                       schema(QJsonObject{{QStringLiteral("pageSize"), integer(1, 50)},
                           {QStringLiteral("cursor"), uuid()}, {QStringLiteral("format"), node_format}})));
     tools.append(tool(QStringLiteral("nextapp_search_nodes"), QStringLiteral("Search active NextApp lists/nodes by name; short form is default. Use a returned nodeId, never invent one."),
-                      schema(QJsonObject{{QStringLiteral("query"), string(256)}, {QStringLiteral("pageSize"), integer(1, 50)},
+                      schema(QJsonObject{{QStringLiteral("query"), nonempty(256)}, {QStringLiteral("pageSize"), integer(1, 50)},
                           {QStringLiteral("cursor"), uuid()}, {QStringLiteral("format"), node_format}}, {QStringLiteral("query")})));
     tools.append(tool(QStringLiteral("nextapp_list_categories"), QStringLiteral("List NextApp action categories (labels used to organize actions and lists/nodes)."),
                       schema(QJsonObject{{QStringLiteral("pageSize"), integer(1, 50)}, {QStringLiteral("cursor"), uuid()}})));
     tools.append(tool(QStringLiteral("nextapp_search_categories"), QStringLiteral("Search NextApp action categories by name; use a returned categoryId for a list/node."),
-                      schema(QJsonObject{{QStringLiteral("query"), string(256)}, {QStringLiteral("pageSize"), integer(1, 50)},
+                      schema(QJsonObject{{QStringLiteral("query"), nonempty(256)}, {QStringLiteral("pageSize"), integer(1, 50)},
                           {QStringLiteral("cursor"), uuid()}}, {QStringLiteral("query")})));
     tools.append(tool(QStringLiteral("nextapp_search_actions"), QStringLiteral("Search NextApp actions (tasks/action items) by name in the local cache."),
-                      schema(QJsonObject{{QStringLiteral("query"), string(256)}, {QStringLiteral("pageSize"), integer(1, 50)}}, {QStringLiteral("query")})));
+                      schema(QJsonObject{{QStringLiteral("query"), nonempty(256)}, {QStringLiteral("pageSize"), integer(1, 50)}}, {QStringLiteral("query")})));
     const auto reason = string(2048);
     const auto idempotency_key = QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
-        {QStringLiteral("maxLength"), 256},
+        {QStringLiteral("minLength"), 1}, {QStringLiteral("maxLength"), 256},
         {QStringLiteral("description"), QStringLiteral("Stable key for one intended mutation; reuse on retry. Never use a new key while its request is PENDING.")}};
     tools.append(tool(QStringLiteral("nextapp_create_action"), QStringLiteral("Create a NextApp action (task/action item). Omit nodeId for Inbox, or use an existing node from nextapp_list_nodes; approval may be required."),
                       schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key},
                           {QStringLiteral("nodeId"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
                               {QStringLiteral("format"), QStringLiteral("uuid")},
                               {QStringLiteral("description"), QStringLiteral("Optional existing destination UUID from nextapp_list_nodes. Omit to use Inbox; never invent a UUID.")}}},
-                          {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("minLength"), 1}, {QStringLiteral("maxLength"), 255}}}, {QStringLiteral("description"), string()}, {QStringLiteral("reason"), reason}}, {QStringLiteral("idempotencyKey"), QStringLiteral("name")})));
+                          {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("minLength"), 1}, {QStringLiteral("maxLength"), 255}}}, {QStringLiteral("description"), string(64 * 1024)}, {QStringLiteral("reason"), reason}}, {QStringLiteral("idempotencyKey"), QStringLiteral("name")})));
     const auto kind = QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
-        {QStringLiteral("enum"), QJsonArray{QStringLiteral("folder"), QStringLiteral("organization"),
-            QStringLiteral("person"), QStringLiteral("project"), QStringLiteral("task")}}};
+        {QStringLiteral("enum"), nodeKindNames()}};
     tools.append(tool(QStringLiteral("nextapp_create_node"), QStringLiteral("Create a NextApp list/node (folder or project); kind defaults to folder. Omit parentId for a top-level list. Approval may be required."),
-                      schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key}, {QStringLiteral("name"), string(128)},
-                          {QStringLiteral("description"), string()}, {QStringLiteral("kind"), kind},
+                      schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key}, {QStringLiteral("name"), nonempty(128)},
+                          {QStringLiteral("description"), string(64 * 1024)}, {QStringLiteral("kind"), kind},
                           {QStringLiteral("parentId"), uuid()}, {QStringLiteral("categoryId"), uuid()},
                           {QStringLiteral("reason"), reason}}, {QStringLiteral("idempotencyKey"), QStringLiteral("name")})));
     tools.append(tool(QStringLiteral("nextapp_update_node"), QStringLiteral("Patch a NextApp list/node name, description, kind, active state, or category. Get baseVersion with nextapp_list_nodes format=full. Cannot move or delete it; approval may be required."),
                       schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key}, {QStringLiteral("nodeId"), uuid()},
-                          {QStringLiteral("baseVersion"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
-                          {QStringLiteral("name"), string(128)}, {QStringLiteral("description"), string()},
+                          {QStringLiteral("baseVersion"), version},
+                          {QStringLiteral("name"), nonempty(128)}, {QStringLiteral("description"), string(64 * 1024)},
                           {QStringLiteral("kind"), kind}, {QStringLiteral("active"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}},
                           {QStringLiteral("categoryId"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                              {QStringLiteral("anyOf"), QJsonArray{uuid(), QJsonObject{{QStringLiteral("const"), QStringLiteral("")}}}},
                               {QStringLiteral("description"), QStringLiteral("Category UUID from nextapp_list_categories; empty string clears it.")}}},
                           {QStringLiteral("reason"), reason}},
                           {QStringLiteral("idempotencyKey"), QStringLiteral("nodeId"), QStringLiteral("baseVersion")})));
-    tools.append(tool(QStringLiteral("nextapp_update_action"), QStringLiteral("Change specified name or description fields of a NextApp action (task/action item); approval may be required."),
-                      schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key}, {QStringLiteral("id"), uuid()}, {QStringLiteral("baseVersion"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}, {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("minLength"), 1}, {QStringLiteral("maxLength"), 255}}}, {QStringLiteral("description"), string()}, {QStringLiteral("reason"), reason}}, {QStringLiteral("idempotencyKey"), QStringLiteral("id"), QStringLiteral("baseVersion")})));
-    tools.append(tool(QStringLiteral("nextapp_complete_action"), QStringLiteral("Mark a NextApp action (task/action item) done or reopen it; approval may be required."),
-                      schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key}, {QStringLiteral("id"), uuid()}, {QStringLiteral("baseVersion"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}, {QStringLiteral("done"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}}, {QStringLiteral("reason"), reason}}, {QStringLiteral("idempotencyKey"), QStringLiteral("id"), QStringLiteral("baseVersion"), QStringLiteral("done")})));
+    tools.append(tool(QStringLiteral("nextapp_update_action"), QStringLiteral("Patch action name or description using its current version from nextapp_get_action; approval may be required."),
+                      schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key}, {QStringLiteral("id"), uuid()}, {QStringLiteral("baseVersion"), version}, {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("minLength"), 1}, {QStringLiteral("maxLength"), 255}}}, {QStringLiteral("description"), string(64 * 1024)}, {QStringLiteral("reason"), reason}}, {QStringLiteral("idempotencyKey"), QStringLiteral("id"), QStringLiteral("baseVersion")})));
+    tools.append(tool(QStringLiteral("nextapp_complete_action"), QStringLiteral("Mark an action done or reopen it using its current version from nextapp_get_action; approval may be required."),
+                      schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key}, {QStringLiteral("id"), uuid()}, {QStringLiteral("baseVersion"), version}, {QStringLiteral("done"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}}, {QStringLiteral("reason"), reason}}, {QStringLiteral("idempotencyKey"), QStringLiteral("id"), QStringLiteral("baseVersion"), QStringLiteral("done")})));
+    tools.append(tool(QStringLiteral("get_mcp_help"),
+        QStringLiteral("Get local detailed documentation for a tool, schema, or concept. Names are exact; unknown names return available subjects."),
+        schema(QJsonObject{{QStringLiteral("subject"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+            {QStringLiteral("enum"), QJsonArray{QStringLiteral("tool"), QStringLiteral("schema"), QStringLiteral("concept")}}}},
+            {QStringLiteral("name"), nonempty(128)}}, {QStringLiteral("subject"), QStringLiteral("name")})));
+    // Patch presence is enforceable independently of field semantics.
+    for (auto i = 0; i < tools.size(); ++i) {
+        auto definition = tools.at(i).toObject();
+        const auto name = definition.value(QStringLiteral("name")).toString();
+        if (name == QStringLiteral("nextapp_update_action") || name == QStringLiteral("nextapp_update_node")) {
+            auto input = definition.value(QStringLiteral("inputSchema")).toObject();
+            QJsonArray alternatives;
+            auto fields = QStringList{QStringLiteral("name"), QStringLiteral("description")};
+            if (name == QStringLiteral("nextapp_update_node")) fields << QStringLiteral("kind") << QStringLiteral("active") << QStringLiteral("categoryId");
+            for (const auto& field : fields)
+                alternatives.append(QJsonObject{{QStringLiteral("required"), QJsonArray{field}}});
+            input.insert(QStringLiteral("anyOf"), alternatives);
+            definition.insert(QStringLiteral("inputSchema"), input);
+        }
+        if (name != QStringLiteral("get_mcp_help"))
+            definition.insert(QStringLiteral("description"), definition.value(QStringLiteral("description")).toString()
+                + QStringLiteral(" Details: get_mcp_help (subject=tool, name=this tool)."));
+        tools.replace(i, definition);
+    }
     return {{QStringLiteral("tools"), tools}};
 }
 } // namespace nextapp::mcp

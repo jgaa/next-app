@@ -3,9 +3,11 @@
 
 #include <QEventLoop>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QVariantMap>
 #include <QtTest>
@@ -29,6 +31,10 @@
 #include "WorkSessionsModel.h"
 
 #include "tests/TestRuntimeSupport.h"
+
+#ifdef NEXTAPP_WITH_MCP
+#include "mcp/McpGateway.h"
+#endif
 
 namespace {
 
@@ -532,22 +538,6 @@ nextapp::pb::TimeBlock readStoredTimeBlock(DbStore& db, const QString& id)
     return tb;
 }
 
-nextapp::pb::Action readStoredAction(DbStore& db, const QString& id)
-{
-    QList<QVariant> params;
-    params << id;
-    const auto rows = waitForTask(db.legacyQuery("SELECT data FROM action WHERE id = ?", &params));
-    if (!rows.has_value() || rows->isEmpty() || rows->front().isEmpty()) {
-        qFatal("Failed to read stored action for id=%s", qPrintable(id));
-    }
-
-    QProtobufSerializer serializer;
-    nextapp::pb::Action action;
-    if (!action.deserialize(&serializer, rows->front().front().toByteArray())) {
-        qFatal("Failed to deserialize stored action for id=%s", qPrintable(id));
-    }
-    return action;
-}
 
 class TestSyncedNodeCache final
     : public QObject
@@ -763,6 +753,9 @@ class tst_NextAppUiRuntime final : public QObject
 private slots:
     void initTestCase();
     void cleanupTestCase();
+#ifdef NEXTAPP_WITH_MCP
+    void mcpHelpGatewayPreservesAuthenticationAndMutationGates();
+#endif
     void mainTreeModelUsesInjectedRuntimeForCommands();
     void mainTreeModelRejectsInvalidRequestsWithoutCallingComms();
     void mainTreeModelRepairsPersistedParentsAndLoadsSortedTree();
@@ -774,7 +767,7 @@ private slots:
     void serverCommPersistsAndReloadsSyncCursorFile();
     void serverCommResyncSetsFlagAndStops();
     void serverCommDuplicateResyncIsCoalesced();
-    void serverCommOutOfOrderUpdateRequestsFullResync();
+    void serverCommOutOfOrderUpdateRequestsIncrementalRepair();
     void serverSynchedCacheQueuesUpdatesUntilLocalLoadCompletes();
     void serverSynchedCacheCommitsTransactionAndLoadsPersistedState();
     void serverSynchedCacheRollsBackTransactionOnSyncFailure();
@@ -785,7 +778,7 @@ private slots:
     void workCacheLoadsPersistedSessionsAndFiltersByAction();
     void workSessionMinuteNotificationsFollowSessionIds();
     void workCacheSortsNewActiveSessions();
-    void workCacheRejectsDanglingActionReferences();
+    void workCacheRepairsDanglingActionReferences();
     void workCacheProcessesActionMoveAndDeleteUpdates();
     void workCacheSaveIgnoresStaleUpdatedId();
     void actionCategoriesModelSyncsVersionsAppliesPendingUpdatesAndRoutesCommands();
@@ -803,7 +796,7 @@ private slots:
     void actionsModelAddsTodayActionFromLiveUpdate();
     void mainTreeModelReloadsFromCacheWhenUpdateTargetsMissingNode();
     void mainTreeModelDeleteUpdateClearsSelectionAndEmitsNodeDeleted();
-    void mainTreeModelFailsLocalLoadWithDanglingParent();
+    void mainTreeModelRepairsDanglingParentOnLocalLoad();
     void useCaseTemplatesExposeSortedNamesAndCreateSelectedTree();
 
 private:
@@ -838,6 +831,70 @@ void tst_NextAppUiRuntime::cleanupTestCase()
 {
     AppInstanceMgr::instance()->close();
 }
+
+#ifdef NEXTAPP_WITH_MCP
+void tst_NextAppUiRuntime::mcpHelpGatewayPreservesAuthenticationAndMutationGates()
+{
+    using namespace nextapp::mcp;
+    auto db = makeInitializedDb(QStringLiteral("mcp-help-gateway.sqlite"));
+    const auto close_db = qScopeGuard([&db] { db->close(); });
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    runtime.settings_.setValue("ai/enabled", true);
+    runtime.settings_.setValue("ai/mcp/enabled", true);
+    runtime.server_comm_.setConnectedForTest(true);
+    McpGateway gateway(runtime);
+    QVERIFY(waitForTask(gateway.initialize()));
+    const HeaderMap headers{{"authorization", QByteArray{"Bearer "} + gateway.credential().toUtf8()}};
+    const auto invoke = [&gateway](const QString& method, const QJsonObject& params, const HeaderMap& request_headers) {
+        return waitForTask(gateway.handle(QJsonDocument(QJsonObject{{"jsonrpc", "2.0"}, {"id", 42},
+            {"method", method}, {"params", params}}).toJson(), request_headers, QStringLiteral("127.0.0.1")));
+    };
+    const QJsonObject params{{"name", "get_mcp_help"},
+        {"arguments", QJsonObject{{"subject", "schema"}, {"name", "action"}}}};
+    const auto rejected = invoke("tools/call", params, {});
+    QCOMPARE(rejected.value("error").toObject().value("data").toObject().value("httpStatus").toInt(), 401);
+    const auto listed = invoke("tools/list", {}, headers).value("result").toObject().value("tools").toArray();
+    bool found = false;
+    for (const auto& tool : listed) found |= tool.toObject().value("name") == QStringLiteral("get_mcp_help");
+    QVERIFY(found);
+    const auto reply = invoke("tools/call", params, headers).value("result").toObject();
+    QVERIFY(!reply.value("isError").toBool());
+    QCOMPARE(reply.value("structuredContent").toObject().value("name").toString(), QStringLiteral("action"));
+    auto modern_params = params;
+    modern_params.insert("_meta", QJsonObject{{QString::fromLatin1(protocol_version_key), QString::fromLatin1(protocol_version)},
+        {QString::fromLatin1(client_capabilities_key), QJsonObject{}}});
+    auto modern_headers = headers;
+    modern_headers.insert("mcp-protocol-version", protocol_version);
+    modern_headers.insert("mcp-method", "tools/call");
+    modern_headers.insert("mcp-name", "get_mcp_help");
+    const auto modern = invoke("tools/call", modern_params, modern_headers).value("result").toObject();
+    QCOMPARE(modern.value("resultType").toString(), QStringLiteral("complete"));
+    QCOMPARE(modern.value("structuredContent"), reply.value("structuredContent"));
+    QVERIFY(modern.value("_meta").toObject().contains("io.modelcontextprotocol/serverInfo"));
+    const auto invalid_help = invoke("tools/call", {{"name", "get_mcp_help"},
+        {"arguments", QJsonObject{{"subject", "tool"}, {"name", "unknown"}}}}, headers).value("result").toObject();
+    QVERIFY(invalid_help.value("isError").toBool());
+    // Invalid mutation fields are rejected before a key is reserved or approval requested.
+    runtime.settings_.setValue("ai/mcp/gate/createNode", "Ask");
+    const auto invalid = invoke("tools/call", {{"name", "nextapp_create_node"},
+        {"arguments", QJsonObject{{"idempotencyKey", "invalid-node"}, {"name", "Node"}, {"kind", "invalid"}}}}, headers).value("result").toObject();
+    QVERIFY(invalid.value("isError").toBool());
+    QCOMPARE(invalid.value("structuredContent").toObject().value("field").toString(), QStringLiteral("kind"));
+    const auto requests = waitForTask(db->query("SELECT COUNT(*) FROM mcp_request"));
+    QVERIFY(requests); QCOMPARE(requests->rows.front().front().toInt(), 0);
+    QVERIFY(runtime.mcp_approval_requests_.isEmpty());
+    QVERIFY(runtime.mcp_activity_.isEmpty());
+    const auto categories = invoke("tools/call", {{"name", "nextapp_list_categories"}}, headers).value("result").toObject();
+    QVERIFY(!categories.value("isError").toBool());
+    QVERIFY(categories.value("structuredContent").toObject().contains("categories"));
+    runtime.settings_.setValue("ai/mcp/enabled", false);
+    QVERIFY(invoke("tools/call", params, headers).contains("error"));
+    runtime.settings_.setValue("ai/mcp/enabled", true);
+    runtime.server_comm_.setConnectedForTest(false);
+    QVERIFY(invoke("tools/call", params, headers).contains("error"));
+}
+#endif
 
 void tst_NextAppUiRuntime::mainTreeModelUsesInjectedRuntimeForCommands()
 {
@@ -1174,9 +1231,10 @@ void tst_NextAppUiRuntime::serverCommDuplicateResyncIsCoalesced()
     db->close();
 }
 
-void tst_NextAppUiRuntime::serverCommOutOfOrderUpdateRequestsFullResync()
+void tst_NextAppUiRuntime::serverCommOutOfOrderUpdateRequestsIncrementalRepair()
 {
     auto db = makeInitializedDb(QStringLiteral("servercomm-out-of-order-resync.sqlite"));
+    const auto close_db = qScopeGuard([&db] { db->close(); });
 
     TestRuntimeServices runtime;
     runtime.setDbForTest(*db);
@@ -1186,18 +1244,17 @@ void tst_NextAppUiRuntime::serverCommOutOfOrderUpdateRequestsFullResync()
     comm.signup_status_ = ServerComm::SIGNUP_OK;
     comm.setStatus(ServerComm::ONLINE);
 
+    QSignalSpy repair_spy(&comm, &ServerComm::resynching);
     comm.requestResyncAfterStreamGap(2);
 
     QCOMPARE(runtime.settings_.value("sync/incremental_repair").toBool(), true);
     QCOMPARE(runtime.settings_.sync_calls_, 1);
-    QCOMPARE(comm.status(), ServerComm::ERROR);
-
-    QCoreApplication::processEvents(QEventLoop::AllEvents);
-
+    // Incremental repair stops the connection synchronously and schedules a restart.
     QCOMPARE(comm.status(), ServerComm::OFFLINE);
+    QCOMPARE(repair_spy.count(), 1);
+    QVERIFY(comm.resync_scheduled_);
+    QVERIFY(!runtime.settings_.value("sync/resync").toBool());
     QVERIFY(comm.messages_.contains("Initiating incremental repair synch with the server"));
-
-    db->close();
 }
 
 void tst_NextAppUiRuntime::serverSynchedCacheQueuesUpdatesUntilLocalLoadCompletes()
@@ -1629,9 +1686,10 @@ void tst_NextAppUiRuntime::workCacheSortsNewActiveSessions()
     db->close();
 }
 
-void tst_NextAppUiRuntime::workCacheRejectsDanglingActionReferences()
+void tst_NextAppUiRuntime::workCacheRepairsDanglingActionReferences()
 {
     auto db = makeInitializedDb(QStringLiteral("work-cache-dangling.sqlite"));
+    const auto close_db = qScopeGuard([&db] { db->close(); });
     insertMinimalAction(*db, QStringLiteral("action-1"), QStringLiteral("node-1"), QStringLiteral("Action One"));
 
     TestRuntimeServices runtime;
@@ -1655,10 +1713,22 @@ void tst_NextAppUiRuntime::workCacheRejectsDanglingActionReferences()
         "UPDATE work_session SET action = ? WHERE id = ?",
         QStringLiteral("missing-action"),
         QStringLiteral("44444444-4444-4444-4444-444444444444"))));
-    QVERIFY(!waitForTask(cache.loadLocally()));
+    // Loading repairs orphaned active sessions and reports the missing reference.
+    QVERIFY(waitForTask(cache.loadLocally()));
     QVERIFY(cache.getActive().empty());
-
-    db->close();
+    const auto stored = waitForTask(db->query("SELECT id FROM work_session WHERE id = ?", orphan.id_proto()));
+    QVERIFY(stored);
+    QVERIFY(stored->rows.isEmpty());
+    QCOMPARE(runtime.server_comm_.recorded_sync_issues_.size(), 1);
+    const auto& issue = runtime.server_comm_.recorded_sync_issues_.front();
+    QCOMPARE(issue.key().objectType(),
+             nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_WORK_SESSION);
+    QCOMPARE(issue.key().objectId(), orphan.id_proto());
+    QCOMPARE(issue.key().problem(),
+             nextapp::pb::SyncFaultKindGadget::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE);
+    QCOMPARE(issue.key().referencedType(),
+             nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_ACTION);
+    QCOMPARE(issue.key().referencedId(), QStringLiteral("missing-action"));
 }
 
 void tst_NextAppUiRuntime::workCacheProcessesActionMoveAndDeleteUpdates()
@@ -1758,6 +1828,7 @@ void tst_NextAppUiRuntime::workCacheSaveIgnoresStaleUpdatedId()
 void tst_NextAppUiRuntime::actionCategoriesModelSyncsVersionsAppliesPendingUpdatesAndRoutesCommands()
 {
     auto db = makeInitializedDb(QStringLiteral("action-categories-sync.sqlite"));
+    const auto close_db = qScopeGuard([&db] { db->close(); });
 
     TestRuntimeServices runtime;
     runtime.setDbForTest(*db);
@@ -1781,8 +1852,8 @@ void tst_NextAppUiRuntime::actionCategoriesModelSyncsVersionsAppliesPendingUpdat
 
     auto queued_beta = beta;
     queued_beta.setName(QStringLiteral("Beta Updated"));
-    runtime.server_comm_.emitUpdateForTest(std::make_shared<nextapp::pb::Update>(
-        makeActionCategoryUpdate(nextapp::pb::Update::Operation::UPDATED, queued_beta)));
+    QVERIFY(waitForTask(model.applyLiveUpdate(std::make_shared<nextapp::pb::Update>(
+        makeActionCategoryUpdate(nextapp::pb::Update::Operation::UPDATED, queued_beta)))));
 
     auto queued_gamma = makeActionCategory(
         QStringLiteral("cat-gamma"),
@@ -1790,8 +1861,8 @@ void tst_NextAppUiRuntime::actionCategoriesModelSyncsVersionsAppliesPendingUpdat
         QStringLiteral("green"),
         QStringLiteral("leaf"),
         3);
-    runtime.server_comm_.emitUpdateForTest(std::make_shared<nextapp::pb::Update>(
-        makeActionCategoryUpdate(nextapp::pb::Update::Operation::ADDED, queued_gamma)));
+    QVERIFY(waitForTask(model.applyLiveUpdate(std::make_shared<nextapp::pb::Update>(
+        makeActionCategoryUpdate(nextapp::pb::Update::Operation::ADDED, queued_gamma)))));
 
     QVERIFY(waitForTask(model.synch(false)));
     QCOMPARE(runtime.server_comm_.local_action_category_version_, quint64{9});
@@ -1820,12 +1891,11 @@ void tst_NextAppUiRuntime::actionCategoriesModelSyncsVersionsAppliesPendingUpdat
     QCOMPARE(runtime.server_comm_.deleted_categories_, QList<QString>({QStringLiteral("cat-alpha")}));
 
     auto deleted_gamma = queued_gamma;
-    runtime.server_comm_.emitUpdateForTest(std::make_shared<nextapp::pb::Update>(
-        makeActionCategoryUpdate(nextapp::pb::Update::Operation::DELETED, deleted_gamma)));
+    QVERIFY(waitForTask(model.applyLiveUpdate(std::make_shared<nextapp::pb::Update>(
+        makeActionCategoryUpdate(nextapp::pb::Update::Operation::DELETED, deleted_gamma)))));
     QTRY_COMPARE(model.rowCount({}), 3);
     QCOMPARE(model.getIndexByUuid(QStringLiteral("cat-gamma")), -1);
 
-    db->close();
 }
 
 void tst_NextAppUiRuntime::devicesModelUsesInjectedServerCommForFetchEnableAndDelete()
@@ -2361,14 +2431,19 @@ void tst_NextAppUiRuntime::actionInfoCacheUpdateReloadsMissingOriginsAndInvalidD
 void tst_NextAppUiRuntime::actionInfoCacheSaveIgnoresStaleUpdatedId()
 {
     auto db = makeInitializedDb(QStringLiteral("action-info-stale-updated-id.sqlite"));
+    const auto close_db = qScopeGuard([&db] { db->close(); });
     TestRuntimeServices runtime;
     runtime.setDbForTest(*db);
+    MainTreeModel tree(runtime);
+    const auto node_id = QStringLiteral("10101010-1010-1010-1010-101010101010");
+    QVERIFY(waitForTask(tree.save(makeNode(node_id, QStringLiteral("Node"),
+        nextapp::pb::Node::Kind::FOLDER, {}, 1, 1))));
 
     {
         ActionInfoCache cache(runtime);
         const auto newer = makeAction(
             QStringLiteral("eeeeeeee-5555-5555-5555-555555555555"),
-            QStringLiteral("node-1"),
+            node_id,
             QStringLiteral("Newest"),
             2,
             300,
@@ -2384,13 +2459,16 @@ void tst_NextAppUiRuntime::actionInfoCacheSaveIgnoresStaleUpdatedId()
         QVERIFY(waitForTask(cache.save(newer)));
         QVERIFY(waitForTask(cache.save(older)));
 
-        const auto stored = readStoredAction(*db, newer.id_proto());
-        QCOMPARE(stored.name(), QStringLiteral("Newest"));
-        QCOMPARE(stored.updatedId(), 30ULL);
+        const auto stored = waitForTask(db->query(
+            "SELECT name, updated_id FROM action WHERE id = ?", newer.id_proto()));
+        QVERIFY(stored);
+        QCOMPARE(stored->rows.size(), 1);
+        QCOMPARE(stored->rows.front().at(0).toString(), QStringLiteral("Newest"));
+        QCOMPARE(stored->rows.front().at(1).toULongLong(), 30ULL);
 
         QList<QVariant> params;
         params << newer.id_proto();
-        const auto tag_rows = waitForTask(db->legacyQuery("SELECT tag FROM tag WHERE action = ? ORDER BY tag", &params));
+        const auto tag_rows = waitForTask(db->legacyQuery("SELECT name FROM tag WHERE action = ? ORDER BY name", &params));
         QVERIFY(tag_rows.has_value());
         QCOMPARE(tag_rows->size(), 2);
         QCOMPARE(tag_rows->at(0).at(0).toString(), QStringLiteral("alpha"));
@@ -2398,7 +2476,6 @@ void tst_NextAppUiRuntime::actionInfoCacheSaveIgnoresStaleUpdatedId()
     }
 
     ActionInfoCache::instance_ = nullptr;
-    db->close();
 }
 
 void tst_NextAppUiRuntime::mainTreeModelReloadsFromCacheWhenUpdateTargetsMissingNode()
@@ -2479,9 +2556,10 @@ void tst_NextAppUiRuntime::mainTreeModelDeleteUpdateClearsSelectionAndEmitsNodeD
     db->close();
 }
 
-void tst_NextAppUiRuntime::mainTreeModelFailsLocalLoadWithDanglingParent()
+void tst_NextAppUiRuntime::mainTreeModelRepairsDanglingParentOnLocalLoad()
 {
     auto db = makeInitializedDb(QStringLiteral("main-tree-dangling-parent.sqlite"));
+    const auto close_db = qScopeGuard([&db] { db->close(); });
     TestRuntimeServices runtime;
     runtime.setDbForTest(*db);
     MainTreeModel model(runtime);
@@ -2494,10 +2572,21 @@ void tst_NextAppUiRuntime::mainTreeModelFailsLocalLoadWithDanglingParent()
         200,
         20);
     QVERIFY(waitForTask(model.saveBatch({orphan})));
-    QVERIFY(!waitForTask(model.loadLocally()));
+    QVERIFY(waitForTask(model.loadLocally()));
     QVERIFY(!model.indexFromUuid(orphan.uuid()).isValid());
-
-    db->close();
+    const auto stored = waitForTask(db->query("SELECT uuid FROM node WHERE uuid = ?", orphan.uuid()));
+    QVERIFY(stored);
+    QVERIFY(stored->rows.isEmpty());
+    QCOMPARE(runtime.server_comm_.recorded_sync_issues_.size(), 1);
+    const auto& issue = runtime.server_comm_.recorded_sync_issues_.front();
+    QCOMPARE(issue.key().objectType(),
+             nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_NODE);
+    QCOMPARE(issue.key().objectId(), orphan.uuid());
+    QCOMPARE(issue.key().problem(),
+             nextapp::pb::SyncFaultKindGadget::SyncFaultKind::SYNC_FAULT_KIND_MISSING_REFERENCE);
+    QCOMPARE(issue.key().referencedType(),
+             nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_NODE);
+    QCOMPARE(issue.key().referencedId(), orphan.parent());
 }
 
 void tst_NextAppUiRuntime::useCaseTemplatesExposeSortedNamesAndCreateSelectedTree()
