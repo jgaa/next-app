@@ -243,9 +243,33 @@ Rectangle {
                 }
 
                 DragHandler {
+                    id: selectionSwipeHandler
+                    enabled: Qt.platform.os === "android"
+                    acceptedDevices: PointerDevice.TouchScreen
+                    target: null
+                    yAxis.enabled: false
+                    property bool selectionToggled: false
+
+                    onActiveChanged: {
+                        if (active) {
+                            selectionToggled = false
+                        }
+                    }
+
+                    onActiveTranslationChanged: {
+                        // Toggle once per left swipe, without moving the row or starting a drop.
+                        if (active && !selectionToggled && activeTranslation.x <= -48) {
+                            selectionToggled = true
+                            NaCore.clickInitiator = NaCore.ClickInitiator.ACTIONS
+                            listView.toggleUuid(actionItem.uuid)
+                        }
+                    }
+                }
+
+                DragHandler {
                     id: dragHandler
                     target: actionItem
-                    enabled: NaCore.dragEnabled
+                    enabled: Qt.platform.os !== "android" && NaCore.dragEnabled
                     property real origX: actionItem.x
                     property real origY: actionItem.y
 

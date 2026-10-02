@@ -406,10 +406,28 @@ Rectangle {
         title: qsTr("Set Priority")
         id: setPriorityDlg
         width: 300
-        height: 150
-
-        // Show cancel button
         standardButtons: Dialog.Cancel
+
+        footer: DialogButtonBox {
+            Button {
+                text: qsTr("Apply")
+                DialogButtonBox.buttonRole: DialogButtonBox.ApplyRole
+                enabled: priority.valid
+            }
+        }
+
+        onApplied: {
+            if (!priority.valid) {
+                return
+            }
+            if (priority.mode === 0) {
+                NaActionsModel.batchChangePriority(priority.priority, actions.selectedIds)
+            } else {
+                NaActionsModel.batchChangeDynamicPriority(priority.urgency, priority.importance,
+                                                        actions.selectedIds)
+            }
+            close()
+        }
 
         onVisibleChanged: {
             if (visible) {
@@ -417,15 +435,8 @@ Rectangle {
             }
         }
 
-        PrioritySelector {
+        contentItem: PrioritySelector {
             id: priority
-            Layout.leftMargin: root.leftMarginForControls
-            Layout.fillWidth: true
-
-            onPriorityChanged: (pri) => {
-                NaActionsModel.batchChangePriority(pri, actions.selectedIds)
-                setPriorityDlg.close()
-            }
         }
     }
 
