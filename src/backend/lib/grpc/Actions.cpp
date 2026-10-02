@@ -3,6 +3,7 @@
 #include "nextapp/UserContext.h"
 #include <boost/multi_array.hpp>
 #include <set>
+#include <cmath>
 
 namespace nextapp::grpc {
 
@@ -1255,6 +1256,30 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
                                         owner_.server().config().options.max_batch_updates)};
             };
 
+            pb::Priority priorityValue;
+            const bool changePriority = req->has_dynamicpriority() || req->has_priority();
+            if (req->has_dynamicpriority()) {
+                priorityValue = req->dynamicpriority();
+            } else if (req->has_priority()) {
+                priorityValue.set_priority(req->priority());
+            }
+            if (changePriority) {
+                if (priorityValue.has_priority()) {
+                    if (!pb::ActionPriority_IsValid(priorityValue.priority())) {
+                        throw server_err{pb::Error::INVALID_ARGUMENT, "Invalid fixed priority"};
+                    }
+                } else if (priorityValue.has_urgencyimportance()) {
+                    const auto& ui = priorityValue.urgencyimportance();
+                    if (!std::isfinite(ui.urgency()) || !std::isfinite(ui.importance())
+                        || ui.urgency() < 0 || ui.urgency() > 10
+                        || ui.importance() < 0 || ui.importance() > 10) {
+                        throw server_err{pb::Error::INVALID_ARGUMENT, "Invalid urgency/importance"};
+                    }
+                } else {
+                    throw server_err{pb::Error::INVALID_ARGUMENT, "Priority mode is required"};
+                }
+            }
+
             const auto& cuser = rctx.uctx->userUuid();
             const auto& dbopts = rctx.uctx->dbOptions();
             DoneChanged done = DoneChanged::NO_CHANGE;
@@ -1272,8 +1297,8 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
                 append("start_time=?, due_by_time=?, due_timezone=?, due_kind=?");
             };
 
-            if (req->has_priority()) {
-                append("priority=?");
+            if (changePriority) {
+                append("priority=?, dyn_urgency=?, dyn_importance=?");
             }
 
             if (req->has_status()) {
@@ -1339,9 +1364,18 @@ boost::asio::awaitable<void> GrpcServer::saveActions(jgaa::mysqlpool::Mysqlpool:
                     args.emplace_back(kind);
                 }
 
-                if (req->has_priority()) {
-                    priority = pb::ActionPriority_Name(req->priority());
-                    args.emplace_back(priority);
+                if (changePriority) {
+                    if (priorityValue.has_priority()) {
+                        priority = pb::ActionPriority_Name(priorityValue.priority());
+                        args.emplace_back(priority);
+                        args.emplace_back(nullptr);
+                        args.emplace_back(nullptr);
+                    } else {
+                        const auto& ui = priorityValue.urgencyimportance();
+                        args.emplace_back(nullptr);
+                        args.emplace_back(static_cast<int32_t>(ui.urgency()));
+                        args.emplace_back(static_cast<int32_t>(ui.importance()));
+                    }
                 }
 
                 if (req->has_favorite()) {

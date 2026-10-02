@@ -544,6 +544,7 @@ message UpdateActionsReq {
     optional common.Uuid category = 6; // Sets the category on the actions
     optional ActionDifficulty difficulty = 7; // Sets the difficulty on the actions
     optional uint64 timeEstimate = 8; // Sets the time estimate on the actions
+    optional Priority dynamicPriority = 9; // Fixed priority or urgency/importance; takes precedence over priority
 }
 
 

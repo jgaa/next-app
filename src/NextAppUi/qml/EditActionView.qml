@@ -15,7 +15,7 @@ Item {
     property NextappPb.action action: null
     property bool existingOnly: false
     property bool autoCommit: false
-    property bool valid: name.text.length > 0 && status.currentIndex >= 0
+    property bool valid: name.text.length > 0 && status.currentIndex >= 0 && priority.valid
 
     function assign(newAction) {
         commitIf()
@@ -25,7 +25,6 @@ Item {
             name.text = ""
             descr.text = ""
             status.currentIndex = 0
-            priority.currentIndex = 0
             createdDateCtl.text = ""
             timeEstimateCtl.text = ""
             whenCtl.currentIndex =  NextappPb.Due.Kind.UNSET
@@ -36,7 +35,7 @@ Item {
             favorite.isChecked = false
             category.uuid = ""
             repeatAfterCtl.value = 1
-            priority.mode = 0
+            priority.reset()
             priority.priority = 5
             completedTimeCtl.text = ""
             whenControl.due = NaActionsModel.createDue(0, 0)
@@ -54,6 +53,7 @@ Item {
         name.text = root.action.name = action.name
         descr.text = root.action.descr
 
+        priority.reset()
         if (root.action.dynamicPriority.hasPriority) {
             priority.mode = 0
             priority.priority = root.action.dynamicPriority.priority
@@ -61,6 +61,8 @@ Item {
             priority.mode = 1
             priority.urgency = root.action.dynamicPriority.urgencyImportance.urgency
             priority.importance = root.action.dynamicPriority.urgencyImportance.importance
+        } else {
+            priority.priority = 5
         }
 
         createdDateCtl.text = Common.formatPbDate(root.action.createdDate)

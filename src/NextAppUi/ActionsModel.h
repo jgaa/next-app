@@ -273,6 +273,7 @@ public:
     Q_INVOKABLE void batchChangeDue(const nextapp::pb::Due& due, const QStringList& actions);
     Q_INVOKABLE void batchChangeCategory(const QString& category, const QStringList& actions);
     Q_INVOKABLE void batchChangePriority(int priority, const QStringList& actions);
+    Q_INVOKABLE void batchChangeDynamicPriority(double urgency, double importance, const QStringList& actions);
     Q_INVOKABLE void batchChangeDifficulty(int difficulty, const QStringList& actions);
     Q_INVOKABLE void batchDelete(const QStringList& actions);
     Q_INVOKABLE int indexOfAction(const QString& uuid) const noexcept;

@@ -1,5 +1,6 @@
 
 #include <memory>
+#include <cmath>
 #include <QDate>
 #include <QUuid>
 #include <QTimeZone>
@@ -1188,8 +1189,29 @@ void ActionsModel::batchChangePriority(int priority, const QStringList &actions)
         return;
     }
     const auto pri = static_cast<nextapp::pb::ActionPriorityGadget::ActionPriority>(priority);
+    pb::Priority priorityValue;
+    priorityValue.setPriority(pri);
     pb::UpdateActionsReq req;
+    req.setDynamicPriority(priorityValue);
+    // Keep the legacy field for servers that predate dynamic batch priority updates.
     req.setPriority(pri);
+    LOG_DEBUG_N << "Setting fixed priority " << priority << " on " << actions.size() << " actions";
+    batchUpdateActions(req, actions);
+}
+
+void ActionsModel::batchChangeDynamicPriority(double urgency, double importance, const QStringList &actions)
+{
+    if (!std::isfinite(urgency) || !std::isfinite(importance)
+        || urgency < 0 || urgency > 10 || importance < 0 || importance > 10) {
+        LOG_WARN_N << "Invalid urgency/importance " << urgency << "/" << importance;
+        return;
+    }
+    pb::Priority priority;
+    priority.setUrgencyImportance(setUrgencyImportance(urgency, importance));
+    pb::UpdateActionsReq req;
+    req.setDynamicPriority(priority);
+    LOG_DEBUG_N << "Setting dynamic urgency/importance " << urgency << "/" << importance
+               << " on " << actions.size() << " actions";
     batchUpdateActions(req, actions);
 }
 
