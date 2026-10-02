@@ -4,6 +4,8 @@
 #include <QDebug>
 #include <QtConcurrent/QtConcurrent>
 #include <QThread>
+#include <QSettings>
+#include <algorithm>
 
 #include "logging.h"
 #include "util.h"
@@ -204,18 +206,110 @@ SoundPlayer::SoundPlayer()
 
     if (ma_resource_manager_init(&rm_config, &resource_manager_) != MA_SUCCESS) {
         LOG_ERROR_N << "Failed to initialize resource manager";
+        return;
+    }
+    resource_manager_initialized_ = true;
+
+    if (ma_context_init(nullptr, 0, nullptr, &context_) != MA_SUCCESS) {
+        LOG_ERROR_N << "Failed to initialize audio context";
+        return;
+    }
+    context_initialized_ = true;
+    applyOutputDevice();
+}
+
+namespace {
+QString outputDeviceId(const ma_context& context, const ma_device_id& id)
+{
+    return QString::number(static_cast<int>(context.backend)) + ":"
+        + QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(&id), sizeof(id)).toHex());
+}
+}
+
+QVariantList SoundPlayer::outputDevices()
+{
+    QVariantList result;
+    if (context_initialized_) {
+        ma_device_info* devices = nullptr;
+        ma_uint32 count = 0;
+        if (ma_context_get_devices(&context_, &devices, &count, nullptr, nullptr) == MA_SUCCESS) {
+            for (ma_uint32 i = 0; i < count; ++i) {
+                result.append(QVariantMap{{"name", QString::fromUtf8(devices[i].name)},
+                                          {"id", outputDeviceId(context_, devices[i].id)}});
+            }
+        } else {
+            LOG_WARN_N << "Failed to enumerate audio output devices";
+        }
+    }
+    std::sort(result.begin(), result.end(), [](const QVariant& a, const QVariant& b) {
+        const auto an = a.toMap().value("name").toString();
+        const auto bn = b.toMap().value("name").toString();
+        const auto order = QString::compare(an, bn, Qt::CaseInsensitive);
+        return order == 0 ? an < bn : order < 0;
+    });
+    result.prepend(QVariantMap{{"name", QObject::tr("Default")}, {"id", QString{}}});
+    return result;
+}
+
+void SoundPlayer::applyOutputDevice()
+{
+    if (!context_initialized_ || !resource_manager_initialized_ || state_ == State::CLOSED) {
+        return;
+    }
+    QSettings settings;
+    auto selected = settings.value("audio/outputDevice", QString{}).toString();
+    if (state_ == State::INITIALIZED && selected == output_device_) {
+        return;
+    }
+
+    ma_device_id device_id{};
+    bool found = false;
+    if (!selected.isEmpty()) {
+        ma_device_info* devices = nullptr;
+        ma_uint32 count = 0;
+        if (ma_context_get_devices(&context_, &devices, &count, nullptr, nullptr) == MA_SUCCESS) {
+            for (ma_uint32 i = 0; i < count; ++i) {
+                if (outputDeviceId(context_, devices[i].id) == selected) {
+                    device_id = devices[i].id;
+                    found = true;
+                    LOG_DEBUG_N << "Selecting audio output: " << devices[i].name;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            LOG_WARN_N << "Selected audio output is unavailable; using Default";
+            selected.clear();
+            settings.setValue("audio/outputDevice", selected);
+            settings.sync();
+        }
+    }
+    if (state_ == State::INITIALIZED) {
+        ma_engine_uninit(&engine_);
+        setState(State::UNINITIALIZED);
     }
 
     ma_engine_config eng_config = ma_engine_config_init();
     eng_config.pResourceManager = &resource_manager_;
+    eng_config.pContext = &context_;
+    eng_config.pPlaybackDeviceID = found ? &device_id : nullptr;
 
     auto res = ma_engine_init(&eng_config, &engine_);
+    if (res != MA_SUCCESS && found) {
+        LOG_WARN_N << "Failed to open selected audio output; using Default";
+        selected.clear();
+        settings.setValue("audio/outputDevice", selected);
+        settings.sync();
+        eng_config.pPlaybackDeviceID = nullptr;
+        res = ma_engine_init(&eng_config, &engine_);
+    }
     if (res != MA_SUCCESS) {
-        LOG_ERROR_N << "Failed to initialize audio engine";
+        LOG_ERROR_N << "Failed to initialize audio engine: " << res;
         return;
     }
+    output_device_ = selected;
     setState(State::INITIALIZED);
-    LOG_DEBUG_N << "SoundPlayer initialized";
+    LOG_DEBUG_N << "SoundPlayer initialized with " << (selected.isEmpty() ? "Default" : "selected output");
 }
 
 void SoundPlayer::playSound(const QString &resourcePath, double volume)
@@ -242,11 +336,21 @@ SoundPlayer::~SoundPlayer() {
 
 void SoundPlayer::close()
 {
-    unique_lock lock(mutex_);
     if (state_ == State::INITIALIZED) {
         ma_engine_uninit(&engine_);
     }
 
+    if (resource_manager_initialized_) {
+        ma_resource_manager_uninit(&resource_manager_);
+        resource_manager_initialized_ = false;
+    }
+    if (context_initialized_) {
+        ma_context_uninit(&context_);
+        context_initialized_ = false;
+    }
+
+    // Audio workers may access the VFS cache while they shut down.
+    unique_lock lock(mutex_);
     if (vfs_) {
         auto vfs = reinterpret_cast<Vfs*>(vfs_);
         delete vfs; // Clean up the VFS

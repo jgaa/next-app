@@ -140,6 +140,7 @@ public:
     static Q_INVOKABLE time_t parseTime(const QString& str);
     static Q_INVOKABLE QString toDateAndTime(time_t when, time_t defaultDate = 0);
     static Q_INVOKABLE QString toTime(time_t when);
+    Q_INVOKABLE QVariantList audioOutputDevices();
     Q_INVOKABLE void playSound(double volume, const QString& soundFile) override;
     Q_INVOKABLE void playSoundDelayed(int delayMs, double volume, const QString& soundFile);
     // Called when signup is complete

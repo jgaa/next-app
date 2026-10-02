@@ -588,6 +588,7 @@ void NextAppCore::debugLog(const QString message)
 
 void NextAppCore::settingsWasChanged()
 {
+    SoundPlayer::instance().applyOutputDevice();
     instance()->emitSettingsChanged();
 }
 
@@ -628,6 +629,11 @@ QString NextAppCore::toTime(time_t when)
     LOG_TRACE_N << "Converting time " << when;
     const auto actualTime = QDateTime::fromSecsSinceEpoch(when);
     return actualTime.time().toString("hh:mm");
+}
+
+QVariantList NextAppCore::audioOutputDevices()
+{
+    return SoundPlayer::instance().outputDevices();
 }
 
 void NextAppCore::playSound(double volume, const QString &soundFile)

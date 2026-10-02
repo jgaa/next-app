@@ -24,11 +24,34 @@ ScrollView {
         if (NaCore.hasPushNotifications) {
             settings.setValue("push/updates", pushUpdatesEnabled.checked ? "true" : "false")
         }
+        settings.setValue("audio/outputDevice", audioOutput.currentValue ?? "")
         settings.sync()
     }
 
     ColumnLayout {
         width: parent.width
+
+        Label { text: qsTr("Audio") }
+
+        GridLayout {
+            Layout.leftMargin: 20
+            Layout.fillWidth: true
+            columns: 2
+
+            Label { text: qsTr("Output device") }
+            ComboBox {
+                id: audioOutput
+                Layout.fillWidth: true
+                model: NaCore.audioOutputDevices()
+                textRole: "name"
+                valueRole: "id"
+                Component.onCompleted: {
+                    const selected = settings.value("audio/outputDevice", "")
+                    const index = indexOfValue(selected)
+                    currentIndex = index >= 0 ? index : 0
+                }
+            }
+        }
 
         Label { text: qsTr("Calendar Alarms")}
 
