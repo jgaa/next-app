@@ -254,6 +254,12 @@ Rectangle {
         id: contextMenu
 
         Action {
+            text: qsTr("Complete All")
+            enabled: root.model?.valid && actionsCtl.model !== null
+            onTriggered: actionsCtl.model.completeAll()
+        }
+
+        Action {
             text: qsTr("Delete")
             onTriggered: {
                 root.model.deleteEvent(root.uuid)

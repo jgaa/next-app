@@ -77,6 +77,27 @@ TimeBoxActionsModel::TimeBoxActionsModel(const QUuid TimeBoxUuid, CalendarDayMod
     });
 }
 
+void TimeBoxActionsModel::completeAll()
+{
+    if (!state_ || !state_->valid()) {
+        LOG_DEBUG_N << toString() << ": Cannot complete actions while the model is unavailable";
+        return;
+    }
+
+    // Snapshot the IDs before queuing requests, which can trigger model updates.
+    QStringList active;
+    for (const auto& action : state_->ai()) {
+        if (action->status() == nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE
+            && !active.contains(action->id_proto())) {
+            active.append(action->id_proto());
+        }
+    }
+    LOG_DEBUG_N << toString() << ": Completing " << active.size() << " active actions";
+    for (const auto& uuid : active) {
+        ServerComm::instance().completeActiveAction(uuid);
+    }
+}
+
 void TimeBoxActionsModel::removeAction(const QString &eventId, const QString &action)
 {
     assert(day_);

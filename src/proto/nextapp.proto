@@ -946,6 +946,7 @@ message DeleteActionReq {
 message ActionDoneReq {
     string uuid = 1;
     bool done = 2;
+    bool activeOnly = 3; // Leave non-active actions unchanged.
 }
 
 message ActionFavoriteReq {

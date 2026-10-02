@@ -1502,13 +1502,15 @@ boost::asio::awaitable<void> GrpcServer::deleteAction(const std::string& uuid, R
             auto trx = co_await rctx.dbh->transaction();
 
             const auto res = co_await rctx.dbh->exec(
-                "UPDATE action SET status=?, completed_time=? WHERE id=? AND user=?",
+                req->activeonly()
+                    ? "UPDATE action SET status=?, completed_time=? WHERE id=? AND user=? AND status='active'"
+                    : "UPDATE action SET status=?, completed_time=? WHERE id=? AND user=?",
                 dbopts, (req->done() ? "done" : "active"), when, uuid, cuser);
 
             assert(res.has_value());
             if (res.affected_rows() == 1) {
                 co_await replyWithAction(owner_, uuid, rctx, ctx, reply, done);
-            } else {
+            } else if (!req->activeonly()) {
                 reply->set_error(pb::Error::GENERIC_ERROR);
                 reply->set_message(format("Action with id={} was not updated. affected_rows={}", uuid, res.affected_rows()));
             }

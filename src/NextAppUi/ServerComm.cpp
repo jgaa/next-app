@@ -837,6 +837,15 @@ void ServerComm::markActionAsDone(const QString &actionUuid, bool done)
     rpcQueueAndExecute<QueuedRequest::Type::MARK_ACTION_AS_DONE>(req);
 }
 
+void ServerComm::completeActiveAction(const QString &actionUuid)
+{
+    nextapp::pb::ActionDoneReq req;
+    req.setUuid(actionUuid);
+    req.setDone(true);
+    req.setActiveOnly(true);
+    rpcQueueAndExecute<QueuedRequest::Type::MARK_ACTION_AS_DONE>(req);
+}
+
 QCoro::Task<nextapp::pb::Status> ServerComm::addActionDirect(const nextapp::pb::Action& action)
 {
     co_return co_await rpc(action, &nextapp::pb::Nextapp::Client::CreateAction);

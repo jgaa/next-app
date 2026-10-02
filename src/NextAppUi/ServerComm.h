@@ -228,6 +228,7 @@ public:
     void updateActions(const nextapp::pb::UpdateActionsReq& action) override;
     void deleteAction(const QString& actionUuid) override;
     void markActionAsDone(const QString& actionUuid, bool done) override;
+    void completeActiveAction(const QString& actionUuid);
     QCoro::Task<nextapp::pb::Status> addActionDirect(const nextapp::pb::Action& action) override;
     QCoro::Task<nextapp::pb::Status> updateActionDirect(const nextapp::pb::Action& action) override;
     QCoro::Task<nextapp::pb::Status> markActionDoneDirect(const nextapp::pb::ActionDoneReq& request) override;
