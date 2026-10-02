@@ -231,10 +231,22 @@ Item {
                     }
                 }
 
-                DlgInputField {
+                TextArea {
                     Layout.leftMargin: root.leftMarginForControls
                     id: name
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 0
+                    Layout.minimumHeight: font.pixelSize + 12
+                    wrapMode: TextEdit.Wrap
+                    padding: 4
+                    color: "black"
+                    background: Rectangle {
+                        color: name.activeFocus ? "lightblue" : "lightgray"
+                    }
+                    // Wrap the name visually while keeping Enter from adding newlines.
+                    Keys.onReturnPressed: event => event.accepted = true
+                    Keys.onEnterPressed: event => event.accepted = true
                 }
             }
 

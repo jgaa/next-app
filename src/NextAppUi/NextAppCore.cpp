@@ -173,7 +173,7 @@ bool NextAppCore::pasteClipboardToNode(const QString& nodeUuid)
         action.setDynamicPriority(priority);
         action.setNode(target);
         action.setName(title);
-        action.setDescr(boundedUtf8(item, kMaxActionDescriptionUtf8Bytes));
+        action.setDescr(boundedUtf8(pasteActionDescription(item), kMaxActionDescriptionUtf8Bytes));
         server_comm_->addAction(action);
         ++created;
     }

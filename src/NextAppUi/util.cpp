@@ -371,3 +371,14 @@ QString pasteActionTitle(const QString& text, int wordCount)
         : markdownTitle;
     return normalizedPasteWhitespace(title).left(256);
 }
+
+QString pasteActionDescription(const QString& text)
+{
+    const auto trimmed = text.trimmed();
+    const auto lineEnd = trimmed.indexOf(u'\n');
+    const auto firstLine = lineEnd < 0 ? trimmed : trimmed.left(lineEnd);
+    if (!markdownPasteTitle(firstLine).isEmpty()) {
+        return lineEnd < 0 ? QString{} : trimmed.mid(lineEnd + 1).trimmed();
+    }
+    return text;
+}
