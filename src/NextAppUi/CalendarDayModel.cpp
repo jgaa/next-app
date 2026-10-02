@@ -167,13 +167,17 @@ CalendarDayModel::~CalendarDayModel()
     LOG_TRACE_N << "Destroying day model for " << date_.toString() << " with index=" << index_;
 }
 
-void CalendarDayModel::createTimeBox(QString name, QString category, int start, int end)
+void CalendarDayModel::createTimeBox(QString name, QString category, int start, int end,
+                                    const QStringList& actions)
 {
     nextapp::pb::TimeBlock tb;
     tb.setName(name);
     tb.setCategory(category);
+    nextapp::pb::StringList actionList;
+    actionList.setList(actions);
+    tb.setActions(std::move(actionList));
 
-    if (start >= end) {
+    if (start < 0 || start >= end || end > 1440) {
         qWarning() << "Invalid timebox start/end";
         return;
     }

@@ -255,12 +255,18 @@ ApplicationWindow {
         }
 
         MyMenu {
-            enabled: sidebar.currentMainItem == 1 && mainTree.hasSelection && NaComm.connected
+            enabled: NaComm.connected
             title: qsTr("Actions")
 
             Action {
                 text: qsTr("New Action")
+                enabled: sidebar.currentMainItem == 1 && mainTree.hasSelection
                 onTriggered: openActionDlg()
+            }
+
+            Action {
+                text: qsTr("Suggest next actions")
+                onTriggered: openDialog("ActionSuggestionsDlg.qml")
             }
         }
 
@@ -373,6 +379,13 @@ ApplicationWindow {
                 }
 
                 // TODO: Separator
+
+                ToolBarBtn {
+                    tooltipText: qsTr("Suggest next actions")
+                    icon: "\uf0eb"
+                    isActive: NaComm.connected
+                    onClicked: openDialog("ActionSuggestionsDlg.qml")
+                }
 
                 ToolBarBtn {
                     alwaysAvailable: true

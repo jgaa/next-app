@@ -245,6 +245,7 @@ public:
     Q_PROPERTY(nextapp::pb::GetActionsFlags flags READ flags WRITE setFlags NOTIFY flagsChanged)
     Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectionChanged)
     Q_PROPERTY(QString selected READ selected WRITE setSelected NOTIFY selectionChanged)
+    Q_PROPERTY(QStringList selectedIds MEMBER selected_ids_ NOTIFY selectedIdsChanged)
 
     ActionsModel(QObject *parent = {});
     ActionsModel(RuntimeServices& runtime, QObject *parent = nullptr);
@@ -367,6 +368,7 @@ signals:
     void matchChanged();
     void filtersEnabledChanged();
     void selectionChanged();
+    void selectedIdsChanged();
 
 private:
     friend class tst_NextAppUiRuntime;
@@ -402,6 +404,7 @@ private:
     QString match_;
     bool filters_enabled_{false};
     QString selected_;
+    QStringList selected_ids_;
 
     // QAbstractItemModel interface
 public:

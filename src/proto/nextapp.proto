@@ -190,6 +190,11 @@ message UserGlobalSettings {
     int64 version = 8;
     bool optInEmail = 9; // If the user wants to receive emails
     int32 pasteActionTitleWordCount = 10;
+    // Minutes; zero uses the client defaults (30 and 240 respectively).
+    int32 suggestionTimeBoxMinMinutes = 11;
+    int32 suggestionTimeBoxMaxMinutes = 12;
+    // Maximum ranked suggestions, 5–100; zero uses the default of 20.
+    int32 suggestionLimit = 13;
 }
 
 message Node {
@@ -1365,6 +1370,8 @@ service Nextapp {
     rpc GetWorkSessions(GetWorkSessionsReq) returns (Status) {}
     rpc GetUserGlobalSettings(Empty) returns (Status) {}
     rpc SetUserGlobalSettings(UserGlobalSettings) returns (Status) {}
+    // Optional actions are attached atomically at creation. IDs must be unique,
+    // belong to the current user, and fit the server's time_block_max_actions limit.
     rpc CreateTimeblock(TimeBlock) returns (Status) {}
     rpc UpdateTimeblock(TimeBlock) returns (Status) {}
     rpc DeleteTimeblock(DeleteTimeblockReq) returns (Status) {}

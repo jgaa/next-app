@@ -656,7 +656,18 @@ boost::asio::awaitable<void> GrpcServer::getGlobalSettings(pb::UserGlobalSetting
         [this, req, ctx] (pb::Status *reply, RequestCtx& rctx) -> boost::asio::awaitable<void> {
             const auto& cuser = rctx.uctx->userUuid();
 
-            // TODO: Validate the settings
+            // Zero preserves defaults for clients predating suggestion settings.
+            const auto minimum = req->suggestiontimeboxminminutes();
+            const auto maximum = req->suggestiontimeboxmaxminutes();
+            if (minimum < 0 || minimum > 1440 || maximum < 0 || maximum > 1440
+                || (maximum ? maximum : 240) < (minimum ? minimum : 30)) {
+                throw server_err{pb::Error::INVALID_ARGUMENT, "Invalid suggestion time-box limits"};
+            }
+
+            const auto suggestion_limit = req->suggestionlimit();
+            if (suggestion_limit != 0 && (suggestion_limit < 5 || suggestion_limit > 100)) {
+                throw server_err{pb::Error::INVALID_ARGUMENT, "Suggestion limit must be between 5 and 100"};
+            }
 
             auto res = co_await rctx.dbh->exec(
                 "SELECT version FROM user_settings where user = ?", cuser);

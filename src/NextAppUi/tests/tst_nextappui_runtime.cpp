@@ -16,6 +16,7 @@
 #include "ActionCategoriesModel.h"
 #include "ActionInfoCache.h"
 #include "ActionsModel.h"
+#include "ActionSuggestionsModel.h"
 #include "CalendarCache.h"
 #include "DbStore.h"
 #include "DevicesModel.h"
@@ -795,6 +796,10 @@ private slots:
     void importExportModelDispatchesExportAndImportThroughInjectedComms();
     void importExportModelRejectsInvalidInputsWithoutCallingImport();
     void actionInfoCacheComputesStableScores();
+    void actionSuggestionsRankPriorityDueTimeAndDifficulty();
+    void actionSuggestionsFilterSelectionAndCategoriesAndCreateTimeBoxes();
+    void actionSuggestionsLimitHighestRankedResults();
+    void actionSuggestionsFilterListsAndDescendants();
     void actionsModelFormatsClipboardText();
     void actionInfoCacheClearsMissingOriginsReportsIssueAndPersistsTags();
     void actionInfoCacheUpdateReloadsMissingOriginsAndInvalidDeletesRequestResync();
@@ -2787,6 +2792,177 @@ void tst_NextAppUiRuntime::mainTreeModelRepairsDanglingParentOnLocalLoad()
     QCOMPARE(issue.key().referencedType(),
              nextapp::pb::SyncObjectTypeGadget::SyncObjectType::SYNC_OBJECT_TYPE_NODE);
     QCOMPARE(issue.key().referencedId(), orphan.parent());
+}
+
+void tst_NextAppUiRuntime::actionSuggestionsRankPriorityDueTimeAndDifficulty()
+{
+    using namespace nextapp::pb;
+    Action action;
+    Priority priority;
+    priority.setPriority(ActionPriorityGadget::ActionPriority::PRI_NORMAL);
+    action.setDynamicPriority(priority);
+    action.setDifficulty(ActionDifficultyGadget::ActionDifficulty::NORMAL);
+    action.setTimeEstimate(30);
+    const auto now = QDateTime::currentSecsSinceEpoch();
+    const auto rank = [&](const Action& value, int state = 1, int minutes = 60, int scope = 2) {
+        return ActionSuggestionsModel::rank(value, state, minutes, scope, now);
+    };
+    const auto base = rank(action);
+    QVERIFY(base);
+    QVERIFY(!rank(action, 0)); // Exhausted cannot tackle normal difficulty.
+    QVERIFY(!rank(action, 1, 29));
+    QVERIFY(rank(action, 1, 30));
+    QVERIFY(!rank(action, 1, 60, 0)); // Unset excluded from scheduled-only.
+    QVERIFY(rank(action, 1, 60, 1));
+    action.setTimeEstimate(0);
+    QVERIFY(rank(action, 1, 1)); // No estimate is eligible, even with little time.
+    action.setTimeEstimate(30);
+
+    auto important = action;
+    priority.setPriority(ActionPriorityGadget::ActionPriority::PRI_CRITICAL);
+    important.setDynamicPriority(priority);
+    QVERIFY(*rank(important) > *base);
+    Due due;
+    due.setKind(ActionDueKindGadget::ActionDueKind::DATETIME);
+    due.setDue(now - 60);
+    action.setDue(due);
+    QVERIFY(*rank(action) > *base);
+    QVERIFY(rank(action, 1, 60, 0));
+    QVERIFY(!rank(action, 1, 60, 1));
+    due.setStart(now + 3600);
+    action.setDue(due);
+    QVERIFY(!rank(action));
+    due.setStart(now - 3600);
+    action.setDue(due);
+    action.setDifficulty(ActionDifficultyGadget::ActionDifficulty::INSPIRED);
+    QVERIFY(!rank(action, 3));
+    QVERIFY(rank(action, 4));
+    action.setStatus(ActionStatusGadget::ActionStatus::DONE);
+    QVERIFY(!rank(action, 4));
+    action.setStatus(ActionStatusGadget::ActionStatus::ONHOLD);
+    QVERIFY(!rank(action, 4));
+    action.setStatus(ActionStatusGadget::ActionStatus::DELETED);
+    QVERIFY(!rank(action, 4));
+
+    UserGlobalSettings settings;
+    QCOMPARE(ActionSuggestionsModel::timeBoxMinutes(10, 60, settings), 30);
+    QCOMPARE(ActionSuggestionsModel::timeBoxMinutes(500, 600, settings), 240);
+    QCOMPARE(ActionSuggestionsModel::timeBoxMinutes(0, 60, settings), 60);
+    QCOMPARE(ActionSuggestionsModel::timeBoxMinutes(0, 10, settings), 30);
+    settings.setSuggestionTimeBoxMinMinutes(15);
+    settings.setSuggestionTimeBoxMaxMinutes(120);
+    QCOMPARE(ActionSuggestionsModel::timeBoxMinutes(10, 60, settings), 15);
+    QCOMPARE(ActionSuggestionsModel::timeBoxMinutes(200, 600, settings), 120);
+}
+
+void tst_NextAppUiRuntime::actionSuggestionsFilterSelectionAndCategoriesAndCreateTimeBoxes()
+{
+    auto db = makeInitializedDb(QStringLiteral("action-suggestions.sqlite"));
+    const auto closeDb = qScopeGuard([&db] { db->close(); });
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    ActionSuggestionsModel model(runtime);
+    const QString first = "11111111-1111-1111-1111-111111111111";
+    const QString second = "22222222-2222-2222-2222-222222222222";
+    insertMinimalAction(*db, first, QStringLiteral("First"));
+    insertMinimalAction(*db, second, QStringLiteral("Second"));
+    QVERIFY(waitForTask(db->query("UPDATE action SET category=?, difficulty=2, time_estimate=20 WHERE id=?",
+                                  QStringLiteral("category-a"), first)));
+    QVERIFY(waitForTask(db->query("UPDATE action SET category=?, difficulty=1, time_estimate=0 WHERE id=?",
+                                  QStringLiteral("category-b"), second)));
+    model.suggest(1, 60, {}, 2, false, {});
+    QTRY_VERIFY(!model.busy());
+    QCOMPARE(model.suggestions().size(), 2);
+    QVERIFY(model.error().isEmpty());
+    model.suggest(1, 60, {"category-a"}, 2, false, {});
+    QTRY_VERIFY(!model.busy());
+    QCOMPARE(model.suggestions().size(), 1);
+    QCOMPARE(model.suggestions().front().toMap()["uuid"].toString(), first);
+    model.suggest(1, 60, {}, 2, true, {second});
+    QTRY_VERIFY(!model.busy());
+    QCOMPARE(model.suggestions().size(), 1);
+    QCOMPARE(model.suggestions().front().toMap()["uuid"].toString(), second);
+    QCOMPARE(model.suggestions().front().toMap()["estimate"].toInt(), 0);
+    const auto start = QDateTime::currentSecsSinceEpoch() + 3600;
+    QVERIFY(!model.createTimeBox(first, start, 60));
+    QVERIFY(!model.createTimeBox(second, -1, 60));
+    QVERIFY(!model.createTimeBox(second, start, 0));
+    QVERIFY(model.createTimeBox(second, start, 60));
+    QCOMPARE(runtime.server_comm_.added_time_blocks_.size(), 1);
+    const auto& tb = runtime.server_comm_.added_time_blocks_.front();
+    QCOMPARE(tb.actions().list(), QStringList{second});
+    QCOMPARE(tb.category(), QStringLiteral("category-b"));
+    QCOMPARE(tb.timeSpan().start(), static_cast<quint64>(start));
+    QCOMPARE(tb.timeSpan().end(), static_cast<quint64>(start + 3600));
+    model.suggest(1, 60, {}, 2, true, {});
+    QTRY_VERIFY(!model.busy());
+    QVERIFY(model.suggestions().isEmpty());
+    model.suggest(1, 0, {}, 2, false, {});
+    QVERIFY(!model.busy());
+    QVERIFY(!model.error().isEmpty());
+}
+
+void tst_NextAppUiRuntime::actionSuggestionsLimitHighestRankedResults()
+{
+    auto db = makeInitializedDb(QStringLiteral("action-suggestions-limit.sqlite"));
+    const auto closeDb = qScopeGuard([&db] { db->close(); });
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    ActionSuggestionsModel model(runtime);
+    // Insert the alphabetically best tie last to catch limiting before sorting.
+    for (int i = 104; i >= 0; --i) {
+        insertMinimalAction(*db, QStringLiteral("limit-%1").arg(i),
+                            QStringLiteral("Action %1").arg(i, 3, 10, QLatin1Char('0')));
+    }
+    const auto checkLimit = [&](int configured, int expected) {
+        runtime.server_comm_.global_settings_.setSuggestionLimit(configured);
+        model.suggest(1, 60, {}, 2, false, {});
+        QTRY_VERIFY(!model.busy());
+        QCOMPARE(model.suggestions().size(), expected);
+        QCOMPARE(model.suggestions().front().toMap()["name"].toString(), QStringLiteral("Action 000"));
+        QCOMPARE(model.suggestions().back().toMap()["name"].toString(),
+                 QStringLiteral("Action %1").arg(expected - 1, 3, 10, QLatin1Char('0')));
+    };
+    checkLimit(0, 20);
+    checkLimit(5, 5);
+    checkLimit(100, 100);
+    // Defend against settings written by other clients outside the valid range.
+    checkLimit(1, 5);
+    checkLimit(101, 100);
+}
+
+void tst_NextAppUiRuntime::actionSuggestionsFilterListsAndDescendants()
+{
+    auto db = makeInitializedDb(QStringLiteral("action-suggestions-lists.sqlite"));
+    const auto closeDb = qScopeGuard([&db] { db->close(); });
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    ActionSuggestionsModel model(runtime);
+    for (const auto& [node, parent] : QList<QPair<QString, QString>>{
+             {"root", ""}, {"child", "root"}, {"grandchild", "child"}, {"other", ""}}) {
+        QVERIFY(waitForTask(db->query(
+            "INSERT INTO node (uuid, parent, active, updated, name, exclude_from_wr, data) "
+            "VALUES (?, ?, 1, 0, ?, 0, ?)", node, parent, node, QByteArray("unused"))));
+        insertMinimalAction(*db, "action-" + node, node, node);
+    }
+    const auto check = [&](int listScope, const QString& node, int count, bool restricted = false,
+                           const QStringList& ids = {}) {
+        model.suggest(1, 60, {}, 2, restricted, ids, listScope, node);
+        QTRY_VERIFY(!model.busy());
+        QCOMPARE(model.suggestions().size(), count);
+    };
+    check(0, "root", 4);
+    check(1, "root", 1);
+    QCOMPARE(model.suggestions().front().toMap()["node"].toString(), QStringLiteral("root"));
+    check(2, "root", 3);
+    check(2, "child", 2);
+    check(2, "root", 1, true, {"action-grandchild", "action-other"});
+    QCOMPARE(model.suggestions().front().toMap()["node"].toString(), QStringLiteral("grandchild"));
+    check(2, "missing", 0);
+    check(2, "", 4); // No selected list always means All.
+    // A malformed parent cycle must terminate and not duplicate suggestions.
+    QVERIFY(waitForTask(db->query("UPDATE node SET parent='grandchild' WHERE uuid='root'")));
+    check(2, "root", 3);
 }
 
 void tst_NextAppUiRuntime::useCaseTemplatesExposeSortedNamesAndCreateSelectedTree()

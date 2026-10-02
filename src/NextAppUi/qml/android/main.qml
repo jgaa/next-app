@@ -55,6 +55,16 @@ ApplicationWindow {
             }
 
             ToolButton {
+                icon.source: "qrc:/qt/qml/NextAppUi/icons/light_bulb.svg"
+                enabled: NaComm.connected
+                Accessible.name: qsTr("Suggest next actions")
+                ToolTip.visible: hovered || pressed
+                ToolTip.delay: 500
+                ToolTip.text: qsTr("Suggest next actions")
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/ActionSuggestionsDlg.qml", appWindow, {})
+            }
+
+            ToolButton {
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/arrows-up-down-left-right.svg"
                 checkable: true
                 checked: NaCore.dragEnabled

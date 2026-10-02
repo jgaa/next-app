@@ -6,6 +6,7 @@ import QtQuick.Effects
 import NextAppUi
 import nextapp.pb as NextappPB
 import Nextapp.Models
+import "common.js" as Common
 
 Rectangle {
     id: root
@@ -150,6 +151,11 @@ Rectangle {
                     Menu {
                         id: menu
                         title: qsTr("On selection(s)")
+                        MenuItem {
+                            text: qsTr("Modify selected actions…")
+                            onTriggered: Common.openDialog("BatchActionsDlg.qml", root.ApplicationWindow.window,
+                                { selectedIds: actions.selectedIds.slice() })
+                        }
                         MenuItem {
                             text: qsTr("Change when")
                             onTriggered: {

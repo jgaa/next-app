@@ -577,6 +577,8 @@ set(NEXTAPP_UI_CORE_SOURCES
     ActionStatsModel.h
     ActionsModel.cpp
     ActionsModel.h
+    ActionSuggestionsModel.cpp
+    ActionSuggestionsModel.h
     ActionsOnCurrentCalendar.cpp
     ActionsOnCurrentCalendar.h
     ActionsWorkedOnTodayCache.cpp
@@ -672,6 +674,8 @@ qt_add_qml_module(NextAppUiLib
         qml/ActionsList.qml
         qml/ActionsListFilterDlg.qml
         qml/ActionsListView.qml
+        qml/ActionSuggestionsDlg.qml
+        qml/BatchActionsDlg.qml
         qml/CheckBoxWithFontIcon.qml
         qml/Colors.qml # x
         qml/CommonElements.qml
@@ -725,6 +729,7 @@ qt_add_qml_module(NextAppUiLib
         qml/categories/ColorPicker.qml
         qml/categories/EditCategoryDlg.qml
         qml/common.js
+        qml/components/ActionStateControl.qml
         qml/components/DatePicker.qml
         qml/components/DateCalendar.qml
         qml/components/ConnectionFailureDialog.qml

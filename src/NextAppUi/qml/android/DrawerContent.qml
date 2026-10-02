@@ -193,6 +193,13 @@ Rectangle {
             Layout.fillWidth: true
 
             RoundButton {
+                Layout.fillWidth: true
+                text: qsTr("Suggest next actions")
+                enabled: NaComm.connected
+                onClicked: Common.openDialog("qrc:/qt/qml/NextAppUi/qml/ActionSuggestionsDlg.qml", appWindow, {})
+            }
+
+            RoundButton {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillWidth: true
                 icon.source: "qrc:/qt/qml/NextAppUi/icons/fontawsome/gear.svg"

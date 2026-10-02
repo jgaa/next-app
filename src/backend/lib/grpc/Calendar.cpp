@@ -1,5 +1,7 @@
 
 #include <algorithm>
+#include <optional>
+#include <set>
 
 #include "shared_grpc_server.h"
 
@@ -126,20 +128,42 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
 
             validate(*req, *rctx.uctx);
 
-            if (!req->actions().list().empty()) {
-                throw server_err(pb::CONSTRAINT_FAILED, "Cannot create a time block with actions. Add the actions later.");
+            const auto& actions = req->actions().list();
+            if (actions.size() > owner_.server_.config().svr.time_block_max_actions) [[unlikely]] {
+                throw server_err{pb::Error::CONSTRAINT_FAILED,
+                    format("Too many actions. The limit is {}", owner_.server_.config().svr.time_block_max_actions)};
+            }
+
+            // Keep the no-action path in autocommit. With actions, the block,
+            // serialized list and association rows must succeed or roll back together.
+            std::optional<jgaa::mysqlpool::Mysqlpool::Handle::Transaction> trx;
+            std::optional<boost::mysql::blob> action_blob;
+            if (!actions.empty()) {
+                std::set<std::string> unique_actions;
+                for (const auto& action : actions) {
+                    if (!unique_actions.insert(action).second) {
+                        throw server_err{pb::Error::CONSTRAINT_FAILED, "Duplicate action in time block"};
+                    }
+                }
+                trx.emplace(co_await rctx.dbh->transaction());
+                for (const auto& action : actions) {
+                    // Reuse UpdateTimeblock's ownership/existence validation.
+                    co_await owner_.validateAction(*rctx.dbh, action, cuser);
+                }
+                action_blob = toBlob(req->actions());
             }
 
             auto reservation = rctx.uctx->reserveAddition(1, UserContext::PlanResource::TIME_BLOCK);
             auto res = co_await rctx.dbh->exec(
-                format("INSERT INTO time_block (user, start_time, end_time, name, kind, category) VALUES (?, ?, ?, ?, ?, ?) RETURNING {} ",
+                format("INSERT INTO time_block (user, start_time, end_time, name, kind, category, actions) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING {} ",
                        ToTimeBlock::columns),
                 cuser,
                 toAnsiTime(req->timespan().start(), true),
                 toAnsiTime(req->timespan().end(), true),
                 req->name(),
                 toLower(pb::TimeBlock::Kind_Name(req->kind())),
-                toStringOrNull(req->category()));
+                toStringOrNull(req->category()),
+                action_blob);
 
             assert(!res.empty());
             assert(!res.rows().empty());
@@ -147,6 +171,15 @@ void validate(const pb::TimeBlock& tb, const UserContext& uctx)
             if (!res.empty() && !res.rows().empty()) [[likely]] {
                 pb::TimeBlock tb;
                 ToTimeBlock::assign(res.rows().front(), tb, *rctx.uctx);
+                for (const auto& action : actions) {
+                    co_await rctx.dbh->exec(
+                        "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", tb.id(), action);
+                }
+                if (trx) {
+                    co_await trx->commit();
+                }
+                // Publish only after the complete block has been committed.
+                LOG_DEBUG_N << "Created time block " << tb.id() << " with " << actions.size() << " actions";
                 rctx.publishLater(createCalendarEventUpdate(tb, pb::Update::Operation::Update_Operation_ADDED));
             }
             reservation.commit();

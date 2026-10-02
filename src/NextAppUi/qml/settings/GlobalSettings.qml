@@ -24,6 +24,9 @@ ScrollView {
         tmp.autoStartNewWorkSession = autoStartNewWs.checked
         tmp.optInEmail = optInEmail.checked
         tmp.pasteActionTitleWordCount = pasteActionTitleWords.value
+        tmp.suggestionLimit = suggestionLimit.value
+        tmp.suggestionTimeBoxMinMinutes = suggestionMinimum.value
+        tmp.suggestionTimeBoxMaxMinutes = suggestionMaximum.value
         settings.setValue("ai/enabled", enableAi.checked)
         settings.sync()
 
@@ -46,6 +49,10 @@ ScrollView {
             pasteActionTitleWords.value = Math.max(1, Math.min(16,
                 tmp.pasteActionTitleWordCount || 9))
             enableAi.checked = settings.value("ai/enabled", false)
+            suggestionLimit.value = Math.max(5, Math.min(100, tmp.suggestionLimit || 20))
+            suggestionMinimum.value = Math.max(1, Math.min(1440, tmp.suggestionTimeBoxMinMinutes || 30))
+            suggestionMaximum.value = Math.max(suggestionMinimum.value,
+                Math.min(1440, tmp.suggestionTimeBoxMaxMinutes || 240))
         }
     }
 
@@ -128,6 +135,36 @@ ScrollView {
             from: 1
             to: 16
             value: 9
+            editable: true
+        }
+
+        Label { text: qsTr("Maximum action suggestions") }
+        SpinBox {
+            id: suggestionLimit
+            from: 5
+            to: 100
+            value: 20
+            editable: true
+            ToolTip.visible: hovered
+            ToolTip.delay: 500
+            ToolTip.text: qsTr("Show the highest-ranked 5–100 action suggestions. Default: 20.")
+        }
+
+        Label { text: qsTr("Suggestion time-box minimum (minutes)") }
+        SpinBox {
+            id: suggestionMinimum
+            from: 1
+            to: 1440
+            value: 30
+            editable: true
+        }
+
+        Label { text: qsTr("Suggestion time-box maximum (minutes)") }
+        SpinBox {
+            id: suggestionMaximum
+            from: suggestionMinimum.value
+            to: 1440
+            value: 240
             editable: true
         }
 

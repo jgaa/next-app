@@ -13,7 +13,6 @@ Rectangle {
     id: root
     //property string selectedItemUuid: NaMainTreeModel.selected
     property var priorityColors: ["magenta", "red", "orangered", "orange", "green", "blue", "lightblue", "gray"]
-    property var statusIcons: ["\uf111", "\uf111", "\uf0c8"]
     property alias model: listView.model
     property alias listCtl: listView
     property bool selectFirstOnModelReset: true
@@ -79,6 +78,11 @@ Rectangle {
 
             property var selectedItems: []
             signal mySelectedItemsChanged()
+            onMySelectedItemsChanged: {
+                if (model === NaActionsModel) {
+                    NaActionsModel.selectedIds = selectedItems.slice()
+                }
+            }
             function selectUuid(uuid) {
                 if (!selectedItems.includes(uuid)) {
                     selectedItems.push(uuid);
@@ -147,6 +151,7 @@ Rectangle {
                 target: listView.model
 
                 function onModelReset() {
+                    listView.resetSelection()
                     if (root.selectFirstOnModelReset) {
                         console.log("ActionsList: Setting currentIndex to -1 because model was reset and empty")
                         listView.currentIndex = -1
@@ -338,35 +343,17 @@ Rectangle {
                         }
                     }
 
-                    CheckBoxWithFontIcon {
+                    ActionStateControl {
                         id: doneIcon
                         Layout.alignment: Qt.AlignTop
                         Layout.topMargin: 2
                         Layout.bottomMargin: 2
                         Layout.rightMargin: 6
                         isChecked: done
-                        checkedCode: "\uf111"
-                        uncheckedCode: root.statusIcons[status]
-                        checkedColor: "green"
-                        uncheckedColor: actionItem.statusColor
-                        iconSize: NaCore.isMobile ? 42 : 24
-
-                        onClicked: {
-                            NaActionsModel.markActionAsDone(uuid, isChecked)
-                        }
-
-                        Text {
-                            anchors.fill: parent
-                            font.family: ce.faSolidName
-                            font.styleName: ce.faSolidStyle
-                            font.pixelSize: doneIcon.iconSize * 0.7
-                            text: "\uf00c"
-                            color: scoreColor //root.priorityColors[priority]
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        //bgColor: onCalendar ? MaterialDesignStyling.primaryContainer : "transparent"
+                        status: actionItem.status
+                        statusColor: actionItem.statusColor
+                        scoreColor: actionItem.scoreColor
+                        onClicked: NaActionsModel.markActionAsDone(uuid, isChecked)
                     }
 
                     Rectangle {
