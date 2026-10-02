@@ -4,6 +4,7 @@
 #include <functional>
 
 #include "McpProtocol.h"
+#include "nextapp.qpb.h"
 #include "McpRequestStore.h"
 
 class RuntimeServices;
@@ -33,7 +34,10 @@ private:
     QCoro::Task<QJsonObject> categories(const QJsonObject& arguments, bool search);
     QCoro::Task<QJsonObject> createNode(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply);
     QCoro::Task<QJsonObject> updateNode(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply);
-    QCoro::Task<QJsonObject> createAction(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply);
+    QCoro::Task<QJsonObject> addActionSimple(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply);
+    QCoro::Task<QJsonObject> createAction(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply,
+                                        std::optional<nextapp::pb::Action> normalized_action = {},
+                                        QJsonObject original_arguments = {});
     QCoro::Task<QJsonObject> updateAction(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply);
     QCoro::Task<QJsonObject> completeAction(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply);
     QCoro::Task<std::optional<StoredRequest>> reserveMutation(const QString& operation, const QJsonObject& arguments);

@@ -899,20 +899,17 @@ pb::Due ActionsModel::setDue(time_t start, time_t until, nextapp::pb::ActionDueK
 
 pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const
 {
+    return adjustDue(when, kind, runtime_.serverComm().getGlobalSettings());
+}
+
+pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind kind,
+                                const nextapp::pb::UserGlobalSettings& gs)
+{
     pb::Due due;
     due.setKind(kind);
-    const auto gs = runtime_.serverComm().getGlobalSettings();
 
     time_t start = 0;
     time_t end = 0;
-
-    QLocale locale = QLocale::system();
-    const Qt::DayOfWeek firstDayOfWeek = gs.firstDayOfWeekIsMonday() ? Qt::Monday : Qt::Sunday;
-
-    // How many days to subtract from any weekday to get to the start of the week
-    static constexpr auto sunday_first = to_array<int8_t>({1, 2, 3, 4, 5, 6, 0});
-    static constexpr auto monday_first = to_array<int8_t>({0, 1, 2, 3, 4, 5, 6});
-    const auto days_offset = firstDayOfWeek == Qt::Sunday ? sunday_first : monday_first;
 
     auto ts = QTimeZone{gs.timeZone().toLocal8Bit()};
     if (ts.isValid()) {
@@ -921,12 +918,9 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
         LOG_WARN << "Timezone " << gs.timeZone() << " is invalid. Using system timezone.";
         ts = QTimeZone::systemTimeZone();
     }
-    auto qt_start = QDateTime::fromSecsSinceEpoch(when);
-    qt_start.setTimeZone(ts);
-    //qt_start.setTimeSpec(Qt::LocalTime);
-    const auto tz_name = qt_start.timeZoneAbbreviation();
-    due.setTimezone(tz_name.toUtf8().constData());
-    auto d_start = qt_start.date().startOfDay();
+    auto qt_start = QDateTime::fromSecsSinceEpoch(when, ts);
+    due.setTimezone(QString::fromUtf8(ts.id()));
+    auto d_start = qt_start.date().startOfDay(ts);
 
     switch(kind) {
     case pb::ActionDueKindGadget::ActionDueKind::DATETIME:
@@ -943,29 +937,19 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
     case pb::ActionDueKindGadget::ActionDueKind::WEEK: {
         const auto day_in_week = qt_start.date().dayOfWeek();
         assert(day_in_week != 0);
-        const auto first_day_of_that_week = getFirstDayOfWeek(qt_start.date());
-        //const auto start = first_day_of_that_week.startOfDay().toSecsSinceEpoch();
-        const auto d_start = first_day_of_that_week.startOfDay();
+        const auto first_day_of_that_week = getFirstDayOfWeek(gs, qt_start.date());
+        const auto d_start = first_day_of_that_week.startOfDay(ts);
         const auto d_end = d_start.addDays(7);
         start = d_start.toSecsSinceEpoch();
         end = d_end.toSecsSinceEpoch() - 1;
 
-        // auto day_in_week = qt_start.date().dayOfWeek();
-        // assert(day_in_week != 0);
-        // // Jump back in time to the start of the week
-        // auto offset = days_offset.at(day_in_week - 1) * -1;
-        // auto w_start = d_start.addDays(offset);
-        // start = w_start.toSecsSinceEpoch();
-        // auto d_end = w_start.addDays(7);
-        // d_end.setTime(QTime(0,0));
-        // end = d_end.toSecsSinceEpoch() - 1;
     }
     break;
     case pb::ActionDueKindGadget::ActionDueKind::MONTH: {
         auto m_start = d_start;
         m_start.setDate(QDate{d_start.date().year(), d_start.date().month(), 1});
-        start = d_start.toSecsSinceEpoch();
-        auto d_end = d_start.addMonths(1);
+        start = m_start.toSecsSinceEpoch();
+        auto d_end = m_start.addMonths(1);
         d_end.setTime(QTime(0,0));
         end = d_end.toSecsSinceEpoch() - 1;
     }
@@ -974,16 +958,17 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
         auto m_start = d_start;
         auto qmonth = quarters.at(d_start.date().month() - 1);
         m_start.setDate(QDate{d_start.date().year(), qmonth, 1});
-        start = d_start.toSecsSinceEpoch();
-        auto d_end = d_start.addMonths(3);
+        start = m_start.toSecsSinceEpoch();
+        auto d_end = m_start.addMonths(3);
         d_end.setTime(QTime(0,0));
         end = d_end.toSecsSinceEpoch() -1;
     }
+    break;
     case pb::ActionDueKindGadget::ActionDueKind::YEAR: {
         auto y_start = d_start;
         y_start.setDate(QDate{d_start.date().year(), 1, 1});
-        start = d_start.toSecsSinceEpoch();
-        auto d_end = d_start.addYears(1);
+        start = y_start.toSecsSinceEpoch();
+        auto d_end = y_start.addYears(1);
         d_end.setTime(QTime(0,0));
         end = d_end.toSecsSinceEpoch() -1;
     }
@@ -1005,8 +990,16 @@ pb::Due ActionsModel::adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::A
 
 pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) const
 {
+    const auto settings = runtime_.serverComm().getGlobalSettings();
+    auto zone = QTimeZone{settings.timeZone().toUtf8()};
+    if (!zone.isValid()) zone = QTimeZone::systemTimeZone();
+    return resolveDueShortcut(shortcut, fromDue, settings, QDateTime::currentDateTime(zone).date());
+}
 
-
+pb::Due ActionsModel::resolveDueShortcut(int shortcut, const nextapp::pb::Due& fromDue,
+                                         const nextapp::pb::UserGlobalSettings& settings,
+                                         const QDate& today)
+{
     auto start = QDateTime::currentDateTime().toSecsSinceEpoch();
     auto end = start;
     auto kind = fromDue.kind();
@@ -1019,32 +1012,27 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
     }
 
     auto qt_start = QDateTime::fromSecsSinceEpoch(start);
-    auto qt_end = QDateTime::fromSecsSinceEpoch(end);
-    auto zone = QTimeZone::systemTimeZone();
+    auto zone = QTimeZone{settings.timeZone().toUtf8()};
+    if (!zone.isValid()) zone = QTimeZone::systemTimeZone();
     qt_start.setTimeZone(zone);
-    //qt_start.setTimeSpec(Qt::LocalTime);
-    qt_end.setTimeZone(zone);
-    //qt_end.setTimeSpec(Qt::LocalTime);
-
-    auto today = QDate::currentDate();
 
     switch(shortcut) {
     case TODAY:
-        start = today.startOfDay().toSecsSinceEpoch();
-        end = today.addDays(1).startOfDay().toSecsSinceEpoch() -1;
+        start = today.startOfDay(zone).toSecsSinceEpoch();
+        end = today.addDays(1).startOfDay(zone).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
         break;
     case TOMORROW:
-        start = today.addDays(1).startOfDay().toSecsSinceEpoch();
-        end = today.addDays(2).startOfDay().toSecsSinceEpoch() -1;
+        start = today.addDays(1).startOfDay(zone).toSecsSinceEpoch();
+        end = today.addDays(2).startOfDay(zone).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
         break;
     case THIS_WEEKEND: {
         auto day_in_week = today.dayOfWeek();
         auto offset = Qt::DayOfWeek::Saturday - day_in_week;
         auto w_start = today.addDays(offset);
-        start = w_start.startOfDay().toSecsSinceEpoch();
-        end = w_start.addDays(2).startOfDay().toSecsSinceEpoch() -1;
+        start = w_start.startOfDay(zone).toSecsSinceEpoch();
+        end = w_start.addDays(2).startOfDay(zone).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
         }
         break;
@@ -1052,16 +1040,15 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         auto day_in_week = today.dayOfWeek();
         auto offset = (Qt::DayOfWeek::Sunday - day_in_week) + 1;
         auto w_start = today.addDays(offset);
-        start = w_start.startOfDay().toSecsSinceEpoch();
-        end = w_start.addDays(1).startOfDay().toSecsSinceEpoch() -1;
+        start = w_start.startOfDay(zone).toSecsSinceEpoch();
+        end = w_start.addDays(1).startOfDay(zone).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
         }
         break;
     case THIS_WEEK: {
-        auto day_in_week = today.dayOfWeek();
-        auto w_start = today.addDays((day_in_week  -1) * -1);
-        start = w_start.startOfDay().toSecsSinceEpoch();
-        end = w_start.addDays(7).startOfDay().toSecsSinceEpoch() -1;
+        auto w_start = getFirstDayOfWeek(settings, today);
+        start = w_start.startOfDay(zone).toSecsSinceEpoch();
+        end = w_start.addDays(7).startOfDay(zone).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::WEEK;
         }
         break;
@@ -1069,34 +1056,33 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         auto s_date = today.addDays(7);
         auto e_date = today.addDays(8);
         if (kind == pb::ActionDueKindGadget::ActionDueKind::DATETIME) {
-            auto s_time = QDateTime{s_date, qt_start.time()};
-            auto e_time = QDateTime{s_date, qt_start.time()};
+            auto s_time = QDateTime{s_date, qt_start.time(), zone};
+            auto e_time = QDateTime{s_date, qt_start.time(), zone};
             start = s_time.toSecsSinceEpoch();
             end = e_time.toSecsSinceEpoch();
         } else {
             kind = pb::ActionDueKindGadget::ActionDueKind::DATE;
-            start = s_date.startOfDay().toSecsSinceEpoch();
-            end = e_date.startOfDay().toSecsSinceEpoch() -1;
+            start = s_date.startOfDay(zone).toSecsSinceEpoch();
+            end = e_date.startOfDay(zone).toSecsSinceEpoch() -1;
         }
         }
         break;
     case NEXT_WEEK: {
-        auto day_in_week = today.dayOfWeek();
-        auto w_start = today.addDays((day_in_week  -1) * -1);
-        start = w_start.addDays(7).startOfDay().toSecsSinceEpoch();
-        end = w_start.addDays(14).startOfDay().toSecsSinceEpoch() -1;
+        auto w_start = getFirstDayOfWeek(settings, today);
+        start = w_start.addDays(7).startOfDay(zone).toSecsSinceEpoch();
+        end = w_start.addDays(14).startOfDay(zone).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::WEEK;
         }
         break;
     case THIS_MONTH: {
-        auto m_start = QDateTime{QDate{today.year(), today.month(), 1}, QTime{0, 0}};
+        auto m_start = QDateTime{QDate{today.year(), today.month(), 1}, QTime{0, 0}, zone};
         start = m_start.toSecsSinceEpoch();
         end = m_start.addMonths(1).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::MONTH;
         }
         break;
     case NEXT_MONTH: {
-        auto m_start = QDateTime{QDate{today.year(), today.month(), 1}, QTime{0, 0}};
+        auto m_start = QDateTime{QDate{today.year(), today.month(), 1}, QTime{0, 0}, zone};
         start = m_start.addMonths(1).toSecsSinceEpoch();
         end = m_start.addMonths(2).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::MONTH;
@@ -1104,7 +1090,7 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         break;
     case THIS_QUARTER: {
         auto qmonth = quarters.at(today.month() - 1);
-        auto m_start = QDateTime{QDate{today.year(), qmonth, 1}, QTime{0, 0}};
+        auto m_start = QDateTime{QDate{today.year(), qmonth, 1}, QTime{0, 0}, zone};
         start = m_start.toSecsSinceEpoch();
         end = m_start.addMonths(3).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::QUARTER;
@@ -1112,21 +1098,21 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
         break;
     case NEXT_QUARTER: {
         auto qmonth = quarters.at(today.month() - 1);
-        auto m_start = QDateTime{QDate{today.year(), qmonth, 1}, QTime{0, 0}};
+        auto m_start = QDateTime{QDate{today.year(), qmonth, 1}, QTime{0, 0}, zone};
         start = m_start.addMonths(3).toSecsSinceEpoch();
         end = m_start.addMonths(6).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::QUARTER;
         }
         break;
     case THIS_YEAR: {
-        auto y_start = QDateTime{QDate{today.year(), 1, 1}, QTime{0, 0}};
+        auto y_start = QDateTime{QDate{today.year(), 1, 1}, QTime{0, 0}, zone};
         start = y_start.toSecsSinceEpoch();
         end = y_start.addYears(1).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::YEAR;
         }
         break;
     case NEXT_YEAR: {
-        auto y_start = QDateTime{QDate{today.year(), 1, 1}, QTime{0, 0}};
+        auto y_start = QDateTime{QDate{today.year(), 1, 1}, QTime{0, 0}, zone};
         start = y_start.addYears(1).toSecsSinceEpoch();
         end = y_start.addYears(2).toSecsSinceEpoch() -1;
         kind = pb::ActionDueKindGadget::ActionDueKind::YEAR;
@@ -1138,6 +1124,7 @@ pb::Due ActionsModel::changeDue(int shortcut, const nextapp::pb::Due &fromDue) c
     due.setStart(start);
     due.setDue(end);
     due.setKind(kind);
+    due.setTimezone(QString::fromUtf8(zone.id()));
     return due;
 }
 

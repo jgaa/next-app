@@ -64,3 +64,7 @@ bool isLastMonth(time_t when);
 bool isLastYear(time_t when);
 
 QByteArray gzipCompress(const std::span<const char>& data, std::optional<int> compression_level = {});
+
+// Shared clipboard/MCP action title and UTF-8 truncation rules.
+QString pasteActionTitle(const QString& text, int wordCount);
+QString boundedUtf8(const QString& text, qsizetype maxBytes);

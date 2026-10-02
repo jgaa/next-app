@@ -224,6 +224,9 @@ QJsonObject toolList()
                           {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("minLength"), 1}, {QStringLiteral("maxLength"), 255}}}, {QStringLiteral("description"), string(64 * 1024)}, {QStringLiteral("reason"), reason}}, {QStringLiteral("idempotencyKey"), QStringLiteral("name")})));
     const auto kind = QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
         {QStringLiteral("enum"), nodeKindNames()}};
+    tools.append(tool(QStringLiteral("nextapp_add_action_simple"),
+        QStringLiteral("Add an action from structured fields with UI scheduling/repetition and paste-style title defaults. Omit nodeId for Inbox. Shares create-action approval; supply a stable idempotencyKey."),
+        simpleActionInputSchema()));
     tools.append(tool(QStringLiteral("nextapp_create_node"), QStringLiteral("Create a NextApp list/node (folder or project); kind defaults to folder. Omit parentId for a top-level list. Approval may be required."),
                       schema(QJsonObject{{QStringLiteral("idempotencyKey"), idempotency_key}, {QStringLiteral("name"), nonempty(128)},
                           {QStringLiteral("description"), string(64 * 1024)}, {QStringLiteral("kind"), kind},

@@ -69,6 +69,11 @@ public:
     void updateNode(const nextapp::pb::Node& node) override { updated_nodes_.append(node); }
     void moveNode(const QUuid& uuid, const QUuid& toParentUuid) override { moved_nodes_.append({uuid, toParentUuid}); }
     void deleteNode(const QUuid& uuid) override { deleted_nodes_.append(uuid); }
+    QCoro::Task<nextapp::pb::Status> addActionDirect(const nextapp::pb::Action& action) override {
+        added_actions_.append(action);
+        co_return direct_action_status_;
+    }
+    nextapp::pb::Status direct_action_status_;
     void addAction(const nextapp::pb::Action& action) override { added_actions_.append(action); }
     void updateAction(const nextapp::pb::Action& action) override { updated_actions_.append(action); }
     void updateActions(const nextapp::pb::UpdateActionsReq& action) override { last_update_actions_req_ = action; }

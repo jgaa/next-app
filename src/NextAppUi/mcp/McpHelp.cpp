@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <QUuid>
 #include <cmath>
+#include <algorithm>
 #include <limits>
 
 namespace nextapp::mcp {
@@ -34,6 +35,16 @@ QJsonArray enumValues() {
         values.append(QJsonObject{{QStringLiteral("name"), QString::fromLatin1(meta.key(i))},
                                   {QStringLiteral("value"), meta.value(i)}});
     return values;
+}
+template<typename Enum>
+QJsonObject enumNumberSchema() {
+    const auto meta = QMetaEnum::fromType<Enum>();
+    int minimum = std::numeric_limits<int>::max(), maximum = std::numeric_limits<int>::min();
+    for (int i = 0; i < meta.keyCount(); ++i) {
+        minimum = std::min(minimum, meta.value(i));
+        maximum = std::max(maximum, meta.value(i));
+    }
+    return {{"type", "integer"}, {"minimum", minimum}, {"maximum", maximum}};
 }
 QJsonArray names(const QStringList& list) {
     return QJsonArray::fromStringList(list);
@@ -66,6 +77,73 @@ QJsonObject validationError(const QString& tool, const QString& key, const QJson
     }
     return error;
 }
+// The simple tool has nested structured input. Validate the schema subset used
+// here recursively so discovery and authoritative validation share constraints.
+std::optional<QJsonObject> validateSimpleValue(const QJsonValue& value, const QJsonObject& schema,
+                                              const QString& path) {
+    const QString tool = QStringLiteral("nextapp_add_action_simple");
+    const auto fail = [&] { return validationError(tool, path, value,
+        QStringLiteral("Field does not satisfy its type or constraints"), schema); };
+    if (schema.contains("anyOf")) {
+        std::optional<QJsonObject> nested;
+        for (const auto& choice : schema.value("anyOf").toArray()) {
+            const auto branch = choice.toObject();
+            const auto error = validateSimpleValue(value, branch, path);
+            if (!error) return std::nullopt;
+            if ((value.isObject() && branch.value("type") == "object")
+                || (value.isArray() && branch.value("type") == "array")) nested = error;
+        }
+        return nested ? nested : std::optional{fail()};
+    }
+    for (const auto& constraint : schema.value("allOf").toArray())
+        if (const auto error = validateSimpleValue(value, constraint.toObject(), path)) return error;
+    if (schema.contains("not") && value.isObject()) {
+        bool all = true;
+        for (const auto& field : schema.value("not").toObject().value("required").toArray())
+            all &= value.toObject().contains(field.toString());
+        if (all) {
+            QStringList fields;
+            for (const auto& field : schema.value("not").toObject().value("required").toArray()) fields.append(field.toString());
+            return validationError(tool, path.isEmpty() ? fields.join(u'/') : path, value,
+                QStringLiteral("These fields cannot be combined: ") + fields.join(QStringLiteral(", ")), schema.value("not").toObject());
+        }
+    }
+    if (schema.contains("const")) return value == schema.value("const") ? std::nullopt : std::optional{fail()};
+    const auto type = schema.value("type").toString();
+    if (type == "object") {
+        if (!value.isObject()) return fail();
+        const auto object = value.toObject();
+        const auto properties = schema.value("properties").toObject();
+        for (const auto& field : schema.value("required").toArray()) {
+            const auto key = field.toString();
+            if (!object.contains(key)) return validationError(tool, path.isEmpty() ? key : path + u'.' + key, {},
+                QStringLiteral("Required field is missing"), properties.value(key).toObject());
+        }
+        for (auto it = object.begin(); it != object.end(); ++it) {
+            const auto field = path.isEmpty() ? it.key() : path + u'.' + it.key();
+            if (!properties.contains(it.key())) return validationError(tool, field, it.value(), QStringLiteral("Unknown field"));
+            if (const auto error = validateSimpleValue(it.value(), properties.value(it.key()).toObject(), field)) return error;
+        }
+    } else if (type == "array") {
+        if (!value.isArray()) return fail();
+        const auto array = value.toArray();
+        if (array.size() < schema.value("minItems").toInt() || array.size() > schema.value("maxItems").toInt(std::numeric_limits<int>::max())) return fail();
+        for (int i = 0; i < array.size(); ++i)
+            if (const auto error = validateSimpleValue(array.at(i), schema.value("items").toObject(), path + u'[' + QString::number(i) + u']')) return error;
+    } else if (type == "string") {
+        if (!value.isString()) return fail();
+        const auto text = value.toString();
+        if (text.size() < schema.value("minLength").toInt() || text.size() > schema.value("maxLength").toInt(std::numeric_limits<int>::max())) return fail();
+        if (schema.value("format") == "uuid" && QUuid{text}.isNull()) return fail();
+        if (path == "reason" && text.toUtf8().size() > 2048) return fail();
+    } else if (type == "integer") {
+        const auto number = value.toDouble(-1);
+        if (!value.isDouble() || !std::isfinite(number) || std::floor(number) != number
+            || number < schema.value("minimum").toDouble() || number > schema.value("maximum").toDouble()) return fail();
+    } else if (type == "boolean" && !value.isBool()) return fail();
+    if (schema.contains("enum") && !schema.value("enum").toArray().contains(value)) return fail();
+    return std::nullopt;
+}
 } // namespace
 
 QString nodeKindName(int value) {
@@ -84,6 +162,32 @@ std::optional<int> nodeKindValue(const QString& name) {
     for (int i = 0; i < meta.keyCount(); ++i)
         if (nodeKindName(meta.value(i)) == name) return meta.value(i);
     return std::nullopt;
+}
+
+QJsonObject simpleActionInputSchema() {
+    const auto text = [](int max) { return QJsonObject{{"type", "string"}, {"minLength", 1}, {"maxLength", max}}; };
+    const auto object = [](const QJsonObject& fields, const QJsonArray& required = {}) {
+        return QJsonObject{{"type", "object"}, {"properties", fields}, {"required", required}, {"additionalProperties", false}};
+    };
+    const auto integer = [](int min, int max) { return QJsonObject{{"type", "integer"}, {"minimum", min}, {"maximum", max}}; };
+    const auto unionOf = [](const QJsonArray& choices) { return QJsonObject{{"anyOf", choices}}; };
+    auto schedule = object({{"kind", QJsonObject{{"type", "string"}, {"enum", QJsonArray{"datetime", "date", "week", "month", "quarter", "year"}}}},
+        {"value", unionOf({text(128), integer(1, 9999)})}, {"year", integer(1970, 9999)}}, {"kind", "value"});
+    auto repeat = object({{"from", text(64)}, {"every", integer(1, 99)}, {"unit", text(64)},
+        {"on", QJsonObject{{"type", "array"}, {"minItems", 1}, {"maxItems", 15}, {"items", text(64)}}}});
+    repeat.insert("allOf", QJsonArray{QJsonObject{{"not", QJsonObject{{"required", QJsonArray{"on", "every"}}}}},
+        QJsonObject{{"not", QJsonObject{{"required", QJsonArray{"on", "unit"}}}}}});
+    auto result = object({{"idempotencyKey", text(128)}, {"text", text(65535)}, {"topic", text(255)},
+        {"nodeId", QJsonObject{{"type", "string"}, {"format", "uuid"}}},
+        {"schedule", unionOf({text(128), schedule})}, {"repeat", unionOf({QJsonObject{{"const", "never"}}, repeat})},
+        {"tags", unionOf({text(4096), QJsonObject{{"type", "array"}, {"maxItems", 128}, {"items", text(255)}}})},
+        {"priority", unionOf({text(64), enumNumberSchema<nextapp::pb::ActionPriorityGadget::ActionPriority>()})}, {"difficulty", unionOf({text(64), enumNumberSchema<nextapp::pb::ActionDifficultyGadget::ActionDifficulty>()})},
+        {"timeEstimate", unionOf({text(64), integer(0, std::numeric_limits<int>::max())})},
+        {"favorite", QJsonObject{{"type", "boolean"}}}, {"category", text(255)},
+        {"categoryId", QJsonObject{{"type", "string"}, {"format", "uuid"}}}, {"reason", QJsonObject{{"type", "string"}, {"maxLength", 2048}}}},
+        {"idempotencyKey", "text"});
+    result.insert("not", QJsonObject{{"required", QJsonArray{"category", "categoryId"}}});
+    return result;
 }
 
 QJsonObject mcpHelp(const QJsonObject& arguments) {
@@ -134,10 +238,27 @@ QJsonObject mcpHelp(const QJsonObject& arguments) {
                 {QStringLiteral("cursor"), QStringLiteral("For node/category reads, pass returned nextCursor to fetch the next page. Action reads currently ignore cursor and return recent results.")},
                 {QStringLiteral("format"), QStringLiteral("short returns identity, parent, name, kind and Inbox flag; full adds description, category, active, version and updatedAt.")},
                 {QStringLiteral("subject"), QStringLiteral("Help namespace: tool, schema, or concept.")},
+                {QStringLiteral("text"), QStringLiteral("Action body. Stored as description using the paste UTF-8 truncation limit (65535 bytes). A topic is derived from its first sentence/Markdown heading using your paste title word-count setting.")},
+                {QStringLiteral("topic"), QStringLiteral("Optional explicit action title; otherwise use the paste title rules. Maximum 255 UTF-16 code units.")},
+                {QStringLiteral("schedule"), QStringLiteral("UI shortcut (today, tomorrow, this_weekend, next_monday, after_one_week, this/next_week, month, quarter, year), ISO date/time, or {kind, value, year?}. Spaces/hyphens and case are normalized for shortcuts; next quater is accepted. Text periods: week #42 2026, month November 2026, quarter 2 2027, year 2027. Object kinds: datetime/date (ISO string value), week (ISO week number), month (name or 1–12), quarter (1–4), year (number). Missing period year uses current year (ISO week-year for weeks). Uses configured timezone/week start; unscheduled/unset clears scheduling. Datetimes without an offset use configured timezone; explicit offsets preserve the instant.")},
+                {QStringLiteral("repeat"), QStringLiteral("never, or {from?: completed|start_time|due_time, every?: 1–99, unit?: days|weeks|months|quarters|years}; defaults completed/every 1/days. Alternatively {from?, on: [weekday or RepeatSpecs names]}. on cannot be combined with every/unit. RepeatSpecs are listed below; converted to the same bitmask as the UI. Repeating actions without schedule start today; explicitly unscheduled recurrence is rejected.")},
+                {QStringLiteral("tags"), QStringLiteral("Array of individual tag strings, or comma/semicolon/whitespace-separated string. Normalized by the UI tag parser (leading # removed, deduplicated, sorted); each tag must be a single word. No automatic tag creation is needed.")},
+                {QStringLiteral("priority"), QStringLiteral("Priority name (e.g. high, normal), protobuf enum name or numeric enum value. Case/space/hyphen variants accepted; very_important corrects the protobuf spelling. Default normal; see concept/action_priority.")},
+                {QStringLiteral("difficulty"), QStringLiteral("trivial, easy, normal, hard, very_hard, inspired, or protobuf numeric value. Default trivial, matching the UI.")},
+                {QStringLiteral("timeEstimate"), QStringLiteral("Nonnegative integer minutes, or UI minutes/H:MM/D:H:MM string. One workday is 8 hours. Default 0.")},
+                {QStringLiteral("favorite"), QStringLiteral("Boolean; default false.")},
+                {QStringLiteral("category"), QStringLiteral("Existing category UUID or exact case-insensitive name. Ambiguous names fail with candidate IDs. Mutually exclusive with categoryId. Omit both for no category, matching paste.")},
                 {QStringLiteral("nameHelp"), QStringLiteral("Exact subject name; errors return available names.")}};
             for (auto it = properties.begin(); it != properties.end(); ++it)
                 fields.insert(it.key(), semantics.value(name == QStringLiteral("get_mcp_help") && it.key() == QStringLiteral("name")
                     ? QStringLiteral("nameHelp") : it.key()));
+            if (name == QStringLiteral("nextapp_add_action_simple")) {
+                fields.insert("categoryId", QStringLiteral("Existing category UUID; mutually exclusive with category. Omit for no category."));
+                document.insert("repeatDaySpecs", enumValues<nextapp::pb::Action::RepeatSpecs>());
+                document.insert("repeatKinds", enumValues<nextapp::pb::Action::RepeatKind>());
+                document.insert("repeatUnits", enumValues<nextapp::pb::Action::RepeatUnit>());
+                document.insert("difficultyValues", enumValues<nextapp::pb::ActionDifficultyGadget::ActionDifficulty>());
+            }
             document.insert(QStringLiteral("fields"), fields);
             QJsonArray related;
             if (name.contains(QStringLiteral("action"))) related.append(reference(QStringLiteral("schema"), QStringLiteral("action")));
@@ -159,10 +280,16 @@ QJsonObject mcpHelp(const QJsonObject& arguments) {
                 else if (k == QStringLiteral("idempotencyKey")) example.insert(k, QStringLiteral("agent-intent-001"));
                 else if (k == QStringLiteral("subject")) example.insert(k, QStringLiteral("schema"));
                 else if (k == QStringLiteral("name")) example.insert(k, name == QStringLiteral("get_mcp_help") ? QStringLiteral("action") : QStringLiteral("Plan the week"));
+                else if (k == QStringLiteral("text")) example.insert(k, QStringLiteral("Refactor encryption handling in darkspeak and fix the UI issues."));
                 else if (k == QStringLiteral("query")) example.insert(k, QStringLiteral("Plan"));
                 else example.insert(k, QStringLiteral("11111111-1111-4111-8111-111111111111"));
             }
             if (name == QStringLiteral("nextapp_update_action") || name == QStringLiteral("nextapp_update_node")) example.insert(QStringLiteral("name"), QStringLiteral("Revised name"));
+            if (name == QStringLiteral("nextapp_add_action_simple")) {
+                example.insert("schedule", "next_week");
+                example.insert("tags", QJsonArray{"release", "beta", "verify"});
+                example.insert("priority", "high");
+            }
             document.insert(QStringLiteral("examples"), QJsonArray{QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("arguments"), example}}});
             document.insert(QStringLiteral("constraints"), QJsonArray{QStringLiteral("Example UUIDs are placeholders: replace them with IDs from reads. JSON null is not accepted for input fields."),
                 QStringLiteral("Descriptions and reasons have UTF-8 byte limits in addition to schema character limits. The server validates independently.")});
@@ -185,7 +312,7 @@ QJsonObject mcpHelp(const QJsonObject& arguments) {
                 {QStringLiteral("completedAt"), field(QStringLiteral("string"), QStringLiteral("Local-cache date/time string, empty when unset; see concept/timestamps."))},
                 {QStringLiteral("version"), field(QStringLiteral("integer"), QStringLiteral("Server revision used as mutation baseVersion."))},
                 {QStringLiteral("updatedAt"), field(QStringLiteral("integer"), QStringLiteral("Milliseconds since Unix epoch."))}};
-            document.insert(QStringLiteral("constraints"), QJsonArray{QStringLiteral("MCP exposes this local-cache projection. Updates patch only name/description; completion uses done. Other Action protobuf fields cannot be edited through MCP.")});
+            document.insert(QStringLiteral("constraints"), QJsonArray{QStringLiteral("MCP exposes this local-cache projection. Updates patch only name/description; completion uses done. nextapp_add_action_simple additionally creates scheduled/recurring actions with tags, priority, difficulty, estimates, favorite, and category. Existing actions still use the limited patch tool.")});
             document.insert(QStringLiteral("related"), QJsonArray{reference(QStringLiteral("concept"), QStringLiteral("action_status")), reference(QStringLiteral("concept"), QStringLiteral("mutation")), reference(QStringLiteral("concept"), QStringLiteral("timestamps"))});
         } else if (name == QStringLiteral("node")) {
             fields = {{QStringLiteral("nodeId"), field(QStringLiteral("string"), QStringLiteral("Node UUID; protobuf uuid."))},
@@ -249,6 +376,8 @@ QJsonObject mcpHelp(const QJsonObject& arguments) {
 }
 
 std::optional<QJsonObject> validateMutationArguments(const QString& tool_name, const QJsonObject& arguments) {
+    if (tool_name == QStringLiteral("nextapp_add_action_simple"))
+        return validateSimpleValue(arguments, simpleActionInputSchema(), {});
     const auto input = toolDefinition(tool_name).value(QStringLiteral("inputSchema")).toObject();
     const auto properties = input.value(QStringLiteral("properties")).toObject();
     if (!properties.contains(QStringLiteral("idempotencyKey"))) return std::nullopt;

@@ -41,65 +41,10 @@ using namespace std;
 
 namespace {
 
-constexpr qsizetype kMaxActionNameCharacters = 256;
 constexpr qsizetype kMaxActionDescriptionUtf8Bytes = 65535;
 constexpr int kDefaultPasteActionTitleWordCount = 9;
 constexpr int kMinPasteActionTitleWordCount = 1;
 constexpr int kMaxPasteActionTitleWordCount = 16;
-
-QString normalizedPasteWhitespace(const QString& text)
-{
-    return text.simplified();
-}
-
-QString markdownPasteTitle(const QString& text)
-{
-    const auto lines = text.split(u'\n');
-    for (const auto& line : lines) {
-        auto title = line.trimmed();
-        if (title.startsWith(u'#')) {
-            title.remove(QRegularExpression(QStringLiteral(R"(^#+\s*)")));
-            title.remove(QRegularExpression(QStringLiteral(R"(\s*#+$)")));
-            return normalizedPasteWhitespace(title);
-        }
-    }
-    return {};
-}
-
-QString boundedUtf8(const QString& text, qsizetype maxBytes)
-{
-    const auto utf8 = text.toUtf8();
-    if (utf8.size() <= maxBytes) {
-        return text;
-    }
-
-    auto boundary = maxBytes;
-    // Do not leave a partial UTF-8 character at the end of a database field.
-    while (boundary > 0 && (static_cast<unsigned char>(utf8.at(boundary)) & 0xc0) == 0x80) {
-        --boundary;
-    }
-    return QString::fromUtf8(utf8.constData(), boundary);
-}
-
-QString plainPasteTitle(const QString& text, int wordCount)
-{
-    const auto trimmed = text.trimmed();
-    const auto sentenceEnd = trimmed.indexOf(QRegularExpression(QStringLiteral("[.!?](?:\\s|$)")));
-    const auto sentence = sentenceEnd >= 0 ? trimmed.left(sentenceEnd + 1) : trimmed;
-    const auto words = normalizedPasteWhitespace(sentence).split(u' ', Qt::SkipEmptyParts);
-    const auto titleWordCount = std::min<qsizetype>(words.size(),
-        std::clamp(wordCount, kMinPasteActionTitleWordCount, kMaxPasteActionTitleWordCount));
-    return words.sliced(0, titleWordCount).join(u' ');
-}
-
-QString pasteActionTitle(const QString& text, int wordCount)
-{
-    const auto markdownTitle = markdownPasteTitle(text.trimmed());
-    const auto title = markdownTitle.isEmpty()
-        ? plainPasteTitle(text, wordCount)
-        : markdownTitle;
-    return normalizedPasteWhitespace(title).left(kMaxActionNameCharacters);
-}
 
 QStringList splitPastedMarkdown(const QString& text)
 {

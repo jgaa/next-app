@@ -1,10 +1,14 @@
 #include "McpGateway.h"
 #include "McpHelp.h"
+#include "McpSimpleAction.h"
+#include "ActionsModel.h"
 
 #include <QCryptographicHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProtobufSerializer>
+#include <QProtobufJsonSerializer>
+#include <QTimeZone>
 #include <QRandomGenerator>
 #include <QSet>
 #include <QStringList>
@@ -425,7 +429,8 @@ QCoro::Task<std::optional<QJsonObject>> McpGateway::approveMutation(const Stored
         }
         target_name = current->rows.front().at(0).toString();
     }
-    if ((request.operation == QStringLiteral("create_node") || request.operation == QStringLiteral("update_node"))
+    if ((request.operation == QStringLiteral("create_node") || request.operation == QStringLiteral("update_node")
+         || request.operation == QStringLiteral("create_action"))
         && !arguments.value(QStringLiteral("categoryId")).toString().isEmpty()) {
         const auto category_id = arguments.value(QStringLiteral("categoryId")).toString();
         const auto category = co_await runtime_.db().query("SELECT id FROM action_category WHERE id=?", category_id);
@@ -454,6 +459,12 @@ QCoro::Task<std::optional<QJsonObject>> McpGateway::approveMutation(const Stored
         presentation.insert(QStringLiteral("changes"), QVariantMap{{QStringLiteral("name"), arguments.value(QStringLiteral("name")).toString()},
             {QStringLiteral("description"), arguments.value(QStringLiteral("description")).toString()},
             {QStringLiteral("list"), target_name + QStringLiteral(" (") + arguments.value(QStringLiteral("nodeId")).toString() + QStringLiteral(")")}});
+        if (arguments.contains("normalizedAction")) {
+            auto changes = arguments.value("normalizedAction").toObject().toVariantMap();
+            changes.insert("schedule", arguments.value("scheduleSummary").toString());
+            changes.insert("list", target_name);
+            presentation.insert("changes", changes);
+        }
     } else if (request.operation == QStringLiteral("create_node")) {
         presentation.insert(QStringLiteral("target"), arguments.value(QStringLiteral("name")).toString());
         auto changes = arguments.toVariantMap();
@@ -624,7 +635,58 @@ QCoro::Task<QJsonObject> McpGateway::updateNode(const QJsonObject& arguments, co
     co_return toolResult(result, state != OperationState::Executed);
 }
 
-QCoro::Task<QJsonObject> McpGateway::createAction(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply) {
+QCoro::Task<QJsonObject> McpGateway::addActionSimple(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply) {
+    if (!mutationAllowed(QStringLiteral("create_action")))
+        co_return toolResult({{"error", "Action creation is disabled"}}, true);
+    // Recover prior results before defaults/category lookup: a retry must return
+    // the original outcome even if time, settings, or local entities changed.
+    const QJsonObject identity{{"idempotencyKey", arguments.value("idempotencyKey")},
+                              {"tool", "nextapp_add_action_simple"}, {"input", arguments}};
+    if (const auto prior = co_await store_.getByIdempotencyKey(QStringLiteral("local-agent"), arguments.value("idempotencyKey").toString())) {
+        if (prior->request_hash != McpRequestStore::canonicalHash(QStringLiteral("create_action"), identity))
+            co_return toolResult({{"error", "Idempotency key conflicts with an earlier request"}}, true);
+        co_return toolResult(storedOutcome(*prior), stateIsError(prior->state));
+    }
+    const auto settings = runtime_.serverComm().getGlobalSettings();
+    auto zone = QTimeZone{settings.timeZone().toUtf8()};
+    if (!zone.isValid()) zone = QTimeZone::systemTimeZone();
+    const auto normalized = normalizeSimpleAction(arguments, settings, QDateTime::currentDateTime(zone).date());
+    if (const auto* error = std::get_if<QJsonObject>(&normalized)) co_return toolResult(*error, true);
+    auto action = std::get<nextapp::pb::Action>(normalized);
+    const auto category_value = arguments.contains("categoryId") ? arguments.value("categoryId") : arguments.value("category");
+    if (!category_value.isUndefined()) {
+        const auto category = category_value.toString().trimmed();
+        const auto id = canonicalUuid(category);
+        const auto rows = co_await runtime_.db().query("SELECT id,name FROM action_category ORDER BY id");
+        if (!rows) co_return toolResult(simpleActionError("category", category_value, "Cannot read local categories."), true);
+        QJsonArray candidates;
+        for (const auto& row : rows->rows) {
+            if ((!id.isEmpty() && row.at(0).toString() == id)
+                || (id.isEmpty() && row.at(1).toString().compare(category, Qt::CaseInsensitive) == 0))
+                candidates.append(QJsonObject{{"id", row.at(0).toString()}, {"name", row.at(1).toString()}});
+        }
+        if (candidates.size() != 1) {
+            auto error = simpleActionError("category", category_value,
+                candidates.isEmpty() ? "Category not found. Use nextapp_list_categories; omit category for none."
+                                     : "Category name is ambiguous. Supply categoryId from the candidates.");
+            error.insert("candidates", candidates);
+            co_return toolResult(error, true);
+        }
+        action.setCategory(candidates.first().toObject().value("id").toString());
+    }
+    QJsonObject resolved{{"idempotencyKey", arguments.value("idempotencyKey")},
+        {"name", action.name()}, {"description", action.descr()}};
+    if (arguments.contains("nodeId")) resolved.insert("nodeId", arguments.value("nodeId"));
+    if (arguments.contains("reason")) resolved.insert("reason", arguments.value("reason"));
+    if (!action.category().isEmpty()) resolved.insert("categoryId", action.category());
+    LOG_DEBUG_N << "Normalized MCP simple action: title length=" << action.name().size()
+                << ", due kind=" << int(action.due().kind()) << ", repeat kind=" << int(action.repeatKind());
+    co_return co_await createAction(resolved, peer, pending_reply, action, arguments);
+}
+
+QCoro::Task<QJsonObject> McpGateway::createAction(const QJsonObject& arguments, const QString& peer, PendingReply pending_reply,
+                                                 std::optional<nextapp::pb::Action> normalized_action,
+                                                 QJsonObject original_arguments) {
     if (!arguments.value(QStringLiteral("name")).isString()
         || (arguments.contains(QStringLiteral("nodeId"))
             && (!arguments.value(QStringLiteral("nodeId")).isString()
@@ -663,7 +725,19 @@ QCoro::Task<QJsonObject> McpGateway::createAction(const QJsonObject& arguments, 
             QUuid{arguments.value(QStringLiteral("nodeId")).toString()}.toString(QUuid::WithoutBraces));
     }
 
-    auto stored = co_await reserveMutation(QStringLiteral("create_action"), resolved);
+    if (normalized_action) {
+        normalized_action->setNode(resolved.value("nodeId").toString());
+        QProtobufJsonSerializer serializer;
+        resolved.insert("normalizedAction", QJsonDocument::fromJson(normalized_action->serialize(&serializer)).object());
+        resolved.insert("scheduleSummary", ActionsModel::formatDue(normalized_action->due()));
+    }
+    // Hash original structured input: resolving relative dates and configured
+    // defaults must not turn a retry on another day into a conflicting payload.
+    const auto reservation = normalized_action
+        ? QJsonObject{{"idempotencyKey", original_arguments.value("idempotencyKey")},
+                      {"tool", "nextapp_add_action_simple"}, {"input", original_arguments}}
+        : resolved;
+    auto stored = co_await reserveMutation(QStringLiteral("create_action"), reservation);
     if (!stored) co_return toolResult({{QStringLiteral("error"), QStringLiteral("Create actions are disabled or the idempotency key conflicts")}}, true);
     if (!stored->newly_reserved) {
         co_return toolResult(storedOutcome(*stored), stateIsError(stored->state));
@@ -686,14 +760,18 @@ QCoro::Task<QJsonObject> McpGateway::createAction(const QJsonObject& arguments, 
     }
     if (!co_await store_.transition(stored->request_id, OperationState::Approved, OperationState::Executing))
         co_return toolResult({{QStringLiteral("requestId"), stored->request_id}, {QStringLiteral("state"), QStringLiteral("already executing")}}, true);
-    nextapp::pb::Action action;
+    nextapp::pb::Action action = normalized_action.value_or(nextapp::pb::Action{});
     action.setId_proto(QUuid::createUuid().toString(QUuid::WithoutBraces));
     action.setNode(resolved.value(QStringLiteral("nodeId")).toString());
     action.setName(resolved.value(QStringLiteral("name")).toString());
     action.setDescr(resolved.value(QStringLiteral("description")).toString());
     nextapp::pb::Date date; const auto today = QDate::currentDate(); date.setYear(today.year()); date.setMonth(today.month()); date.setMday(today.day()); action.setCreatedDate(date);
     const auto status = co_await runtime_.serverComm().addActionDirect(action);
-    const QJsonObject result{{QStringLiteral("requestId"), stored->request_id}, {QStringLiteral("actionId"), action.id_proto()}, {QStringLiteral("serverError"), int(status.error())}, {QStringLiteral("message"), status.message()}, {QStringLiteral("manualReconciliationRequired"), status.error() == nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR}};
+    QJsonObject result{{QStringLiteral("requestId"), stored->request_id}, {QStringLiteral("actionId"), action.id_proto()}, {QStringLiteral("serverError"), int(status.error())}, {QStringLiteral("message"), status.message()}, {QStringLiteral("manualReconciliationRequired"), status.error() == nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR}};
+    if (normalized_action) {
+        QProtobufJsonSerializer serializer;
+        result.insert("normalizedAction", QJsonDocument::fromJson(action.serialize(&serializer)).object());
+    }
     const auto state = status.error() == nextapp::pb::ErrorGadget::Error::OK ? OperationState::Executed
         : (status.error() == nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR ? OperationState::OutcomeUnknown : OperationState::Failed);
     (void) co_await store_.transition(stored->request_id, OperationState::Executing, state, result);
@@ -803,6 +881,7 @@ QCoro::Task<QJsonObject> McpGateway::toolCall(const Request& request, const QStr
     if (request.tool_name == QStringLiteral("nextapp_list_categories")) co_return co_await categories(arguments, false);
     if (request.tool_name == QStringLiteral("nextapp_search_categories")) co_return co_await categories(arguments, true);
     if (request.tool_name == QStringLiteral("nextapp_search_actions")) co_return co_await actions(arguments, true);
+    if (request.tool_name == QStringLiteral("nextapp_add_action_simple")) co_return co_await addActionSimple(arguments, peer, pending_reply);
     if (request.tool_name == QStringLiteral("nextapp_create_action")) co_return co_await createAction(arguments, peer, pending_reply);
     if (request.tool_name == QStringLiteral("nextapp_create_node")) co_return co_await createNode(arguments, peer, pending_reply);
     if (request.tool_name == QStringLiteral("nextapp_update_node")) co_return co_await updateNode(arguments, peer, pending_reply);

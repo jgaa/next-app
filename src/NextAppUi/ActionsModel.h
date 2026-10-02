@@ -169,6 +169,7 @@ class ActionsModel : public QAbstractListModel
         HasDescriptionRole,
     };
 
+public:
     enum Shortcuts {
         TODAY,
         TOMORROW,
@@ -185,7 +186,6 @@ class ActionsModel : public QAbstractListModel
         NEXT_YEAR,
     };
 
-public:
     enum CopyFormat {
         CopyTitle,
         CopyDescription,
@@ -265,6 +265,11 @@ public:
                                         nextapp::pb::ActionDueKindGadget::ActionDueKind btn);
     Q_INVOKABLE QStringListModel *getDueSelections(uint64_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind dt);
     Q_INVOKABLE nextapp::pb::Due adjustDue(time_t start, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const;
+    static nextapp::pb::Due adjustDue(time_t when, nextapp::pb::ActionDueKindGadget::ActionDueKind kind,
+                                     const nextapp::pb::UserGlobalSettings& settings);
+    static nextapp::pb::Due resolveDueShortcut(int shortcut, const nextapp::pb::Due& fromDue,
+                                              const nextapp::pb::UserGlobalSettings& settings,
+                                              const QDate& today);
     Q_INVOKABLE nextapp::pb::Due setDue(time_t start, time_t until, nextapp::pb::ActionDueKindGadget::ActionDueKind kind) const;
     Q_INVOKABLE nextapp::pb::Due getEmptyDue() const;
     Q_INVOKABLE nextapp::pb::Due changeDue(int shortcut, const nextapp::pb::Due& fromDue) const;

@@ -34,6 +34,8 @@
 
 #ifdef NEXTAPP_WITH_MCP
 #include "mcp/McpGateway.h"
+#include "mcp/McpSimpleAction.h"
+#include "util.h"
 #endif
 
 namespace {
@@ -755,6 +757,10 @@ private slots:
     void cleanupTestCase();
 #ifdef NEXTAPP_WITH_MCP
     void mcpHelpGatewayPreservesAuthenticationAndMutationGates();
+    void mcpSimpleActionNormalizesFieldsAndRepeat();
+    void mcpSimpleActionUsesUiScheduling();
+    void mcpSimpleActionRejectsInvalidStructuredInput();
+    void mcpSimpleActionGatewayApprovesNormalizedPayloadAndProtectsRetries();
 #endif
     void mainTreeModelUsesInjectedRuntimeForCommands();
     void mainTreeModelRejectsInvalidRequestsWithoutCallingComms();
@@ -833,6 +839,200 @@ void tst_NextAppUiRuntime::cleanupTestCase()
 }
 
 #ifdef NEXTAPP_WITH_MCP
+void tst_NextAppUiRuntime::mcpSimpleActionNormalizesFieldsAndRepeat()
+{
+    using namespace nextapp::mcp;
+    using namespace nextapp::pb;
+    UserGlobalSettings settings; settings.setTimeZone("UTC"); settings.setFirstDayOfWeekIsMonday(true);
+    settings.setPasteActionTitleWordCount(5);
+    const QDate today{2026, 10, 2};
+    QJsonObject args{{"idempotencyKey", "simple-fields"}, {"text", "Refactor code handling encryption and also fix UI issues."},
+        {"priority", " HIGH "}, {"difficulty", "very hard"}, {"timeEstimate", "1:2:30"},
+        {"favorite", true}, {"tags", "#release, beta; verify release"},
+        {"repeat", QJsonObject{{"from", "due time"}, {"every", 2}, {"unit", "weeks"}}}};
+    const auto normalized = normalizeSimpleAction(args, settings, today);
+    QVERIFY(std::holds_alternative<Action>(normalized));
+    const auto action = std::get<Action>(normalized);
+    QCOMPARE(action.name(), pasteActionTitle(args.value("text").toString(), 5));
+    QCOMPARE(action.descr(), args.value("text").toString());
+    QCOMPARE(action.dynamicPriority().priority(), ActionPriorityGadget::ActionPriority::PRI_HIGH);
+    QCOMPARE(action.difficulty(), ActionDifficultyGadget::ActionDifficulty::VERYHARD);
+    QCOMPARE(action.timeEstimate(), 630u);
+    QVERIFY(action.favorite());
+    QCOMPARE(action.tags(), QStringList({"beta", "release", "verify"}));
+    QCOMPARE(action.repeatKind(), Action::RepeatKind::DUE_TIME);
+    QCOMPARE(action.repeatUnits(), Action::RepeatUnit::WEEKS);
+    QCOMPARE(action.repeatWhen(), Action::RepeatWhen::AT_DATE);
+    QCOMPARE(action.repeatAfter(), 2);
+    QCOMPARE(action.due(), ActionsModel::resolveDueShortcut(ActionsModel::TODAY, {}, settings, today));
+    args.insert("text", "# Encryption cleanup\nFull details follow.");
+    args.insert("repeat", QJsonObject{{"on", QJsonArray{"monday", "friday", "last_day_in_month"}}});
+    auto selected = normalizeSimpleAction(args, settings, today);
+    QVERIFY(std::holds_alternative<Action>(selected));
+    const auto days = std::get<Action>(selected);
+    QCOMPARE(days.name(), QStringLiteral("Encryption cleanup"));
+    QCOMPARE(days.repeatWhen(), Action::RepeatWhen::AT_DAYSPEC);
+    QCOMPARE(days.repeatAfter(), (1 << int(Action::RepeatSpecs::MONDAY))
+        | (1 << int(Action::RepeatSpecs::FRIDAY)) | (1 << int(Action::RepeatSpecs::LAST_DAY_IN_MONTH)));
+    args.insert("topic", "Explicit topic");
+    args.insert("repeat", "never");
+    selected = normalizeSimpleAction(args, settings, today);
+    QVERIFY(std::holds_alternative<Action>(selected));
+    QCOMPARE(std::get<Action>(selected).name(), QStringLiteral("Explicit topic"));
+    QCOMPARE(std::get<Action>(selected).due().kind(), ActionDueKindGadget::ActionDueKind::UNSET);
+    args.insert("text", QString(40000, QChar{0x20ac}));
+    selected = normalizeSimpleAction(args, settings, today);
+    QVERIFY(std::holds_alternative<Action>(selected));
+    const auto description = std::get<Action>(selected).descr();
+    QVERIFY(description.toUtf8().size() <= 65535);
+    QVERIFY(!description.contains(QChar::ReplacementCharacter));
+}
+
+void tst_NextAppUiRuntime::mcpSimpleActionUsesUiScheduling()
+{
+    using namespace nextapp::mcp;
+    using namespace nextapp::pb;
+    UserGlobalSettings settings; settings.setTimeZone("Europe/Sofia"); settings.setFirstDayOfWeekIsMonday(false);
+    const QTimeZone zone{"Europe/Sofia"};
+    const QDate today{2026, 12, 31};
+    const QList<QPair<QJsonValue, QDate>> cases{
+        {"today", today}, {"Next Week", QDate{2027, 1, 3}},
+        {"next quater", QDate{2027, 1, 1}}, {"2027-02-03", QDate{2027, 2, 3}},
+        {"week #1 2027", QDate{2027, 1, 3}}, {"month February 2027", QDate{2027, 2, 1}},
+        {"quarter 2 2027", QDate{2027, 4, 1}}, {"year 2028", QDate{2028, 1, 1}},
+        {QJsonObject{{"kind", "month"}, {"value", "Feb"}, {"year", 2027}}, QDate{2027, 2, 1}},
+        {QJsonObject{{"kind", "quarter"}, {"value", 2}, {"year", 2027}}, QDate{2027, 4, 1}}};
+    for (const auto& [schedule, start] : cases) {
+        const auto result = normalizeSimpleAction({{"idempotencyKey", "schedule"}, {"text", "Task"}, {"schedule", schedule}}, settings, today);
+        QVERIFY2(std::holds_alternative<Action>(result), qPrintable(schedule.toString()));
+        const auto due = std::get<Action>(result).due();
+        QCOMPARE(QDateTime::fromSecsSinceEpoch(due.start(), zone).date(), start);
+        QVERIFY(due.due() >= due.start());
+    }
+    // DST changes produce calendar ranges, not a fixed number of seconds.
+    const auto dst = normalizeSimpleAction({{"idempotencyKey", "dst"}, {"text", "Task"}, {"schedule", "2027-03-28"}}, settings, today);
+    QVERIFY(std::holds_alternative<Action>(dst));
+    const auto dstDue = std::get<Action>(dst).due();
+    QCOMPARE(dstDue.due() - dstDue.start() + 1, quint64(23 * 3600));
+    const auto time = normalizeSimpleAction({{"idempotencyKey", "time"}, {"text", "Task"}, {"schedule", "2027-02-03T10:15:00Z"}}, settings, today);
+    QVERIFY(std::holds_alternative<Action>(time));
+    QCOMPARE(std::get<Action>(time).due().start(), quint64(QDateTime::fromString("2027-02-03T10:15:00Z", Qt::ISODate).toSecsSinceEpoch()));
+    const auto when = QDate{2027, 5, 17}.startOfDay(zone).toSecsSinceEpoch();
+    // Mid-period UI selections align to the start and end of the period.
+    const auto month = ActionsModel::adjustDue(when, ActionDueKindGadget::ActionDueKind::MONTH, settings);
+    QCOMPARE(QDateTime::fromSecsSinceEpoch(month.start(), zone).date(), QDate(2027, 5, 1));
+    QCOMPARE(QDateTime::fromSecsSinceEpoch(month.due(), zone).date(), QDate(2027, 5, 31));
+    const auto quarter = ActionsModel::adjustDue(when, ActionDueKindGadget::ActionDueKind::QUARTER, settings);
+    QCOMPARE(QDateTime::fromSecsSinceEpoch(quarter.start(), zone).date(), QDate(2027, 4, 1));
+    QCOMPARE(QDateTime::fromSecsSinceEpoch(quarter.due(), zone).date(), QDate(2027, 6, 30));
+    const auto year = ActionsModel::adjustDue(when, ActionDueKindGadget::ActionDueKind::YEAR, settings);
+    QCOMPARE(QDateTime::fromSecsSinceEpoch(year.start(), zone).date(), QDate(2027, 1, 1));
+    QCOMPARE(QDateTime::fromSecsSinceEpoch(year.due(), zone).date(), QDate(2027, 12, 31));
+}
+
+void tst_NextAppUiRuntime::mcpSimpleActionRejectsInvalidStructuredInput()
+{
+    using namespace nextapp::mcp;
+    using nextapp::pb::Action;
+    nextapp::pb::UserGlobalSettings settings; settings.setTimeZone("UTC");
+    const QJsonObject base{{"idempotencyKey", "invalid-simple"}, {"text", "Task"}};
+    const QList<QJsonObject> patches{
+        {{"text", "   "}}, {{"topic", " "}}, {{"schedule", "whenever"}}, {{"schedule", "2027-02-30"}},
+        {{"schedule", "week #53 2027"}}, {{"schedule", QJsonObject{{"kind", "month"}, {"value", 13}}}},
+        {{"priority", "banana"}}, {{"difficulty", 8}}, {{"timeEstimate", "-1"}}, {{"favorite", "true"}},
+        {{"tags", QJsonArray{42}}}, {{"tags", QJsonArray{"two words"}}},
+        {{"repeat", QJsonObject{{"every", 1.5}}}}, {{"repeat", QJsonObject{{"on", QJsonArray{"funday"}}}}},
+        {{"repeat", QJsonObject{{"on", QJsonArray{"monday"}}, {"unit", "weeks"}}}},
+        {{"repeat", QJsonObject{{"unknown", true}}}}, {{"unknown", true}},
+        {{"schedule", "unscheduled"}, {"repeat", QJsonObject{{"every", 1}}}},
+        {{"category", "Work"}, {"categoryId", "11111111-1111-4111-8111-111111111111"}}};
+    for (const auto& patch : patches) {
+        auto args = base;
+        for (auto it = patch.begin(); it != patch.end(); ++it) args.insert(it.key(), it.value());
+        const auto result = normalizeSimpleAction(args, settings, QDate{2026, 10, 2});
+        QVERIFY(!std::holds_alternative<Action>(result));
+        const auto error = std::get<QJsonObject>(result);
+        QVERIFY(error.contains("field"));
+        QCOMPARE(error.value("help").toObject().value("name").toString(), QStringLiteral("nextapp_add_action_simple"));
+    }
+}
+
+void tst_NextAppUiRuntime::mcpSimpleActionGatewayApprovesNormalizedPayloadAndProtectsRetries()
+{
+    using namespace nextapp::mcp;
+    auto db = makeInitializedDb(QStringLiteral("mcp-simple-action.sqlite"));
+    const auto close_db = qScopeGuard([&db] { db->close(); });
+    TestRuntimeServices runtime; runtime.setDbForTest(*db);
+    runtime.settings_.setValue("ai/enabled", true); runtime.settings_.setValue("ai/mcp/enabled", true);
+    runtime.server_comm_.setConnectedForTest(true);
+    runtime.server_comm_.global_settings_.setTimeZone("UTC");
+    const QString nodeId = "11111111-1111-4111-8111-111111111111";
+    MainTreeModel tree(runtime);
+    auto inbox = makeNode(nodeId, "Inbox", nextapp::pb::Node::Kind::FOLDER); inbox.setInbox(true);
+    QVERIFY(waitForTask(tree.save(inbox)));
+    McpGateway gateway(runtime); QVERIFY(waitForTask(gateway.initialize()));
+    const HeaderMap headers{{"authorization", QByteArray{"Bearer "} + gateway.credential().toUtf8()}};
+    const auto invoke = [&](const QJsonObject& args) {
+        return waitForTask(gateway.handle(QJsonDocument(QJsonObject{{"jsonrpc", "2.0"}, {"id", 42}, {"method", "tools/call"},
+            {"params", QJsonObject{{"name", "nextapp_add_action_simple"}, {"arguments", args}}}}).toJson(), headers, "127.0.0.1")).value("result").toObject();
+    };
+    QJsonObject args{{"idempotencyKey", "simple-gateway"}, {"text", "Refactor encryption and fix UI issues"},
+        {"schedule", "next_week"}, {"tags", QJsonArray{"release", "beta", "verify"}}, {"priority", "high"}};
+    QVERIFY(invoke(args).value("isError").toBool()); // Existing createAction gate defaults disabled.
+    QVERIFY(runtime.server_comm_.added_actions_.isEmpty());
+    runtime.settings_.setValue("ai/mcp/gate/createAction", "Ask");
+    auto invalid = args; invalid.insert("repeat", QJsonObject{{"on", QJsonArray{"invalid"}}});
+    QVERIFY(invoke(invalid).value("isError").toBool());
+    QVERIFY(runtime.mcp_approval_requests_.isEmpty());
+    const QString categoryId = "22222222-2222-4222-8222-222222222222";
+    const QString otherCategoryId = "33333333-3333-4333-8333-333333333333";
+    nextapp::pb::ActionCategory category;
+    category.setId_proto(categoryId); category.setName("Release"); category.setVersion(1);
+    QProtobufSerializer categorySerializer;
+    QVERIFY(waitForTask(db->query("INSERT INTO action_category (id,version,name,data) VALUES (?,1,?,?)", categoryId, category.name(), category.serialize(&categorySerializer))));
+    category.setId_proto(otherCategoryId); category.setName("release");
+    QVERIFY(waitForTask(db->query("INSERT INTO action_category (id,version,name,data) VALUES (?,1,?,?)", otherCategoryId, category.name(), category.serialize(&categorySerializer))));
+    auto ambiguous = args; ambiguous.insert("category", "Release");
+    const auto categoryError = invoke(ambiguous);
+    QVERIFY(categoryError.value("isError").toBool());
+    QCOMPARE(categoryError.value("structuredContent").toObject().value("candidates").toArray().size(), 2);
+    QVERIFY(runtime.mcp_approval_requests_.isEmpty());
+    auto rejected = args; rejected.insert("idempotencyKey", "rejected-simple");
+    QVERIFY(invoke(rejected).value("isError").toBool());
+    QVERIFY(runtime.server_comm_.added_actions_.isEmpty());
+    QCOMPARE(runtime.mcp_approval_requests_.size(), 1);
+    runtime.mcp_approval_requests_.clear();
+    args.insert("categoryId", categoryId);
+    args.insert("favorite", true); args.insert("timeEstimate", "2:30");
+    args.insert("difficulty", "hard");
+    args.insert("repeat", QJsonObject{{"on", QJsonArray{"monday", "friday"}}});
+    runtime.mcp_approval_decision_ = RuntimeServices::McpApprovalDecision::Approve;
+    const auto first = invoke(args);
+    QVERIFY(!first.value("isError").toBool());
+    QCOMPARE(runtime.server_comm_.added_actions_.size(), 1);
+    const auto action = runtime.server_comm_.added_actions_.front();
+    QCOMPARE(action.node(), nodeId);
+    QCOMPARE(action.category(), categoryId); QVERIFY(action.favorite());
+    QCOMPARE(action.timeEstimate(), 150u);
+    QCOMPARE(action.difficulty(), nextapp::pb::ActionDifficultyGadget::ActionDifficulty::HARD);
+    QCOMPARE(action.repeatWhen(), nextapp::pb::Action::RepeatWhen::AT_DAYSPEC);
+    QCOMPARE(action.dynamicPriority().priority(), nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_HIGH);
+    QCOMPARE(action.tags(), QStringList({"beta", "release", "verify"}));
+    QVERIFY(first.value("structuredContent").toObject().contains("normalizedAction"));
+    QCOMPARE(runtime.mcp_approval_requests_.size(), 1);
+    const auto changes = runtime.mcp_approval_requests_.front().value("changes").toMap();
+    QVERIFY(changes.contains("due")); QVERIFY(changes.contains("tags"));
+    // Retry returns original outcome after Inbox/settings changes and never submits twice.
+    runtime.server_comm_.global_settings_.setTimeZone("America/New_York");
+    QVERIFY(waitForTask(db->query("DELETE FROM node WHERE uuid=?", nodeId)));
+    auto expected = first.value("structuredContent").toObject(); expected.insert("state", "EXECUTED");
+    QCOMPARE(invoke(args).value("structuredContent").toObject(), expected);
+    QCOMPARE(runtime.server_comm_.added_actions_.size(), 1);
+    args.insert("priority", "low");
+    QVERIFY(invoke(args).value("isError").toBool());
+    QCOMPARE(runtime.server_comm_.added_actions_.size(), 1);
+}
+
 void tst_NextAppUiRuntime::mcpHelpGatewayPreservesAuthenticationAndMutationGates()
 {
     using namespace nextapp::mcp;

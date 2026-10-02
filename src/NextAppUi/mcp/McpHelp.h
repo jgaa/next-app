@@ -11,6 +11,8 @@ QJsonArray nodeKindNames();
 QString nodeKindName(int value);
 std::optional<int> nodeKindValue(const QString& name);
 
+QJsonObject simpleActionInputSchema();
+
 // Returns the existing MCP CallToolResult envelope, including actionable errors.
 QJsonObject mcpHelp(const QJsonObject& arguments);
 

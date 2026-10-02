@@ -56,6 +56,35 @@ private slots:
             QVERIFY(!data.value("related").toArray().isEmpty());
         }
     }
+    void simpleActionDiscoveryAndNestedValidation() {
+        const auto tool = definition("nextapp_add_action_simple");
+        QVERIFY(!tool.isEmpty());
+        const auto input = tool.value("inputSchema").toObject();
+        QCOMPARE(input.value("required").toArray(), QJsonArray({"idempotencyKey", "text"}));
+        const auto document = help("tool", "nextapp_add_action_simple");
+        QCOMPARE(document.value("inputSchema"), tool.value("inputSchema"));
+        QCOMPARE(document.value("repeatDaySpecs").toArray().size(), QMetaEnum::fromType<nextapp::pb::Action::RepeatSpecs>().keyCount());
+        const QJsonObject base{{"idempotencyKey", "simple-schema"}, {"text", "Task"}};
+        QVERIFY(!validateMutationArguments("nextapp_add_action_simple", base));
+        for (const auto& patch : {QJsonObject{{"schedule", QJsonObject{{"kind", "week"}, {"value", 42}, {"year", 2027}}}},
+                QJsonObject{{"repeat", QJsonObject{{"on", QJsonArray{"monday"}}}}},
+                QJsonObject{{"repeat", QJsonObject{{"every", 2}, {"unit", "weeks"}}}}}) {
+            auto args = base;
+            for (auto it = patch.begin(); it != patch.end(); ++it) args.insert(it.key(), it.value());
+            QVERIFY(!validateMutationArguments("nextapp_add_action_simple", args));
+        }
+        for (const auto& patch : {QJsonObject{{"text", QJsonValue::Null}}, QJsonObject{{"favorite", "true"}},
+                QJsonObject{{"schedule", QJsonObject{{"kind", "date"}}}},
+                QJsonObject{{"repeat", QJsonObject{{"every", 1.5}}}},
+                QJsonObject{{"repeat", QJsonObject{{"on", QJsonArray{}}}}},
+                QJsonObject{{"repeat", QJsonObject{{"on", QJsonArray{"monday"}}, {"every", 1}}}},
+                QJsonObject{{"category", "Work"}, {"categoryId", "11111111-1111-4111-8111-111111111111"}},
+                QJsonObject{{"tags", QJsonArray{1}}}, QJsonObject{{"unexpected", true}}}) {
+            auto args = base;
+            for (auto it = patch.begin(); it != patch.end(); ++it) args.insert(it.key(), it.value());
+            QVERIFY(validateMutationArguments("nextapp_add_action_simple", args));
+        }
+    }
     void sharedSchemasAndConcepts() {
         const auto action = help("schema", "action");
         const auto fields = action.value("fields").toObject();
@@ -156,7 +185,7 @@ private slots:
         const QStringList existing{"nextapp_get_action", "nextapp_get_request_status", "nextapp_list_actions", "nextapp_list_nodes",
             "nextapp_search_nodes", "nextapp_list_categories", "nextapp_search_categories", "nextapp_search_actions",
             "nextapp_create_action", "nextapp_create_node", "nextapp_update_node", "nextapp_update_action", "nextapp_complete_action"};
-        QCOMPARE(toolList().value("tools").toArray().size(), existing.size() + 1);
+        QCOMPARE(toolList().value("tools").toArray().size(), existing.size() + 2);
         for (const auto& name : existing) QVERIFY(!definition(name).isEmpty());
         // Compatibility: unknown action fields were ignored, node fields rejected.
         auto patch = actionPatch(); patch.insert("extra", true);

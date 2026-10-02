@@ -9,6 +9,8 @@
 #include <QJsonDocument>
 #include <QMetaProperty>
 #include <QTimeZone>
+#include <QRegularExpression>
+#include <algorithm>
 
 #include <regex>
 
@@ -311,4 +313,61 @@ QByteArray gzipCompress(const std::span<const char>& data, std::optional<int> co
     }
 
     return out;
+}
+
+namespace {
+QString normalizedPasteWhitespace(const QString& text)
+{
+    return text.simplified();
+}
+
+QString markdownPasteTitle(const QString& text)
+{
+    const auto lines = text.split(u'\n');
+    for (const auto& line : lines) {
+        auto title = line.trimmed();
+        if (title.startsWith(u'#')) {
+            title.remove(QRegularExpression(QStringLiteral(R"(^#+\s*)")));
+            title.remove(QRegularExpression(QStringLiteral(R"(\s*#+$)")));
+            return normalizedPasteWhitespace(title);
+        }
+    }
+    return {};
+}
+
+QString plainPasteTitle(const QString& text, int wordCount)
+{
+    const auto trimmed = text.trimmed();
+    const auto sentenceEnd = trimmed.indexOf(QRegularExpression(QStringLiteral("[.!?](?:\\s|$)")));
+    const auto sentence = sentenceEnd >= 0 ? trimmed.left(sentenceEnd + 1) : trimmed;
+    const auto words = normalizedPasteWhitespace(sentence).split(u' ', Qt::SkipEmptyParts);
+    const auto titleWordCount = std::min<qsizetype>(words.size(),
+        std::clamp(wordCount, 1, 16));
+    return words.sliced(0, titleWordCount).join(u' ');
+}
+
+} // namespace
+
+QString boundedUtf8(const QString& text, qsizetype maxBytes)
+{
+    const auto utf8 = text.toUtf8();
+    if (utf8.size() <= maxBytes) {
+        return text;
+    }
+
+    auto boundary = maxBytes;
+    // Do not leave a partial UTF-8 character at the end of a database field.
+    while (boundary > 0 && (static_cast<unsigned char>(utf8.at(boundary)) & 0xc0) == 0x80) {
+        --boundary;
+    }
+    return QString::fromUtf8(utf8.constData(), boundary);
+}
+
+QString pasteActionTitle(const QString& text, int wordCount)
+{
+    const auto markdownTitle = markdownPasteTitle(text.trimmed());
+    const auto title = markdownTitle.isEmpty()
+        ? plainPasteTitle(text, wordCount)
+        : markdownTitle;
+    return normalizedPasteWhitespace(title).left(256);
 }

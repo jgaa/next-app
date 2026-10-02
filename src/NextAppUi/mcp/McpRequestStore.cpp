@@ -90,6 +90,14 @@ QCoro::Task<std::optional<StoredRequest>> McpRequestStore::get(const QString& ag
     co_return fromRow(result->rows.front());
 }
 
+QCoro::Task<std::optional<StoredRequest>> McpRequestStore::getByIdempotencyKey(const QString& agent_id, const QString& key) {
+    const auto result = co_await db_.query(
+        "SELECT request_id,agent_id,idempotency_key,request_hash,operation,arguments,state,COALESCE(result,'{}') "
+        "FROM mcp_request WHERE agent_id=? AND idempotency_key=?", agent_id, key);
+    if (!result || result->rows.isEmpty()) co_return std::nullopt;
+    co_return fromRow(result->rows.front());
+}
+
 QCoro::Task<bool> McpRequestStore::transition(const QString& request_id, OperationState from, OperationState to, const QJsonObject& result) {
     const auto changed = co_await db_.query("UPDATE mcp_request SET state=?,result=?,resolved_at=? WHERE request_id=? AND state=?",
         stateName(to), QJsonDocument(result).toJson(QJsonDocument::Compact), QDateTime::currentSecsSinceEpoch(), request_id, stateName(from));

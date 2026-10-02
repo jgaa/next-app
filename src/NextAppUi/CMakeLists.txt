@@ -386,6 +386,8 @@ if (NEXTAPP_WITH_MCP)
         mcp/McpProtocol.h
         mcp/McpRequestStore.cpp
         mcp/McpRequestStore.h
+        mcp/McpSimpleAction.cpp
+        mcp/McpSimpleAction.h
         mcp/McpGateway.cpp
         mcp/McpGateway.h
         mcp/McpHttpServer.cpp
