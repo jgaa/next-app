@@ -105,10 +105,25 @@ Rectangle {
             // console.log("WorkSessionsView/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
             if (drag.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
                 drag.accepted = true
+            } else if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
+                drag.accepted = !NaCore.isMobile && NaComm.connected && NaCore.canAddLimitedResources
+            } else {
+                drag.accepted = false
             }
         }
 
         onDropped: (drop) => {
+            drop.accepted = false
+            if (drop.formats.indexOf("text/app.nextapp.action") !== -1) {
+                if (NaCore.isMobile || !NaComm.connected || !NaCore.canAddLimitedResources)
+                    return
+                const action = drop.getDataAsString("text/app.nextapp.action")
+                if (!action)
+                    return
+                NaWorkSessionsModel.startWorkSetActive(action)
+                drop.accepted = true
+                return
+            }
             if (drop.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
                 let uuid = drop.getDataAsString("text/app.nextapp.calendar.event")
                 // console.log("WorkSessionsViewDropped calendar event ", uuid, " at x=", drop.x, ", y=", drop.y)

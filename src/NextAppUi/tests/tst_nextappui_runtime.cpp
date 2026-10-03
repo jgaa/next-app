@@ -787,6 +787,7 @@ private slots:
     void workCacheLoadsPersistedSessionsAndFiltersByAction();
     void workSessionMinuteNotificationsFollowSessionIds();
     void workCacheSortsNewActiveSessions();
+    void workSessionsStartOrResumeActionAsActive();
     void workCacheRepairsDanglingActionReferences();
     void workCacheProcessesActionMoveAndDeleteUpdates();
     void workCacheSaveIgnoresStaleUpdatedId();
@@ -1922,6 +1923,40 @@ void tst_NextAppUiRuntime::workSessionMinuteNotificationsFollowSessionIds()
     model.setIsVisible(true);
     QCOMPARE(model.data(model.index(0, WorkModelBase::USED), Qt::DisplayRole).toString(),
              QStringLiteral("26:19"));
+}
+
+void tst_NextAppUiRuntime::workSessionsStartOrResumeActionAsActive()
+{
+    TestRuntimeServices runtime;
+    WorkCache cache(runtime);
+    cache.timer_->stop();
+    WorkSessionsModel model(runtime, cache);
+    const QString action = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const QString sessionId = "11111111-1111-1111-1111-111111111111";
+
+    model.startWorkSetActive(action);
+    QCOMPARE(runtime.server_comm_.started_work_.size(), 1);
+    QCOMPARE(runtime.server_comm_.started_work_.front().first, action);
+    QVERIFY(runtime.server_comm_.started_work_.front().second);
+    QVERIFY(runtime.server_comm_.resumed_work_.isEmpty());
+    runtime.server_comm_.started_work_.clear();
+
+    auto session = std::make_shared<nextapp::pb::WorkSession>(makeWorkSession(
+        sessionId, action, QStringLiteral("Paused action"), {}, nextapp::pb::WorkSession::State::PAUSED));
+    cache.active_ = {session};
+    // Use the cache even if the view has not fetched its rows yet.
+    model.startWorkSetActive(action);
+    QCOMPARE(runtime.server_comm_.resumed_work_, QStringList{sessionId});
+    QVERIFY(runtime.server_comm_.started_work_.isEmpty());
+    runtime.server_comm_.resumed_work_.clear();
+
+    session->setState(nextapp::pb::WorkSession::State::ACTIVE);
+    model.startWorkSetActive(action);
+    QVERIFY(runtime.server_comm_.started_work_.isEmpty());
+    QVERIFY(runtime.server_comm_.resumed_work_.isEmpty());
+    model.startWorkSetActive(QStringLiteral("invalid"));
+    QVERIFY(runtime.server_comm_.started_work_.isEmpty());
+    QVERIFY(runtime.server_comm_.resumed_work_.isEmpty());
 }
 
 void tst_NextAppUiRuntime::workCacheSortsNewActiveSessions()

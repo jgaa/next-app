@@ -55,6 +55,26 @@ void WorkSessionsModel::startWork(const QString &actionId)
 
 void WorkSessionsModel::startWorkSetActive(const QString &actionId)
 {
+    const auto action = QUuid(actionId);
+    if (action.isNull()) {
+        LOG_WARN_N << "Cannot start work for an invalid action id";
+        return;
+    }
+    for (const auto& session : cache_.getActive()) {
+        if (QUuid(session->action()) != action) {
+            continue;
+        }
+        if (session->state() == nextapp::pb::WorkSession::State::PAUSED) {
+            LOG_DEBUG_N << "Resuming existing work session for action=" << actionId;
+            runtime_.serverComm().resumeWork(session->id_proto());
+            return;
+        }
+        if (session->state() == nextapp::pb::WorkSession::State::ACTIVE) {
+            LOG_DEBUG_N << "Work session is already active for action=" << actionId;
+            return;
+        }
+    }
+    LOG_DEBUG_N << "Starting active work session for action=" << actionId;
     runtime_.serverComm().startWork(actionId, true);
 }
 
