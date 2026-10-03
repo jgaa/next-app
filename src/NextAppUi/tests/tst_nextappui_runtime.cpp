@@ -18,6 +18,7 @@
 #include "ActionsModel.h"
 #include "ActionSuggestionsModel.h"
 #include "CalendarCache.h"
+#include "CalendarModel.h"
 #include "DbStore.h"
 #include "DevicesModel.h"
 #include "ImportExportModel.h"
@@ -780,6 +781,7 @@ private slots:
     void serverSynchedCacheRollsBackTransactionOnSyncFailure();
     void serverSynchedCacheCanSkipReloadAfterSuccessfulSync();
     void calendarCacheSaveBatchKeepsSerializedActionsAndPersistsValidRelations();
+    void calendarDayActionDropsAllocateTimeBoxes();
     void calendarCacheLoadDoesNotRepairMissingActionRefs();
     void calendarCacheInvalidCalendarDeleteUpdateRequestsResync();
     void workCacheLoadsPersistedSessionsAndFiltersByAction();
@@ -1609,6 +1611,69 @@ void tst_NextAppUiRuntime::serverSynchedCacheCanSkipReloadAfterSuccessfulSync()
     QCOMPARE(rows->at(0).at(0).toString(), QStringLiteral("persist-only"));
 
     db->close();
+}
+
+void tst_NextAppUiRuntime::calendarDayActionDropsAllocateTimeBoxes()
+{
+    auto db = makeInitializedDb(QStringLiteral("calendar-action-drops.sqlite"));
+    const auto closeDb = qScopeGuard([&db] { db->close(); });
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    runtime.server_comm_.connected_ = true;
+    runtime.server_comm_.global_settings_.setSuggestionTimeBoxMinMinutes(15);
+    runtime.server_comm_.global_settings_.setSuggestionTimeBoxMaxMinutes(120);
+    CalendarCache cache(runtime);
+    CalendarModel calendar(runtime);
+    QObject component;
+    const QDate date(2026, 10, 5);
+    CalendarDayModel day(date, component, calendar, runtime, 0);
+    const QString action = "11111111-1111-1111-1111-111111111111";
+    insertMinimalAction(*db, action, QStringLiteral("Dropped action"));
+    QVERIFY(waitForTask(db->query("UPDATE action SET category=?, time_estimate=45 WHERE id=?",
+                                 QStringLiteral("category-a"), action)));
+
+    QVERIFY(!day.createTimeBoxForAction(QStringLiteral("invalid"), 600));
+    QVERIFY(!day.createTimeBoxForAction(action, -1));
+    QVERIFY(!day.createTimeBoxForAction(action, 1440));
+    QVERIFY(!day.createTimeBoxForAction(action, 600, -1));
+    QVERIFY(!day.createTimeBoxForAction(action, 1430, 30));
+    QVERIFY(day.createTimeBoxForAction(action, 600));
+    QTRY_COMPARE(runtime.server_comm_.added_time_blocks_.size(), 1);
+    const auto tb = runtime.server_comm_.added_time_blocks_.front();
+    QCOMPARE(tb.name(), QStringLiteral("Dropped action"));
+    QCOMPARE(tb.category(), QStringLiteral("category-a"));
+    QCOMPARE(tb.actions().list(), QStringList{action});
+    QCOMPARE(tb.timeSpan().start(), static_cast<quint64>(date.startOfDay().addSecs(600 * 60).toSecsSinceEpoch()));
+    QCOMPARE(tb.timeSpan().end() - tb.timeSpan().start(), quint64(45 * 60));
+
+    // Suggestion drags supply their duration but use the same C++ limits.
+    QVERIFY(day.createTimeBoxForAction(action, 700, 5));
+    QTRY_COMPARE(runtime.server_comm_.added_time_blocks_.size(), 2);
+    const auto minimum = runtime.server_comm_.added_time_blocks_.back().timeSpan();
+    QCOMPARE(minimum.end() - minimum.start(), quint64(15 * 60));
+    QVERIFY(day.createTimeBoxForAction(action, 800, 200));
+    QTRY_COMPARE(runtime.server_comm_.added_time_blocks_.size(), 3);
+    const auto maximum = runtime.server_comm_.added_time_blocks_.back().timeSpan();
+    QCOMPARE(maximum.end() - maximum.start(), quint64(120 * 60));
+
+    QVERIFY(waitForTask(db->query("UPDATE action SET time_estimate=500 WHERE id=?", action)));
+    QVERIFY(day.createTimeBoxForAction(action, 1100));
+    QTRY_COMPARE(runtime.server_comm_.added_time_blocks_.size(), 4);
+    const auto longAction = runtime.server_comm_.added_time_blocks_.back().timeSpan();
+    QCOMPARE(longAction.end() - longAction.start(), quint64(120 * 60));
+    QVERIFY(waitForTask(db->query("UPDATE action SET time_estimate=5 WHERE id=?", action)));
+    QVERIFY(day.createTimeBoxForAction(action, 1300));
+    QTRY_COMPARE(runtime.server_comm_.added_time_blocks_.size(), 5);
+    const auto shortAction = runtime.server_comm_.added_time_blocks_.back().timeSpan();
+    QCOMPARE(shortAction.end() - shortAction.start(), quint64(15 * 60));
+    QVERIFY(waitForTask(db->query("UPDATE action SET time_estimate=0 WHERE id=?", action)));
+    QVERIFY(day.createTimeBoxForAction(action, 1425));
+    QTRY_COMPARE(runtime.server_comm_.added_time_blocks_.size(), 6);
+    const auto unknown = runtime.server_comm_.added_time_blocks_.back().timeSpan();
+    QCOMPARE(unknown.end() - unknown.start(), quint64(15 * 60));
+    QCOMPARE(unknown.end(), static_cast<quint64>(date.startOfDay().addSecs(1440 * 60).toSecsSinceEpoch()));
+    runtime.server_comm_.connected_ = false;
+    QVERIFY(!day.createTimeBoxForAction(action, 600));
 }
 
 void tst_NextAppUiRuntime::calendarCacheSaveBatchKeepsSerializedActionsAndPersistsValidRelations()

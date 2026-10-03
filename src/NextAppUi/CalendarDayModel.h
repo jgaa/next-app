@@ -60,6 +60,8 @@ public:
     // start and end are minuts into the day
     Q_INVOKABLE void createTimeBox(QString name, QString category, int start, int end,
                                    const QStringList& actions = {});
+    // start is minutes into the day; zero minutes uses the action's estimate.
+    Q_INVOKABLE bool createTimeBoxForAction(const QString& action, int start, int minutes = 0);
     Q_INVOKABLE nextapp::pb::CalendarEvent event(int index) const noexcept;
     Q_INVOKABLE void addCalendarEvents();
     Q_INVOKABLE void moveEvent(const QString& eventId, time_t start, time_t end);
@@ -143,6 +145,7 @@ signals:
     void workHoursChanged();
 
 private:
+    QCoro::Task<void> createTimeBoxForActionAsync(QString action, int start, int minutes);
     void setWorkHours();
 
     QDate date_;

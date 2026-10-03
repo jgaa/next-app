@@ -5,6 +5,7 @@
 #include <QQmlComponent>
 #include <QQmlProperty>
 #include <QQuickItem>
+#include <QPointer>
 
 #include "NextAppCore.h"
 #include "CalendarDayModel.h"
@@ -12,6 +13,8 @@
 #include "ServerCommAccess.h"
 #include "TimeBoxActionsModel.h"
 #include "ActionCategoriesModel.h"
+#include "ActionSuggestionsModel.h"
+#include "DbStore.h"
 
 using namespace std;
 
@@ -188,6 +191,50 @@ void CalendarDayModel::createTimeBox(QString name, QString category, int start, 
     tb.setTimeSpan(ts);
 
     runtime_.serverComm().addTimeBlock(tb);
+}
+
+bool CalendarDayModel::createTimeBoxForAction(const QString& action, int start, int minutes)
+{
+    if (QUuid(action).isNull() || !date_.isValid() || start < 0 || start >= 1440
+        || minutes < 0 || minutes > 1440 || !runtime_.serverComm().connected()) {
+        LOG_WARN_N << "Invalid action time-box drop: start=" << start << " minutes=" << minutes;
+        return false;
+    }
+    if (minutes > 0 && start + ActionSuggestionsModel::timeBoxMinutes(
+            minutes, 0, runtime_.serverComm().globalSettings()) > 1440) {
+        LOG_DEBUG_N << "Suggested action time-box drop does not fit in day";
+        return false;
+    }
+    LOG_DEBUG_N << "Creating time box from action drop: start=" << start << " minutes=" << minutes;
+    createTimeBoxForActionAsync(action, start, minutes);
+    return true;
+}
+
+QCoro::Task<void> CalendarDayModel::createTimeBoxForActionAsync(QString action, int start, int minutes)
+{
+    // Resolve metadata locally for both action-list and suggestion drags. Keep
+    // the original day so navigation during the lookup cannot redirect a drop.
+    QPointer<CalendarDayModel> guard(this);
+    const auto date = date_;
+    const auto result = co_await runtime_.db().query(
+        "SELECT name, category, time_estimate FROM action WHERE id=? AND status!=?",
+        action, static_cast<int>(nextapp::pb::ActionStatusGadget::ActionStatus::DELETED));
+    if (!guard) {
+        co_return;
+    }
+    if (!result || result->rows.isEmpty() || date_ != date || !runtime_.serverComm().connected()) {
+        LOG_WARN_N << "Action time-box drop cancelled: action unavailable, day changed or disconnected";
+        co_return;
+    }
+    const auto& row = result->rows.front();
+    const int duration = ActionSuggestionsModel::timeBoxMinutes(
+        minutes > 0 ? minutes : row[2].toInt(), 0, runtime_.serverComm().globalSettings());
+    if (start + duration > 1440) {
+        LOG_DEBUG_N << "Action time-box drop does not fit in day: start=" << start << " duration=" << duration;
+        co_return;
+    }
+    LOG_DEBUG_N << "Allocated action time box: start=" << start << " duration=" << duration;
+    createTimeBox(row[0].toString(), row[1].toString(), start, start + duration, {action});
 }
 
 nextapp::pb::CalendarEvent CalendarDayModel::event(int index) const noexcept {

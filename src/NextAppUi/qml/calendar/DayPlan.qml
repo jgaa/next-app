@@ -325,26 +325,26 @@ Rectangle {
             // console.log("TimeBlock/DropArea entered by ", drag.source.toString(), " types ", drag.formats)
             if (drag.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {
                 drag.accepted = true
-            } else if (drag.formats.indexOf("text/app.nextapp.suggestion.duration") !== -1
-                       && drag.formats.indexOf("text/app.nextapp.action") !== -1) {
+            } else if (drag.formats.indexOf("text/app.nextapp.action") !== -1) {
                 drag.accepted = NaComm.connected && NaCore.canAddLimitedResources
+            } else {
+                drag.accepted = false
             }
         }
 
         onDropped: (drop) => {
-            if (drop.formats.indexOf("text/app.nextapp.suggestion.duration") !== -1
-                && drop.formats.indexOf("text/app.nextapp.action") !== -1
-                && NaComm.connected && NaCore.canAddLimitedResources) {
+            if (drop.formats.indexOf("text/app.nextapp.action") !== -1) {
+                drop.accepted = false
+                if (!NaComm.connected || !NaCore.canAddLimitedResources)
+                    return
                 const start = Math.max(0, Math.min(1439, toMinuteInDay(drop.y)))
-                const duration = Number(drop.getDataAsString("text/app.nextapp.suggestion.duration"))
-                if (Number.isFinite(duration) && duration >= 1 && start + duration <= 1440) {
-                    root.model.createTimeBox(
-                        drop.getDataAsString("text/app.nextapp.suggestion.name"),
-                        drop.getDataAsString("text/app.nextapp.suggestion.category"),
-                        start, start + duration,
-                        [drop.getDataAsString("text/app.nextapp.action")])
-                    drop.accepted = true
-                }
+                const suggested = drop.formats.indexOf("text/app.nextapp.suggestion.duration") !== -1
+                const duration = suggested
+                    ? Number(drop.getDataAsString("text/app.nextapp.suggestion.duration")) : 0
+                if (!Number.isInteger(duration) || (suggested && duration < 1))
+                    return
+                drop.accepted = root.model.createTimeBoxForAction(
+                    drop.getDataAsString("text/app.nextapp.action"), start, duration)
                 return
             }
             if (drop.formats.indexOf("text/app.nextapp.calendar.event") !== -1) {

@@ -47,12 +47,16 @@ ScrollView {
             autoStartNewWs.checked = tmp.autoStartNewWorkSession
             optInEmail.checked = tmp.optInEmail
             pasteActionTitleWords.value = Math.max(1, Math.min(16,
-                tmp.pasteActionTitleWordCount || 9))
+                Number(tmp.pasteActionTitleWordCount) || 9))
             enableAi.checked = settings.value("ai/enabled", false)
-            suggestionLimit.value = Math.max(5, Math.min(100, tmp.suggestionLimit || 20))
-            suggestionMinimum.value = Math.max(1, Math.min(1440, tmp.suggestionTimeBoxMinMinutes || 30))
+            suggestionLimit.value = Math.max(5, Math.min(100, Number(tmp.suggestionLimit) || 20))
+            // QtProtobuf integers can be wrapped values: convert before testing
+            // for zero so unset fields use the same defaults as the C++ allocator.
+            const minimum = Number(tmp.suggestionTimeBoxMinMinutes)
+            const maximum = Number(tmp.suggestionTimeBoxMaxMinutes)
+            suggestionMinimum.value = Math.max(1, Math.min(1440, minimum > 0 ? minimum : 30))
             suggestionMaximum.value = Math.max(suggestionMinimum.value,
-                Math.min(1440, tmp.suggestionTimeBoxMaxMinutes || 240))
+                Math.min(1440, maximum > 0 ? maximum : 240))
         }
     }
 
