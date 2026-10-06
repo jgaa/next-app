@@ -449,6 +449,11 @@ Rectangle {
                                 });
                             }
                         }
+                        Action {
+                            enabled: NaComm.connected && contextMenu.uuid !== "" && NaCore.canAddLimitedResources
+                            text: qsTr("Paste as new action")
+                            onTriggered: NaCore.pasteClipboardToNode(contextMenu.uuid)
+                        }
                         MenuSeparator {}
                         Action {
                             enabled: NaCore.canAddLimitedResources
