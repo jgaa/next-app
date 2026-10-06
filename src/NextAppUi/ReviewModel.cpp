@@ -271,6 +271,9 @@ QVariant ReviewModel::data(const QModelIndex &index, int role) const
         return ActionsModel::getStatusColor(action);
     case HasDescriptionRole:
         return action.hasDescr();
+    case TimeEstimateRole:
+        return action.timeEstimate() > 0
+            ? formatDuration(action.timeEstimate(), 8 * 60) : QString{};
     }
     return {};
 }
@@ -304,6 +307,7 @@ QHash<int, QByteArray> ReviewModel::roleNames() const
     roles[CategoryColorRole] = "categoryColor";
     roles[StatusColor] = "statusColor";
     roles[HasDescriptionRole] = "hasDescription";
+    roles[TimeEstimateRole] = "timeEstimate";
     return roles;
 }
 

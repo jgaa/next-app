@@ -455,7 +455,11 @@ Dialog {
                                 if (active) {
                                     root.currentAction = suggestion.modelData
                                     suggestion.grabToImage(function(result) {
-                                        if (drag.active) { handle.Drag.imageSource = result.url; handle.Drag.active = true }
+                                        if (!drag.active)
+                                            return
+                                        handle.Drag.imageSource = ""
+                                        handle.Drag.imageSource = result.url
+                                        handle.Drag.active = true
                                     })
                                 } else handle.Drag.active = false
                             }

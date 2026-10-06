@@ -71,7 +71,8 @@ public:
         TagsRole,
         CategoryColorRole,
         StatusColor,
-        HasDescriptionRole
+        HasDescriptionRole,
+        TimeEstimateRole,
     };
 
     Q_ENUM(State)

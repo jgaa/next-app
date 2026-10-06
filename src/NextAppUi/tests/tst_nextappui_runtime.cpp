@@ -31,13 +31,13 @@
 #include "UseCaseTemplates.h"
 #include "WorkCache.h"
 #include "WorkSessionsModel.h"
+#include "util.h"
 
 #include "tests/TestRuntimeSupport.h"
 
 #ifdef NEXTAPP_WITH_MCP
 #include "mcp/McpGateway.h"
 #include "mcp/McpSimpleAction.h"
-#include "util.h"
 #endif
 
 namespace {
@@ -757,6 +757,8 @@ class tst_NextAppUiRuntime final : public QObject
 private slots:
     void initTestCase();
     void cleanupTestCase();
+    void durationFormatting_data();
+    void durationFormatting();
 #ifdef NEXTAPP_WITH_MCP
     void mcpHelpGatewayPreservesAuthenticationAndMutationGates();
     void mcpSimpleActionNormalizesFieldsAndRepeat();
@@ -816,6 +818,35 @@ private slots:
 private:
     QTemporaryDir temp_dir_;
 };
+
+void tst_NextAppUiRuntime::durationFormatting_data()
+{
+    QTest::addColumn<quint64>("minutes");
+    QTest::addColumn<quint64>("minutesPerDay");
+    QTest::addColumn<QString>("expected");
+
+    QTest::newRow("zero") << quint64{0} << quint64{1440} << QString{"0m"};
+    QTest::newRow("minutes") << quint64{15} << quint64{1440} << QString{"15m"};
+    QTest::newRow("hours") << quint64{60} << quint64{1440} << QString{"1h"};
+    QTest::newRow("hours-minutes") << quint64{105} << quint64{1440} << QString{"1h 45m"};
+    QTest::newRow("days") << quint64{3 * 1440} << quint64{1440} << QString{"3d"};
+    QTest::newRow("two-largest-units") << quint64{5 * 1440 + 3 * 60 + 15}
+        << quint64{1440} << QString{"5d 3h"};
+    QTest::newRow("skip-zero-hours") << quint64{1440 + 15}
+        << quint64{1440} << QString{"1d 15m"};
+    QTest::newRow("workdays") << quint64{3 * 480} << quint64{480} << QString{"3d"};
+    QTest::newRow("estimate-5-3-15") << quint64{5 * 480 + 3 * 60 + 15}
+        << quint64{480} << QString{"5d 3h"};
+    QTest::newRow("invalid-day-length") << quint64{15} << quint64{0} << QString{};
+}
+
+void tst_NextAppUiRuntime::durationFormatting()
+{
+    QFETCH(quint64, minutes);
+    QFETCH(quint64, minutesPerDay);
+    QFETCH(QString, expected);
+    QCOMPARE(formatDuration(minutes, minutesPerDay), expected);
+}
 
 void tst_NextAppUiRuntime::initTestCase()
 {

@@ -292,6 +292,9 @@ Rectangle {
                                 dragHandler.origY = content.y
                                 console.log("onActiveChanged: isMobile=", NaCore.isMobile)
                                 content.grabToImage(function(result) {
+                                    if (!dragHandler.active)
+                                        return
+                                    parent.Drag.imageSource = ""
                                     parent.Drag.imageSource = result.url
                                     //parent.Drag.hotSpot = Qt.point(content.width / 2, content.height / 2)
                                     //parent.Drag.hotSpot = Qt.point(content.x, content.y)

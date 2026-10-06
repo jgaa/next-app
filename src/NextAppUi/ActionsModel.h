@@ -167,6 +167,7 @@ class ActionsModel : public QAbstractListModel
         CategoryColorRole,
         StatusColor,
         HasDescriptionRole,
+        TimeEstimateRole,
     };
 
 public:

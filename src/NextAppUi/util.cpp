@@ -99,6 +99,35 @@ QString toHourMin(const int duration, bool showEmpty)
     return val.asprintf("%02d:%02d", hours, minutes);
 }
 
+QString formatDuration(quint64 minutes, quint64 minutesPerDay)
+{
+    if (minutesPerDay == 0) {
+        return {};
+    }
+
+    const auto days = minutes / minutesPerDay;
+    minutes %= minutesPerDay;
+    const auto hours = minutes / 60;
+    minutes %= 60;
+
+    QString result;
+    int parts = 0;
+    const auto append = [&](quint64 value, QChar unit) {
+        if (value == 0 || parts == 2) {
+            return;
+        }
+        if (!result.isEmpty()) {
+            result += u' ';
+        }
+        result += QString::number(value) + unit;
+        ++parts;
+    };
+    append(days, u'd');
+    append(hours, u'h');
+    append(minutes, u'm');
+    return result.isEmpty() ? QStringLiteral("0m") : result;
+}
+
 int parseDuration(const QString &value)
 {
     int minutes = {}, hours = {};

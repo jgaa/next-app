@@ -37,15 +37,24 @@ Rectangle {
                 root.opacity = 0.5
                 dragHandler.origX = root.x
                 dragHandler.origY = root.y
+                // Bound the capture itself: long time boxes can be much taller
+                // than the visible calendar, especially at higher zoom levels.
+                const scale = Math.min(1, 320 / root.width, 240 / root.height)
                 root.grabToImage(function(result) {
-                   parent.Drag.imageSource = result.url
-                   parent.Drag.active = true
-                })
+                    if (!dragHandler.active)
+                        return
+                    // Qt derives sourceSize from the previously loaded image.
+                    // Clear it before loading another grabToImage URL.
+                    root.Drag.imageSource = ""
+                    root.Drag.imageSource = result.url
+                    root.Drag.active = true
+                }, Qt.size(Math.max(1, Math.round(root.width * scale)),
+                           Math.max(1, Math.round(root.height * scale))))
             } else {
                 root.opacity = 0.8
                 root.x = dragHandler.origX
                 root.y = dragHandler.origY
-                parent.Drag.active = false
+                root.Drag.active = false
             }
         }
     }

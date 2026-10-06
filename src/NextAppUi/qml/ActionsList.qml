@@ -189,6 +189,7 @@ Rectangle {
                 required property string categoryColor
                 required property string statusColor
                 required property bool hasDescription;
+                required property string timeEstimate
                 enabled: !deleted
 
                 implicitHeight: row.implicitHeight + 4
@@ -285,6 +286,11 @@ Rectangle {
                             dragHandler.origY = actionItem.y
                             actionItem.grabToImage(function(result) {
                                 // TODO: Crop the image to a max width in C++ and provide a new url for it
+                                if (!dragHandler.active)
+                                    return
+                                // Clear the previous image so Qt does not use its
+                                // size as a sourceSize request for a grabToImage URL.
+                                parent.Drag.imageSource = ""
                                 parent.Drag.imageSource = result.url
                                 parent.Drag.active = true
                             })
@@ -470,6 +476,22 @@ Rectangle {
                             Item {
                                 visible: dueLabel.visible
                                 Layout.preferredWidth: 4
+                            }
+
+                            Label {
+                                visible: timeEstimateLabel.visible
+                                font.family: ce.faSolidName
+                                font.styleName: ce.faSolidStyle
+                                text: "\uf2f2"
+                                color: MaterialDesignStyling.onSurfaceVariant
+                                font.pixelSize: listLabel.font.pixelSize
+                            }
+
+                            Label {
+                                id: timeEstimateLabel
+                                color: MaterialDesignStyling.onSurfaceVariant
+                                text: actionItem.timeEstimate
+                                visible: text !== ""
                             }
 
                             Label {

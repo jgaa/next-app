@@ -24,6 +24,9 @@ std::string toString(const nextapp::pb::WorkEvent_QtProtobufNested::Kind& kind);
 [[nodiscard]] QString toValidQuid(const QString& str);
 [[nodiscard]] QUuid toQuid(const QString& str);
 [[nodiscard]] QString toHourMin(const int duration, bool showEmpty = true);
+// Format minutes using at most the two largest nonzero units (d, h, m).
+// Defaults to 24-hour days; pass 8 * 60 for action estimates' workdays.
+[[nodiscard]] QString formatDuration(quint64 minutes, quint64 minutesPerDay = 24 * 60);
 [[nodiscard]] int parseDuration(const QString& value);
 [[nodiscard]] time_t parseDateOrTime(const QString& str, const QDate& defaultDate = QDate::currentDate());
 [[nodiscard]] QString toJson(const QObject& o);
