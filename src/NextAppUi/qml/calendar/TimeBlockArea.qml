@@ -25,37 +25,90 @@ Rectangle {
     property bool haveDragIcons: true // height > 20 && width > 50
     property real minuteHight: parent !== null ? parent.hourHeight / 60.0 : 20
 
-    DragHandler {
-        id: dragHandler
-        target: root
-        enabled: NaCore.dragEnabled
-        property real origX: root.x
-        property real origY: root.y
+    Item {
+        anchors.left: parent.left
+        width: parent.width / 2
+        height: parent.height
 
-        onActiveChanged: {
-            if (active) {
-                root.opacity = 0.5
-                dragHandler.origX = root.x
-                dragHandler.origY = root.y
-                // Bound the capture itself: long time boxes can be much taller
-                // than the visible calendar, especially at higher zoom levels.
-                const scale = Math.min(1, 320 / root.width, 240 / root.height)
-                root.grabToImage(function(result) {
-                    if (!dragHandler.active)
-                        return
-                    // Qt derives sourceSize from the previously loaded image.
-                    // Clear it before loading another grabToImage URL.
-                    root.Drag.imageSource = ""
-                    root.Drag.imageSource = result.url
-                    root.Drag.active = true
-                }, Qt.size(Math.max(1, Math.round(root.width * scale)),
-                           Math.max(1, Math.round(root.height * scale))))
-            } else {
-                root.opacity = 0.8
-                root.x = dragHandler.origX
-                root.y = dragHandler.origY
-                root.Drag.active = false
+        DragHandler {
+            id: dragHandler
+            target: root
+            snapMode: DragHandler.NoSnap
+            enabled: NaCore.dragEnabled
+            property real origX: root.x
+            property real origY: root.y
+
+            onActiveChanged: {
+                if (active) {
+                    root.opacity = 0.5
+                    dragHandler.origX = root.x
+                    dragHandler.origY = root.y
+                    // Bound the capture itself: long time boxes can be much taller
+                    // than the visible calendar, especially at higher zoom levels.
+                    const scale = Math.min(1, 320 / root.width, 240 / root.height)
+                    root.grabToImage(function(result) {
+                        if (!dragHandler.active)
+                            return
+                        // Qt derives sourceSize from the previously loaded image.
+                        // Clear it before loading another grabToImage URL.
+                        root.Drag.imageSource = ""
+                        root.Drag.imageSource = result.url
+                        root.Drag.active = true
+                    }, Qt.size(Math.max(1, Math.round(root.width * scale)),
+                               Math.max(1, Math.round(root.height * scale))))
+                } else {
+                    root.opacity = 0.8
+                    root.x = dragHandler.origX
+                    root.y = dragHandler.origY
+                    root.Drag.active = false
+                }
             }
+        }
+    }
+
+    MouseArea {
+        id: createArea
+        anchors.right: parent.right
+        width: parent.width / 2
+        height: parent.height
+        acceptedButtons: Qt.LeftButton
+        preventStealing: true
+        enabled: NaComm.connected && NaCore.canAddLimitedResources
+        cursorShape: Qt.CrossCursor
+        property bool selecting: false
+        onEnabledChanged: {
+            if (!enabled && selecting) {
+                selecting = false
+                root.parent.cancelTimeBoxSelection()
+            }
+        }
+
+        onPressed: (mouse) => {
+            selecting = true
+            const point = mapToItem(root.parent, mouse.x, mouse.y)
+            root.parent.beginTimeBoxSelection(point.y, root.x + root.width * 0.3, root.width * 0.7)
+        }
+        onPositionChanged: (mouse) => {
+            if (pressed && selecting) {
+                const point = mapToItem(root.parent, mouse.x, mouse.y)
+                root.parent.updateTimeBoxSelection(point.y)
+            }
+        }
+        onReleased: (mouse) => {
+            if (!selecting)
+                return
+            selecting = false
+            const point = mapToItem(root.parent, mouse.x, mouse.y)
+            root.parent.finishTimeBoxSelection(point.y)
+        }
+        onCanceled: {
+            selecting = false
+            root.parent.cancelTimeBoxSelection()
+        }
+        onPressAndHold: {
+            selecting = false
+            root.parent.cancelTimeBoxSelection()
+            contextMenu.popup()
         }
     }
 
@@ -67,20 +120,7 @@ Rectangle {
 
     TapHandler {
         onLongPressed: contextMenu.popup()
-
-        onTapped: {
-            // Start drag
-            if (NaCore.dragEnabled) {
-                //dragHandler.active = true
-                root.Drag.active = true
-            }
-        }
     }
-
-    // MouseArea {
-    //     anchors.fill: parent
-    //     drag.target: root
-    // }
 
     DropArea {
         id: dropArea

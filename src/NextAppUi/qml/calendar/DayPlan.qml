@@ -160,23 +160,51 @@ Rectangle {
         return Math.floor(y)
     }
 
-    // We use a popup in stead of a rectangle to draw it on top of all anythign else in the calendar
-    Popup {
+    // A non-interactive overlay keeps the existing boxes visible and lets the
+    // MouseArea retain its grab while selecting an overlapping range.
+    Rectangle {
         id: dragRectangle
-        margins: 0
-        modal: true
+        z: 1100
         opacity: 0.6
-
-        background: Rectangle {
-            color: height < 10 ? MaterialDesignStyling.errorContainer : MaterialDesignStyling.tertiaryContainer
-            border.color: MaterialDesignStyling.outline
-            border.width: height < 10 ? 0 : 1
-            radius: 10
-        }
-
+        color: height < 10 ? MaterialDesignStyling.errorContainer : MaterialDesignStyling.tertiaryContainer
+        border.color: MaterialDesignStyling.outline
+        border.width: height < 10 ? 0 : 1
+        radius: 10
         visible: false
         width: parent.width
         height: 0
+        property real startY: 0
+    }
+
+    function beginTimeBoxSelection(y, x = 0, width = root.width) {
+        dragRectangle.startY = Math.max(0, Math.min(root.height, y))
+        dragRectangle.x = x
+        dragRectangle.width = width
+        dragRectangle.y = dragRectangle.startY
+        dragRectangle.height = 0
+        dragRectangle.visible = true
+    }
+
+    function updateTimeBoxSelection(y) {
+        const endY = Math.max(0, Math.min(root.height, y))
+        dragRectangle.y = Math.min(dragRectangle.startY, endY)
+        dragRectangle.height = Math.abs(endY - dragRectangle.startY)
+    }
+
+    function cancelTimeBoxSelection() {
+        dragRectangle.visible = false
+    }
+
+    function finishTimeBoxSelection(y) {
+        updateTimeBoxSelection(y)
+        if (!NaComm.connected || !NaCore.canAddLimitedResources || dragRectangle.height < 10
+                || toMinuteInDay(dragRectangle.y) >= toMinuteInDay(dragRectangle.y + dragRectangle.height)) {
+            cancelTimeBoxSelection()
+            return
+        }
+        timeboxPopup.y = y + timeboxPopup.height > root.height
+            ? y - timeboxPopup.height - 10 : y
+        timeboxPopup.open()
     }
 
     MouseArea {
@@ -184,45 +212,19 @@ Rectangle {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
         preventStealing: true
-        property bool dragging: false
+        enabled: NaComm.connected && NaCore.canAddLimitedResources
+        onEnabledChanged: {
+            if (!enabled)
+                root.cancelTimeBoxSelection()
+        }
 
-        // onPressAndHold: {
-        //     if (! mouseArea.dragging) {
-        //         Common.openDialog("calendar/CategoryUsedPopup.qml", root, {
-        //             model: root.model.getCategoryUseModel()
-        //         });
-        //     }
-        // }
-
-        onPressed: {
-            dragging = false;
-            dragRectangle.x = 0
-            dragRectangle.y = mouseY
-            dragRectangle.height = 0
-            dragRectangle.visible = true
+        onPressed: (mouse) => root.beginTimeBoxSelection(mouse.y)
+        onPositionChanged: (mouse) => {
+            if (pressed)
+                root.updateTimeBoxSelection(mouse.y)
         }
-        onPositionChanged: {
-            dragging = true;
-            dragRectangle.height = mouseY - dragRectangle.y
-            // console.log("dragRectangle: x=",
-            //             dragRectangle.x, " y=",
-            //             dragRectangle.y, " w=",
-            //             dragRectangle.width, ", h=",
-            //             dragRectangle.height)
-        }
-        onReleased: {
-            if (dragRectangle.height < 10) {
-                dragRectangle.visible = false
-                return
-            }
-            // console.log("released")
-            if (mouseY + timeboxPopup.height > root.height) {
-                timeboxPopup.y = mouseY - timeboxPopup.height - 10
-            } else {
-                timeboxPopup.y = mouseY
-            }
-            timeboxPopup.open()
-        }
+        onReleased: (mouse) => root.finishTimeBoxSelection(mouse.y)
+        onCanceled: root.cancelTimeBoxSelection()
     }
 
     Popup {
