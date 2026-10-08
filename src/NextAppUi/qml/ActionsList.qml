@@ -143,7 +143,8 @@ Rectangle {
 
             section {
                 criteria: ViewSection.FullString
-                property: "section"
+                property: listView.model === NaActionsModel && NaActionsModel.sort === NaActionsModel.SORT_NAME
+                    ? "" : "section"
                 delegate: sectionHeading
             }
 

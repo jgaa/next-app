@@ -1548,7 +1548,9 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
         return std::string_view{};
     };
 
-    const auto sort_completed = sort_ < SORT_COMPLETED_DATE ? sort_completed_prefix : "";
+    const auto sort_completed = sort_ < SORT_COMPLETED_DATE && sort_ != SORT_NAME
+        ? sort_completed_prefix : "";
+    const auto sort_has_due = sort_ == SORT_NAME ? "" : sort_has_due_prefix;
 
 
     if (restart) {
@@ -1573,13 +1575,16 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
     DbStore::param_t params;
     string sql;
     string match;
+    if (sort_ == SORT_NAME && mode_ != FetchWhat::FW_COMPLETED) {
+        match = nextapp::format(" AND a.status != {}", static_cast<uint>(a_status_t::DONE));
+    }
     QString match_text;
     QStringList match_tags;
     if (!match_.isEmpty() && filters_enabled_) {
         auto [text, tags] = extractTagsAndCleanText(match_);
 
         if (!text.isEmpty()) {
-            match = " AND a.name LIKE ?";
+            match += " AND a.name LIKE ?";
             match_text = "%" + text + "%";
         }
 
@@ -1614,7 +1619,7 @@ QCoro::Task<void> ActionsModel::fetchIf(bool restart)
 
     bool add_completed = false;
     auto completed_if = [&]() -> string_view {
-        if (sort_ != SORT_CATEGORY_NAME && sort_ != SORT_CATEGORY_PRIORITY) {
+        if (sort_ != SORT_NAME && sort_ != SORT_CATEGORY_NAME && sort_ != SORT_CATEGORY_PRIORITY) {
             add_completed = true;
             return " OR (a.completed_time >= ? AND a.completed_time < ?) ";
         }
@@ -1813,7 +1818,7 @@ LIMIT {} OFFSET {})",
                     join_tags_if(),
                     static_cast<uint>(a_status_t::ACTIVE),
                     match,
-                    nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
+                    nextapp::format("{}{}", sort_has_due, sorting.at(sort_)),
                     pagination_.pageSize(), pagination_.nextOffset());
         pushMatch();
         params.push_back(MainTreeModel::instance()->selected());
@@ -1845,7 +1850,7 @@ LIMIT {} OFFSET {})",
                      join_tags_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
                      match,
-                     nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
+                     nextapp::format("{}{}", sort_has_due, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         pushMatch();
         break;
@@ -1858,7 +1863,7 @@ FROM action a {}{} WHERE a.favorite = 1 AND a.status={} {} ORDER BY {} LIMIT {} 
                       join_tags_if(),
                      static_cast<uint>(a_status_t::ACTIVE),
                      match,
-                     nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
+                     nextapp::format("{}{}", sort_has_due, sorting.at(sort_)),
                      pagination_.pageSize(), pagination_.nextOffset());
         pushMatch();
         break;
@@ -1880,7 +1885,7 @@ ORDER BY {} LIMIT {} OFFSET {})",
                              join_tags_if(),
                              static_cast<uint>(a_status_t::DELETED),
                              match,
-                             nextapp::format("{}{}", sort_has_due_prefix, sorting.at(sort_)),
+                             nextapp::format("{}{}", sort_has_due, sorting.at(sort_)),
                              pagination_.pageSize(), pagination_.nextOffset());
                 pushMatch();
                 params << cal_date;
@@ -1984,6 +1989,12 @@ void ActionsModel::selectedTreeNodeChanged()
 void ActionsModel::actionChanged(const QUuid &uuid)
 {
     if (const auto row = findCurrentRow(actions_, uuid) ; row >= 0) {
+        if (const auto& action = actions_.at(row).action; sort_ == SORT_NAME && action) {
+            if ((mode_ == FetchWhat::FW_COMPLETED) != (action->status() == a_status_t::DONE)) {
+                actionDeleted(uuid);
+                return;
+            }
+        }
         emit dataChanged(index(row), index(row));
     }
 }
