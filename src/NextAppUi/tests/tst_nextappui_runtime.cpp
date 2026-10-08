@@ -759,6 +759,8 @@ private slots:
     void cleanupTestCase();
     void durationFormatting_data();
     void durationFormatting();
+    void pasteTitleStopsAtPunctuation_data();
+    void pasteTitleStopsAtPunctuation();
 #ifdef NEXTAPP_WITH_MCP
     void mcpHelpGatewayPreservesAuthenticationAndMutationGates();
     void mcpSimpleActionNormalizesFieldsAndRepeat();
@@ -846,6 +848,33 @@ void tst_NextAppUiRuntime::durationFormatting()
     QFETCH(quint64, minutesPerDay);
     QFETCH(QString, expected);
     QCOMPARE(formatDuration(minutes, minutesPerDay), expected);
+}
+
+void tst_NextAppUiRuntime::pasteTitleStopsAtPunctuation_data()
+{
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<QString>("expected");
+
+    for (const auto delimiter : {u'.', u'!', u'?', u';', u':'}) {
+        const auto title = QStringLiteral("Review changes") + QChar{delimiter};
+        QTest::newRow(qPrintable(QStringLiteral("delimiter-%1").arg(QChar{delimiter})))
+            << title + QStringLiteral("More details follow") << title;
+    }
+    QTest::newRow("tab") << QStringLiteral("Review changes\tMore details follow")
+        << QStringLiteral("Review changes");
+    QTest::newRow("first-delimiter") << QStringLiteral("Review changes; more: details.")
+        << QStringLiteral("Review changes;");
+    QTest::newRow("word-limit") << QStringLiteral("One two three four five six seven eight nine ten;")
+        << QStringLiteral("One two three four five six seven eight nine");
+    QTest::newRow("markdown-heading") << QStringLiteral("# Review: changes\nMore details follow")
+        << QStringLiteral("Review: changes");
+}
+
+void tst_NextAppUiRuntime::pasteTitleStopsAtPunctuation()
+{
+    QFETCH(QString, text);
+    QFETCH(QString, expected);
+    QCOMPARE(pasteActionTitle(text, 9), expected);
 }
 
 void tst_NextAppUiRuntime::initTestCase()

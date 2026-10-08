@@ -367,7 +367,7 @@ QString markdownPasteTitle(const QString& text)
 QString plainPasteTitle(const QString& text, int wordCount)
 {
     const auto trimmed = text.trimmed();
-    const auto sentenceEnd = trimmed.indexOf(QRegularExpression(QStringLiteral("[.!?](?:\\s|$)")));
+    const auto sentenceEnd = trimmed.indexOf(QRegularExpression(QStringLiteral("[.!?;:\\t]")));
     const auto sentence = sentenceEnd >= 0 ? trimmed.left(sentenceEnd + 1) : trimmed;
     const auto words = normalizedPasteWhitespace(sentence).split(u' ', Qt::SkipEmptyParts);
     const auto titleWordCount = std::min<qsizetype>(words.size(),
