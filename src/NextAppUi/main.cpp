@@ -162,8 +162,12 @@ bool isWaylandPlatform()
 
 bool isSessionRestored()
 {
+#ifndef QT_NO_SESSIONMANAGER
     const auto *app = qobject_cast<const QGuiApplication *>(QGuiApplication::instance());
     return app && app->isSessionRestored();
+#else
+    return false;
+#endif
 }
 
 bool shouldSuppressManualGeometryRestore()
