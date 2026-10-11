@@ -10,7 +10,9 @@ file(GET_RUNTIME_DEPENDENCIES
     RESOLVED_DEPENDENCIES_VAR resolved
     UNRESOLVED_DEPENDENCIES_VAR unresolved
     PRE_EXCLUDE_REGEXES "[Aa][Pp][Ii]-[Mm][Ss]-.*" "[Ee][Xx][Tt]-[Mm][Ss]-.*"
-    POST_EXCLUDE_REGEXES ".*[Ww][Ii][Nn][Dd][Oo][Ww][Ss]/[Ss][Yy][Ss][Tt][Ee][Mm]32/.*")
+    # CMake may return mixed separators, e.g. C:\WINDOWS\system32/msvcp140.dll.
+    # Exclude system copies before conflict detection; keep our staged CRT DLLs.
+    POST_EXCLUDE_REGEXES [[.*[\/\\][Ww][Ii][Nn][Dd][Oo][Ww][Ss][\/\\][Ss][Yy][Ss][Tt][Ee][Mm]32[\/\\].*]])
 if(unresolved)
     message(FATAL_ERROR "Missing runtime dependencies: ${unresolved}")
 endif()
