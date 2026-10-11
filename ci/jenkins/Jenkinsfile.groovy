@@ -6,10 +6,9 @@
 pipeline {
   parameters {
     booleanParam(name: 'RUN_ANDROID', defaultValue: true, description: 'Run Android stage')
-    booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Run Windows stage')
+    booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Build the Windows-vcpkg MSI')
     booleanParam(name: 'RUN_LINUX', defaultValue: true, description: 'Run Linux stage')
     booleanParam(name: 'RUN_MACOS', defaultValue: true, description: 'Run macOS stage')
-    booleanParam(name: 'REBUILD_WINDOWS_DEPS', defaultValue: false, description: 'Windows only: rebuild static Qt and vcpkg dependencies from source; use once after Qt/vcpkg tool DLL changes')
   }
   agent { label 'main' }
 
@@ -29,68 +28,23 @@ pipeline {
   stages {
     stage('Parallel build') {
       parallel {
-        stage('Windows Build') {
+        stage('Windows-vcpkg') {
             when {
               beforeAgent true
               expression { return params.RUN_WINDOWS }
             }
-            // Assumes cmake, nsis, ninja and exists
-            //
-            //   choco install nsis
-            //   choco install ninja
             agent { label 'windows' }
-            environment {
-              BUILD_DIR               = "${WORKSPACE}\\build"
-              VCPKG_ROOT              = "C:\\src\\vcpkg"
-              VCPKG_DEFAULT_TRIPLET   = "x64-windows-release"
-              CMAKE_GENERATOR_PLATFORM= "x64"
-              CMAKE_GENERATOR          = "Ninja"
-            }
-
+            options { skipDefaultCheckout(true) }
             steps {
-              echo "BRANCH_NAME=${env.BRANCH_NAME}, CHANGE_BRANCH=${env.CHANGE_BRANCH}, GIT_BRANCH=${env.GIT_BRANCH}"
-              checkout scm
-              bat 'git submodule update --init'
-
-            bat """
-                @echo off
-                REM path to vswhere.exe
-                set "VSWHERE=%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe"
-
-                if exist "%VSWHERE%" (
-                  REM query latest VS install path into VSINSTALL
-                  for /f "delims=" %%I in ('"%VSWHERE%" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') do (
-                    set "VSINSTALL=%%I"
-                  )
-                  call "%%VSINSTALL%%\\VC\\Auxiliary\\Build\\vcvars64.bat"
-                ) else (
-                  REM fallback: direct call to the known path
-                  call "%ProgramFiles%\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
-                )
-
-                pushd %VCPKG_ROOT%
-                echo 🔄 Pulling latest vcpkg…
-                git pull --ff-only
-                call bootstrap-vcpkg.bat -disableMetrics
-                popd
-
-                set "REBUILD_WINDOWS_DEPS=${params.REBUILD_WINDOWS_DEPS ? 'ON' : 'OFF'}"
-                echo "Starting build..."
-                building\\static-qt-windows\\build-nextapp.bat
-              """
-
-              script {
-                def ver = powershell(
-                  returnStdout: true,
-                  script: "Get-Content \"${env.BUILD_DIR}\\nextapp\\VERSION.txt\" -Raw"
-                ).trim()
-                env.NEXTAPP_VERSION = ver
-                echo "✅ NEXTAPP_VERSION=${ver}"
-              }
-
-              archiveArtifacts artifacts: "build/*.exe", fingerprint: true
+              checkout scmGit(
+                branches: scm.branches,
+                userRemoteConfigs: scm.userRemoteConfigs,
+                extensions: [cloneOption(shallow: true, depth: 1, noTags: true)]
+              )
+              powershell '& .\\building\\Windows\\build.ps1'
+              archiveArtifacts artifacts: 'build/windows-vcpkg/assets/*.msi', fingerprint: true
             }
-          } // win
+          } // windows-vcpkg
 
           stage('Android Build') {
             when {
