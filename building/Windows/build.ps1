@@ -38,9 +38,26 @@ try {
     $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if ($LASTEXITCODE -ne 0 -or !$vs) { throw 'Visual Studio C++ x64 build tools are required.' }
     $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
-    $vcEnvironment = & $env:ComSpec /d /s /c "`"`"$vcvars`" >nul && set`""
-    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the MSVC x64 environment.' }
-    foreach ($line in $vcEnvironment) {
+    # Pass cmd.exe its raw command line. Windows PowerShell's native argument
+    # quoting adds another quote layer around this /c command when VS has spaces
+    # in its path. /s removes only the outer pair, preserving the quoted path.
+    $vcStartInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $vcStartInfo.FileName = $env:ComSpec
+    $vcStartInfo.Arguments = '/d /u /s /v:off /c ""{0}" >nul && set"' -f $vcvars
+    $vcStartInfo.UseShellExecute = $false
+    $vcStartInfo.RedirectStandardOutput = $true
+    $vcStartInfo.StandardOutputEncoding = [Text.Encoding]::Unicode
+    $vcProcess = New-Object System.Diagnostics.Process
+    $vcProcess.StartInfo = $vcStartInfo
+    try {
+        if (!$vcProcess.Start()) { throw 'Could not start the MSVC environment setup.' }
+        $vcEnvironment = $vcProcess.StandardOutput.ReadToEnd()
+        $vcProcess.WaitForExit()
+        if ($vcProcess.ExitCode -ne 0) {
+            throw "Could not initialize the MSVC x64 environment (exit code $($vcProcess.ExitCode))."
+        }
+    } finally { $vcProcess.Dispose() }
+    foreach ($line in ($vcEnvironment -split '\r?\n')) {
         if ($line -match '^([^=]+)=(.*)$') {
             [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
         }
