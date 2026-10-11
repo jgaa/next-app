@@ -839,6 +839,16 @@ if(NOT BOOST_HEADERS_TARGET AND Boost_INCLUDE_DIRS)
     target_include_directories(NextAppUiCoreLib PUBLIC ${Boost_INCLUDE_DIRS})
 endif()
 
+if(TARGET NextAppMcp)
+    # McpGateway includes model headers that use Boost. The core library links
+    # to MCP, so its Boost usage requirements do not propagate back to MCP.
+    if(BOOST_HEADERS_TARGET)
+        target_link_libraries(NextAppMcp PRIVATE ${BOOST_HEADERS_TARGET})
+    elseif(Boost_INCLUDE_DIRS)
+        target_include_directories(NextAppMcp PRIVATE ${Boost_INCLUDE_DIRS})
+    endif()
+endif()
+
 target_link_libraries(NextAppUiCoreLib
     PUBLIC
         ${BOOST_HEADERS_TARGET}
