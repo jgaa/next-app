@@ -592,7 +592,7 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
     } catch (const std::exception &e) {
         LOG_ERROR_N << "Import failed: " << e.what();
         state = ERROR;
-        const auto stagingPath = QDir(QString::fromStdString(runtime_.db().dataDir()))
+        const auto stagingPath = QDir(runtime_.db().dataDir())
                                      .filePath(QStringLiteral("db.staging.sqlite"));
         if (QFile::exists(stagingPath) && !QFile::remove(stagingPath)) {
             LOG_WARN_N << "Failed to remove abandoned staged database: " << stagingPath;
