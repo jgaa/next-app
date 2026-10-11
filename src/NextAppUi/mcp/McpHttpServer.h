@@ -25,9 +25,10 @@ public slots:
     void abortForSync();
 signals:
     void listenerChanged();
+    void traffic();
 private:
     HeaderMap headers(const QHttpServerRequest& request) const;
-    void writeJson(QHttpServerResponder&& responder, const QJsonObject& object, int status = 200) const;
+    void writeJson(QHttpServerResponder&& responder, const QJsonObject& object, int status = 200);
     RuntimeServices& runtime_;
     McpGateway gateway_;
     QTcpServer listener_;

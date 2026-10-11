@@ -15,6 +15,7 @@ Item {
     property NextappPb.action action: null
     property bool existingOnly: false
     property bool autoCommit: false
+    property bool startWorkOnCreate: false
     property bool valid: name.text.length > 0 && status.currentIndex >= 0 && priority.valid
 
     function assign(newAction) {
@@ -162,7 +163,7 @@ Item {
         if (root.action.id_proto !== "") { // edit
             NaActionsModel.updateAction(root.action)
         } else if (!existingOnly) {
-            NaActionsModel.addAction(root.action)
+            NaActionsModel.addAction(root.action, root.startWorkOnCreate)
         }
     }
 
@@ -295,6 +296,7 @@ Item {
 
                 ComboBox {
                     id: status
+                    enabled: !root.startWorkOnCreate
                     Layout.leftMargin: root.leftMarginForControls
                     Layout.preferredWidth: root.controlsPreferredWidth
                     model: ListModel {

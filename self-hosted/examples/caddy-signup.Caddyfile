@@ -1,0 +1,17 @@
+# Run Caddy on the Docker host, independently of this Compose deployment.
+# Replace the hostname and email; point public DNS to this host and allow
+# ports 80/443 through the firewall for ACME issuance/renewal.
+# Caddy obtains and renews public certificates automatically. Keep its data
+# directory persistent. See https://caddyserver.com/docs/automatic-https
+# .env: SIGNUP_PROTOCOL=https
+#       SIGNUP_PUBLIC_URL=https://signup.example.org
+#       SIGNUP_BIND_ADDRESS=127.0.0.1
+#       SIGNUP_PORT=10322
+{
+    email admin@example.org
+}
+
+signup.example.org {
+    # signupd is gRPC; the upstream requires cleartext HTTP/2 (h2c).
+    reverse_proxy h2c://127.0.0.1:10322
+}

@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+.bootstrap.lock/
+.host-update
+*.sql
+*.tar.gz
+backups/

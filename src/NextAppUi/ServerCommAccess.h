@@ -78,8 +78,8 @@ public:
     virtual void updateActions(const nextapp::pb::UpdateActionsReq& action) = 0;
     virtual void deleteAction(const QString& actionUuid) = 0;
     virtual void markActionAsDone(const QString& actionUuid, bool done) = 0;
-    // MCP deliberately bypasses the durable offline queue: the caller needs the
-    // terminal gRPC status for the open, idempotent MCP operation.
+    // Direct mutations bypass the durable offline queue when callers need the
+    // terminal gRPC status, e.g. MCP operations and immediate work-session creation.
     virtual QCoro::Task<nextapp::pb::Status> addActionDirect(const nextapp::pb::Action&) {
         nextapp::pb::Status status;
         status.setError(nextapp::pb::ErrorGadget::Error::CLIENT_GRPC_ERROR);

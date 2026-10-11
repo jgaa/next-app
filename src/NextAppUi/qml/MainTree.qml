@@ -426,6 +426,19 @@ Rectangle {
                             }
                         }
                         Action {
+                            text: qsTr("Add action now")
+                            enabled: NaComm.connected && uuid !== "" && NaCore.canAddLimitedResources
+                            icon.source: "../icons/fontawsome/pen-to-square.svg"
+                            onTriggered: {
+                                openDialog("EditActionDlg.qml", {
+                                    node: contextMenu.node.uuid,
+                                    title: qsTr("New action now"),
+                                    aprx: NaActionsModel.getAction("today"),
+                                    startWorkOnCreate: true
+                                });
+                            }
+                        }
+                        Action {
                             enabled: uuid !== "" && NaCore.canAddLimitedResources
                             text: qsTr("Add Action Today")
                             icon.source: "../icons/fontawsome/pen-to-square.svg"

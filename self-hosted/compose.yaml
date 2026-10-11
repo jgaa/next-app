@@ -1,0 +1,65 @@
+services:
+  mariadb:
+    image: mariadb:latest
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Run bootstrap.sh first}
+      MARIADB_AUTO_UPGRADE: "1"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks: [backend]
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+  nextappd:
+    image: ghcr.io/jgaa/nextappd:latest
+    restart: unless-stopped
+    environment:
+      NEXTAPP_DBPASSW: ${MARIADB_NEXTAPP_PASSWORD:?Run bootstrap.sh first}
+    command: ["--config", "", "--db-host", mariadb, "--db-port", "3306",
+              "--grpc-address", "0.0.0.0:10321", "--grpc-tls-mode", ca]
+    volumes:
+      - nextapp_data:/var/home/nextappd
+      - nextapp_certs:/var/lib/nextappd
+    networks: [backend, frontend]
+    ports:
+      - "${NEXTAPP_BIND_ADDRESS:-127.0.0.1}:${NEXTAPP_PORT:-10321}:10321"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  signupd:
+    image: ghcr.io/jgaa/signupd:latest
+    restart: unless-stopped
+    environment:
+      SIGNUP_DB_PASSWORD: ${MARIADB_SIGNUP_PASSWORD:?Run bootstrap.sh first}
+    command: ["--config", "", "--db-host", mariadb, "--db-port", "3306",
+              "--grpc-address", "0.0.0.0:10322", "--grpc-tls-mode", none]
+    volumes:
+      - signup_data:/var/home/signupd
+      - nextapp_certs:/certs:ro
+    networks: [backend, frontend]
+    ports:
+      - "${SIGNUP_BIND_ADDRESS:-127.0.0.1}:${SIGNUP_PORT:-10322}:10322"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      nextappd:
+        condition: service_started
+
+networks:
+  backend:
+    driver: bridge
+    internal: true
+  frontend:
+    driver: bridge
+
+volumes:
+  mariadb_data:
+  nextapp_data:
+  signup_data:
+  nextapp_certs:

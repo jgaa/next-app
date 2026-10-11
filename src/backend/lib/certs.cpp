@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/asio/ip/address.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -403,14 +404,27 @@ ParsedCertInfo inspectCert(std::string_view pem)
         const auto num_names = sk_GENERAL_NAME_num(san_names);
         for(int i = 0; i < num_names; ++i) {
             const auto* san = sk_GENERAL_NAME_value(san_names, i);
-            if (!san || san->type != GEN_DNS || !san->d.dNSName) {
+            if (!san) {
                 continue;
             }
-
-            const auto* data = ASN1_STRING_get0_data(san->d.dNSName);
-            const auto len = ASN1_STRING_length(san->d.dNSName);
-            if (data && len > 0) {
-                info.subject_alt_names.emplace_back(reinterpret_cast<const char*>(data), len);
+            if (san->type == GEN_DNS && san->d.dNSName) {
+                const auto* data = ASN1_STRING_get0_data(san->d.dNSName);
+                const auto len = ASN1_STRING_length(san->d.dNSName);
+                if (data && len > 0) {
+                    info.subject_alt_names.emplace_back(reinterpret_cast<const char*>(data), len);
+                }
+            } else if (san->type == GEN_IPADD && san->d.iPAddress) {
+                const auto* data = ASN1_STRING_get0_data(san->d.iPAddress);
+                const auto len = ASN1_STRING_length(san->d.iPAddress);
+                const auto append_address = [&]<typename Address>() {
+                    typename Address::bytes_type bytes{};
+                    if (data && len == static_cast<int>(bytes.size())) {
+                        std::memcpy(bytes.data(), data, bytes.size());
+                        info.subject_alt_names.push_back(Address{bytes}.to_string());
+                    }
+                };
+                append_address.operator()<boost::asio::ip::address_v4>();
+                append_address.operator()<boost::asio::ip::address_v6>();
             }
         }
     }
@@ -479,15 +493,44 @@ CertData CertAuthority::createServerCert(const std::vector<std::string_view>& se
     auto [cert, key] = createCert(ca_issuer_, rval.id, options_.lifetime_days_certs, options_.key_bytes, s);
 
     STACK_OF(GENERAL_NAME)* san_names = sk_GENERAL_NAME_new_null();
+    if (!san_names) {
+        throw runtime_error{"Failed to allocate server certificate SAN list"};
+    }
     ScopedExit san_cleanup{[san_names] {
         sk_GENERAL_NAME_pop_free(san_names, GENERAL_NAME_free);
     }};
     for(const auto& dns : serverSubjects) {
         auto san = GENERAL_NAME_new();
-        san->type = GEN_DNS;
-        san->d.dNSName = ASN1_IA5STRING_new();
-        ASN1_STRING_set(san->d.dNSName, dns.data(), dns.size());
-        sk_GENERAL_NAME_push(san_names, san);
+        if (!san) {
+            throw runtime_error{"Failed to allocate server certificate SAN"};
+        }
+        boost::system::error_code ec;
+        const auto address = boost::asio::ip::make_address(string{dns}, ec);
+        if (!ec) {
+            san->type = GEN_IPADD;
+            san->d.iPAddress = ASN1_OCTET_STRING_new();
+            const auto set_address = [&](const auto& bytes) {
+                return san->d.iPAddress
+                    && ASN1_OCTET_STRING_set(san->d.iPAddress, bytes.data(), static_cast<int>(bytes.size()));
+            };
+            const auto ok = address.is_v4() ? set_address(address.to_v4().to_bytes())
+                                             : set_address(address.to_v6().to_bytes());
+            if (!ok) {
+                GENERAL_NAME_free(san);
+                throw runtime_error{"Failed to set server certificate IP SAN"};
+            }
+        } else {
+            san->type = GEN_DNS;
+            san->d.dNSName = ASN1_IA5STRING_new();
+            if (!san->d.dNSName || !ASN1_STRING_set(san->d.dNSName, dns.data(), dns.size())) {
+                GENERAL_NAME_free(san);
+                throw runtime_error{"Failed to set server certificate DNS SAN"};
+            }
+        }
+        if (!sk_GENERAL_NAME_push(san_names, san)) {
+            GENERAL_NAME_free(san);
+            throw runtime_error{"Failed to append server certificate SAN"};
+        }
     }
     X509_EXTENSION* ext = X509V3_EXT_i2d(NID_subject_alt_name, 0, san_names);
     ScopedExit ext_cleanup{[ext] {

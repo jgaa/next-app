@@ -16,6 +16,10 @@ ScrollView {
         id: settings
     }
 
+    function restoreAudioOutputDevice() {
+        NaCore.previewAudioOutputDevice(settings.value("audio/outputDevice", ""))
+    }
+
     function commit() {
         settings.setValue("alarms/calendarEvent.enabled", alarmsEnabled.checked ? "true" : "false")
         settings.setValue("alarms/calendarEvent.SoonToStartMinutes", alarmsBeforeStart.value)
@@ -45,6 +49,7 @@ ScrollView {
                 model: NaCore.audioOutputDevices()
                 textRole: "name"
                 valueRole: "id"
+                onActivated: NaCore.previewAudioOutputDevice(currentValue ?? "")
                 Component.onCompleted: {
                     const selected = settings.value("audio/outputDevice", "")
                     const index = indexOfValue(selected)

@@ -599,16 +599,41 @@ ApplicationWindow {
                 }
 
                 CheckBoxWithFontIcon {
+                    id: agentIcon
+                    visible: NaCore.mcpEnabled
+                    readonly property bool interfaceActive: NaCore.mcpEndpoint.length > 0
+                    readonly property bool pendingApproval: NaCore.mcpPendingApproval.requestId !== undefined
                     uncheckedCode: "\uf544"
                     checkedCode: "\uf544"
                     useSolidForAll: true
                     autoToggle: false
-                    isChecked: NaCore.mcpPendingApproval.requestId !== undefined
-                    attentionAnimation: isChecked
-                    checkedColor: MaterialDesignStyling.primary
+                    isChecked: interfaceActive
+                    attentionAnimation: visible && interfaceActive && trafficTimer.running
+                    checkedColor: "green"
+                    uncheckedColor: "red"
+                    onVisibleChanged: {
+                        if (!visible) trafficTimer.stop()
+                    }
+                    onInterfaceActiveChanged: {
+                        if (!interfaceActive) trafficTimer.stop()
+                    }
                     ToolTip.visible: hovered
-                    ToolTip.text: isChecked ? qsTr("Agent operation awaiting approval") : qsTr("No agent operation awaiting approval")
+                    ToolTip.text: !interfaceActive ? qsTr("MCP enabled, but the interface is unavailable")
+                        : pendingApproval ? qsTr("MCP active: agent operation awaiting approval")
+                        : qsTr("MCP interface active")
                     onClicked: mcpApprovalDialog.refresh()
+
+                    Timer {
+                        id: trafficTimer
+                        interval: 3000
+                    }
+
+                    Connections {
+                        target: NaCore
+                        function onMcpTraffic() {
+                            if (agentIcon.visible && agentIcon.interfaceActive) trafficTimer.restart()
+                        }
+                    }
                 }
 
                 Item {

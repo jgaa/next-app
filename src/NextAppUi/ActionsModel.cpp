@@ -317,10 +317,38 @@ ActionsModel::ActionsModel(RuntimeServices& runtime, QObject *parent)
     }
 }
 
-void ActionsModel::addAction(const nextapp::pb::Action &action)
+void ActionsModel::addAction(const nextapp::pb::Action &action, bool startWork)
 {
     LOG_TRACE_N << "Adding action with name: " << action.name();
+    if (startWork) {
+        addActionAndStartWork(runtime_.serverComm(), action);
+        return;
+    }
     runtime_.serverComm().addAction(action);
+}
+
+QCoro::Task<void> ActionsModel::addActionAndStartWork(ServerCommAccess& comm, nextapp::pb::Action action)
+{
+    if (!comm.connected()) {
+        LOG_WARN_N << "Cannot create and start an action while disconnected";
+        co_return;
+    }
+
+    action.setStatus(a_status_t::ACTIVE);
+    LOG_DEBUG_N << "Creating action for immediate work: " << action.name();
+    const auto status = co_await comm.addActionDirect(action);
+    if (status.error() != nextapp::pb::ErrorGadget::Error::OK) {
+        LOG_WARN_N << "Failed to create action for immediate work: " << status.message();
+        co_return;
+    }
+    if (!status.hasAction() || QUuid{status.action().id_proto()}.isNull()) {
+        LOG_WARN_N << "Cannot start work: create action response has no valid action id";
+        co_return;
+    }
+
+    const auto actionId = status.action().id_proto();
+    LOG_DEBUG_N << "Starting current work session for newly created action=" << actionId;
+    comm.startWork(actionId, true);
 }
 
 void ActionsModel::updateAction(const nextapp::pb::Action &action)

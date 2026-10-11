@@ -210,6 +210,8 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
     connect(this, &NextAppCore::settingsChanged, mcp_http_server_.get(), &nextapp::mcp::McpHttpServer::refresh);
     connect(mcp_http_server_.get(), &nextapp::mcp::McpHttpServer::listenerChanged,
             this, &NextAppCore::mcpEndpointChanged);
+    connect(mcp_http_server_.get(), &nextapp::mcp::McpHttpServer::traffic,
+            this, &NextAppCore::mcpTraffic);
     connect(server_comm_.get(), &ServerComm::statusChanged, this, [this] {
         if (server_comm_->connected()) {
             mcp_http_server_->refresh();
@@ -581,6 +583,12 @@ QVariantList NextAppCore::audioOutputDevices()
     return SoundPlayer::instance().outputDevices();
 }
 
+void NextAppCore::previewAudioOutputDevice(const QString& deviceId)
+{
+    LOG_DEBUG_N << "Applying notification audio output preview";
+    SoundPlayer::instance().applyOutputDevice(deviceId);
+}
+
 void NextAppCore::playSound(double volume, const QString &soundFile)
 {
     LOG_DEBUG_N << "Playing sound " << soundFile
@@ -665,6 +673,16 @@ QCoro::Task<void> NextAppCore::modelsAreCreated()
     });
 
     co_return;
+}
+
+bool NextAppCore::mcpEnabled() const
+{
+#ifdef NEXTAPP_WITH_MCP
+    return settings().value("ai/enabled", false).toBool()
+        && settings().value("ai/mcp/enabled", false).toBool();
+#else
+    return false;
+#endif
 }
 
 QString NextAppCore::mcpEndpoint() const

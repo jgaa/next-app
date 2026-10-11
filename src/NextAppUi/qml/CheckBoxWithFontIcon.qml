@@ -87,6 +87,7 @@ Rectangle
         running: checkBox.attentionAnimation
         loops: Animation.Infinite
         alwaysRunToEnd: false
+        onStopped: icon.scale = 1.0
 
         NumberAnimation {
             target: icon

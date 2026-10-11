@@ -15,6 +15,7 @@ Dialog {
     property ActionPrx aprx
     //property NextappPb.action action: aprx.action
     property alias action: actionsCtl.action
+    property alias startWorkOnCreate: actionsCtl.startWorkOnCreate
     property bool assigned: false
     property bool valid: aprx.valid
     property bool dragWasEnabled: false
@@ -28,6 +29,7 @@ Dialog {
     standardButtons: root.aprx.valid
                      && actionsCtl.valid
                      && (!root.isNewAction || NaCore.canAddLimitedResources)
+                     && (!root.startWorkOnCreate || NaComm.connected)
                      ? (Dialog.Ok | Dialog.Cancel)
                      : Dialog.Cancel
 

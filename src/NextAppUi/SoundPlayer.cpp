@@ -253,11 +253,21 @@ QVariantList SoundPlayer::outputDevices()
 
 void SoundPlayer::applyOutputDevice()
 {
+    QSettings settings;
+    const auto selected = settings.value("audio/outputDevice", QString{}).toString();
+    applyOutputDevice(selected);
+    if (state_ == State::INITIALIZED && output_device_ != selected) {
+        settings.setValue("audio/outputDevice", output_device_);
+        settings.sync();
+    }
+}
+
+void SoundPlayer::applyOutputDevice(const QString& deviceId)
+{
     if (!context_initialized_ || !resource_manager_initialized_ || state_ == State::CLOSED) {
         return;
     }
-    QSettings settings;
-    auto selected = settings.value("audio/outputDevice", QString{}).toString();
+    auto selected = deviceId;
     if (state_ == State::INITIALIZED && selected == output_device_) {
         return;
     }
@@ -280,8 +290,6 @@ void SoundPlayer::applyOutputDevice()
         if (!found) {
             LOG_WARN_N << "Selected audio output is unavailable; using Default";
             selected.clear();
-            settings.setValue("audio/outputDevice", selected);
-            settings.sync();
         }
     }
     if (state_ == State::INITIALIZED) {
@@ -298,8 +306,6 @@ void SoundPlayer::applyOutputDevice()
     if (res != MA_SUCCESS && found) {
         LOG_WARN_N << "Failed to open selected audio output; using Default";
         selected.clear();
-        settings.setValue("audio/outputDevice", selected);
-        settings.sync();
         eng_config.pPlaybackDeviceID = nullptr;
         res = ma_engine_init(&eng_config, &engine_);
     }

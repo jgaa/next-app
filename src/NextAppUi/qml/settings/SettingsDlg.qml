@@ -39,6 +39,7 @@ Dialog {
 
     onClosed: {
         root.opacity = 1.0
+        notifications.restoreAudioOutputDevice()
     }
 
     ColumnLayout {

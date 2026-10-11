@@ -2016,11 +2016,11 @@ boost::asio::awaitable<void> Server::ensureServerCertIsFresh()
 
                 if (renewal_fqdns.empty()) {
                     LOG_ERROR_N << "Unable to renew the server gRPC TLS certificate: no configured FQDNs and "
-                                   "the existing certificate does not expose any DNS names.";
+                                   "the existing certificate does not expose any DNS names or IP addresses.";
                     co_return;
                 }
 
-                LOG_INFO_N << "No server FQDNs were configured for renewal. Reusing DNS names from the existing "
+                LOG_INFO_N << "No server FQDNs were configured for renewal. Reusing DNS names and IP addresses from the existing "
                               "server certificate.";
             }
 

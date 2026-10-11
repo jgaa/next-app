@@ -812,6 +812,8 @@ private slots:
     void actionInfoCacheUpdateReloadsMissingOriginsAndInvalidDeletesRequestResync();
     void actionInfoCacheSaveIgnoresStaleUpdatedId();
     void actionsModelAddsTodayActionFromLiveUpdate();
+    void actionsModelCreatesAndStartsCurrentWork_data();
+    void actionsModelCreatesAndStartsCurrentWork();
     void mainTreeModelReloadsFromCacheWhenUpdateTargetsMissingNode();
     void mainTreeModelDeleteUpdateClearsSelectionAndEmitsNodeDeleted();
     void mainTreeModelRepairsDanglingParentOnLocalLoad();
@@ -1578,6 +1580,48 @@ void tst_NextAppUiRuntime::actionsModelAddsTodayActionFromLiveUpdate()
 
     QVERIFY(ActionsModel::matchesActionForMode(ActionsModel::FW_TODAY_AND_OVERDUE, info));
     QVERIFY(!ActionsModel::matchesActionForMode(ActionsModel::FW_TOMORROW, info));
+}
+
+void tst_NextAppUiRuntime::actionsModelCreatesAndStartsCurrentWork_data()
+{
+    QTest::addColumn<bool>("connected");
+    QTest::addColumn<bool>("creationFails");
+    QTest::addColumn<QString>("returnedId");
+    QTest::addColumn<bool>("startsWork");
+    const auto actionId = QStringLiteral("d5fba219-4217-4864-a313-60ecf5288292");
+    QTest::newRow("success") << true << false << actionId << true;
+    QTest::newRow("creation-failed") << true << true << actionId << false;
+    QTest::newRow("missing-action") << true << false << QString{} << false;
+    QTest::newRow("invalid-action-id") << true << false << QStringLiteral("invalid") << false;
+    QTest::newRow("disconnected") << false << false << actionId << false;
+}
+
+void tst_NextAppUiRuntime::actionsModelCreatesAndStartsCurrentWork()
+{
+    QFETCH(bool, connected);
+    QFETCH(bool, creationFails);
+    QFETCH(QString, returnedId);
+    QFETCH(bool, startsWork);
+    FakeServerComm comm;
+    comm.connected_ = connected;
+    comm.direct_action_status_.setError(creationFails
+        ? nextapp::pb::ErrorGadget::Error::GENERIC_ERROR : nextapp::pb::ErrorGadget::Error::OK);
+    nextapp::pb::Action action;
+    action.setName(QStringLiteral("Work now"));
+    action.setNode(QStringLiteral("f5666bfe-d280-4c57-8dc4-83dcbcc7a8a1"));
+    if (!returnedId.isEmpty()) {
+        auto created = action;
+        created.setId_proto(returnedId);
+        comm.direct_action_status_.setAction(created);
+    }
+
+    waitForTask(ActionsModel::addActionAndStartWork(comm, action));
+    QCOMPARE(comm.added_actions_.size(), connected ? 1 : 0);
+    QCOMPARE(comm.started_work_.size(), startsWork ? 1 : 0);
+    if (startsWork) {
+        QCOMPARE(comm.started_work_.front().first, returnedId);
+        QVERIFY(comm.started_work_.front().second);
+    }
 }
 
 void tst_NextAppUiRuntime::serverSynchedCacheCommitsTransactionAndLoadsPersistedState()

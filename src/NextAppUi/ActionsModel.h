@@ -251,7 +251,7 @@ public:
     ActionsModel(QObject *parent = {});
     ActionsModel(RuntimeServices& runtime, QObject *parent = nullptr);
 
-    Q_INVOKABLE void addAction(const nextapp::pb::Action& action);
+    Q_INVOKABLE void addAction(const nextapp::pb::Action& action, bool startWork = false);
     Q_INVOKABLE void updateAction(const nextapp::pb::Action& action);
     Q_INVOKABLE void deleteAction(const QString& uuid);
     Q_INVOKABLE nextapp::pb::Action newAction();
@@ -375,6 +375,7 @@ private:
     friend class tst_NextAppUiRuntime;
 
     RuntimeServices& runtime_;
+    static QCoro::Task<void> addActionAndStartWork(ServerCommAccess& comm, nextapp::pb::Action action);
     static QString actionToText(const nextapp::pb::Action& action, CopyFormat format);
     static QString actionStatusName(nextapp::pb::ActionStatusGadget::ActionStatus status);
     QCoro::Task<void> copyActionToClipboardAsync(QUuid actionUuid, CopyFormat format);

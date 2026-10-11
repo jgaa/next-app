@@ -50,3 +50,11 @@ target_link_libraries(entitlement_stream_tests
     Threads::Threads
 )
 add_test(NAME entitlement_stream_tests COMMAND entitlement_stream_tests)
+
+####### cert_tests
+
+add_executable(cert_tests cert_tests.cpp)
+set_property(TARGET cert_tests PROPERTY CXX_STANDARD 20)
+target_include_directories(cert_tests PRIVATE ${CMAKE_BINARY_DIR}/generated-include/)
+target_link_libraries(cert_tests PRIVATE ${GTEST_LIBRARIES} ${NEXTAPP_DEPENDS} nalib)
+add_test(NAME cert_tests COMMAND cert_tests)

@@ -67,6 +67,7 @@ public:
     Q_PROPERTY(bool canAddLimitedResources READ canAddLimitedResources NOTIFY sessionAccessModeChanged)
     Q_PROPERTY(QString sessionAccessMessage READ sessionAccessMessage NOTIFY sessionAccessModeChanged)
     Q_PROPERTY(QString mcpEndpoint READ mcpEndpoint NOTIFY mcpEndpointChanged)
+    Q_PROPERTY(bool mcpEnabled READ mcpEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap mcpPendingApproval READ mcpPendingApproval NOTIFY mcpPendingApprovalChanged)
     Q_PROPERTY(QVariantList mcpActivityHistory READ mcpActivityHistory NOTIFY mcpActivityHistoryChanged)
 
@@ -128,6 +129,7 @@ public:
     static Q_INVOKABLE void settingsWasChanged();
     // Empty when MCP was not compiled in or its listener is not active.
     Q_INVOKABLE QString mcpEndpoint() const;
+    bool mcpEnabled() const;
     Q_INVOKABLE QString mcpCredential();
     Q_INVOKABLE QString rotateMcpCredential();
     Q_INVOKABLE bool copyToClipboard(const QString& text) const;
@@ -141,6 +143,7 @@ public:
     static Q_INVOKABLE QString toDateAndTime(time_t when, time_t defaultDate = 0);
     static Q_INVOKABLE QString toTime(time_t when);
     Q_INVOKABLE QVariantList audioOutputDevices();
+    Q_INVOKABLE void previewAudioOutputDevice(const QString& deviceId);
     Q_INVOKABLE void playSound(double volume, const QString& soundFile) override;
     Q_INVOKABLE void playSoundDelayed(int delayMs, double volume, const QString& soundFile);
     // Called when signup is complete
@@ -311,6 +314,7 @@ signals:
     void dragEnabledChanged();
     void settingsChanged();
     void mcpEndpointChanged();
+    void mcpTraffic();
     void mcpPendingApprovalChanged();
     void mcpActivityHistoryChanged();
     void propertyChanged(const QString& name);

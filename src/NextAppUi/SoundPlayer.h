@@ -43,6 +43,7 @@ public:
     void close();
     QVariantList outputDevices();
     void applyOutputDevice();
+    void applyOutputDevice(const QString& deviceId);
 
     QByteArrayView getSoundData(const QString& resourcePath);
 

@@ -20,6 +20,7 @@ McpHttpServer::McpHttpServer(RuntimeServices& runtime, QObject* parent)
 {
     server_.route(QStringLiteral("/mcp"), QHttpServerRequest::Method::Post,
         [this](const QHttpServerRequest& request, QHttpServerResponder& responder) {
+            emit traffic();
             const auto peer = QStringLiteral("%1:%2").arg(request.remoteAddress().toString()).arg(request.remotePort());
             const auto max_body = std::clamp(runtime_.settings().value("ai/mcp/limits/requestBody", 256 * 1024).toInt(), 1024, 256 * 1024);
             LOG_DEBUG_N << "MCP HTTP POST from " << peer << ", body=" << request.body().size() << " bytes";
@@ -44,6 +45,7 @@ McpHttpServer::McpHttpServer(RuntimeServices& runtime, QObject* parent)
                     *replied = true;
                     --active_calls_;
                     if (result.isEmpty()) {
+                        emit traffic();
                         LOG_DEBUG_N << "MCP notification from " << peer << " accepted";
                         pending_responder->write(QHttpServerResponder::StatusCode::Accepted);
                         return;
@@ -71,7 +73,8 @@ McpHttpServer::McpHttpServer(RuntimeServices& runtime, QObject* parent)
                     send(result);
                 });
         });
-    const auto method_not_allowed = [](const QHttpServerRequest& request, QHttpServerResponder& responder) {
+    const auto method_not_allowed = [this](const QHttpServerRequest& request, QHttpServerResponder& responder) {
+        emit traffic();
         LOG_DEBUG_N << "Rejected unsupported MCP HTTP method from " << request.remoteAddress().toString()
                     << ":" << request.remotePort();
         responder.write(QHttpServerResponder::StatusCode::MethodNotAllowed);
@@ -87,7 +90,8 @@ HeaderMap McpHttpServer::headers(const QHttpServerRequest& request) const {
     return values;
 }
 
-void McpHttpServer::writeJson(QHttpServerResponder&& responder, const QJsonObject& object, int status) const {
+void McpHttpServer::writeJson(QHttpServerResponder&& responder, const QJsonObject& object, int status) {
+    emit traffic();
     responder.write(QJsonDocument(object), static_cast<QHttpServerResponder::StatusCode>(status));
 }
 
