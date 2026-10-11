@@ -6,7 +6,7 @@
 pipeline {
   parameters {
     booleanParam(name: 'RUN_ANDROID', defaultValue: true, description: 'Run Android stage')
-    booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Build the Windows-vcpkg MSI')
+    booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Build the Windows-vcpkg NSIS installer')
     booleanParam(name: 'RUN_LINUX', defaultValue: true, description: 'Run Linux stage')
     booleanParam(name: 'RUN_MACOS', defaultValue: true, description: 'Run macOS stage')
   }
@@ -42,7 +42,7 @@ pipeline {
                 extensions: [cloneOption(shallow: true, depth: 1, noTags: true)]
               )
               powershell '& .\\building\\Windows\\build.ps1'
-              archiveArtifacts artifacts: 'build/windows-vcpkg/assets/*.msi', fingerprint: true
+              archiveArtifacts artifacts: 'build/windows-vcpkg/assets/*.exe', fingerprint: true
             }
           } // windows-vcpkg
 

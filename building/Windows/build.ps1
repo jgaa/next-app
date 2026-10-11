@@ -62,12 +62,12 @@ try {
             [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
         }
     }
-    foreach ($tool in 'git', 'cmake', 'cpack', 'ninja', 'wix', 'dumpbin') {
+    foreach ($tool in 'git', 'cmake', 'cpack', 'ninja', 'makensis', 'dumpbin') {
         Get-Command $tool -ErrorAction Stop | Out-Null
     }
     $cmakeVersion = & cmake --version
     if ($cmakeVersion[0] -notmatch '(\d+\.\d+\.\d+)' -or [version]$Matches[1] -lt [version]'3.30.0') {
-        throw 'CMake 3.30 or newer is required for modern WiX packaging.'
+        throw 'CMake 3.30 or newer is required for the Windows build scripts.'
     }
 
     # Refresh the tool and registry; the manifest baseline still pins package versions.
@@ -131,17 +131,7 @@ try {
     })
     if ($unwanted.Count) { throw "Non-runtime files in deployment: $($unwanted.FullName -join ', ')" }
 
-    Push-Location $BuildRoot
-    try {
-        Invoke-Checked cmake @("-DSOURCE_DIR=$source", "-DBUILD_DIR=$build", "-DSTAGE_DIR=$stage",
-            "-DOUTPUT_DIR=$assets", '-P', "$PSScriptRoot\Package.cmake")
-        Invoke-Checked cpack @('--config', "$BuildRoot\CPackConfig.cmake", '-G', 'WIX')
-    } finally { Pop-Location }
-    if (@(Get-ChildItem "$assets\*.msi").Count -ne 1) { throw 'Expected one MSI deliverable.' }
-    # Packaging scratch contains another copy of the runtime; keep just the MSI here.
-    Remove-Item "$assets\_CPack_Packages" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item $stage -Recurse -Force
-    Write-Host "Installer: $((Get-ChildItem "$assets\*.msi").FullName)"
+    & "$PSScriptRoot\package.ps1" -BuildRoot $BuildRoot
 } finally {
     if ($lock) { $lock.Dispose() }
 }
