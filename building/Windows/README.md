@@ -46,7 +46,10 @@ these ports are still built by vcpkg.
 The `ports/qtgrpc` overlay copies the port and its patch from that baseline
 and adds Qt Declarative as a dependency. This makes ProtobufQuick generation
 independent of package build order and includes that dependency in the ABI
-cache key. Review the overlay when updating the baseline.
+cache key. It explicitly requires the protobuf/gRPC generators, Qt Core protobuf
+types, well-known types and ProtobufQuick; failed feature checks must stop the
+package build instead of caching a package without required modules. Review the
+overlay when updating the baseline.
 
 Both host and target use `x64-nextapp-static-release`, requesting static
 libraries and the static MSVC runtime (`/MT`), with release builds only. The
