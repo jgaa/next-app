@@ -496,10 +496,8 @@ if (NOT ANDROID)
             cmake_policy(POP)
         endif()
     endif()
-    find_package(OpenSSL CONFIG QUIET)
-    if(NOT OpenSSL_FOUND)
-        find_package(OpenSSL REQUIRED)
-    endif()
+    # Keep discovery consistent with the root build and Qt's OPENSSL_* inputs.
+    find_package(OpenSSL MODULE REQUIRED)
 
     if(TARGET Boost::headers)
         set(BOOST_HEADERS_TARGET Boost::headers)

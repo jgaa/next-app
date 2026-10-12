@@ -158,7 +158,11 @@ add_compile_definitions(GIT_BRANCH="${GIT_BRANCH}")
 
 find_package(Threads REQUIRED)
 if (NOT ANDROID)
-    find_package(OpenSSL REQUIRED)
+    # Use the module even though other dependencies prefer config packages.
+    # vcpkg's OpenSSL wrapper adjusts static-library lookup for FindOpenSSL;
+    # the upstream config can interpret that adjustment as requiring DLLs.
+    # The module also supplies the OPENSSL_* variables Qt's wrappers require.
+    find_package(OpenSSL MODULE REQUIRED)
 endif()
 find_package(Doxygen)
 
