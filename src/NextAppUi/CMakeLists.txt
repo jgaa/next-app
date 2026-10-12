@@ -1034,6 +1034,7 @@ if (APPLE)
         RUNTIME_OUTPUT_NAME nextapp
     )
 elseif (WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE user32)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         WIN32_EXECUTABLE TRUE
         RUNTIME_OUTPUT_NAME nextapp
