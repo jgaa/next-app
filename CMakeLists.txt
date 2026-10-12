@@ -174,7 +174,8 @@ add_subdirectory(dependencies/logfault)
 include_directories(${NEXTAPP_ROOT}/dependencies/logfault/include)
 
 if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP)
-    find_package(ZLIB REQUIRED)
+    # Keep the traditional ZLIB::ZLIB target for static and shared packages.
+    find_package(ZLIB MODULE REQUIRED)
 
     add_subdirectory(src/proto)
     add_subdirectory(src/common)

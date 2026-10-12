@@ -132,7 +132,9 @@ if (NEXTAPP_EXPAT_FIX)
     endif()
 endif()
 
-find_package(ZLIB REQUIRED)
+# FindZLIB provides ZLIB::ZLIB for either linkage. Newer upstream config
+# packages export only ZLIB::ZLIBSTATIC for static-only installations.
+find_package(ZLIB MODULE REQUIRED)
 
 if (LINUX_BUILD)
     # Make sure this resolves via vcpkg, not host:
