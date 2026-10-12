@@ -162,6 +162,16 @@ if (NEXTAPP_WITH_AI)
     find_package(Qt6 REQUIRED COMPONENTS HttpServer)
 endif()
 
+if(WINDOWS_BUILD AND USE_STATIC_QT)
+    get_target_property(_nextapp_qt_core_type Qt6::Core TYPE)
+    if(NOT _nextapp_qt_core_type STREQUAL "STATIC_LIBRARY")
+        message(FATAL_ERROR "USE_STATIC_QT requires a static Qt installation on Windows.")
+    endif()
+    if(NOT TARGET Qt6::qmlimportscanner)
+        message(FATAL_ERROR "Static Windows builds require Qt's QML import scanner.")
+    endif()
+endif()
+
 if (NEXTAPP_WITH_MCP AND ANDROID)
     message(FATAL_ERROR "NEXTAPP_WITH_MCP is not supported on Android")
 endif()
@@ -1062,11 +1072,29 @@ else()
 endif()
 
 if(USE_STATIC_QT)
-    qt_import_plugins(${PROJECT_NAME}
-        PLUGINS
-            qxcb
-        STATIC
-    )
+    if(WINDOWS_BUILD)
+        # Import only the native plugins needed by the client. PNG support is
+        # built into QtGui. QML plugins/resources are selected recursively by
+        # qt_add_executable's automatic QML import scan at target finalization.
+        # This also follows QtQuick.Controls' optional style imports, preserving
+        # the styles offered in Preferences.
+        set(_nextapp_windows_plugins
+            Qt6::QWindowsIntegrationPlugin
+            Qt6::QSQLiteDriverPlugin
+            Qt6::QSvgPlugin
+            Qt6::QSvgIconPlugin
+            Qt6::QTlsBackendOpenSSLPlugin
+            Qt6::QNLMNIPlugin
+        )
+        foreach(_plugin IN LISTS _nextapp_windows_plugins)
+            if(NOT TARGET ${_plugin})
+                message(FATAL_ERROR "Required static Qt plugin is missing: ${_plugin}")
+            endif()
+        endforeach()
+        qt_import_plugins(${PROJECT_NAME} NO_DEFAULT INCLUDE ${_nextapp_windows_plugins})
+    elseif(LINUX_BUILD)
+        qt_import_plugins(${PROJECT_NAME} INCLUDE Qt6::QXcbIntegrationPlugin)
+    endif()
     target_compile_definitions(${PROJECT_NAME} PRIVATE QT_QPA_STATIC)
 endif()
 

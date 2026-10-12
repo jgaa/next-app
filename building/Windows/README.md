@@ -37,7 +37,7 @@ There is no change to the MCP interface.
 
 The manifest pins the requested baseline. Qt default features are disabled;
 the explicit feature list supports the client's CMake targets, TLS, SQLite,
-SVG icons, QML/Quick Controls and deployment. Qt Test is currently linked by
+SVG icons and QML/Quick Controls. Qt Test is currently linked by
 the production client and required by Qt Declarative's port. Qt Charts,
 Graphs, Multimedia, WebEngine, database drivers other than SQLite, and the
 Qt SDK meta-package are not requested. Transitive build tools required by
@@ -48,7 +48,9 @@ and adds Qt Declarative as a dependency. This makes ProtobufQuick generation
 independent of package build order and includes that dependency in the ABI
 cache key. Review the overlay when updating the baseline.
 
-Both host and target use the same release-only triplet, avoiding separate
+Both host and target use `x64-nextapp-static-release`, requesting static
+libraries and the static MSVC runtime (`/MT`), with release builds only. The
+application uses the same runtime setting. Using one triplet avoids separate
 debug builds and duplicate native host tools. `--clean-after-build` asks
 vcpkg to remove source/build trees, package staging, and downloaded archives
 after each package. Its diagnostic logs and extracted helper tools may remain.
@@ -61,13 +63,28 @@ still allows restoration from the binary cache. Do not routinely delete the
 archives. No forced dependency rebuild or cache bypass occurs on a normal run.
 Override `-CacheRoot`, `-VcpkgRoot`, `-BuildRoot`, or `-Jobs` if needed.
 
+Switching from the previous dynamic triplet requires a one-time dependency
+rebuild; existing dynamic binary archives cannot satisfy static package ABI
+keys. Keep the archives: subsequent static builds reuse the new entries. The
+script refreshes the application's CMake cache automatically on the triplet
+change so cached Qt/DLL package paths cannot leak into the static build.
+
 A file lock in the vcpkg checkout prevents simultaneous invocations of this
 script from modifying shared state; a conflicting invocation fails and should
 be retried. Other jobs using that checkout must be scheduled separately.
 Application objects remain in the workspace for incremental rebuilds. The
 deployment tree and CPack staging are removed after success. The installer contains
-only deployed runtime files, the app-local MSVC CRT, and the application license;
+only deployed runtime files and the application license;
 headers, static libraries, debug symbols, tests, and build tools are excluded.
+
+The Windows platform, SQLite, SVG image/icon, OpenSSL TLS and Windows network
+reachability plugins are linked into the executable explicitly. Qt's automatic
+QML import scan embeds the QML plugins and resources needed by the app, including
+the selectable Controls styles. No `windeployqt` copy or external QML tree is needed. Remaining DLLs
+from any ports that require dynamic linkage are collected by the dependency
+scanner; Windows system DLLs are excluded. The build reports the uncompressed
+runtime payload size before NSIS compression. Static linking does not eliminate
+the development libraries or binary archives on the build machine.
 
 ## Installer identity and updates
 
@@ -98,4 +115,6 @@ configured here.
 
 References: [vcpkg cleanup options](https://learn.microsoft.com/en-us/vcpkg/commands/install#--clean-after-build),
 [binary caching](https://learn.microsoft.com/en-us/vcpkg/consume/binary-caching),
+[static Qt plugins](https://doc.qt.io/qt-6/qt-import-plugins.html),
+[static QML imports](https://doc.qt.io/qt-6/qt-import-qml-plugins.html),
 [CPack NSIS configuration](https://cmake.org/cmake/help/latest/cpack_gen/nsis.html).

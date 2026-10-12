@@ -24,7 +24,7 @@ $stage = Join-Path $BuildRoot 'stage'
 $assets = Join-Path $BuildRoot 'assets'
 $installed = Join-Path $CacheRoot 'installed'
 $binaryCache = Join-Path $CacheRoot 'archives'
-$triplet = 'x64-nextapp-release'
+$triplet = 'x64-nextapp-static-release'
 $lock = $null
 
 New-Item -ItemType Directory -Force -Path $CacheRoot, $binaryCache, $build | Out-Null
@@ -91,8 +91,17 @@ try {
 
     $prefix = Join-Path $installed $triplet
     $env:PATH = "$prefix\bin;$prefix\tools\Qt6\bin;$env:PATH"
-    Invoke-Checked cmake @('-S', $source, '-B', $build, '-G', 'Ninja',
+    # Discard cached package locations once when migrating from the DLL build.
+    # Normal runs retain the CMake cache and Ninja's incremental build state.
+    $configure = @('-S', $source, '-B', $build, '-G', 'Ninja')
+    $cmakeCache = Join-Path $build 'CMakeCache.txt'
+    if ((Test-Path $cmakeCache) -and
+        !((Get-Content $cmakeCache) -match "^VCPKG_TARGET_TRIPLET:[^=]+=$triplet$")) {
+        $configure += '--fresh'
+    }
+    $configure += @(
         '-DCMAKE_BUILD_TYPE=Release', "-DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot/scripts/buildsystems/vcpkg.cmake",
+        '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
         "-DVCPKG_MANIFEST_DIR=$PSScriptRoot", "-DVCPKG_INSTALLED_DIR=$installed",
         "-DVCPKG_TARGET_TRIPLET=$triplet", "-DVCPKG_HOST_TRIPLET=$triplet",
         "-DVCPKG_OVERLAY_TRIPLETS=$PSScriptRoot/triplets", "-DVCPKG_OVERLAY_PORTS=$PSScriptRoot/ports",
@@ -101,7 +110,8 @@ try {
         '-DNEXTAPP_WITH_BACKEND=OFF', '-DNEXTAPP_WITH_SIGNUP=OFF',
         '-DNEXTAPP_WITH_TESTS=OFF', '-DNEXTAPP_WITH_TESTS_UI=OFF', '-DBUILD_TESTING=OFF',
         '-DQCORO_WITH_QTTEST=OFF', '-DQCORO_WITH_QTNETWORK=OFF',
-        '-DUSE_STATIC_QT=OFF', '-DBUILD_SHARED_LIBS=OFF')
+        '-DUSE_STATIC_QT=ON', '-DBUILD_SHARED_LIBS=OFF', '-DOPENSSL_USE_STATIC_LIBS=TRUE')
+    Invoke-Checked cmake $configure
     Invoke-Checked cmake @('--build', $build, '--target', 'appNextAppUi', '--parallel', "$Jobs")
 
     # Always start deployment clean: removed plugins must not leak into later installers.
@@ -112,24 +122,16 @@ try {
     $bin = New-Item -ItemType Directory -Path "$stage\bin"
     Copy-Item "$build\bin\nextapp.exe" $bin.FullName
     Copy-Item "$source\src\NextAppUi\LICENSE" "$stage\LICENSE.txt"
-    $deploy = Join-Path $prefix 'tools\Qt6\bin\windeployqt.exe'
-    Invoke-Checked $deploy @('--release', '--no-translations', '--no-compiler-runtime',
-        '--no-opengl-sw', '--qmldir', "$source\src\NextAppUi",
-        '--dir', $bin.FullName, "$bin\nextapp.exe")
-
-    # App-local MSVC runtime avoids a second installer or a prerequisite download.
-    $crt = @(Get-ChildItem "$env:VCToolsRedistDir\x64\Microsoft.VC*.CRT" -Directory)
-    if ($crt.Count -ne 1) { throw 'Expected exactly one x64 MSVC CRT redistributable directory.' }
-    Copy-Item "$($crt[0].FullName)\*.dll" $bin.FullName
+    # Qt plugins and QML resources are linked into nextapp.exe. Only collect
+    # remaining DLL dependencies from ports that cannot support static linkage.
     Invoke-Checked cmake @("-DSTAGE_DIR=$stage", "-DBUILD_DIR=$build",
         "-DDEPENDENCY_BIN=$prefix/bin", '-P', "$PSScriptRoot\ResolveRuntime.cmake")
-    if (!(Test-Path "$bin\platforms\qwindows.dll") -or !(Test-Path "$bin\sqldrivers\qsqlite.dll")) {
-        throw 'Deployment is missing the Windows platform or SQLite plugin.'
-    }
     $unwanted = @(Get-ChildItem $stage -Recurse -File | Where-Object {
         $_.Extension -in '.lib', '.a', '.h', '.hpp', '.pdb', '.obj'
     })
     if ($unwanted.Count) { throw "Non-runtime files in deployment: $($unwanted.FullName -join ', ')" }
+    $payloadBytes = (Get-ChildItem $stage -Recurse -File | Measure-Object -Property Length -Sum).Sum
+    Write-Host ('Installer runtime payload: {0:N1} MiB' -f ($payloadBytes / 1MB))
 
     & "$PSScriptRoot\package.ps1" -BuildRoot $BuildRoot
 } finally {

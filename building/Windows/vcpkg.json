@@ -27,8 +27,7 @@
         "png",
         "sql-sqlite",
         "testlib",
-        "thread",
-        "windeployqt"
+        "thread"
       ]
     },
     {

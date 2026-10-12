@@ -42,6 +42,7 @@ try {
     $version = (Get-Content "$build\VERSION.txt" -Raw).Trim()
     $installer = Join-Path $assets "NextApp-$version-windows-x64.exe"
     if (!(Test-Path -LiteralPath $installer -PathType Leaf)) { throw "Missing installer: $installer" }
+    Write-Host ('Compressed installer: {0:N1} MiB' -f ((Get-Item -LiteralPath $installer).Length / 1MB))
     # Keep only the current deliverable and discard duplicated packaging payloads.
     Get-ChildItem $assets -File | Where-Object {
         $_.Name -like 'NextApp-*-windows-x64.*' -and $_.FullName -ne $installer
