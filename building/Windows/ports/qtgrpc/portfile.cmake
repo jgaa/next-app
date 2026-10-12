@@ -10,6 +10,10 @@ qt_install_submodule(PATCHES    ${${PORT}_PATCHES}
                      TOOL_NAMES ${TOOL_NAMES}
                      CONFIGURE_OPTIONS
                         -DCMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON
+                        # try_compile does not inherit the outer Release build
+                        # type. Its debug CRT/iterator ABI cannot link against
+                        # our release-only static protobuf libraries.
+                        -DCMAKE_TRY_COMPILE_CONFIGURATION:STRING=Release
                         # These are required by NextApp. Autodetection can
                         # silently omit generated modules when a tool's link
                         # test fails, producing an unusable cached package.

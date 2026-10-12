@@ -102,6 +102,7 @@ try {
     $configure += @(
         '-DCMAKE_BUILD_TYPE=Release', "-DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot/scripts/buildsystems/vcpkg.cmake",
         '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+        '-DCMAKE_TRY_COMPILE_CONFIGURATION=Release',
         "-DVCPKG_MANIFEST_DIR=$PSScriptRoot", "-DVCPKG_INSTALLED_DIR=$installed",
         "-DVCPKG_TARGET_TRIPLET=$triplet", "-DVCPKG_HOST_TRIPLET=$triplet",
         "-DVCPKG_OVERLAY_TRIPLETS=$PSScriptRoot/triplets", "-DVCPKG_OVERLAY_PORTS=$PSScriptRoot/ports",

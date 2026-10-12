@@ -51,6 +51,10 @@ types, well-known types and ProtobufQuick; failed feature checks must stop the
 package build instead of caching a package without required modules. Review the
 overlay when updating the baseline.
 
+The qtgrpc overlay and application configuration use Release for CMake's
+configure-time compile/link checks too. Otherwise those checks can use the
+debug MSVC runtime and fail against the release-only static dependencies.
+
 Both host and target use `x64-nextapp-static-release`, requesting static
 libraries and the static MSVC runtime (`/MT`), with release builds only. The
 application uses the same runtime setting. Using one triplet avoids separate
