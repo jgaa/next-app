@@ -74,7 +74,7 @@ try {
     Invoke-Checked git @('-C', $VcpkgRoot, 'pull', '--ff-only', '--quiet')
     Invoke-Checked (Join-Path $VcpkgRoot 'bootstrap-vcpkg.bat') @('-disableMetrics')
     Invoke-Checked git @('-C', $source, 'submodule', 'update', '--init', '--depth', '1', '--',
-        'dependencies/logfault', 'dependencies/qcoro', 'dependencies/expected')
+        'dependencies/logfault', 'dependencies/expected')
 
     $env:VCPKG_ROOT = $VcpkgRoot
     $env:VCPKG_BINARY_SOURCES = "clear;files,$binaryCache,readwrite"
@@ -91,13 +91,17 @@ try {
 
     $prefix = Join-Path $installed $triplet
     $env:PATH = "$prefix\bin;$prefix\tools\Qt6\bin;$env:PATH"
-    # Discard cached package locations once when migrating from the DLL build.
+    # Discard cached package locations once when migrating from the DLL build
+    # or the bundled QCoro build (whose package configs live in the build tree).
     # Normal runs retain the CMake cache and Ninja's incremental build state.
     $configure = @('-S', $source, '-B', $build, '-G', 'Ninja')
     $cmakeCache = Join-Path $build 'CMakeCache.txt'
-    if ((Test-Path $cmakeCache) -and
-        !((Get-Content $cmakeCache) -match "^VCPKG_TARGET_TRIPLET:[^=]+=$triplet$")) {
-        $configure += '--fresh'
+    if (Test-Path $cmakeCache) {
+        $cachedConfig = Get-Content $cmakeCache
+        if (!($cachedConfig -match "^VCPKG_TARGET_TRIPLET:[^=]+=$triplet$") -or
+            !($cachedConfig -match '^NEXTAPP_USE_SYSTEM_QCORO:BOOL=ON$')) {
+            $configure += '--fresh'
+        }
     }
     $configure += @(
         '-DCMAKE_BUILD_TYPE=Release', "-DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot/scripts/buildsystems/vcpkg.cmake",
@@ -110,7 +114,7 @@ try {
         '-DNEXTAPP_WITH_UI=ON', '-DNEXTAPP_WITH_AI=ON', '-DNEXTAPP_WITH_MCP=ON',
         '-DNEXTAPP_WITH_BACKEND=OFF', '-DNEXTAPP_WITH_SIGNUP=OFF',
         '-DNEXTAPP_WITH_TESTS=OFF', '-DNEXTAPP_WITH_TESTS_UI=OFF', '-DBUILD_TESTING=OFF',
-        '-DQCORO_WITH_QTTEST=OFF', '-DQCORO_WITH_QTNETWORK=OFF',
+        '-DNEXTAPP_USE_SYSTEM_QCORO=ON',
         '-DUSE_STATIC_QT=ON', '-DBUILD_SHARED_LIBS=OFF', '-DOPENSSL_USE_STATIC_LIBS=TRUE')
     Invoke-Checked cmake $configure
     Invoke-Checked cmake @('--build', $build, '--target', 'appNextAppUi', '--parallel', "$Jobs")

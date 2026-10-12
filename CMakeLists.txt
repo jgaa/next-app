@@ -158,11 +158,13 @@ add_compile_definitions(GIT_BRANCH="${GIT_BRANCH}")
 
 find_package(Threads REQUIRED)
 if (NOT ANDROID)
-    # Use the module even though other dependencies prefer config packages.
-    # vcpkg's OpenSSL wrapper adjusts static-library lookup for FindOpenSSL;
-    # the upstream config can interpret that adjustment as requiring DLLs.
-    # The module also supplies the OPENSSL_* variables Qt's wrappers require.
-    find_package(OpenSSL MODULE REQUIRED)
+    if(WIN32)
+        # vcpkg's static OpenSSL wrapper expects module-mode lookup; Qt also
+        # needs the OPENSSL_* variables supplied by FindOpenSSL.
+        find_package(OpenSSL MODULE REQUIRED)
+    else()
+        find_package(OpenSSL REQUIRED)
+    endif()
 endif()
 find_package(Doxygen)
 
@@ -174,8 +176,12 @@ add_subdirectory(dependencies/logfault)
 include_directories(${NEXTAPP_ROOT}/dependencies/logfault/include)
 
 if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP)
-    # Keep the traditional ZLIB::ZLIB target for static and shared packages.
-    find_package(ZLIB MODULE REQUIRED)
+    if(WIN32)
+        # Keep ZLIB::ZLIB when vcpkg supplies a static-only package.
+        find_package(ZLIB MODULE REQUIRED)
+    else()
+        find_package(ZLIB REQUIRED)
+    endif()
 
     add_subdirectory(src/proto)
     add_subdirectory(src/common)

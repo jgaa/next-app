@@ -8,6 +8,14 @@
     "openssl",
     "zlib",
     {
+      "name": "qcoro",
+      "default-features": false,
+      "features": [
+        "qml",
+        "quick"
+      ]
+    },
+    {
       "name": "grpc",
       "default-features": false
     },

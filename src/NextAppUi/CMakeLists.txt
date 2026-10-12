@@ -132,9 +132,12 @@ if (NEXTAPP_EXPAT_FIX)
     endif()
 endif()
 
-# FindZLIB provides ZLIB::ZLIB for either linkage. Newer upstream config
-# packages export only ZLIB::ZLIBSTATIC for static-only installations.
-find_package(ZLIB MODULE REQUIRED)
+if(WIN32)
+    # Static-only vcpkg config packages export ZLIB::ZLIBSTATIC instead.
+    find_package(ZLIB MODULE REQUIRED)
+else()
+    find_package(ZLIB REQUIRED)
+endif()
 
 if (LINUX_BUILD)
     # Make sure this resolves via vcpkg, not host:
@@ -276,17 +279,22 @@ if(USE_STATIC_QT)
 endif()
 
 
-set(QCORO_BUILD_EXAMPLES OFF)
-set(QCORO_BUILD_TESTING OFF)
-set(QCORO_ENABLE_ASAN OFF)
-set(QCORO_WITH_QTWEBSOCKETS OFF)
+option(NEXTAPP_USE_SYSTEM_QCORO "Use installed QCoro instead of the bundled submodule" OFF)
+if(NEXTAPP_USE_SYSTEM_QCORO)
+    find_package(QCoro6 CONFIG REQUIRED COMPONENTS Core Qml Quick)
+else()
+    set(QCORO_BUILD_EXAMPLES OFF)
+    set(QCORO_BUILD_TESTING OFF)
+    set(QCORO_ENABLE_ASAN OFF)
+    set(QCORO_WITH_QTWEBSOCKETS OFF)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/qcoro
-    ${CMAKE_BINARY_DIR}/qcoro_build)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/qcoro
+        ${CMAKE_BINARY_DIR}/qcoro_build)
 
-find_package(QCoro6 COMPONENTS Core)
-find_package(QCoro6 COMPONENTS Qml)
-find_package(QCoro6 COMPONENTS Quick)
+    find_package(QCoro6 COMPONENTS Core)
+    find_package(QCoro6 COMPONENTS Qml)
+    find_package(QCoro6 COMPONENTS Quick)
+endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/expected/include)
 
@@ -498,8 +506,15 @@ if (NOT ANDROID)
             cmake_policy(POP)
         endif()
     endif()
-    # Keep discovery consistent with the root build and Qt's OPENSSL_* inputs.
-    find_package(OpenSSL MODULE REQUIRED)
+    if(WIN32)
+        # Keep discovery consistent with the root build and Qt's OPENSSL_* inputs.
+        find_package(OpenSSL MODULE REQUIRED)
+    else()
+        find_package(OpenSSL CONFIG QUIET)
+        if(NOT OpenSSL_FOUND)
+            find_package(OpenSSL REQUIRED)
+        endif()
+    endif()
 
     if(TARGET Boost::headers)
         set(BOOST_HEADERS_TARGET Boost::headers)

@@ -33,6 +33,13 @@ Only the UI target and its dependencies are built; AI/MCP remains enabled.
 Backend, signup, tests, examples, and unused QCoro modules are excluded.
 There is no change to the MCP interface.
 
+This script enables `NEXTAPP_USE_SYSTEM_QCORO` and gets QCoro from the selected
+vcpkg baseline (currently 0.12.0), with only Core, Qml and Quick support. Updating
+the baseline selects its QCoro version too; there is no separate version pin or
+QCoro overlay. Windows no longer fetches or builds the QCoro submodule. Other
+build scripts retain the submodule by default. The first run after this switch
+refreshes the application's CMake cache to discard bundled QCoro package paths.
+
 ## Dependencies and disk use
 
 The manifest pins the requested baseline. Qt default features are disabled;
@@ -61,6 +68,12 @@ application uses the same runtime setting. Using one triplet avoids separate
 debug builds and duplicate native host tools. `--clean-after-build` asks
 vcpkg to remove source/build trees, package staging, and downloaded archives
 after each package. Its diagnostic logs and extracted helper tools may remain.
+
+The Windows triplet enables Qt's `cxx20` feature in qtbase, inherited by the
+other Qt modules. This matches NextApp's C++20 coroutine ABI; Qt's default
+C++17 build can pull in the incompatible legacy coroutine ABI through Windows
+headers. Changing this triplet invalidates vcpkg package ABI keys, requiring
+a one-time dependency rebuild. Subsequent builds reuse the resulting archives.
 
 `C:\src\nextapp-windows-cache` holds the installed development dependencies
 and compressed binary archives outside Jenkins workspaces. vcpkg checks its
