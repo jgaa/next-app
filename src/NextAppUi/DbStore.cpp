@@ -575,9 +575,12 @@ DbStore::DbStore(const QString& db_file_name, QObject *parent)
 {
     if constexpr (use_worker_thread) {
         QObject::connect(thread_, &QThread::started, this, &DbStore::start);
-        QObject::connect(thread_, &QThread::finished, this, []() {
+        QObject::connect(thread_, &QThread::finished, this, [this]() {
+            // Run on the worker even after its event loop stops. Queuing cleanup
+            // before quit() can leave SQLite open and block file swaps on Windows.
+            destroyDbObject();
             LOG_TRACE_N << "Worker thread finished";
-        });
+        }, Qt::DirectConnection);
         thread_->start();
         moveToThread(thread_);
 
@@ -973,16 +976,17 @@ void DbStore::close()
 {
     LOG_DEBUG_N << "Closing the database";
     ready_ = false;
-    QMetaObject::invokeMethod(this, [&]() {
-        destroyDbObject();
-    });
-    // We need to waut for the worker thread to finish
+    // The finished handler closes SQLite on its owning thread before wait returns.
     if constexpr (use_worker_thread) {
         LOG_DEBUG_N << "Waiting for the DB worker thread to finish";
-        if (thread_ && thread_->isRunning()) {
+        if (thread_) {
             thread_->quit();
-            thread_->wait();
+            if (QThread::currentThread() != thread_) {
+                thread_->wait();
+            }
         }
+    } else {
+        destroyDbObject();
     }
     LOG_DEBUG_N << "Database closed";
 }
@@ -1078,18 +1082,26 @@ QCoro::Task<bool> DbStore::replaceWithDatabaseFile(const QString& source_db_path
 
         QFile live{db_path_};
         if (live.exists() && !live.rename(backup_path)) {
-            LOG_ERROR_N << "Failed to move live database out of the way: " << db_path_;
+            LOG_ERROR_N << "Failed to move live database out of the way: " << db_path_
+                        << ": " << live.errorString();
+            createDbObject();
+            ready_ = true;
             return false;
         }
 
         if (!source.rename(db_path_)) {
-            LOG_ERROR_N << "Failed to move staged database into place: " << source_db_path;
+            LOG_ERROR_N << "Failed to move staged database into place: " << source_db_path
+                        << ": " << source.errorString();
             if (QFile::exists(backup_path)) {
                 QFile backup{backup_path};
                 if (!backup.rename(db_path_)) {
-                    LOG_ERROR_N << "Failed to restore live database after swap failure";
+                    LOG_ERROR_N << "Failed to restore live database after swap failure: "
+                                << backup.errorString();
+                    return false;
                 }
             }
+            createDbObject();
+            ready_ = true;
             return false;
         }
 
