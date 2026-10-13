@@ -30,10 +30,15 @@ private:
     // TODO: We should probably use a hash aagainst the server we use
     //       to support multiple servers on the same device.
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(WINDOWS_BUILD)
     QSharedMemory shared_memory_{getKey()};
 #endif
+#ifdef WINDOWS_BUILD
+    // Keep the existing first-instance database and synchronization settings.
+    QString name_{"/instance_1"};
+#else
     QString name_{"singleton"};
+#endif
     bool closed_{true};
     uint instance_id_{1}; // Default to 1, also on systems that don't support multiple instances.
 };

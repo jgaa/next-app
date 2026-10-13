@@ -29,7 +29,7 @@ AppInstanceMgr *AppInstanceMgr::instance()
 
 bool AppInstanceMgr::init()
 {
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(WINDOWS_BUILD)
     assert(closed_);
     closed_ = false;
     QSettings settings;
@@ -78,12 +78,12 @@ bool AppInstanceMgr::init()
     return false;
 #else
     return true;
-#endif // __ANDROID__
+#endif // Shared-memory instance tracking
 }
 
 void AppInstanceMgr::close()
 {
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(WINDOWS_BUILD)
     if (!closed_) {
         LOG_DEBUG_N << "Cleaning up instance " << name();
 
@@ -102,7 +102,7 @@ void AppInstanceMgr::close()
         LOG_DEBUG_N << "Successfully cleaned up instance " << name();
         closed_ = true;
     }
-#endif // __ANDROID__
+#endif // Shared-memory instance tracking
 }
 
 QString AppInstanceMgr::getKey()

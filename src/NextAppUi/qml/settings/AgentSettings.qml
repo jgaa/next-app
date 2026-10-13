@@ -8,39 +8,43 @@ import Nextapp.Models 1.0
 ScrollView {
     id: root
     anchors.fill: parent
-    Settings { id: settings }
+    Settings {
+        id: settings
+        category: "ai/mcp"
+        property bool enabled: false
+    }
     property string mcpCredential: NaCore.mcpCredential()
 
     function load() {
-        enabled.checked = settings.value("ai/mcp/enabled", false)
-        listeningAddress.text = settings.value("ai/mcp/listenAddress", "127.0.0.1")
-        port.value = settings.value("ai/mcp/port", 3120)
-        createGate.currentIndex = createGate.indexOfValue(settings.value("ai/mcp/gate/createAction", "Disabled"))
-        updateGate.currentIndex = updateGate.indexOfValue(settings.value("ai/mcp/gate/updateAction", "Disabled"))
-        completeGate.currentIndex = completeGate.indexOfValue(settings.value("ai/mcp/gate/completeAction", "Disabled"))
-        createNodeGate.currentIndex = createNodeGate.indexOfValue(settings.value("ai/mcp/gate/createNode", "Disabled"))
-        updateNodeGate.currentIndex = updateNodeGate.indexOfValue(settings.value("ai/mcp/gate/updateNode", "Disabled"))
+        enableMcp.checked = settings.enabled
+        listeningAddress.text = settings.value("listenAddress", "127.0.0.1")
+        port.value = settings.value("port", 3120)
+        createGate.currentIndex = createGate.indexOfValue(settings.value("gate/createAction", "Disabled"))
+        updateGate.currentIndex = updateGate.indexOfValue(settings.value("gate/updateAction", "Disabled"))
+        completeGate.currentIndex = completeGate.indexOfValue(settings.value("gate/completeAction", "Disabled"))
+        createNodeGate.currentIndex = createNodeGate.indexOfValue(settings.value("gate/createNode", "Disabled"))
+        updateNodeGate.currentIndex = updateNodeGate.indexOfValue(settings.value("gate/updateNode", "Disabled"))
     }
     function commit() {
-        settings.setValue("ai/mcp/enabled", enabled.checked)
-        settings.setValue("ai/mcp/listenAddress", listeningAddress.text.trim())
-        settings.setValue("ai/mcp/port", port.value)
-        settings.setValue("ai/mcp/gate/createAction", createGate.currentValue)
-        settings.setValue("ai/mcp/gate/updateAction", updateGate.currentValue)
-        settings.setValue("ai/mcp/gate/completeAction", completeGate.currentValue)
-        settings.setValue("ai/mcp/gate/createNode", createNodeGate.currentValue)
-        settings.setValue("ai/mcp/gate/updateNode", updateNodeGate.currentValue)
+        settings.enabled = enableMcp.checked
+        // Property writes are deferred; persist before notifying the runtime.
+        settings.setValue("enabled", enableMcp.checked)
+        settings.setValue("listenAddress", listeningAddress.text.trim())
+        settings.setValue("port", port.value)
+        settings.setValue("gate/createAction", createGate.currentValue)
+        settings.setValue("gate/updateAction", updateGate.currentValue)
+        settings.setValue("gate/completeAction", completeGate.currentValue)
+        settings.setValue("gate/createNode", createNodeGate.currentValue)
+        settings.setValue("gate/updateNode", updateNodeGate.currentValue)
         settings.sync()
     }
-    Component.onCompleted: load()
-    onVisibleChanged: if (visible) load()
 
     GridLayout {
         width: root.width - 15
         columns: width >= 420 ? 2 : 1
         rowSpacing: 8
         Label { text: qsTr("Local MCP interface") }
-        CheckBox { id: enabled; text: qsTr("Enable local MCP interface") }
+        CheckBox { id: enableMcp; text: qsTr("Enable local MCP interface") }
         Label { text: qsTr("Listening IP") }
         TextField {
             id: listeningAddress

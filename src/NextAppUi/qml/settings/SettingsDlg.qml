@@ -16,7 +16,10 @@ Dialog {
     standardButtons: Dialog.Ok | Dialog.Cancel
     title: qsTr("Settings")
 
-    Settings { id: settings }
+    onAboutToShow: {
+        global.load()
+        agent.load()
+    }
 
     Connections {
         target: NaComm
@@ -60,7 +63,7 @@ Dialog {
             }
 
             TabButton {
-                visible: settings.value("ai/enabled", false)
+                visible: global.aiEnabled
                 text: qsTr("Agent")
                 width: implicitWidth
             }
@@ -101,7 +104,7 @@ Dialog {
             }
             Item {
                 id: agentTab
-                visible: settings.value("ai/enabled", false)
+                visible: global.aiEnabled
                 AgentSettings { id: agent }
             }
             Item {

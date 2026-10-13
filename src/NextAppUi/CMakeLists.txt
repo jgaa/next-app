@@ -132,7 +132,12 @@ if (NEXTAPP_EXPAT_FIX)
     endif()
 endif()
 
-find_package(ZLIB REQUIRED)
+if(WIN32)
+    # Static-only vcpkg config packages export ZLIB::ZLIBSTATIC instead.
+    find_package(ZLIB MODULE REQUIRED)
+else()
+    find_package(ZLIB REQUIRED)
+endif()
 
 if (LINUX_BUILD)
     # Make sure this resolves via vcpkg, not host:
@@ -160,6 +165,16 @@ if (NEXTAPP_WITH_AI)
     # AI Phase 1 includes the local MCP HTTP interface.  Do not silently
     # build an AI-enabled client without its transport dependency.
     find_package(Qt6 REQUIRED COMPONENTS HttpServer)
+endif()
+
+if(WINDOWS_BUILD AND USE_STATIC_QT)
+    get_target_property(_nextapp_qt_core_type Qt6::Core TYPE)
+    if(NOT _nextapp_qt_core_type STREQUAL "STATIC_LIBRARY")
+        message(FATAL_ERROR "USE_STATIC_QT requires a static Qt installation on Windows.")
+    endif()
+    if(NOT TARGET Qt6::qmlimportscanner)
+        message(FATAL_ERROR "Static Windows builds require Qt's QML import scanner.")
+    endif()
 endif()
 
 if (NEXTAPP_WITH_MCP AND ANDROID)
@@ -264,17 +279,22 @@ if(USE_STATIC_QT)
 endif()
 
 
-set(QCORO_BUILD_EXAMPLES OFF)
-set(QCORO_BUILD_TESTING OFF)
-set(QCORO_ENABLE_ASAN OFF)
-set(QCORO_WITH_QTWEBSOCKETS OFF)
+option(NEXTAPP_USE_SYSTEM_QCORO "Use installed QCoro instead of the bundled submodule" OFF)
+if(NEXTAPP_USE_SYSTEM_QCORO)
+    find_package(QCoro6 CONFIG REQUIRED COMPONENTS Core Qml Quick)
+else()
+    set(QCORO_BUILD_EXAMPLES OFF)
+    set(QCORO_BUILD_TESTING OFF)
+    set(QCORO_ENABLE_ASAN OFF)
+    set(QCORO_WITH_QTWEBSOCKETS OFF)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/qcoro
-    ${CMAKE_BINARY_DIR}/qcoro_build)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/qcoro
+        ${CMAKE_BINARY_DIR}/qcoro_build)
 
-find_package(QCoro6 COMPONENTS Core)
-find_package(QCoro6 COMPONENTS Qml)
-find_package(QCoro6 COMPONENTS Quick)
+    find_package(QCoro6 COMPONENTS Core)
+    find_package(QCoro6 COMPONENTS Qml)
+    find_package(QCoro6 COMPONENTS Quick)
+endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/expected/include)
 
@@ -486,9 +506,14 @@ if (NOT ANDROID)
             cmake_policy(POP)
         endif()
     endif()
-    find_package(OpenSSL CONFIG QUIET)
-    if(NOT OpenSSL_FOUND)
-        find_package(OpenSSL REQUIRED)
+    if(WIN32)
+        # Keep discovery consistent with the root build and Qt's OPENSSL_* inputs.
+        find_package(OpenSSL MODULE REQUIRED)
+    else()
+        find_package(OpenSSL CONFIG QUIET)
+        if(NOT OpenSSL_FOUND)
+            find_package(OpenSSL REQUIRED)
+        endif()
     endif()
 
     if(TARGET Boost::headers)
@@ -839,6 +864,16 @@ if(NOT BOOST_HEADERS_TARGET AND Boost_INCLUDE_DIRS)
     target_include_directories(NextAppUiCoreLib PUBLIC ${Boost_INCLUDE_DIRS})
 endif()
 
+if(TARGET NextAppMcp)
+    # McpGateway includes model headers that use Boost. The core library links
+    # to MCP, so its Boost usage requirements do not propagate back to MCP.
+    if(BOOST_HEADERS_TARGET)
+        target_link_libraries(NextAppMcp PRIVATE ${BOOST_HEADERS_TARGET})
+    elseif(Boost_INCLUDE_DIRS)
+        target_include_directories(NextAppMcp PRIVATE ${Boost_INCLUDE_DIRS})
+    endif()
+endif()
+
 target_link_libraries(NextAppUiCoreLib
     PUBLIC
         ${BOOST_HEADERS_TARGET}
@@ -1024,6 +1059,7 @@ if (APPLE)
         RUNTIME_OUTPUT_NAME nextapp
     )
 elseif (WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE user32)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         WIN32_EXECUTABLE TRUE
         RUNTIME_OUTPUT_NAME nextapp
@@ -1051,11 +1087,29 @@ else()
 endif()
 
 if(USE_STATIC_QT)
-    qt_import_plugins(${PROJECT_NAME}
-        PLUGINS
-            qxcb
-        STATIC
-    )
+    if(WINDOWS_BUILD)
+        # Import only the native plugins needed by the client. PNG support is
+        # built into QtGui. QML plugins/resources are selected recursively by
+        # qt_add_executable's automatic QML import scan at target finalization.
+        # This also follows QtQuick.Controls' optional style imports, preserving
+        # the styles offered in Preferences.
+        set(_nextapp_windows_plugins
+            Qt6::QWindowsIntegrationPlugin
+            Qt6::QSQLiteDriverPlugin
+            Qt6::QSvgPlugin
+            Qt6::QSvgIconPlugin
+            Qt6::QTlsBackendOpenSSLPlugin
+            Qt6::QNLMNIPlugin
+        )
+        foreach(_plugin IN LISTS _nextapp_windows_plugins)
+            if(NOT TARGET ${_plugin})
+                message(FATAL_ERROR "Required static Qt plugin is missing: ${_plugin}")
+            endif()
+        endforeach()
+        qt_import_plugins(${PROJECT_NAME} NO_DEFAULT INCLUDE ${_nextapp_windows_plugins})
+    elseif(LINUX_BUILD)
+        qt_import_plugins(${PROJECT_NAME} INCLUDE Qt6::QXcbIntegrationPlugin)
+    endif()
     target_compile_definitions(${PROJECT_NAME} PRIVATE QT_QPA_STATIC)
 endif()
 

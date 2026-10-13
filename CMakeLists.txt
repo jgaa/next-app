@@ -158,7 +158,13 @@ add_compile_definitions(GIT_BRANCH="${GIT_BRANCH}")
 
 find_package(Threads REQUIRED)
 if (NOT ANDROID)
-    find_package(OpenSSL REQUIRED)
+    if(WIN32)
+        # vcpkg's static OpenSSL wrapper expects module-mode lookup; Qt also
+        # needs the OPENSSL_* variables supplied by FindOpenSSL.
+        find_package(OpenSSL MODULE REQUIRED)
+    else()
+        find_package(OpenSSL REQUIRED)
+    endif()
 endif()
 find_package(Doxygen)
 
@@ -170,7 +176,12 @@ add_subdirectory(dependencies/logfault)
 include_directories(${NEXTAPP_ROOT}/dependencies/logfault/include)
 
 if (NEXTAPP_WITH_BACKEND OR NEXTAPP_WITH_SIGNUP)
-    find_package(ZLIB REQUIRED)
+    if(WIN32)
+        # Keep ZLIB::ZLIB when vcpkg supplies a static-only package.
+        find_package(ZLIB MODULE REQUIRED)
+    else()
+        find_package(ZLIB REQUIRED)
+    endif()
 
     add_subdirectory(src/proto)
     add_subdirectory(src/common)

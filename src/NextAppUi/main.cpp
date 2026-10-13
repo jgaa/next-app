@@ -14,6 +14,15 @@
 #include <QSettings>
 #include <QScreen>
 #include <optional>
+#include <memory>
+#include <exception>
+
+#ifdef WINDOWS_BUILD
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #include "ServerComm.h"
 #include "MainTreeModel.h"
@@ -68,6 +77,42 @@ void initAndroidLogging(logfault::LogLevel level) {
 
 
 namespace {
+void showInitializationError(const QString& details)
+{
+#ifdef WINDOWS_BUILD
+    // QML may be broken, and the exception path may have destroyed QGuiApplication.
+    // A native dialog works in both cases and needs no Qt Widgets dependency.
+    const auto message = QStringLiteral("NextApp could not initialize.\n\n%1\n\n"
+        "Please copy this message when reporting the problem.").arg(details).toStdWString();
+    MessageBoxW(nullptr, message.c_str(), L"NextApp startup error", MB_OK | MB_ICONERROR);
+#else
+    Q_UNUSED(details);
+#endif
+}
+
+bool loadStartupQml(QQmlApplicationEngine& engine, const QUrl& url)
+{
+    auto errors = std::make_shared<QStringList>();
+    QObject::connect(&engine, &QQmlApplicationEngine::warnings, &engine,
+        [errors](const QList<QQmlError>& warnings) {
+            for (const auto& warning : warnings) {
+                const auto text = warning.toString();
+                LOG_ERROR_N << "QML warning: " << text.toStdString();
+                if (errors->size() < 10) {
+                    errors->append(text);
+                }
+            }
+        });
+    engine.load(url);
+    if (engine.rootObjects().isEmpty()) {
+        LOG_ERROR_N << "Failed to initialize QML engine: " << url.toString().toStdString();
+        showInitializationError(QStringLiteral("Could not load the user interface: %1\n\n%2")
+            .arg(url.toString(), errors->join(QStringLiteral("\n"))));
+        return false;
+    }
+    return true;
+}
+
 optional<logfault::LogLevel> toLogLevel(string_view name) {
     if (name.empty() || name == "off" || name == "false") {
         return {};
@@ -123,6 +168,7 @@ void logQtMessages(QtMsgType type, const QMessageLogContext &context, const QStr
         break;
     case QtFatalMsg:
         LOG_ERROR << "[Qt **FATAL**] " << msg;
+        showInitializationError(msg);
         exit(-1);
         break;
     }
@@ -162,8 +208,12 @@ bool isWaylandPlatform()
 
 bool isSessionRestored()
 {
+#ifndef QT_NO_SESSIONMANAGER
     const auto *app = qobject_cast<const QGuiApplication *>(QGuiApplication::instance());
     return app && app->isSessionRestored();
+#else
+    return false;
+#endif
 }
 
 bool shouldSuppressManualGeometryRestore()
@@ -369,7 +419,7 @@ private:
 
 } // anon ns
 
-int main(int argc, char *argv[])
+static int runApplication(int argc, char *argv[])
 {
     //qRegisterProtobufTypes();
 
@@ -450,6 +500,9 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Capture Qt startup errors, including failures in the instance-limit UI.
+    qInstallMessageHandler(logQtMessages);
+
     QSettings settings{};
     const bool onboarded = settings.value("onboarding", false).toBool();
 
@@ -474,13 +527,22 @@ int main(int argc, char *argv[])
             settings.setValue("UI/theme", "dark");
         }
 
+        if (!settings.contains("ai/enabled")) {
+            settings.setValue("ai/enabled", false);
+        }
+        if (!settings.contains("ai/mcp/enabled")) {
+            settings.setValue("ai/mcp/enabled", false);
+        }
+
         if (!settings.contains("server/resend_requests")) {
             settings.setValue("server/resend_requests", true);
         }
 
+#if !defined(__ANDROID__) && !defined(WINDOWS_BUILD)
         if (!settings.contains("client/maxInstances")) {
             settings.setValue("client/maxInstances", 1);
         }
+#endif
 
         if (!settings.contains("logging/applevel")) {
             settings.setValue("logging/applevel", 4); // INFO
@@ -545,14 +607,14 @@ int main(int argc, char *argv[])
         }
 #endif
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(WINDOWS_BUILD)
         // Handle multiple instances of the app with their own data
         const auto has_instance = AppInstanceMgr::instance()->init();
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
             AppInstanceMgr::instance()->close();
         });
 #else
-        // Android doesn't support multiple instances
+        // Android and Windows use a single profile without shared-memory slots.
         const bool has_instance = true;
 #endif
 
@@ -560,15 +622,12 @@ int main(int argc, char *argv[])
             // Open qml/NoInstance.qml as the main window and exit when it closes
             LOG_WARN_N << "Opening NoInstance.qml as the main window.";
             QQmlApplicationEngine engine;
-            engine.load(QUrl("qrc:/qt/qml/NextAppUi/qml/NoInstance.qml"));
-            if (engine.rootObjects().isEmpty()) {
-                LOG_ERROR_N << "Failed to initialize QML engine!";
+            if (!loadStartupQml(engine, QUrl("qrc:/qt/qml/NextAppUi/qml/NoInstance.qml"))) {
                 return -1;
             }
             return app.exec();
         }
 
-        qInstallMessageHandler(logQtMessages);
         LOG_INFO << app_name << ' ' << NEXTAPP_UI_VERSION << " starting up.";
         LOG_INFO << "Configuration from '" << settings.fileName() << "'";
 
@@ -651,26 +710,9 @@ int main(int argc, char *argv[])
 
     LOG_INFO << "Loading main QML file: " << main_qml;
     engine.addImportPath("qrc:/qt/qml/NextAppUi/qml");
-    QObject::connect(&engine, &QQmlApplicationEngine::warnings, [](const QList<QQmlError>& warnings) {
-        for (const auto& warning : warnings) {
-            LOG_ERROR_N << "QML warning: " << warning.toString().toStdString();
-        }
-    });
-    engine.load(QUrl{QString::fromUtf8(main_qml)});
-    if (engine.rootObjects().isEmpty()) {
-        LOG_ERROR_N << "Failed to initialize QML engine!";
+    if (!loadStartupQml(engine, QUrl{QString::fromUtf8(main_qml)})) {
         return -1;
     }
-
-    QObject::connect(
-        &engine,
-        &QQmlApplicationEngine::objectCreationFailed,
-        &app,
-        []() {
-            LOG_ERROR_N << "Failed to create QML UI!";
-            QCoreApplication::exit(-1);
-        },
-        Qt::QueuedConnection);
 
     LOG_INFO << "Device supports OpenSSL: " << QSslSocket::supportsSsl();
     LOG_INFO <<  "SSL build:" << QSslSocket::sslLibraryBuildVersionString();
@@ -696,4 +738,22 @@ int main(int argc, char *argv[])
 
     LOG_DEBUG_N << "Exiting the app";
     return ret;
+}
+
+int main(int argc, char *argv[])
+{
+#ifdef WINDOWS_BUILD
+    try {
+        return runApplication(argc, argv);
+    } catch (const std::exception& error) {
+        LOG_ERROR << "Application initialization failed: " << error.what();
+        showInitializationError(QString::fromUtf8(error.what()));
+    } catch (...) {
+        LOG_ERROR << "Unknown exception during application initialization";
+        showInitializationError(QStringLiteral("An unexpected error occurred during application initialization."));
+    }
+    return -1;
+#else
+    return runApplication(argc, argv);
+#endif
 }

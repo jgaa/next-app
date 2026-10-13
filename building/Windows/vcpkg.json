@@ -1,0 +1,59 @@
+{
+  "name": "nextapp-windows",
+  "builtin-baseline": "e456309491fd875487bf02b8a0dca76c1b1b00cc",
+  "dependencies": [
+    "boost-circular-buffer",
+    "boost-multi-index",
+    "boost-type-index",
+    "openssl",
+    "zlib",
+    {
+      "name": "qcoro",
+      "default-features": false,
+      "features": [
+        "qml",
+        "quick"
+      ]
+    },
+    {
+      "name": "grpc",
+      "default-features": false
+    },
+    {
+      "name": "protobuf",
+      "default-features": false
+    },
+    {
+      "name": "qtbase",
+      "default-features": false,
+      "features": [
+        "concurrent",
+        "dnslookup",
+        "gui",
+        "harfbuzz",
+        "network",
+        "openssl",
+        "png",
+        "sql-sqlite",
+        "testlib",
+        "thread"
+      ]
+    },
+    {
+      "name": "qtdeclarative",
+      "default-features": false
+    },
+    {
+      "name": "qtsvg",
+      "default-features": false
+    },
+    {
+      "name": "qtgrpc",
+      "default-features": false
+    },
+    {
+      "name": "qthttpserver",
+      "default-features": false
+    }
+  ]
+}

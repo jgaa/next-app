@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NextAppUi
+import Nextapp.Models
 
 Dialog {
     id: root

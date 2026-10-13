@@ -757,6 +757,7 @@ class tst_NextAppUiRuntime final : public QObject
 private slots:
     void initTestCase();
     void cleanupTestCase();
+    void dbStoreClosesConnectionBeforeStagedSwap();
     void durationFormatting_data();
     void durationFormatting();
     void pasteTitleStopsAtPunctuation_data();
@@ -906,6 +907,28 @@ void tst_NextAppUiRuntime::initTestCase()
 void tst_NextAppUiRuntime::cleanupTestCase()
 {
     AppInstanceMgr::instance()->close();
+}
+
+void tst_NextAppUiRuntime::dbStoreClosesConnectionBeforeStagedSwap()
+{
+    auto live = makeInitializedDb(QStringLiteral("swap-live.sqlite"));
+    auto staged = makeInitializedDb(QStringLiteral("swap-staged.sqlite"));
+    const auto cleanup = qScopeGuard([&] { staged->close(); live->close(); });
+    QVERIFY(waitForTask(staged->legacyQuery("CREATE TABLE swap_marker (value TEXT)")));
+    QVERIFY(waitForTask(staged->legacyQuery("INSERT INTO swap_marker VALUES ('downloaded')")));
+    const auto staged_path = staged->dbPath();
+    const auto connection_name = staged->db().connectionName();
+
+    staged->close();
+    // Checking the connection registry also detects leaked handles on Unix,
+    // where renaming an open SQLite file would otherwise hide the bug.
+    QVERIFY(!QSqlDatabase::contains(connection_name));
+    QVERIFY(waitForTask(live->replaceWithDatabaseFile(staged_path)));
+    QVERIFY(!QFileInfo::exists(staged_path));
+    const auto result = waitForTask(live->legacyQuery("SELECT value FROM swap_marker"));
+    QVERIFY(result.has_value());
+    QCOMPARE(result->size(), 1);
+    QCOMPARE(result->at(0).at(0).toString(), QStringLiteral("downloaded"));
 }
 
 #ifdef NEXTAPP_WITH_MCP

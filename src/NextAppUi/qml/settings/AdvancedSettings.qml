@@ -11,6 +11,7 @@ import "../common.js" as Common
 ScrollView {
     id: root
     anchors.fill: parent
+    readonly property bool supportsMultipleInstances: !NaCore.isMobile && Qt.platform.os !== "windows"
 
     Settings {
         id: settings
@@ -26,7 +27,7 @@ ScrollView {
         settings.setValue("server/resend_requests", resend.checked ? "true" : "false")
         if (NaCore.isMobile) {
             settings.setValue("export/saveToPublicDir", androidSaveToPubDir.checked ? "true" : "false")
-        } else {
+        } else if (root.supportsMultipleInstances) {
             settings.setValue("client/maxInstances", instances.value)
         }
         settings.sync()
@@ -170,17 +171,17 @@ ScrollView {
 
         RowLayout {
             id: instancesCtl
-            visible: !NaCore.isMobile && expertMode.checked
+            visible: root.supportsMultipleInstances && expertMode.checked
 
             Slider {
                 id: instances
                 Layout.fillWidth: true
-                visible: !NaCore.isMobile
+                visible: root.supportsMultipleInstances
                 from: 1
                 to: 10
                 stepSize: 1
                 snapMode: Slider.SnapAlways
-                value: parseInt(settings.value("client/maxInstances"))
+                value: parseInt(settings.value("client/maxInstances", 1))
             }
 
             Text {
