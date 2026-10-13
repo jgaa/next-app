@@ -50,6 +50,12 @@ Graphs, Multimedia, WebEngine, database drivers other than SQLite, and the
 Qt SDK meta-package are not requested. Transitive build tools required by
 these ports are still built by vcpkg.
 
+HarfBuzz is required for the bundled Font Awesome icons. Without it, Qt's
+fallback text layout marks their private-use Unicode characters as non-printing,
+even when the font loads correctly. Keep the `qtbase[harfbuzz]` feature enabled.
+Adding this feature rebuilds Qt and affected dependents once; subsequent builds
+reuse the updated binary cache. No cache deletion is needed.
+
 The `ports/qtgrpc` overlay copies the port and its patch from that baseline
 and adds Qt Declarative as a dependency. This makes ProtobufQuick generation
 independent of package build order and includes that dependency in the ABI

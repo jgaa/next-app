@@ -527,6 +527,13 @@ static int runApplication(int argc, char *argv[])
             settings.setValue("UI/theme", "dark");
         }
 
+        if (!settings.contains("ai/enabled")) {
+            settings.setValue("ai/enabled", false);
+        }
+        if (!settings.contains("ai/mcp/enabled")) {
+            settings.setValue("ai/mcp/enabled", false);
+        }
+
         if (!settings.contains("server/resend_requests")) {
             settings.setValue("server/resend_requests", true);
         }

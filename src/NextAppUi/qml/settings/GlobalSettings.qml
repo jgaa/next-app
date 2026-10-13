@@ -9,7 +9,7 @@ import nextapp.pb as NextappPb
 
 ScrollView {
     id: root
-    property bool initialized: false
+    readonly property alias aiEnabled: enableAi.checked
     anchors.fill: parent
 
     function commit() {
@@ -27,40 +27,43 @@ ScrollView {
         tmp.suggestionLimit = suggestionLimit.value
         tmp.suggestionTimeBoxMinMinutes = suggestionMinimum.value
         tmp.suggestionTimeBoxMaxMinutes = suggestionMaximum.value
-        settings.setValue("ai/enabled", enableAi.checked)
+        settings.enabled = enableAi.checked
+        // Property writes are deferred; persist before notifying the runtime.
+        settings.setValue("enabled", enableAi.checked)
         settings.sync()
 
         NaComm.saveGlobalSettings(tmp)
-        initialized = false
     }
 
-    onVisibleChanged: {
-        if (visible && !initialized) {
-            var tmp = NaComm.globalSettings
-            from.text = NaCore.toHourMin(tmp.defaultWorkHours.start)
-            to.text = NaCore.toHourMin(tmp.defaultWorkHours.end)
-            timeZone.text = tmp.timeZone
-            region.text = tmp.region
-            monday.checked = tmp.firstDayOfWeekIsMonday
-            initialized = true;
-            autoStartNextWs.checked = tmp.autoStartNextWorkSession
-            autoStartNewWs.checked = tmp.autoStartNewWorkSession
-            optInEmail.checked = tmp.optInEmail
-            pasteActionTitleWords.value = Math.max(1, Math.min(16,
-                Number(tmp.pasteActionTitleWordCount) || 9))
-            enableAi.checked = settings.value("ai/enabled", false)
-            suggestionLimit.value = Math.max(5, Math.min(100, Number(tmp.suggestionLimit) || 20))
-            // QtProtobuf integers can be wrapped values: convert before testing
-            // for zero so unset fields use the same defaults as the C++ allocator.
-            const minimum = Number(tmp.suggestionTimeBoxMinMinutes)
-            const maximum = Number(tmp.suggestionTimeBoxMaxMinutes)
-            suggestionMinimum.value = Math.max(1, Math.min(1440, minimum > 0 ? minimum : 30))
-            suggestionMaximum.value = Math.max(suggestionMinimum.value,
-                Math.min(1440, maximum > 0 ? maximum : 240))
-        }
+    function load() {
+        var tmp = NaComm.globalSettings
+        from.text = NaCore.toHourMin(tmp.defaultWorkHours.start)
+        to.text = NaCore.toHourMin(tmp.defaultWorkHours.end)
+        timeZone.text = tmp.timeZone
+        region.text = tmp.region
+        monday.checked = tmp.firstDayOfWeekIsMonday
+        autoStartNextWs.checked = tmp.autoStartNextWorkSession
+        autoStartNewWs.checked = tmp.autoStartNewWorkSession
+        optInEmail.checked = tmp.optInEmail
+        pasteActionTitleWords.value = Math.max(1, Math.min(16,
+            Number(tmp.pasteActionTitleWordCount) || 9))
+        enableAi.checked = settings.enabled
+        suggestionLimit.value = Math.max(5, Math.min(100, Number(tmp.suggestionLimit) || 20))
+        // QtProtobuf integers can be wrapped values: convert before testing
+        // for zero so unset fields use the same defaults as the C++ allocator.
+        const minimum = Number(tmp.suggestionTimeBoxMinMinutes)
+        const maximum = Number(tmp.suggestionTimeBoxMaxMinutes)
+        suggestionMinimum.value = Math.max(1, Math.min(1440, minimum > 0 ? minimum : 30))
+        suggestionMaximum.value = Math.max(suggestionMinimum.value,
+            Math.min(1440, maximum > 0 ? maximum : 240))
     }
 
-    Settings { id: settings }
+    // Typed properties convert persisted strings such as "false" to booleans.
+    Settings {
+        id: settings
+        category: "ai"
+        property bool enabled: false
+    }
 
     GridLayout {
         id: grid
