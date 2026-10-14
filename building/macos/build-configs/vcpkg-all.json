@@ -33,6 +33,7 @@
     "qtcharts",
     "qtsvg",
     "qtgrpc",
+    "qthttpserver",
     "qtgraphs"
 ],
 

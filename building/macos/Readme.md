@@ -16,3 +16,29 @@ Once the `.iconset` directory is created, build the `.icns` file:
 ```sh
 iconutil -c icns nextapp.iconset
 ```
+
+## GitHub Actions SDK
+
+The Actions build downloads `qt-<QT_SDK_VERSION>-macos.tar.gz` from the configured
+SDK URL. The archive contains the `macos/` directory at its root; CI extracts it
+under `qt-sdk/<QT_SDK_VERSION>/`. This archive must include Qt HTTP Server for the AI/MCP transport,
+in addition to Qt Quick/Controls, SVG, SQL/SQLite, gRPC and all Qt Protobuf
+components used by the client. QCoro also needs the Qml and Quick private
+CMake packages and headers. The two architecture jobs require an SDK supporting
+both arm64 and x86_64, including usable host code generators.
+
+Validate archive contents before uploading a replacement:
+
+```sh
+tar -tf qt-6.11.2-macos.tar.gz | python3 building/macos/check-sdk.py --version 6.11.2
+```
+
+Run this check locally before uploading the SDK; CI does not repeat it.
+It checks required files, not Mach-O architectures or whether the SDK's
+CMake packages link successfully; those still require macOS verification.
+When replacing an archive without changing its Qt version, increment
+`QT_SDK_REVISION` in the workflow so the previous cached archive is not reused.
+The archive cache uses a workspace-relative path shared by the macOS jobs.
+
+The separate local vcpkg build uses `build-configs/vcpkg-all.json`; changing that
+manifest does not update the SDK archive consumed by GitHub Actions.
