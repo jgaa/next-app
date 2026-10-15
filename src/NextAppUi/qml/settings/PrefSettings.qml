@@ -18,7 +18,7 @@ ScrollView {
     function commit() {
         settings.setValue("UI/theme", uiTheme.currentValue)
         MaterialDesignStyling.setTheme(uiTheme.currentValue)
-        settings.setValue("UI/style", uiStyle.currentIndex.toString())
+        //settings.setValue("UI/style", uiStyle.currentIndex.toString()
         settings.setValue("UI/mobile/persistDualViewSplit", persistDualViewSplit.checked)
         //settings.setValue("UI/scale", uiScale.currentIndex.toString())
         settings.sync()
@@ -50,22 +50,26 @@ ScrollView {
             onClicked: Common.openDialog("settings/ThemeSchemePreviewDialog.qml", parent, {})
         }
 
-        Label { text: qsTr("Ui Style")}
-        ComboBox {
-            id: uiStyle
-            currentIndex: parseInt(settings.value("UI/style"))
-            Layout.fillWidth: true
-            model: [qsTr("Default"),
-                qsTr("Simple"),
-                qsTr("Imagine"),
-                qsTr("Desktop"),
-                qsTr("Android"),
-                // qsTr("macOS"),
-                // qsTr("iOS"),
-                qsTr("Windows")]
+        // Label { text: qsTr("Ui Style")}
+        // ComboBox {
+        //     id: uiStyle
+        //     currentIndex: parseInt(settings.value("UI/style"))
+        //     Layout.fillWidth: true
+        //     model: [qsTr("Default"),
+        //         qsTr("Simple"),
+        //         qsTr("Imagine"),
+        //         qsTr("Desktop"),
+        //         qsTr("Android"),
+        //         // qsTr("macOS"),
+        //         // qsTr("iOS"),
+        //         qsTr("Windows")]
+        // }
+
+        Label {
+            visible: persistDualViewSplit.visible
+            text: qsTr("Remember mobile split size")
         }
 
-        Label { text: qsTr("Remember mobile split size") }
         Switch {
             id: persistDualViewSplit
             visible: NaCore.isMobile
