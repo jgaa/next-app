@@ -10,6 +10,7 @@ All sub-projects are built using the root `./CMakeLists.txt`.
 
 # Rules for this repository:
 
+* If a message appears to concern another project (for example, Shared) without explicitly relating the work to NextApp or this project directory, flag the likely wrong-agent message and ask which project is intended before making changes; explicitly requested cross-project work is allowed.
 * If you add files, add them to git (`git add <path>`)
 * If you rename or delete files that are under version control, use git for these operations
 * Never commit anything to git

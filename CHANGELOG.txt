@@ -1,4 +1,7 @@
-Beta release.
+RC release.
+
+- Many bugfixes and minor improvements
+- Experimetal, opt-in MCP support
 
 See [https://next-app.org](https://next-app.org) for more information.
 
