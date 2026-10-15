@@ -231,12 +231,8 @@ jobs:
           ditto "${APP_PATH}" "${DMG_DIR}/nextapp.app"
           ln -s /Applications "${DMG_DIR}/Applications"
 
-          hdiutil create \
-            -volname "NextApp ${VERSION}" \
-            -srcfolder "${DMG_DIR}" \
-            -ov \
-            -format UDZO \
-            "${BUILD_DIR}/${DMG_NAME}"
+          bash "${GITHUB_WORKSPACE}/building/macos/package-dmg.sh" \
+            "${DMG_DIR}" "NextApp ${VERSION}" "${BUILD_DIR}/${DMG_NAME}"
 
           codesign --force --sign "${SIGN_ID}" "${BUILD_DIR}/${DMG_NAME}" || true
 
