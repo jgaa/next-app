@@ -40,7 +40,8 @@ permissions:
 
 env:
   SIGN_ID: "Developer ID Application: The Last Viking LTD ood (G7GPB64J77)"
-  QT_SDK_VERSION: "6.11.0"
+  QT_SDK_VERSION: "6.11.2"
+  QT_SDK_REVISION: "2" # Bump when replacing the SDK archive at the same URL.
   QT_SDK_BASE_URL: "https://next-app.org/ci"
   QT_SDK_USERNAME: "jgaa"
   MACOS_DEPLOYMENT_TARGET: "15.0"
@@ -59,8 +60,9 @@ jobs:
         id: cache-qt-sdk
         uses: actions/cache/restore@v5
         with:
-          path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
-          key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}
+          path: qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.gz
+          key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}-${{ env.QT_SDK_REVISION }}
+          enableCrossOsArchive: true
 
       - name: Download Qt SDK archive
         if: steps.cache-qt-sdk.outputs.cache-hit != 'true'
@@ -72,8 +74,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          QT_SDK_URL="${QT_SDK_BASE_URL}/qt-${QT_SDK_VERSION}-macos.tar.zst"
-          QT_SDK_ARCHIVE="${RUNNER_TEMP}/qt-sdk-cache/qt-${QT_SDK_VERSION}-macos.tar.zst"
+          QT_SDK_URL="${QT_SDK_BASE_URL}/qt-${QT_SDK_VERSION}-macos.tar.gz"
+          QT_SDK_ARCHIVE="${GITHUB_WORKSPACE}/qt-sdk-cache/qt-${QT_SDK_VERSION}-macos.tar.gz"
 
           test -n "${QT_SDK_URL:-}" || { echo "::error::Missing QT_SDK_URL"; exit 1; }
           test -n "${QT_SDK_USERNAME:-}" || { echo "::error::Missing QT_SDK_USERNAME value"; exit 1; }
@@ -81,7 +83,7 @@ jobs:
 
           mkdir -p "$(dirname "${QT_SDK_ARCHIVE}")"
 
-          curl --fail --show-error --location \
+          curl --fail --silent --show-error --location \
             --user "${QT_SDK_USERNAME}:${QT_SDK_PASSWORD}" \
             --output "${QT_SDK_ARCHIVE}" \
             "${QT_SDK_URL}"
@@ -90,8 +92,9 @@ jobs:
         if: steps.cache-qt-sdk.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
-          path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
-          key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}
+          path: qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.gz
+          key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}-${{ env.QT_SDK_REVISION }}
+          enableCrossOsArchive: true
 
   build-macos:
     name: Build macOS (${{ matrix.artifact_suffix }})
@@ -136,8 +139,9 @@ jobs:
         id: cache-qt-sdk
         uses: actions/cache/restore@v5
         with:
-          path: ${{ runner.temp }}/qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.zst
-          key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}
+          path: qt-sdk-cache/qt-${{ env.QT_SDK_VERSION }}-macos.tar.gz
+          key: macos-qt-sdk-${{ env.QT_SDK_VERSION }}-${{ env.QT_SDK_REVISION }}
+          enableCrossOsArchive: true
 
       - name: Extract Qt SDK
         env:
@@ -145,12 +149,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          QT_SDK_ARCHIVE="${RUNNER_TEMP}/qt-sdk-cache/qt-${QT_SDK_VERSION}-macos.tar.zst"
+          QT_SDK_ARCHIVE="${GITHUB_WORKSPACE}/qt-sdk-cache/qt-${QT_SDK_VERSION}-macos.tar.gz"
           test -f "${QT_SDK_ARCHIVE}" || { echo "::error::Qt SDK archive ${QT_SDK_ARCHIVE} not found"; exit 1; }
 
           rm -rf qt-sdk
-          mkdir -p qt-sdk
-          tar -xf "${QT_SDK_ARCHIVE}" -C qt-sdk
+          mkdir -p "qt-sdk/${QT_SDK_VERSION}"
+          tar -xf "${QT_SDK_ARCHIVE}" -C "qt-sdk/${QT_SDK_VERSION}"
 
           QT_ROOT="${PWD}/qt-sdk/${QT_SDK_VERSION}"
           test -d "${QT_ROOT}" || { echo "::error::Expected Qt SDK root ${QT_ROOT} missing after extract"; exit 1; }
@@ -187,12 +191,22 @@ jobs:
             -DCMAKE_PREFIX_PATH="${OPENSSL_PREFIX};${BOOST_PREFIX}" \
             -DOPENSSL_ROOT_DIR="${OPENSSL_PREFIX}" \
             -DNEXTAPP_WITH_TESTS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DQCORO_WITH_QTTEST=OFF \
+            -DQCORO_WITH_QTNETWORK=OFF \
+            -DNEXTAPP_WITH_AI=ON \
             -DNEXTAPP_WITH_BACKEND=OFF \
             -DNEXTAPP_WITH_SIGNUP=OFF \
             -DUSE_STATIC_QT=OFF \
             -DSIGN_ID="${SIGN_ID}"
 
-          cmake --build "${BUILD_DIR}" --config Release
+          VERSION="$(< "${BUILD_DIR}/VERSION.txt")"
+          if [[ -n "${{ inputs.expected_version }}" && "${VERSION}" != "${{ inputs.expected_version }}" ]]; then
+            echo "::error::macOS version ${VERSION} does not match expected version ${{ inputs.expected_version }}"
+            exit 1
+          fi
+
+          cmake --build "${BUILD_DIR}" --config Release --target appNextAppUi
           cmake --install "${BUILD_DIR}" --prefix "${STAGE_DIR}" --component Application
 
           APP_PATH="$(find "${STAGE_DIR}" -maxdepth 2 -type d -name 'nextapp.app' -print -quit)"
@@ -212,22 +226,13 @@ jobs:
           echo "== lipo -info ==" && lipo -info "${APP_BIN}"
           lipo "${APP_BIN}" -verify_arch "${{ matrix.cmake_arch }}"
 
-          VERSION="$(< "${BUILD_DIR}/VERSION.txt")"
-          if [[ -n "${{ inputs.expected_version }}" && "${VERSION}" != "${{ inputs.expected_version }}" ]]; then
-            echo "::error::macOS version ${VERSION} does not match expected version ${{ inputs.expected_version }}"
-            exit 1
-          fi
           DMG_NAME="nextapp-macos-${{ matrix.artifact_suffix }}-${VERSION}.dmg"
           mkdir -p "${DMG_DIR}"
           ditto "${APP_PATH}" "${DMG_DIR}/nextapp.app"
           ln -s /Applications "${DMG_DIR}/Applications"
 
-          hdiutil create \
-            -volname "NextApp ${VERSION}" \
-            -srcfolder "${DMG_DIR}" \
-            -ov \
-            -format UDZO \
-            "${BUILD_DIR}/${DMG_NAME}"
+          bash "${GITHUB_WORKSPACE}/building/macos/package-dmg.sh" \
+            "${DMG_DIR}" "NextApp ${VERSION}" "${BUILD_DIR}/${DMG_NAME}"
 
           codesign --force --sign "${SIGN_ID}" "${BUILD_DIR}/${DMG_NAME}" || true
 

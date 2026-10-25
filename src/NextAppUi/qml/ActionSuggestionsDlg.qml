@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import NextAppUi
 import Nextapp.Models
@@ -25,6 +26,13 @@ Dialog {
     property bool requested: false
     property bool calendarDragActive: false
     readonly property bool filtersExpanded: filterToggle.checked
+    readonly property color surfaceColor: MaterialDesignStyling.surface
+    // Android's Material controls use attached colors rather than the palette below.
+    Material.theme: surfaceColor.hslLightness < 0.5 ? Material.Dark : Material.Light
+    Material.foreground: MaterialDesignStyling.onSurface
+    Material.background: surfaceColor
+    Material.primary: MaterialDesignStyling.primary
+    Material.accent: MaterialDesignStyling.primary
     header: Control {
         padding: 12
         bottomPadding: 6
@@ -119,12 +127,13 @@ Dialog {
             visible: revealHeight > 0
             enabled: root.filtersExpanded
             clip: true
+            contentWidth: availableWidth
             Behavior on revealHeight {
                 NumberAnimation { duration: 220; easing.type: Easing.InOutCubic }
             }
             GridLayout {
                 id: form
-                width: parent.width
+                width: filters.availableWidth
                 columns: root.width < 600 ? 1 : 2
                 Label { text: qsTr("Current state") }
                 ComboBox {
@@ -188,7 +197,11 @@ Dialog {
                     ToolTip.delay: 500
                     ToolTip.text: qsTr("Include all lists, the selected list only, or the selected list and its sublists.")
                 }
-                Label { text: qsTr("Categories (empty means all)") }
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Categories (empty means all)")
+                }
                 ColumnLayout {
                     Layout.fillWidth: true
                     RowLayout {
@@ -239,6 +252,7 @@ Dialog {
             spacing: 8
             Button {
                 text: qsTr("Find suggestions")
+                width: Math.min(implicitWidth, parent.width)
                 ToolTip.visible: hovered
                 ToolTip.delay: 500
                 ToolTip.text: qsTr("Rank matching actions by priority, due date, available time and difficulty.")
@@ -254,6 +268,7 @@ Dialog {
             }
             Button {
                 text: qsTr("Modify selected (%1)").arg(root.selectedIds.length)
+                width: Math.min(implicitWidth, parent.width)
                 ToolTip.visible: hovered
                 ToolTip.delay: 500
                 ToolTip.text: qsTr("Batch change the category, priority, difficulty or schedule of checked suggestions.")
@@ -481,6 +496,12 @@ Dialog {
         property alias startTime: start.text
         property alias duration: durationInput.value
         palette: root.palette
+        // This popup is parented to the overlay, so inherit the dialog's theme explicitly.
+        Material.theme: root.Material.theme
+        Material.foreground: root.Material.foreground
+        Material.background: root.Material.background
+        Material.primary: root.Material.primary
+        Material.accent: root.Material.accent
         background: Rectangle {
             color: MaterialDesignStyling.surface
             border.color: MaterialDesignStyling.outlineVariant
