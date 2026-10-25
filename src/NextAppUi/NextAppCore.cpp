@@ -1,4 +1,5 @@
 #include "NextAppCore.h"
+#include "MobileConnectServer.h"
 #ifdef NEXTAPP_WITH_MCP
 #include "mcp/McpHttpServer.h"
 #endif
@@ -18,6 +19,10 @@
 #include <QDebug>
 #include <QLocale>
 #include <QUrl>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QSet>
+#include <QUuid>
 
 #ifdef LINUX_BUILD
 #include <QDBusConnection>
@@ -205,6 +210,30 @@ NextAppCore::NextAppCore(QQmlApplicationEngine& engine)
     db_ = make_unique<DbStore>();
     settings_ = std::make_unique<QSettingsAccess>();
     server_comm_ = std::make_unique<ServerComm>(*this);
+    mobile_connect_server_ = std::make_unique<MobileConnectServer>(this);
+    mobile_connect_server_->setIdeasHandler([this](const QJsonArray& items, int* imported_count, QString* error_message) {
+        return importMobileConnectIdeas(items, imported_count, error_message);
+    });
+    connect(mobile_connect_server_.get(), &MobileConnectServer::listenerChanged,
+            this, &NextAppCore::mobileConnectListenerChanged);
+    connect(mobile_connect_server_.get(), &MobileConnectServer::traffic,
+            this, &NextAppCore::mobileConnectTraffic);
+    connect(mobile_connect_server_.get(), &MobileConnectServer::transferError,
+            this, &NextAppCore::mobileConnectTransferError);
+    connect(mobile_connect_server_.get(), &MobileConnectServer::transferConfirmationRequested,
+            this, [this](const QString& code) {
+        auto *tree = MainTreeModel::instance();
+        if (tree->state() != MainTreeModel::State::VALID || !tree->hasInbox()) {
+            const auto message = tree->state() != MainTreeModel::State::VALID
+                ? tr("The Inbox is not available yet. The transfer was aborted.")
+                : tr("No Inbox is configured. Mark a node as the Inbox before receiving transfers.");
+            mobile_connect_server_->rejectPendingTransfer(message);
+            emit mobileConnectTransferError(message);
+            return;
+        }
+        emit mobileConnectTransferConfirmationRequested(code);
+    });
+    connect(this, &NextAppCore::settingsChanged, this, &NextAppCore::refreshMobileConnectServer);
 #ifdef NEXTAPP_WITH_MCP
     mcp_http_server_ = std::make_unique<nextapp::mcp::McpHttpServer>(*this, this);
     connect(this, &NextAppCore::settingsChanged, mcp_http_server_.get(), &nextapp::mcp::McpHttpServer::refresh);
@@ -659,6 +688,11 @@ QCoro::Task<void> NextAppCore::modelsAreCreated()
 {
     LOG_INFO << "All models are created. Starting to initialize NextappCore...";
     co_await db_->init();
+    mobile_connect_models_ready_ = true;
+    connect(MainTreeModel::instance(), &MainTreeModel::stateChanged, this, [this] {
+        refreshMobileConnectServer();
+    });
+    refreshMobileConnectServer();
 #ifdef NEXTAPP_WITH_MCP
     mcp_http_server_->refresh();
 #endif
@@ -683,6 +717,111 @@ bool NextAppCore::mcpEnabled() const
 #else
     return false;
 #endif
+}
+
+bool NextAppCore::mobileConnectEnabled() const
+{
+    return !isMobile() && settings().value(QStringLiteral("mobileConnect/enabled"), false).toBool();
+}
+
+bool NextAppCore::mobileConnectRunning() const
+{
+    return mobile_connect_server_ && mobile_connect_server_->running();
+}
+
+QString NextAppCore::mobileConnectListenAddress() const
+{
+    return settings().value(QStringLiteral("mobileConnect/listenAddress"), QStringLiteral("0.0.0.0")).toString();
+}
+
+int NextAppCore::mobileConnectPort() const
+{
+    return mobile_connect_server_ ? mobile_connect_server_->port()
+        : settings().value(QStringLiteral("mobileConnect/port"), 45437).toInt();
+}
+
+void NextAppCore::respondToMobileConnectTransfer(bool approved)
+{
+    if (mobile_connect_server_) mobile_connect_server_->approvePendingTransfer(approved);
+}
+
+void NextAppCore::refreshMobileConnectServer()
+{
+    if (!mobile_connect_server_) return;
+    const auto tree_ready = mobile_connect_models_ready_
+        && MainTreeModel::instance()->state() == MainTreeModel::State::VALID;
+    mobile_connect_server_->applySettings(
+        mobileConnectEnabled() && tree_ready,
+        mobileConnectListenAddress(),
+        static_cast<quint16>(std::clamp(mobileConnectPort(), 1024, 65535)));
+    emit mobileConnectListenerChanged();
+}
+
+bool NextAppCore::importMobileConnectIdeas(const QJsonArray& items, int* imported_count, QString* error_message)
+{
+    if (imported_count) *imported_count = 0;
+    auto *tree = MainTreeModel::instance();
+    if (tree->state() != MainTreeModel::State::VALID || !tree->hasInbox()) {
+        const auto message = tree->state() != MainTreeModel::State::VALID
+            ? tr("The Inbox is not available yet. The transfer was aborted.")
+            : tr("No Inbox is configured. Mark a node as the Inbox before receiving transfers.");
+        if (error_message) *error_message = message;
+        emit mobileConnectTransferError(message);
+        return false;
+    }
+
+    const auto inbox_id = tree->inboxUuid();
+    if (inbox_id.isEmpty()) {
+        const auto message = tr("No Inbox is configured. Mark a node as the Inbox before receiving transfers.");
+        if (error_message) *error_message = message;
+        emit mobileConnectTransferError(message);
+        return false;
+    }
+
+    static const auto id_namespace = QUuid{QStringLiteral("{cbe86b93-46c2-4b2a-87fc-a3986e372340}")};
+    QSet<QString> seen_ids;
+    int created_count{};
+    int duplicate_count{};
+    for (const auto& value : items) {
+        if (!value.isObject()) continue;
+        const auto item = value.toObject();
+        const auto external_id = item.value(QStringLiteral("id")).toString().trimmed();
+        const auto title = item.value(QStringLiteral("title")).toString().trimmed();
+        const auto text = item.value(QStringLiteral("text")).toString().trimmed();
+        if (title.isEmpty() || text.isEmpty()) continue;
+
+        const auto action_id = external_id.isEmpty()
+            ? QUuid::createUuid().toString(QUuid::WithoutBraces)
+            : QUuid::createUuidV5(id_namespace, external_id.toUtf8()).toString(QUuid::WithoutBraces);
+        if (seen_ids.contains(action_id)) {
+            ++duplicate_count;
+            continue;
+        }
+        seen_ids.insert(action_id);
+
+        nextapp::pb::Action action;
+        action.setId_proto(action_id);
+        action.setNode(inbox_id);
+        action.setStatus(nextapp::pb::ActionStatusGadget::ActionStatus::ACTIVE);
+        action.setName(title.left(255));
+        action.setDescr(boundedUtf8(text, kMaxActionDescriptionUtf8Bytes));
+        nextapp::pb::Priority priority;
+        priority.setPriority(nextapp::pb::ActionPriorityGadget::ActionPriority::PRI_NORMAL);
+        action.setDynamicPriority(priority);
+        server_comm_->addAction(action);
+        ++created_count;
+    }
+
+    if (created_count == 0 && duplicate_count == 0) {
+        const auto message = tr("No valid ideas were found in the transfer.");
+        if (error_message) *error_message = message;
+        return false;
+    }
+    if (imported_count) *imported_count = created_count;
+    if (error_message) error_message->clear();
+    LOG_INFO_N << "Accepted " << created_count << " Mobile Connect actions and skipped "
+               << duplicate_count << " duplicates";
+    return true;
 }
 
 QString NextAppCore::mcpEndpoint() const

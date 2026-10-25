@@ -650,6 +650,8 @@ set(NEXTAPP_UI_CORE_SOURCES
     MaterialDesignStyling.h
     ModelInstances.cpp
     ModelInstances.h
+    MobileConnectServer.cpp
+    MobileConnectServer.h
     NextAppCore.cpp
     NextAppCore.h
     nextapp.h
@@ -785,6 +787,7 @@ qt_add_qml_module(NextAppUiLib
         qml/onboard/OnboardingWelcome.qml
         qml/settings/AdvancedSettings.qml
         qml/settings/AgentSettings.qml
+        qml/settings/MobileConnectSettings.qml
         qml/settings/DeleteAccountConfirmation.qml
         qml/settings/GlobalSettings.qml
         qml/settings/NotificationSettings.qml
@@ -883,6 +886,7 @@ target_link_libraries(NextAppUiCoreLib
         QCoro6::Core
         Qt6::Core
         Qt6::Gui
+        Qt6::Network
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::Svg

@@ -70,6 +70,37 @@ ApplicationWindow {
         buttons: MessageDialog.Ok
     }
 
+    property string mobileConnectConfirmationCode: ""
+    property string mobileConnectErrorMessage: ""
+
+    MessageDialog {
+        id: mobileConnectConfirmationDialog
+        title: qsTr("Incoming Mobile Connect transfer")
+        text: qsTr("Compare this code with the sending device before accepting: %1").arg(appWindow.mobileConnectConfirmationCode)
+        buttons: MessageDialog.Yes | MessageDialog.No
+        onAccepted: NaCore.respondToMobileConnectTransfer(true)
+        onRejected: NaCore.respondToMobileConnectTransfer(false)
+    }
+
+    MessageDialog {
+        id: mobileConnectErrorDialog
+        title: qsTr("Mobile Connect transfer failed")
+        text: appWindow.mobileConnectErrorMessage
+        buttons: MessageDialog.Ok
+    }
+
+    Connections {
+        target: NaCore
+        function onMobileConnectTransferConfirmationRequested(code) {
+            appWindow.mobileConnectConfirmationCode = code
+            mobileConnectConfirmationDialog.open()
+        }
+        function onMobileConnectTransferError(message) {
+            appWindow.mobileConnectErrorMessage = message
+            mobileConnectErrorDialog.open()
+        }
+    }
+
     Rectangle {
         id: clientUpdateBanner
         parent: Overlay.overlay
@@ -632,6 +663,34 @@ ApplicationWindow {
                         target: NaCore
                         function onMcpTraffic() {
                             if (agentIcon.visible && agentIcon.interfaceActive) trafficTimer.restart()
+                        }
+                    }
+                }
+
+                CheckBoxWithFontIcon {
+                    id: mobileConnectIcon
+                    visible: NaCore.mobileConnectEnabled
+                    uncheckedCode: "\uf1e6"
+                    checkedCode: "\uf1e6"
+                    useSolidForAll: true
+                    autoToggle: false
+                    isChecked: NaCore.mobileConnectRunning
+                    attentionAnimation: visible && isChecked && mobileConnectTrafficTimer.running
+                    checkedColor: "green"
+                    uncheckedColor: "red"
+                    ToolTip.visible: hovered
+                    ToolTip.text: isChecked
+                        ? qsTr("Mobile Connect server listening on %1:%2").arg(NaCore.mobileConnectListenAddress).arg(NaCore.mobileConnectPort)
+                        : qsTr("Mobile Connect server is enabled but unavailable")
+                    Timer {
+                        id: mobileConnectTrafficTimer
+                        interval: 3000
+                    }
+                    Connections {
+                        target: NaCore
+                        function onMobileConnectTraffic() {
+                            if (mobileConnectIcon.visible && mobileConnectIcon.isChecked)
+                                mobileConnectTrafficTimer.restart()
                         }
                     }
                 }

@@ -19,6 +19,7 @@ Dialog {
     onAboutToShow: {
         global.load()
         agent.load()
+        mobileConnect.load()
     }
 
     Connections {
@@ -88,6 +89,12 @@ Dialog {
                 text: qsTr("Advanced")
                 width: implicitWidth
             }
+
+            TabButton {
+                visible: !NaCore.isMobile
+                text: qsTr("Mobile Connect")
+                width: implicitWidth
+            }
         }
 
         StackLayout {
@@ -124,6 +131,11 @@ Dialog {
                 id: advancedTab
                 AdvancedSettings {id: advanced}
             }
+            Item {
+                id: mobileConnectTab
+                visible: !NaCore.isMobile
+                MobileConnectSettings { id: mobileConnect }
+            }
         }
     }
 
@@ -134,6 +146,7 @@ Dialog {
         agent.commit()
         preferences.commit()
         advanced.commit()
+        mobileConnect.commit()
         notifications.commit()
         NaCore.settingsWasChanged()
         close()

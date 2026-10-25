@@ -29,9 +29,11 @@
 class QQmlEngine;
 class QQmlApplicationEngine;
 class QDBusConnection;
+class QJsonArray;
 
 class CalendarModel;
 class ServerComm;
+class MobileConnectServer;
 #ifdef NEXTAPP_WITH_MCP
 namespace nextapp::mcp { class McpHttpServer; }
 #endif
@@ -70,6 +72,10 @@ public:
     Q_PROPERTY(bool mcpEnabled READ mcpEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap mcpPendingApproval READ mcpPendingApproval NOTIFY mcpPendingApprovalChanged)
     Q_PROPERTY(QVariantList mcpActivityHistory READ mcpActivityHistory NOTIFY mcpActivityHistoryChanged)
+    Q_PROPERTY(bool mobileConnectEnabled READ mobileConnectEnabled NOTIFY mobileConnectListenerChanged)
+    Q_PROPERTY(bool mobileConnectRunning READ mobileConnectRunning NOTIFY mobileConnectListenerChanged)
+    Q_PROPERTY(QString mobileConnectListenAddress READ mobileConnectListenAddress NOTIFY mobileConnectListenerChanged)
+    Q_PROPERTY(int mobileConnectPort READ mobileConnectPort NOTIFY mobileConnectListenerChanged)
 
     enum class ClickInitiator {
         NONE,
@@ -136,6 +142,11 @@ public:
     Q_INVOKABLE void resolveMcpApproval(const QString& requestId, bool approved, bool alwaysAllow);
     QVariantMap mcpPendingApproval() const;
     QVariantList mcpActivityHistory() const;
+    bool mobileConnectEnabled() const;
+    bool mobileConnectRunning() const;
+    QString mobileConnectListenAddress() const;
+    int mobileConnectPort() const;
+    Q_INVOKABLE void respondToMobileConnectTransfer(bool approved);
 
     // returns -1 on error
     static Q_INVOKABLE time_t parseDateOrTime(const QString& str, time_t defaultDate = 0);
@@ -317,6 +328,10 @@ signals:
     void mcpTraffic();
     void mcpPendingApprovalChanged();
     void mcpActivityHistoryChanged();
+    void mobileConnectListenerChanged();
+    void mobileConnectTransferConfirmationRequested(const QString& code);
+    void mobileConnectTransferError(const QString& message);
+    void mobileConnectTraffic();
     void propertyChanged(const QString& name);
     void stateChanged();
     void wokeFromSleep();
@@ -346,6 +361,8 @@ private:
     QCoro::Task<void> doDeleteAccount();
     QCoro::Task<void> doFactoryReset();
     void emitSettingsChanged();
+    void refreshMobileConnectServer();
+    bool importMobileConnectIdeas(const QJsonArray& items, int* imported_count, QString* error_message);
     QCoro::Task<void> refreshDbData();
     void selectNode(const QString& uuid);
     QCoro::Task<void> fetchCurrentPlan(bool forceRefresh);
@@ -356,6 +373,8 @@ private:
     std::unique_ptr<DbStore> db_;
     std::unique_ptr<SettingsAccess> settings_;
     std::unique_ptr<ServerComm> server_comm_;
+    std::unique_ptr<MobileConnectServer> mobile_connect_server_;
+    bool mobile_connect_models_ready_{};
 #ifdef NEXTAPP_WITH_MCP
     std::unique_ptr<nextapp::mcp::McpHttpServer> mcp_http_server_;
 #endif
