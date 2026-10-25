@@ -33,7 +33,14 @@ MobileConnectServer::MobileConnectServer(QObject *parent)
 
 void MobileConnectServer::applySettings(bool enabled, const QString& listen_address, quint16 port)
 {
-    listen_address_ = listen_address.trimmed().isEmpty() ? QStringLiteral("0.0.0.0") : listen_address.trimmed();
+    const auto normalized_address = listen_address.trimmed().isEmpty()
+        ? QStringLiteral("0.0.0.0") : listen_address.trimmed();
+    if (enabled_ == enabled && listen_address_ == normalized_address && configured_port_ == port) {
+        if (!enabled || server_->isListening()) return;
+        start();
+        return;
+    }
+    listen_address_ = normalized_address;
     configured_port_ = port;
     enabled_ = enabled;
     restartIfNeeded();

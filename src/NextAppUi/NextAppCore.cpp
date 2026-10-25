@@ -731,13 +731,14 @@ bool NextAppCore::mobileConnectRunning() const
 
 QString NextAppCore::mobileConnectListenAddress() const
 {
-    return settings().value(QStringLiteral("mobileConnect/listenAddress"), QStringLiteral("0.0.0.0")).toString();
+    const auto address = settings().value(QStringLiteral("mobileConnect/listenAddress"), QStringLiteral("0.0.0.0"))
+        .toString().trimmed();
+    return address.isEmpty() ? QStringLiteral("0.0.0.0") : address;
 }
 
 int NextAppCore::mobileConnectPort() const
 {
-    return mobile_connect_server_ ? mobile_connect_server_->port()
-        : settings().value(QStringLiteral("mobileConnect/port"), 45437).toInt();
+    return settings().value(QStringLiteral("mobileConnect/port"), 45437).toInt();
 }
 
 void NextAppCore::respondToMobileConnectTransfer(bool approved)
