@@ -1,6 +1,7 @@
 
 #include <deque>
 #include <QCryptographicHash>
+#include <QElapsedTimer>
 #include <QSet>
 
 #include <QProtobufSerializer>
@@ -296,12 +297,19 @@ QCoro::Task<bool> CalendarCache::save(const QProtobufMessage &item)
 
 QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &items)
 {
+    QElapsedTimer batch_timer;
+    batch_timer.start();
     auto& db = syncDb();
     const auto token = syncTransactionToken();
+    LOG_DEBUG_N << "Starting calendar batch persistence. blocks=" << items.size()
+                << ", full_sync=" << isFullSync() << ", database=" << db.dbPath();
+    LOG_TRACE_N << "Loading action IDs for calendar batch.";
     const auto existing_actions = co_await loadExistingActionIds(db, token);
     if (!existing_actions) {
         co_return false;
     }
+    LOG_TRACE_N << "Loaded action IDs for calendar batch. actions=" << existing_actions->size()
+                << ", elapsed_ms=" << batch_timer.elapsed();
 
     bool success = true;
 
@@ -342,6 +350,8 @@ QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &
     if (!updated_blocks) {
         success = false;
     }
+    LOG_DEBUG_N << "Calendar block rows persisted. blocks=" << items.size()
+                << ", success=" << updated_blocks << ", elapsed_ms=" << batch_timer.elapsed();
 
     for (const auto& tb : items) {
         runtime_.serverComm().clearSyncIssuesForObject(
@@ -353,7 +363,15 @@ QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &
     }
 
     // Rebuild refs best-effort and let SQLite reject missing dependencies.
-    for (const auto& ref : getActionRefs(items, *existing_actions)) {
+    const auto refs = getActionRefs(items, *existing_actions);
+    size_t refs_done = 0;
+    size_t refs_failed = 0;
+    LOG_DEBUG_N << "Rebuilding calendar action references. refs=" << refs.size()
+                << ", elapsed_ms=" << batch_timer.elapsed();
+    for (const auto& ref : refs) {
+        LOG_TRACE_N << "Persisting calendar action reference. index=" << (refs_done + 1)
+                    << ", refs=" << refs.size() << ", time_block=" << ref.first
+                    << ", action=" << ref.second;
         QList<QVariant> params;
         params << ref.first << ref.second;
         const auto inserted_ref = token
@@ -362,11 +380,19 @@ QCoro::Task<bool> CalendarCache::saveBatch(const QList<nextapp::pb::TimeBlock> &
             : co_await db.legacyQuery(
                 "INSERT INTO time_block_actions (time_block, action) VALUES (?, ?)", &params);
         if (!inserted_ref) {
+            ++refs_failed;
             LOG_DEBUG_N << "Ignoring failed time block/action reference insert for time_block="
                         << ref.first << " action=" << ref.second << " err=" << inserted_ref.error();
         }
+        ++refs_done;
+        LOG_TRACE_N << "Calendar action reference persisted. index=" << refs_done
+                    << ", success=" << inserted_ref.has_value()
+                    << ", elapsed_ms=" << batch_timer.elapsed();
     }
 
+    LOG_DEBUG_N << "Calendar batch persistence completed. blocks=" << items.size()
+                << ", refs=" << refs_done << ", failed_refs=" << refs_failed
+                << ", success=" << success << ", elapsed_ms=" << batch_timer.elapsed();
     co_return success;
 }
 

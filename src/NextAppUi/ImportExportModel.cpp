@@ -592,11 +592,8 @@ QCoro::Task<void> ImportExportModel::doImport(QString fileName)
     } catch (const std::exception &e) {
         LOG_ERROR_N << "Import failed: " << e.what();
         state = ERROR;
-        const auto stagingPath = QDir(runtime_.db().dataDir())
-                                     .filePath(QStringLiteral("db.staging.sqlite"));
-        if (QFile::exists(stagingPath) && !QFile::remove(stagingPath)) {
-            LOG_WARN_N << "Failed to remove abandoned staged database: " << stagingPath;
-        }
+        // Session synchronization owns its staging database. An import failure
+        // must not unlink a file that an active sync may still be writing.
         emit importFailed(tr("The import failed: %1\n\nYour current database is still available.")
                               .arg(QString::fromUtf8(e.what())));
     }

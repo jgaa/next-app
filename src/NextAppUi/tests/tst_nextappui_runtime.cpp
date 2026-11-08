@@ -719,6 +719,10 @@ public:
             }
         }
 
+        if (throw_during_sync_) {
+            throw std::runtime_error("Injected sync persistence failure");
+        }
+
         co_return synch_from_server_result_;
     }
 
@@ -743,6 +747,7 @@ public:
     bool load_from_cache_result_{true};
     bool finalize_result_{true};
     bool synch_from_server_result_{true};
+    bool throw_during_sync_{false};
     bool observed_transaction_during_sync_{false};
     qlonglong observed_last_update_{-1};
     qulonglong observed_last_updated_id_{std::numeric_limits<qulonglong>::max()};
@@ -780,10 +785,13 @@ private slots:
     void serverCommPersistsAndReloadsSyncCursorFile();
     void serverCommResyncSetsFlagAndStops();
     void serverCommDuplicateResyncIsCoalesced();
+    void serverCommRejectsConnectDuringSessionInitialization();
     void serverCommOutOfOrderUpdateRequestsIncrementalRepair();
     void serverSynchedCacheQueuesUpdatesUntilLocalLoadCompletes();
     void serverSynchedCacheCommitsTransactionAndLoadsPersistedState();
     void serverSynchedCacheRollsBackTransactionOnSyncFailure();
+    void serverSynchedCacheRecoversAfterSyncException();
+    void serverSynchedCacheRejectedSyncPreservesActiveMode();
     void serverSynchedCacheCanSkipReloadAfterSuccessfulSync();
     void calendarCacheSaveBatchKeepsSerializedActionsAndPersistsValidRelations();
     void calendarDayActionDropsAllocateTimeBoxes();
@@ -1524,6 +1532,32 @@ void tst_NextAppUiRuntime::serverCommDuplicateResyncIsCoalesced()
     db->close();
 }
 
+void tst_NextAppUiRuntime::serverCommRejectsConnectDuringSessionInitialization()
+{
+    auto db = makeInitializedDb(QStringLiteral("servercomm-overlapping-init.sqlite"));
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+
+    ServerComm comm(runtime);
+    comm.signup_status_ = ServerComm::SIGNUP_OK;
+    comm.setStatus(ServerComm::INITIAL_SYNC);
+    comm.session_initializing_ = true;
+    comm.session_id_ = "active-session";
+    comm.current_server_address_ = QStringLiteral("https://active-server");
+    comm.messages_ = QStringLiteral("Fetching time blocks");
+
+    comm.start();
+    waitForTask(comm.startNextappSession());
+
+    QCOMPARE(comm.status(), ServerComm::INITIAL_SYNC);
+    QCOMPARE(comm.session_id_, std::string("active-session"));
+    QCOMPARE(comm.current_server_address_, QStringLiteral("https://active-server"));
+    QCOMPARE(comm.messages_, QStringLiteral("Fetching time blocks"));
+    QVERIFY(comm.session_initializing_);
+    comm.session_initializing_ = false;
+    db->close();
+}
+
 void tst_NextAppUiRuntime::serverCommOutOfOrderUpdateRequestsIncrementalRepair()
 {
     auto db = makeInitializedDb(QStringLiteral("servercomm-out-of-order-resync.sqlite"));
@@ -1714,6 +1748,57 @@ void tst_NextAppUiRuntime::serverSynchedCacheRollsBackTransactionOnSyncFailure()
     QCOMPARE(rows->size(), 0);
 
     db->close();
+}
+
+void tst_NextAppUiRuntime::serverSynchedCacheRecoversAfterSyncException()
+{
+    auto db = makeInitializedDb(QStringLiteral("server-synched-cache-exception.sqlite"));
+    ensureSyncTestTable(*db);
+    QVERIFY(waitForTask(db->query(
+        "INSERT INTO sync_test (id, updated, updated_id, name) VALUES (1,100,7,'existing')")));
+
+    TestRuntimeServices runtime;
+    runtime.setDbForTest(*db);
+    TestTransactionalSyncedCache cache(runtime);
+    cache.rows_to_insert_.append({2, 200, 9, QStringLiteral("imported")});
+    cache.throw_during_sync_ = true;
+
+    QVERIFY(!waitForTask(cache.synch(false)));
+    QCOMPARE(cache.state(), TestTransactionalSyncedCache::State::ERROR);
+    const auto rows = waitForTask(db->legacyQuery("SELECT name FROM sync_test ORDER BY id"));
+    QVERIFY(rows.has_value());
+    QCOMPARE(rows->size(), 1);
+    QCOMPARE(rows->front().front().toString(), QStringLiteral("existing"));
+
+    // A second attempt must acquire the released transaction and actually sync.
+    cache.throw_during_sync_ = false;
+    QVERIFY(waitForTask(cache.synch(false)));
+    QCOMPARE(cache.state(), TestTransactionalSyncedCache::State::VALID);
+    QCOMPARE(cache.synch_from_server_calls_, 2);
+    QCOMPARE(cache.loaded_names_, QStringList({QStringLiteral("existing"), QStringLiteral("imported")}));
+
+    // Full sync also loads caches separately after swapping the staging DB.
+    cache.load_from_cache_result_ = false;
+    QVERIFY(!waitForTask(cache.loadLocally()));
+    QCOMPARE(cache.state(), TestTransactionalSyncedCache::State::ERROR);
+    cache.load_from_cache_result_ = true;
+    cache.rows_to_insert_.clear();
+    QVERIFY(waitForTask(cache.synch(false)));
+    QCOMPARE(cache.state(), TestTransactionalSyncedCache::State::VALID);
+    db->close();
+}
+
+void tst_NextAppUiRuntime::serverSynchedCacheRejectedSyncPreservesActiveMode()
+{
+    TestRuntimeServices runtime;
+    TestTransactionalSyncedCache cache(runtime);
+    cache.setState(TestTransactionalSyncedCache::State::SYNCHING);
+
+    QVERIFY(!cache.isFullSync());
+    QVERIFY(!waitForTask(cache.synch(true)));
+    QVERIFY(!cache.isFullSync());
+    QCOMPARE(cache.state(), TestTransactionalSyncedCache::State::SYNCHING);
+    QCOMPARE(cache.synch_from_server_calls_, 0);
 }
 
 void tst_NextAppUiRuntime::serverSynchedCacheCanSkipReloadAfterSuccessfulSync()

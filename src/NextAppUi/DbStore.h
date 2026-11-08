@@ -185,6 +185,7 @@ private:
         const D& isDeleted,
         const I& getId,
         const E& perRowFn = nullptr) {
+        const auto query_id = next_query_id_.fetch_add(1, std::memory_order_relaxed);
         auto promise = QSharedPointer<QPromise<bool>>::create();
         auto future = promise->future();
 #if NEXTAPP_DB_COPY_BATCH_DATA
@@ -196,10 +197,12 @@ private:
 #endif
         const auto row_count = data_ptr->size();
 
-        auto finish = [](const QSharedPointer<QPromise<bool>>& promise, bool success) {
+        auto finish = [query_id](const QSharedPointer<QPromise<bool>>& promise, bool success) {
+            LOG_TRACE_N << "Publishing DB batch result. query_id=" << query_id << ", success=" << success;
             promise->start();
             promise->addResult(success);
             promise->finish();
+            LOG_TRACE_N << "DB batch result published. query_id=" << query_id;
         };
 
         LOG_TRACE_N << "Preparing database batch operation. rows=" << row_count
@@ -208,12 +211,14 @@ private:
         co_await waitForTransactionAccess(transaction_token);
 
         // Wrap the operation in a lambda that will be executed in the DBs thread
-        LOG_TRACE_N << "Queueing database batch operation. rows=" << row_count;
+        LOG_TRACE_N << "Queueing database batch operation. rows=" << row_count
+                    << ", connection=" << connection_name_ << ", query_id=" << query_id;
         const auto queued = QMetaObject::invokeMethod(this,
             [this, promise, finish, insertQurey, deleteQuery, data_copy, data_ptr,
-             getParams, isDeleted, getId, perRowFn, row_count]() mutable {
+             getParams, isDeleted, getId, perRowFn, row_count, query_id]() mutable {
                 try {
-                    LOG_TRACE_N << "Executing database batch operation. rows=" << row_count;
+                    LOG_TRACE_N << "Executing database batch operation. rows=" << row_count
+                                << ", connection=" << connection_name_ << ", query_id=" << query_id;
                     auto success = true;
                     QSqlQuery query{*db_};
                     if (!query.prepare(insertQurey)) {
@@ -269,6 +274,8 @@ private:
         QFutureWatcher<bool> watcher;
         watcher.setFuture(future);
         co_await watcher.future();
+        LOG_TRACE_N << "DB batch caller resumed. connection=" << connection_name_
+                    << ", query_id=" << query_id << ", rows=" << row_count;
         co_return future.result();
     }
 
@@ -279,7 +286,7 @@ public:
     // Re-create the database. Deletes all the data.
     QCoro::Task<bool> clear();
 
-    void queryImpl(const QString& sql, const param_t *params, QPromise<rval_t> *promise);
+    void queryImpl(const QString& sql, const param_t *params, QPromise<rval_t> *promise, quint64 query_id);
 
     /*! The database was created and initialized.
      */
@@ -313,7 +320,7 @@ public:
 
 signals:
     // Emitted from the main thread to query the database.
-    void doQuery(const QString& sql, const param_t *params, QPromise<rval_t> *promise);
+    void doQuery(const QString& sql, const param_t *params, QPromise<rval_t> *promise, quint64 query_id);
 
     // Emitted from the worker thread when the database is ready.
     void initialized();
@@ -379,4 +386,5 @@ private:
     std::mutex transaction_mutex_;
     std::optional<transaction_token_t> active_transaction_token_;
     transaction_token_t next_transaction_token_{1};
+    std::atomic<quint64> next_query_id_{1};
 };

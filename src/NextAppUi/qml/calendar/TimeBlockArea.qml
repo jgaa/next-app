@@ -162,10 +162,21 @@ Rectangle {
 
     Rectangle {
         id: cat
+        // The UUID can stay unchanged when categories are loaded or edited.
+        // Invokable lookups do not track changes to the model's contents.
         color: NaAcModel.valid ? NaAcModel.getColorFromUuid(root.category) : "transparent"
         width: expandAreaTop.width
         height: parent.height
         radius: 5
+
+        Connections {
+            target: NaAcModel
+            function onModelReset() {
+                cat.color = Qt.binding(function() {
+                    return NaAcModel.valid ? NaAcModel.getColorFromUuid(root.category) : "transparent"
+                })
+            }
+        }
     }
 
     ExpandArea {

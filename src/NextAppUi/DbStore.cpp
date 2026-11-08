@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QDate>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QtEndian>
 #include "qcorofuture.h"
 #include <QSqlError>
@@ -759,36 +760,54 @@ void DbStore::destroyDbObject()
 
 QCoro::Task<DbStore::rval_t> DbStore::legacyQuery(const QString &sql, const QList<QVariant> *params)
 {
+    const auto query_id = next_query_id_.fetch_add(1, std::memory_order_relaxed);
+    QElapsedTimer timer;
+    timer.start();
     co_await waitForTransactionAccess(std::nullopt);
     QPromise<rval_t> promise;
+    LOG_TRACE_N << "Queueing DB query. connection=" << connection_name_
+                << ", query_id=" << query_id << ", transaction=none";
 
     if constexpr (use_worker_thread) {
-        emit doQuery(sql, params, &promise);
+        emit doQuery(sql, params, &promise, query_id);
     } else {
-        queryImpl(sql, params, &promise);
+        queryImpl(sql, params, &promise, query_id);
     }
 
     auto future = promise.future();
 
-    co_return co_await qCoro(future).takeResult();
+    auto result = co_await qCoro(future).takeResult();
+    LOG_TRACE_N << "DB query caller resumed. connection=" << connection_name_
+                << ", query_id=" << query_id << ", success=" << result.has_value()
+                << ", elapsed_ms=" << timer.elapsed();
+    co_return result;
 }
 
 QCoro::Task<DbStore::rval_t> DbStore::legacyQueryInTransaction(const transaction_token_t token,
                                                                const QString &sql,
                                                                const QList<QVariant> *params)
 {
+    const auto query_id = next_query_id_.fetch_add(1, std::memory_order_relaxed);
+    QElapsedTimer timer;
+    timer.start();
     co_await waitForTransactionAccess(token);
     QPromise<rval_t> promise;
+    LOG_TRACE_N << "Queueing DB query. connection=" << connection_name_
+                << ", query_id=" << query_id << ", transaction=" << token;
 
     if constexpr (use_worker_thread) {
-        emit doQuery(sql, params, &promise);
+        emit doQuery(sql, params, &promise, query_id);
     } else {
-        queryImpl(sql, params, &promise);
+        queryImpl(sql, params, &promise, query_id);
     }
 
     auto future = promise.future();
 
-    co_return co_await qCoro(future).takeResult();
+    auto result = co_await qCoro(future).takeResult();
+    LOG_TRACE_N << "DB query caller resumed. connection=" << connection_name_
+                << ", query_id=" << query_id << ", success=" << result.has_value()
+                << ", elapsed_ms=" << timer.elapsed();
+    co_return result;
 }
 
 QCoro::Task<void> DbStore::waitForTransactionAccess(
@@ -1265,12 +1284,23 @@ DbStore::rval_t DbStore::queryImpl_(const QString &sql, const param_t *params)
     return rval;
 }
 
-void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QPromise<rval_t> *promise)
+void DbStore::queryImpl(const QString &sql, const QList<QVariant>* params, QPromise<rval_t> *promise,
+                        const quint64 query_id)
 {
     assert(promise);
+    QElapsedTimer timer;
+    timer.start();
+    LOG_TRACE_N << "DB worker starting query. connection=" << connection_name_
+                << ", query_id=" << query_id << ", database=" << db_file_name_;
     promise->start();
-    promise->addResult(queryImpl_(sql, params));
+    auto result = queryImpl_(sql, params);
+    LOG_TRACE_N << "DB worker query completed; publishing result. connection=" << connection_name_
+                << ", query_id=" << query_id << ", success=" << result.has_value()
+                << ", elapsed_ms=" << timer.elapsed();
+    promise->addResult(std::move(result));
     promise->finish();
+    // The caller may already have resumed and destroyed its promise here.
+    LOG_TRACE_N << "DB worker finished publishing result. query_id=" << query_id;
 }
 
 bool DbStore::updateSchema(uint version)

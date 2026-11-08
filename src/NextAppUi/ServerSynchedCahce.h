@@ -68,58 +68,80 @@ public:
     }
 
     virtual QCoro::Task<bool> synch(bool isFullSync = false) {
-        full_sync_ = isFullSync;
         if (state() > State::LOCAL && state() < State::VALID) {
-            // Already synching
+            LOG_WARN_N << "Refusing overlapping sync for " << itemName()
+                       << ". state=" << static_cast<int>(state());
             co_return false;
         }
 
-        setState(State::SYNCHING);
-        if (load_after_sync_) {
-            clear();
-        }
-        const bool use_transaction = !isFullSync;
-        auto& db = syncDb();
-
-        if (use_transaction) {
-            auto started = co_await db.beginExclusiveTransaction();
-            if (!started) {
-                LOG_ERROR_N << "Failed to start sync transaction for " << itemName();
-                setState(State::ERROR);
-                co_return false;
+        full_sync_ = isFullSync;
+        try {
+            setState(State::SYNCHING);
+            if (load_after_sync_) {
+                clear();
             }
-            sync_transaction_token_ = started.value();
-        }
+            const bool use_transaction = !isFullSync;
+            auto& db = syncDb();
 
-        bool persisted = false;
-        if (co_await synchFromServer() && co_await finalizeSyncPersistence()) {
             if (use_transaction) {
-                persisted = co_await db.commitExclusiveTransaction(*sync_transaction_token_);
+                auto started = co_await db.beginExclusiveTransaction();
+                if (!started) {
+                    LOG_ERROR_N << "Failed to start sync transaction for " << itemName();
+                    setState(State::ERROR);
+                    co_return false;
+                }
+                sync_transaction_token_ = started.value();
+            }
+
+            bool persisted = false;
+            if (co_await synchFromServer() && co_await finalizeSyncPersistence()) {
+                if (use_transaction) {
+                    persisted = co_await db.commitExclusiveTransaction(*sync_transaction_token_);
+                    sync_transaction_token_.reset();
+                } else {
+                    persisted = true;
+                }
+            } else if (use_transaction) {
+                (void) co_await db.rollbackExclusiveTransaction(*sync_transaction_token_);
                 sync_transaction_token_.reset();
-            } else {
-                persisted = true;
             }
-        } else if (use_transaction) {
-            (void) co_await db.rollbackExclusiveTransaction(*sync_transaction_token_);
+
+            if (persisted) {
+                if (!load_after_sync_) {
+                    setState(State::LOCAL);
+                    co_return true;
+                }
+
+                if (co_await loadLocally(false)) {
+                    co_return true;
+                }
+            }
+
+            setState(State::ERROR);
+            co_return false;
+        } catch (const std::exception& e) {
+            LOG_ERROR_N << "Exception while synchronizing " << itemName() << ": " << e.what();
+        } catch (...) {
+            LOG_ERROR_N << "Unknown exception while synchronizing " << itemName();
+        }
+
+        // A thrown persistence/load operation must release its transaction and
+        // leave the cache retryable, rather than permanently SYNCHING/LOADING.
+        if (sync_transaction_token_) {
+            const auto token = *sync_transaction_token_;
             sync_transaction_token_.reset();
+            (void) co_await syncDb().rollbackExclusiveTransaction(token);
         }
-
-        if (persisted) {
-            if (!load_after_sync_) {
-                setState(State::LOCAL);
-                co_return true;
-            }
-
-            if (co_await loadLocally(false)) {
-                co_return true;
-            }
-        }
-
         setState(State::ERROR);
         co_return false;
     }
 
     virtual QCoro::Task<bool> loadLocally(bool doClear = true) {
+        ScopedExit reset_failed_load{[this] {
+            if (state() != State::VALID) {
+                setState(State::ERROR);
+            }
+        }};
         setState(State::LOADING);
         if (doClear) {
             clear();

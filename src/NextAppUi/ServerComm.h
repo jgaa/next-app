@@ -720,6 +720,7 @@ private:
     nextapp::pb::UserGlobalSettings userGlobalSettings_;
     std::string session_id_;
     int reconnect_after_seconds_{0};
+    bool session_initializing_{false};
     QString signup_server_address_;
     signup::pb::GetInfoResponse signup_info_;
     SignupStatus signup_status_{SIGNUP_NOT_STARTED};

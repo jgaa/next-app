@@ -14,6 +14,7 @@
 #include <QSslKey>
 #include <QSslCertificate>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QNetworkInformation>
 #include <QSysInfo>
 #include <QDesktopServices>
@@ -418,6 +419,13 @@ void ServerComm::start()
 {
     LOG_DEBUG_N << "starting server-comm.";
 
+    // Do not replace the channel or the shared cache targets while a suspended
+    // session coroutine still owns the staging database.
+    if (session_initializing_) {
+        LOG_WARN_N << "Ignoring connect request while session initialization is still running.";
+        return;
+    }
+
     if (!last_seen_update_id_) {
         loadValuesFromFile(runtime_, last_seen_update_id_, last_seen_server_instance_, last_seen_user_publish_epoch_);
     }
@@ -560,7 +568,16 @@ void ServerComm::start()
     client_->attachChannel(std::make_shared<QGrpcHttp2Channel>(url, channelOptions));
 #endif
 
-    startNextappSession();
+    startNextappSession().then([] {}, [this](const std::exception& e) {
+        LOG_ERROR_N << "Session initialization failed with an exception: " << e.what();
+        if (status_ != Status::MANUAL_OFFLINE) {
+            setStatus(Status::ERROR);
+        }
+        reportConnectionFailure(tr("Failed to synchronize with the server: %1")
+                                    .arg(QString::fromUtf8(e.what())));
+        stop();
+        scheduleReconnect();
+    });
 }
 
 void ServerComm::onAppWokeFromSleep()
@@ -1331,6 +1348,10 @@ QCoro::Task<void> ServerComm::exportData(std::shared_ptr<QFile> file, const writ
 
 QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
 {
+    QElapsedTimer import_timer;
+    import_timer.start();
+    quint64 messages_sent = 0;
+    LOG_DEBUG_N << "Starting import upload. session=" << session_id_;
     import_data_in_progress_ = true;
     import_data_resync_received_ = false;
     ScopedExit importing{[this] {
@@ -1371,6 +1392,9 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
     };
 
     QObject::connect(stream.get(), &QGrpcClientStream::finished, &deadline, [&](const QGrpcStatus &status) {
+        LOG_DEBUG_N << "Import finished signal received. grpc_ok=" << status.isOk()
+                    << ", already_completed=" << finished << ", messages_sent=" << messages_sent
+                    << ", elapsed_ms=" << import_timer.elapsed();
         if (finished) {
             return;
         }
@@ -1434,10 +1458,18 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
                     throw std::runtime_error("Unexpected data in the import file");
                 }
                 stream->writeMessage(req);
+                ++messages_sent;
+                LOG_TRACE_N << "Import message submitted. index=" << messages_sent
+                            << ", what=" << static_cast<int>(status.whatField())
+                            << ", elapsed_ms=" << import_timer.elapsed();
             } else {
+                LOG_DEBUG_N << "Import file exhausted; submitting completed marker. messages_sent="
+                            << messages_sent << ", elapsed_ms=" << import_timer.elapsed();
                 req.setCompleted(true);
                 stream->writeMessage(req);
+                LOG_TRACE_N << "Import completed marker submitted; closing upload stream.";
                 stream->writesDone();
+                LOG_DEBUG_N << "Import upload stream closed; waiting for server result.";
                 break;
             }
         } catch (const std::exception &e) {
@@ -1447,16 +1479,28 @@ QCoro::Task<void> ServerComm::importData(const read_export_fn_t &read)
         }
     }
 
+    QTimer import_progress;
+    QObject::connect(&import_progress, &QTimer::timeout, &import_progress, [&] {
+        LOG_DEBUG_N << "Import still waiting for server result. messages_sent=" << messages_sent
+                    << ", resync_received=" << import_data_resync_received_
+                    << ", elapsed_ms=" << import_timer.elapsed();
+    });
     if (!finished) {
         LOG_DEBUG_N << "Import file sent; waiting for the server result.";
         deadline.start(120000);
+        import_progress.start(10000);
     }
 
     const auto error = co_await future;
+    import_progress.stop();
+    LOG_DEBUG_N << "Import result wait completed. success=" << error.isEmpty()
+                << ", resync_received=" << import_data_resync_received_
+                << ", elapsed_ms=" << import_timer.elapsed();
     if (error.isEmpty()) {
         if (import_data_resync_received_) {
             LOG_INFO_N << "Import completed after receiving server resync request.";
             QTimer::singleShot(0, this, [this] {
+                LOG_DEBUG_N << "Starting full resync after successful import result.";
                 resync();
             });
         } else {
@@ -1511,15 +1555,16 @@ QString ServerComm::signupUrl() const
 
 void ServerComm::setSignupServerAddress(const QString &address)
 {
-    if (address != signup_server_address_) {
-        signup_server_address_ = address;
+    const auto trimmed_address = address.trimmed();
+    if (trimmed_address != signup_server_address_) {
+        signup_server_address_ = trimmed_address;
         signup_info_ = {};
         emit signupInfoChanged();
 
         signup_status_ = SignupStatus::SIGNUP_NOT_STARTED;
         emit signupStatusChanged();
 
-        settings().setValue("signup/url", address);
+        settings().setValue("signup/url", trimmed_address);
         emit serverConfigurationChanged();
     }
 
@@ -1873,6 +1918,7 @@ void ServerComm::applyUpdateMessage(const std::shared_ptr<nextapp::pb::Update>& 
         sync_diagnostics_.server_resync_requested = true;
         if (import_data_in_progress_) {
             import_data_resync_received_ = true;
+            LOG_DEBUG_N << "Deferring import resync until the import result arrives.";
             return;
         }
         QTimer::singleShot(500ms, [this]() {
@@ -2450,6 +2496,13 @@ QCoro::Task<void> ServerComm::doSendFeedback(nextapp::pb::Feedback feedback)
 
 QCoro::Task<void> ServerComm::startNextappSession()
 {
+    if (session_initializing_) {
+        LOG_WARN_N << "Session initialization is already running.";
+        co_return;
+    }
+    session_initializing_ = true;
+    ScopedExit release_session_init{[this] { session_initializing_ = false; }};
+
     LOG_INFO << "Starting a new session with nextapp server at: " << current_server_address_;
     const auto start_time = chrono::steady_clock::now();
     ScopedExit finish_session_init{[this, &start_time] {
@@ -2755,6 +2808,15 @@ failed:
         NotificationsModel::instance()->setSyncDbOverride(db_override);
         NotificationsModel::instance()->setLoadAfterSync(load_after_sync);
     };
+    ScopedExit close_abandoned_staging{[&] {
+        if (staged_db) {
+            // Also close SQLite if initialization unwinds through an exception.
+            // The live database is replaced only after the full sync commits.
+            LOG_WARN_N << "Closing abandoned full-sync staging database.";
+            staged_db->close();
+            QFile::remove(staged_db->dbPath());
+        }
+    }};
     ScopedExit reset_sync_targets{[&] {
         configure_sync_targets(nullptr, true);
     }};
@@ -2763,15 +2825,38 @@ failed:
             co_return;
         }
 
+        LOG_DEBUG_N << "Aborting staged full sync; rolling back. database=" << staged_db->dbPath();
         (void) co_await staged_db->legacyQuery("ROLLBACK");
+        LOG_DEBUG_N << "Staged full sync rollback returned; closing staging database.";
         co_await staged_db->closeAndDeleteDb();
         staged_db.reset();
         configure_sync_targets(nullptr, true);
     };
 
     const auto sync_start_time = chrono::steady_clock::now();
+    auto sync_phase_started = sync_start_time;
+    std::string_view sync_phase = "prepare-sync";
+    const auto begin_sync_phase = [&](std::string_view phase) {
+        const auto now = chrono::steady_clock::now();
+        LOG_DEBUG_N << "Session sync phase completed. session=" << session_id_
+                    << ", phase=" << sync_phase << ", elapsed_ms="
+                    << chrono::duration_cast<chrono::milliseconds>(now - sync_phase_started).count();
+        sync_phase = phase;
+        sync_phase_started = now;
+        LOG_DEBUG_N << "Session sync phase starting. session=" << session_id_ << ", phase=" << phase;
+    };
+    QTimer sync_progress;
+    connect(&sync_progress, &QTimer::timeout, &sync_progress, [&] {
+        const auto now = chrono::steady_clock::now();
+        LOG_DEBUG_N << "Session sync still waiting. session=" << session_id_
+                    << ", phase=" << sync_phase << ", phase_elapsed_ms="
+                    << chrono::duration_cast<chrono::milliseconds>(now - sync_phase_started).count()
+                    << ", total_ms=" << chrono::duration_cast<chrono::milliseconds>(now - sync_start_time).count();
+    });
+    sync_progress.start(10000);
     if (needs_sync || full_sync) {
         if (full_sync) {
+            begin_sync_phase("initialize-staging");
             LOG_WARN << "Resyncing from the server using a staged local database.";
             addMessage(tr("Doing a full synch with the server. This may take a few moments..."));
             staged_db = std::make_unique<DbStore>(QStringLiteral("db.staging.sqlite"));
@@ -2795,6 +2880,7 @@ failed:
         }
 
         // Do the initial synch.
+        begin_sync_phase("fetch-data-versions");
         LOG_DEBUG_N << "Fetching data versions...";
         if (!co_await getDataVersions()) {
             LOG_WARN_N << "Failed to get data versions.";
@@ -2802,6 +2888,7 @@ failed:
             goto failed;
         }
 
+        begin_sync_phase("fetch-global-settings");
         LOG_DEBUG_N << "Fetching global settings...";
         if (!co_await fetchGlobalSettings(full_sync)) {
             LOG_WARN_N << "Failed to get global settings.";
@@ -2809,6 +2896,7 @@ failed:
             goto failed;
         }
 
+        begin_sync_phase("fetch-green-days");
         addMessage(tr("Fetching green days"));
         LOG_DEBUG_N << "Fetching green days...";
         if (!co_await GreenDaysModel::instance()->synchFromServer()) {
@@ -2817,6 +2905,7 @@ failed:
             goto failed;
         }
 
+        begin_sync_phase("fetch-lists");
         addMessage(tr("Fetching lists"));
         LOG_DEBUG_N << "Fetching nodes...";
         if (!co_await MainTreeModel::instance()->doSynch(full_sync)) {
@@ -2825,6 +2914,7 @@ failed:
             goto failed;
         }
 
+        begin_sync_phase("fetch-action-categories");
         LOG_DEBUG_N << "Fetching  action categories...";
         if (!co_await ActionCategoriesModel::instance().synch(full_sync)) {
             LOG_WARN_N << "Failed to get action categories.";
@@ -2832,6 +2922,7 @@ failed:
             goto failed;
         }
 
+        begin_sync_phase("fetch-actions");
         addMessage(tr("Fetching actions"));
         LOG_DEBUG_N << "Fetching  actions...";
         if (!co_await ActionInfoCache::instance()->synch(full_sync)) {
@@ -2840,6 +2931,7 @@ failed:
             goto failed;
         }
 
+        begin_sync_phase("fetch-work-sessions");
         addMessage(tr("Fetching work sessions"));
         LOG_DEBUG_N << "Fetching work sessions...";
         if (!co_await WorkCache::instance()->synch(full_sync)) {
@@ -2848,6 +2940,7 @@ failed:
             goto failed;
         }
 
+        begin_sync_phase("fetch-calendar");
         addMessage(tr("Fetching time blocks for the calendar"));
         LOG_DEBUG_N << "Fetching time blocks...";
         if (!co_await CalendarCache::instance()->synch(full_sync)) {
@@ -2857,11 +2950,13 @@ failed:
         }
 
         if (full_sync) {
+            begin_sync_phase("reset-playback");
             nextapp::pb::ResetPlaybackReq req;
             req.setInstanceId(AppInstanceMgr::instance()->instanceId());
             co_await rpc(req, &nextapp::pb::Nextapp::Client::ResetPlayback);
         }
 
+        begin_sync_phase("fetch-notifications");
         addMessage(tr("Fetching notifications"));
         LOG_DEBUG_N << "Fetching notifications...";
         if (!co_await NotificationsModel::instance()->synch(full_sync)) {
@@ -2875,6 +2970,7 @@ failed:
         if (full_sync) {
             addMessage(tr("Swithing to new data..."));
 #ifdef NEXTAPP_WITH_MCP
+            begin_sync_phase("preserve-local-mcp-records");
             // The staged database intentionally contains only synchronized data.
             // Preserve the local-only MCP idempotency and audit records before the swap.
             if (!co_await nextapp::mcp::McpRequestStore::copyToStagedDatabase(runtime_.db(), *staged_db)) {
@@ -2883,13 +2979,16 @@ failed:
                 goto failed;
             }
 #endif
+            begin_sync_phase("commit-staging");
             if (!co_await staged_db->legacyQuery("COMMIT")) {
                 LOG_WARN_N << "Failed to commit staged full sync transaction.";
                 co_await abort_staged_full_sync();
                 goto failed;
             }
 
+            begin_sync_phase("close-staging");
             staged_db->close();
+            begin_sync_phase("replace-live-database");
             if (!co_await runtime_.db().replaceWithDatabaseFile(staged_db->dbPath())) {
                 LOG_WARN_N << "Failed to replace live database with staged full sync database.";
                 QFile::remove(staged_db->dbPath());
@@ -2903,36 +3002,43 @@ failed:
 
             addMessage(tr("Reloading data from new database to cache..."));
 
+            begin_sync_phase("reload-green-days");
             if (!co_await GreenDaysModel::instance()->loadFromCache()) {
                 LOG_WARN_N << "Failed to load green days from swapped full-sync database.";
                 goto failed;
             }
 
+            begin_sync_phase("reload-lists");
             if (!co_await MainTreeModel::instance()->doLoadLocally()) {
                 LOG_WARN_N << "Failed to load nodes from swapped full-sync database.";
                 goto failed;
             }
 
+            begin_sync_phase("reload-action-categories");
             if (!co_await ActionCategoriesModel::instance().loadFromDb()) {
                 LOG_WARN_N << "Failed to load action categories from swapped full-sync database.";
                 goto failed;
             }
 
+            begin_sync_phase("reload-actions");
             if (!co_await ActionInfoCache::instance()->loadLocally()) {
                 LOG_WARN_N << "Failed to load actions from swapped full-sync database.";
                 goto failed;
             }
 
+            begin_sync_phase("reload-work-sessions");
             if (!co_await WorkCache::instance()->loadLocally()) {
                 LOG_WARN_N << "Failed to load work sessions from swapped full-sync database.";
                 goto failed;
             }
 
+            begin_sync_phase("reload-calendar");
             if (!co_await CalendarCache::instance()->loadLocally(true)) {
                 LOG_WARN_N << "Failed to load calendar data from swapped full-sync database.";
                 goto failed;
             }
 
+            begin_sync_phase("reload-notifications");
             if (!co_await NotificationsModel::instance()->loadLocally()) {
                 LOG_WARN_N << "Failed to load notifications from swapped full-sync database.";
                 goto failed;
@@ -3008,6 +3114,7 @@ failed:
                          last_seen_user_publish_epoch_, "completed sync baseline");
     }
 
+    begin_sync_phase("replay-deferred-updates");
     co_await replayDeferredUpdates();
 
     if (userGlobalSettings_.version() == 0) {
@@ -3018,6 +3125,7 @@ failed:
 
     addMessage(tr("Retrying any pending server-reqests..."));
     LOG_DEBUG_N << "Retrying server requests...";
+    begin_sync_phase("retry-pending-requests");
     co_await retryRequests();
 
     // If we re-run this later, we don't need to do a full sync again.
@@ -3029,11 +3137,14 @@ failed:
             settings().setValue("sync/updatedIdInitialized", true);
             updated_id_sync_initialized_ = true;
         }
+        begin_sync_phase("persist-data-epoch");
         co_await updateDataEpoc();
     }
 
     // execute later
     sync_diagnostics_.completed = true;
+    begin_sync_phase("complete");
+    sync_progress.stop();
     sync_diagnostics_.completed_last_seen_update_id = last_seen_update_id_;
     QTimer::singleShot(0, [this] {
         LOG_TRACE_N << "Emitting dataUpdated";

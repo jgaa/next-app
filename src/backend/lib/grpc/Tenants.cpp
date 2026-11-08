@@ -2,6 +2,7 @@
 #include <deque>
 #include <array>
 #include <vector>
+#include <chrono>
 
 #include <boost/asio/co_spawn.hpp>
 
@@ -1351,6 +1352,20 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
     [this, reply, ctx] (auto stream, RequestCtx& rctx) -> boost::asio::awaitable<void> {
 
         LOG_INFO_EX(rctx) << "Starting data import";
+        const auto import_started = chrono::steady_clock::now();
+        auto phase_started = import_started;
+        string_view import_phase = "begin-transaction";
+        bool committed = false;
+        uint64_t messages_received = 0;
+        const auto set_import_phase = [&](string_view phase) {
+            const auto now = chrono::steady_clock::now();
+            LOG_DEBUG_EX(rctx) << "Import phase completed. phase=" << import_phase
+                               << ", elapsed_ms=" << chrono::duration_cast<chrono::milliseconds>(now - phase_started).count();
+            import_phase = phase;
+            phase_started = now;
+            LOG_DEBUG_EX(rctx) << "Import phase starting. phase=" << import_phase;
+        };
+        LOG_DEBUG_EX(rctx) << "Import phase starting. phase=" << import_phase;
         bool success = false;
         rctx.session().requireWritableForAdd("imported data");
 
@@ -1363,7 +1378,10 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                 owner_.server().metrics().data_import_errors().inc();
             }
 
-            LOG_INFO_EX(rctx) << "Data import finished " << (success ? "successfully" : "with errors");
+            LOG_INFO_EX(rctx) << "Data import finished " << (success ? "successfully" : "with errors")
+                              << ". phase=" << import_phase << ", committed=" << committed
+                              << ", messages=" << messages_received
+                              << ", elapsed_ms=" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - import_started).count();
         });
 
         // Map the old uuid's to new uuids.
@@ -1513,6 +1531,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
         // Delete the users current data
         const auto& cuser = rctx.uctx->userUuid();
 
+        set_import_phase("read-request");
         auto msg = co_await stream->read();
         if (!msg->has_request()) {
             LOG_WARN_N << "Missing request in ImportData stream for user " << cuser;
@@ -1533,13 +1552,16 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                                      UserContext::PlanResource::WORK_SESSION});
         };
 
+        set_import_phase("clear-existing-data");
         co_await clear_user_data();
+        set_import_phase("receive-data");
 
         std::exception_ptr eptr;
 
         auto post_updates = [&](const nextapp::pb::ImportDataMsg *msg = nullptr) -> boost::asio::awaitable<void> {
 
             if (!node_parent.empty() && (!msg || !msg->has_nodes())) {
+                LOG_DEBUG_EX(rctx) << "Import linking node parents. count=" << node_parent.size();
                 auto sql = "UPDATE node SET parent=? WHERE id=? AND user=?";
 
                 auto generator = jgaa::mysqlpool::BindTupleGenerator(node_parent,
@@ -1553,6 +1575,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
 
                 try {
                     co_await rctx.dbh->exec(sql, generator);
+                    LOG_DEBUG_EX(rctx) << "Import node parents linked. count=" << node_parent.size();
                     node_parent.clear();
                 } catch (const std::exception& ex) {
                     LOG_ERROR_EX(rctx) << "Failed to update node parents: " << ex.what();
@@ -1575,6 +1598,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                 action_origin.end());
 
             if (!action_origin.empty() && (!msg || !msg->has_actions())) {
+                LOG_DEBUG_EX(rctx) << "Import linking action origins. count=" << action_origin.size();
                 auto sql = "UPDATE action SET origin=? WHERE id=? AND user=?";
 
                 auto generator = jgaa::mysqlpool::BindTupleGenerator(action_origin,
@@ -1587,6 +1611,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                                                                      });
                 try {
                     co_await rctx.dbh->exec(sql, generator);
+                    LOG_DEBUG_EX(rctx) << "Import action origins linked. count=" << action_origin.size();
                     action_origin.clear();
                 } catch (const std::exception& ex) {
                     LOG_ERROR_EX(rctx) << "Failed to update actions origin: " << ex.what();
@@ -1595,6 +1620,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
             };
 
             if (!node_category.empty() && !msg) {
+                LOG_DEBUG_EX(rctx) << "Import linking node categories. count=" << node_category.size();
                 auto sql = "UPDATE node SET category=? WHERE id=? AND user=?";
 
                 auto generator = jgaa::mysqlpool::BindTupleGenerator(node_category,
@@ -1607,6 +1633,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                                                                      });
                 try {
                     co_await rctx.dbh->exec(sql, generator);
+                    LOG_DEBUG_EX(rctx) << "Import node categories linked. count=" << node_category.size();
                     node_category.clear();
                 } catch (const std::exception& ex) {
                     LOG_ERROR_EX(rctx) << "Failed to update node categories: " << ex.what();
@@ -1618,6 +1645,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
 
         try {
             while(true) {
+                LOG_TRACE_EX(rctx) << "Import waiting for message. index=" << (messages_received + 1);
                 auto msg = co_await stream->read();
                 if (!msg) {
                     // Unexpected end of stream
@@ -1625,6 +1653,9 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                     co_await clear_user_data();
                     throw server_err{pb::Error::GENERIC_ERROR, "Unexpected end of stream"};
                 }
+                ++messages_received;
+                LOG_TRACE_EX(rctx) << "Import received message. index=" << messages_received
+                                   << ", what=" << static_cast<int>(msg->what_case());
 
                 co_await post_updates(&msg.value());
 
@@ -1733,7 +1764,9 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                                 };
                             }
 
+                            LOG_DEBUG_EX(rctx) << "Import saving time-block batch. count=" << rows->size();
                             co_await owner_.saveTimeBlocks(rctx.dbh.value(), msg->timeblocks(), rctx);
+                            LOG_DEBUG_EX(rctx) << "Import time-block batch saved. count=" << rows->size();
                         }
                     }
                 } else if (msg->has_completed()) {
@@ -1747,13 +1780,17 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                                             static_cast<int>(msg->what_case()))};
                 }
 
+                LOG_TRACE_EX(rctx) << "Import message processed. index=" << messages_received
+                                   << ", what=" << static_cast<int>(msg->what_case());
                 if (msg->has_completed()) {
                     if (!msg->completed()) {
                         LOG_INFO_N << "ImportData stream for user " << cuser
                                    << " was aborted by the user.";
                         throw server_err{pb::Error::GENERIC_ERROR, "Import cancelled"};
                     }
+                    set_import_phase("wait-client-stream-close");
                     auto last = co_await stream->read();
+                    LOG_DEBUG_EX(rctx) << "Import client stream close received. extra_message=" << static_cast<bool>(last);
                     if (last) {
                         LOG_WARN_N << "Unexpected message after completed in ImportData stream for user " << cuser
                                    << ", what=" << static_cast<int>(last->what_case());
@@ -1764,6 +1801,10 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
                 }
             } // while ...
 
+            set_import_phase("post-linking");
+            LOG_DEBUG_EX(rctx) << "Import pending links. node_parents=" << node_parent.size()
+                               << ", action_origins=" << action_origin.size()
+                               << ", node_categories=" << node_category.size();
             co_await post_updates();
         } catch (const exception& ex) {
             LOG_DEBUG_EX(rctx) << "Exception while importing data: " << ex.what();
@@ -1775,6 +1816,7 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
             std::rethrow_exception(eptr);
         }
 
+        set_import_phase("advance-data-epoch");
         co_await rctx.dbh->exec("UPDATE `user` SET data_sync_epoch = data_sync_epoch + 1 WHERE id = ?", cuser);
         auto epoch_res = co_await rctx.dbh->exec("SELECT data_sync_epoch FROM `user` WHERE id = ?", cuser);
         if (epoch_res.rows().empty()) {
@@ -1785,10 +1827,15 @@ FROM feedback f LEFT JOIN user u ON f.user = u.id ORDER BY f.createdAt DESC)";
         if (ctx->IsCancelled()) {
             throw server_err{pb::Error::GENERIC_ERROR, "Import cancelled"};
         }
+        set_import_phase("commit");
         co_await trx.commit();
+        committed = true;
 
         rctx.updates.clear();
+        set_import_phase("publish-full-resync");
+        LOG_DEBUG_EX(rctx) << "Publishing import resync. data_sync_epoch=" << data_sync_epoch;
         co_await rctx.uctx->publishFullResync(data_sync_epoch);
+        set_import_phase("complete");
 
         success = true;
         co_return;

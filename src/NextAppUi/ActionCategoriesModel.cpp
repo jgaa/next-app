@@ -289,6 +289,10 @@ void ActionCategoriesModel::setOnline(bool value) {
         emit onlineChanged();
         if (!online_) {
             setValid(false);
+        } else if (valid_) {
+            // valid() also depends on online_. Notify bindings when cached
+            // categories became valid before the connection came online.
+            emit validChanged();
         }
     }
 }
